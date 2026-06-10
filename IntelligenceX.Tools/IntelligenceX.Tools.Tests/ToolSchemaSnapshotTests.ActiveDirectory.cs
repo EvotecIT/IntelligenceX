@@ -72,6 +72,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_forest_replication_summary",
+            new[] { "domain_controller", "domain_name", "forest_name", "outbound", "by_source", "stale_threshold_hours", "bucket_hours", "include_details", "max_details", "max_domain_controllers", "max_errors", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "ad_ds_heuristics",
             new[] { "forest_name", "include_positions", "non_default_only", "max_position_rows", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
@@ -389,6 +395,24 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_replication_probe_run",
+            new[] { "bind_identity", "bind_secret", "columns", "degraded_above_ms", "directory_allow_authenticated_fallback", "directory_allowed_shares", "directory_attribute", "directory_dns_servers", "directory_exclude_sites", "directory_filter", "directory_ignore_drive_shares", "directory_include_forest_roles", "directory_optional_shares", "directory_probe_kind", "directory_query_name", "directory_query_timeout_ms", "directory_require_global_catalog_ready", "directory_require_synchronized", "directory_required_shares", "directory_search_base", "directory_share_name", "directory_sites", "directory_use_all_dns_servers", "directory_use_anonymous_bind", "directory_use_ldaps", "directory_use_start_tls", "directory_zones", "discovery_fallback", "dns_queries", "dns_service_query_name", "dns_service_record_type", "dns_service_require_answers", "domain_controller", "domain_name", "exclude_domain_controllers", "exclude_domains", "forest_name", "identity", "include_children", "include_domain_controllers", "include_domains", "include_facts", "include_global_catalog", "include_sysvol", "include_trusts", "include_udp", "latency_threshold_ms", "loss_threshold_percent", "max_concurrency", "name", "p95_latency_threshold_ms", "path", "port", "probe_kind", "protocol", "query_mode", "request_timeout_ms", "require_wsus", "retries", "retry_delay_ms", "skip_rodc", "sort_by", "sort_direction", "split_protocol_results", "stale_threshold_hours", "targets", "tcp_ports", "test_ping", "test_ports", "test_sysvol_shares", "timeout_ms", "top", "total_budget_ms", "udp_ports", "url", "use_ad_core_profile", "verify_certificate" },
+            new[] { "probe_kind" }
+        };
+
+        yield return new object[] {
+            "ad_replikacja_probe",
+            new[] { "bind_identity", "bind_secret", "columns", "degraded_above_ms", "directory_allow_authenticated_fallback", "directory_allowed_shares", "directory_attribute", "directory_dns_servers", "directory_exclude_sites", "directory_filter", "directory_ignore_drive_shares", "directory_include_forest_roles", "directory_optional_shares", "directory_probe_kind", "directory_query_name", "directory_query_timeout_ms", "directory_require_global_catalog_ready", "directory_require_synchronized", "directory_required_shares", "directory_search_base", "directory_share_name", "directory_sites", "directory_use_all_dns_servers", "directory_use_anonymous_bind", "directory_use_ldaps", "directory_use_start_tls", "directory_zones", "discovery_fallback", "dns_queries", "dns_service_query_name", "dns_service_record_type", "dns_service_require_answers", "domain_controller", "domain_name", "exclude_domain_controllers", "exclude_domains", "forest_name", "identity", "include_children", "include_domain_controllers", "include_domains", "include_facts", "include_global_catalog", "include_sysvol", "include_trusts", "include_udp", "latency_threshold_ms", "loss_threshold_percent", "max_concurrency", "name", "p95_latency_threshold_ms", "path", "port", "probe_kind", "protocol", "query_mode", "request_timeout_ms", "require_wsus", "retries", "retry_delay_ms", "skip_rodc", "sort_by", "sort_direction", "split_protocol_results", "stale_threshold_hours", "targets", "tcp_ports", "test_ping", "test_ports", "test_sysvol_shares", "timeout_ms", "top", "total_budget_ms", "udp_ports", "url", "use_ad_core_profile", "verify_certificate" },
+            new[] { "probe_kind" }
+        };
+
+        yield return new object[] {
+            "ad_replikacja_diagnostyka",
+            new[] { "bind_identity", "bind_secret", "columns", "degraded_above_ms", "directory_allow_authenticated_fallback", "directory_allowed_shares", "directory_attribute", "directory_dns_servers", "directory_exclude_sites", "directory_filter", "directory_ignore_drive_shares", "directory_include_forest_roles", "directory_optional_shares", "directory_probe_kind", "directory_query_name", "directory_query_timeout_ms", "directory_require_global_catalog_ready", "directory_require_synchronized", "directory_required_shares", "directory_search_base", "directory_share_name", "directory_sites", "directory_use_all_dns_servers", "directory_use_anonymous_bind", "directory_use_ldaps", "directory_use_start_tls", "directory_zones", "discovery_fallback", "dns_queries", "dns_service_query_name", "dns_service_record_type", "dns_service_require_answers", "domain_controller", "domain_name", "exclude_domain_controllers", "exclude_domains", "forest_name", "identity", "include_children", "include_domain_controllers", "include_domains", "include_facts", "include_global_catalog", "include_sysvol", "include_trusts", "include_udp", "latency_threshold_ms", "loss_threshold_percent", "max_concurrency", "name", "p95_latency_threshold_ms", "path", "port", "probe_kind", "protocol", "query_mode", "request_timeout_ms", "require_wsus", "retries", "retry_delay_ms", "skip_rodc", "sort_by", "sort_direction", "split_protocol_results", "stale_threshold_hours", "targets", "tcp_ports", "test_ping", "test_ports", "test_sysvol_shares", "timeout_ms", "top", "total_budget_ms", "udp_ports", "url", "use_ad_core_profile", "verify_certificate" },
+            new[] { "probe_kind" }
+        };
+
+        yield return new object[] {
             "ad_krbtgt_health",
             new[] { "domain_name", "forest_name", "age_threshold_days", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
@@ -635,13 +659,73 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_replication_health_summary",
+            new[] { "domain_controller", "domain_name", "forest_name", "outbound", "by_source", "stale_threshold_hours", "bucket_hours", "include_details", "max_details", "max_domain_controllers", "max_errors", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_replikacja_podsumowanie",
+            new[] { "domain_controller", "domain_name", "forest_name", "outbound", "by_source", "stale_threshold_hours", "bucket_hours", "include_details", "max_details", "max_domain_controllers", "max_errors", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_replikacja_forestu",
+            new[] { "domain_controller", "domain_name", "forest_name", "outbound", "by_source", "stale_threshold_hours", "bucket_hours", "include_details", "max_details", "max_domain_controllers", "max_errors", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_replikacja_utc",
+            new[] { "domain_controller", "domain_name", "forest_name", "outbound", "by_source", "stale_threshold_hours", "bucket_hours", "include_details", "max_details", "max_domain_controllers", "max_errors", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "ad_replication_connections",
             new[] { "server", "server_match", "site", "site_match", "source_server", "source_server_match", "transport", "state", "origin", "summary", "summary_by", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
         };
 
         yield return new object[] {
+            "ad_replication_topology",
+            new[] { "server", "server_match", "site", "site_match", "source_server", "source_server_match", "transport", "state", "origin", "summary", "summary_by", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_replikacja_topologia",
+            new[] { "server", "server_match", "site", "site_match", "source_server", "source_server_match", "transport", "state", "origin", "summary", "summary_by", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_replikacja_wykres",
+            new[] { "server", "server_match", "site", "site_match", "source_server", "source_server_match", "transport", "state", "origin", "summary", "summary_by", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "ad_replication_status",
+            new[] { "computer_names", "health_only", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_replication_health",
+            new[] { "computer_names", "health_only", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_replikacja_status",
+            new[] { "computer_names", "health_only", "max_results", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_replikacja_kontrolery",
             new[] { "computer_names", "health_only", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
         };

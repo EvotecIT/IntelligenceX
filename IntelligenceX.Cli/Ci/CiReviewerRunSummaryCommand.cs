@@ -55,7 +55,7 @@ internal static class CiReviewerRunSummaryCommand {
             HasNonZeroExit(options.SourceReviewerExit) ||
             HasNonZeroExit(options.ReleaseUnixExit) ||
             HasNonZeroExit(options.ReleaseWindowsExit)) {
-            builder.AppendLine("> Reviewer or analysis execution produced a non-zero exit code, but the job is fail-open by policy. The PR comment contains the user-facing failure summary when a PR number is available.");
+            builder.AppendLine("> Reviewer or analysis execution produced a non-zero exit code. Selected runtime failures remain fail-open by policy; non-passable reviewer failures are enforced by the final reviewer failure policy gate. The PR comment contains the user-facing failure summary when a PR number is available.");
             builder.AppendLine();
         }
 

@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using ADPlayground.Pki;
+using CertNoob.Dashboard;
+using CertNoob.Pki;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -37,8 +38,33 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
         bool Truncated,
         int TotalTemplates,
         int TakeoverCount,
-        IReadOnlyList<PkiTemplatesEvaluator.TemplateRow> Templates,
-        IReadOnlyList<PkiTemplatesEvaluator.TakeoverRow> TakeoverRows);
+        IReadOnlyList<AdPkiTemplateRow> Templates,
+        IReadOnlyList<AdPkiToolSupport.PkiFindingRow> TakeoverRows);
+
+    private sealed record AdPkiTemplateRow(
+        string Name,
+        string? DisplayName,
+        string DistinguishedName,
+        int? MinimalKeySize,
+        int PublishedOnCount,
+        IReadOnlyList<string> PublishedOn,
+        bool WeakKey,
+        bool TakeoverRisk,
+        bool CodeSigningRisk,
+        bool ClientAuthRisk,
+        bool ExportableKey,
+        bool AutoEnrollmentEnabled,
+        bool EnrolleeSuppliesSubject,
+        bool EnrolleeSuppliesSubjectAltName,
+        bool PendAllRequests,
+        bool RequireKeyArchival,
+        string? MaxSeverity,
+        int VulnerabilityCount,
+        IReadOnlyList<string> VulnerabilityTypes,
+        IReadOnlyList<string> ExtendedKeyUsages,
+        int EnrollPrincipalCount,
+        int AutoEnrollPrincipalCount,
+        int FullControlPrincipalCount);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdPkiTemplatesTool"/> class.
@@ -62,15 +88,24 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
         var maxTakeoverRows = ResolveMaxResults(arguments, "max_takeover_rows");
 
         if (!TryExecute(
-                action: () => PkiApi.GetTemplates(forestName),
-                result: out PkiTemplatesEvaluator.View view,
+                action: () => AdPkiToolSupport.BuildAssessment(
+                    forestName,
+                    includeEnrollmentPolicyEntries: false),
+                result: out PkiAssessmentSnapshot snapshot,
                 errorResponse: out var errorResponse,
                 defaultErrorMessage: "PKI template query failed.",
                 invalidOperationErrorCode: "query_failed")) {
             return Task.FromResult(errorResponse!);
         }
 
-        var filtered = view.Items
+        var templates = snapshot.Dashboard?.Templates ?? new List<TemplateRiskView>();
+        var findings = AdPkiToolSupport.BuildFindings(snapshot);
+        var takeoverFindings = findings
+            .Where(IsTemplateTakeoverFinding)
+            .ToArray();
+
+        var filtered = templates
+            .Select(ToTemplateRow)
             .Where(item => !weakKeyOnly || item.WeakKey)
             .Where(item => !takeoverRiskOnly || item.TakeoverRisk)
             .Where(item => !codeSigningRiskOnly || item.CodeSigningRisk)
@@ -78,21 +113,23 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
             .ToArray();
 
         var scanned = filtered.Length;
-        IReadOnlyList<PkiTemplatesEvaluator.TemplateRow> projectedRows = scanned > maxResults
+        IReadOnlyList<AdPkiTemplateRow> projectedRows = scanned > maxResults
             ? filtered.Take(maxResults).ToArray()
             : filtered;
         var truncated = scanned > projectedRows.Count;
 
-        IReadOnlyList<PkiTemplatesEvaluator.TakeoverRow> projectedTakeoverRows = includeTakeoverRows
-            ? view.Takeover.Take(maxTakeoverRows).ToArray()
-            : Array.Empty<PkiTemplatesEvaluator.TakeoverRow>();
+        IReadOnlyList<AdPkiToolSupport.PkiFindingRow> projectedTakeoverRows = includeTakeoverRows
+            ? AdPkiToolSupport.ToFindingRows(takeoverFindings, maxTakeoverRows)
+            : Array.Empty<AdPkiToolSupport.PkiFindingRow>();
+
+        var forest = AdPkiToolSupport.ResolveScopeName(snapshot, forestName);
 
         var result = new AdPkiTemplatesResult(
-            ForestName: view.ForestName,
+            ForestName: forest,
             Scanned: scanned,
             Truncated: truncated,
-            TotalTemplates: view.Items.Count,
-            TakeoverCount: view.Takeover.Count,
+            TotalTemplates: templates.Count,
+            TakeoverCount: takeoverFindings.Sum(finding => Math.Max(finding.AffectedCount, 1)),
             Templates: projectedRows,
             TakeoverRows: projectedTakeoverRows);
 
@@ -106,7 +143,7 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("forest_name", view.ForestName);
+                meta.Add("forest_name", forest);
                 AddMaxResultsMeta(meta, maxResults);
                 meta.Add("max_takeover_rows", maxTakeoverRows);
                 meta.Add("weak_key_only", weakKeyOnly);
@@ -116,5 +153,43 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("include_takeover_rows", includeTakeoverRows);
             }));
     }
-}
 
+    private static AdPkiTemplateRow ToTemplateRow(TemplateRiskView template) {
+        var weakKey = AdPkiToolSupport.IsWeakKeyTemplate(template);
+        var takeoverRisk = AdPkiToolSupport.IsTakeoverRiskTemplate(template);
+        var codeSigningRisk = AdPkiToolSupport.IsCodeSigningTemplate(template);
+        var clientAuthRisk = AdPkiToolSupport.IsAuthenticationCapableTemplate(template);
+
+        return new AdPkiTemplateRow(
+            Name: template.Name,
+            DisplayName: template.DisplayName,
+            DistinguishedName: template.DistinguishedName,
+            MinimalKeySize: template.MinimalKeySize,
+            PublishedOnCount: template.PublishedOnCount,
+            PublishedOn: template.PublishedOn.ToArray(),
+            WeakKey: weakKey,
+            TakeoverRisk: takeoverRisk,
+            CodeSigningRisk: codeSigningRisk,
+            ClientAuthRisk: clientAuthRisk,
+            ExportableKey: template.ExportableKey,
+            AutoEnrollmentEnabled: template.AutoEnrollmentEnabled,
+            EnrolleeSuppliesSubject: template.EnrolleeSuppliesSubject,
+            EnrolleeSuppliesSubjectAltName: template.EnrolleeSuppliesSubjectAltName,
+            PendAllRequests: template.PendAllRequests,
+            RequireKeyArchival: template.RequireKeyArchival,
+            MaxSeverity: template.MaxSeverity?.ToString(),
+            VulnerabilityCount: template.VulnerabilityCount,
+            VulnerabilityTypes: template.VulnerabilityTypes.Select(t => t.ToString()).ToArray(),
+            ExtendedKeyUsages: template.ExtendedKeyUsages.ToArray(),
+            EnrollPrincipalCount: template.EnrollPrincipalCount,
+            AutoEnrollPrincipalCount: template.AutoEnrollPrincipalCount,
+            FullControlPrincipalCount: template.FullControlPrincipalCount);
+    }
+
+    private static bool IsTemplateTakeoverFinding(PkiFinding finding) =>
+        finding.Tags.Any(tag => string.Equals(tag, "Template", StringComparison.OrdinalIgnoreCase)) &&
+        (finding.Severity >= PkiFindingSeverity.Medium ||
+         string.Equals(finding.Id, PkiFindingIds.TemplateBroadEnrollmentRights, StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(finding.Id, PkiFindingIds.TemplateModifiableByNonPrivileged, StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(finding.Id, PkiFindingIds.TemplateOwnedByNonPrivileged, StringComparison.OrdinalIgnoreCase));
+}

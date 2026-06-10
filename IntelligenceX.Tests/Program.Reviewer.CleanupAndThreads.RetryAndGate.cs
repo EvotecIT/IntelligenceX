@@ -244,6 +244,15 @@ internal static partial class Program {
         AssertEqual("openai-auth-refresh-reused", failure.Kind, "workflow failure kind");
         AssertEqual("OpenAI auth refresh token was already used", failure.Label, "workflow failure label");
         AssertEqual(true, failure.RequiresAuthRemediation, "workflow failure remediation flag");
+        AssertEqual(true, failure.ShouldFailWorkflow, "workflow auth failure fails required check");
+    }
+
+    private static void TestWorkflowFailOpenLogClassificationUsesTokenRefreshSummary() {
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
+            "OpenAI auth refresh failed; sign in again. The token refresh request failed.");
+        AssertEqual("openai-auth", failure.Kind, "workflow auth refresh summary failure kind");
+        AssertEqual(true, failure.RequiresAuthRemediation, "workflow auth refresh summary remediation flag");
+        AssertEqual(true, failure.ShouldFailWorkflow, "workflow auth refresh summary fails required check");
     }
 
     private static void TestWorkflowFailOpenLogClassificationPrefersUsageBudgetGuard() {
@@ -254,6 +263,20 @@ internal static partial class Program {
         AssertEqual("Usage budget guard blocked the review", failure.Label, "workflow budget failure label");
         AssertContainsText(failure.Detail, "credits exhausted", "workflow budget failure detail");
         AssertEqual(false, failure.RequiresAuthRemediation, "workflow budget failure omits auth remediation");
+        AssertEqual(false, failure.ShouldFailWorkflow, "workflow budget failure remains passable by policy");
+    }
+
+    private static void TestWorkflowFailOpenLogClassificationIgnoresGenericAuthBundleDiagnostics() {
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
+            "Provider request failed.\n"
+            + "Category: Unknown (transient)\n"
+            + "Secrets audit:\n"
+            + "- OpenAI auth bundle 'openai-codex' from /tmp/intelligencex-reviewer/auth.json\n"
+            + "Cause: TimeoutException: provider timed out.");
+
+        AssertEqual("reviewer-runtime", failure.Kind, "workflow generic auth bundle diagnostic failure kind");
+        AssertEqual(false, failure.RequiresAuthRemediation, "workflow generic auth bundle diagnostic omits auth remediation");
+        AssertEqual(false, failure.ShouldFailWorkflow, "workflow generic auth bundle diagnostic remains passable");
     }
 
     private static void TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance() {
@@ -268,6 +291,21 @@ internal static partial class Program {
         AssertContainsText(body, "Check the `review / review` workflow logs for the runtime failure", "workflow fail-open runtime guidance");
         AssertEqual(false, body.Contains("intelligencex auth login --set-github-secret", StringComparison.OrdinalIgnoreCase),
             "workflow fail-open runtime guidance omits auth remediation");
+    }
+
+    private static void TestWorkflowFailureSummaryBodyUsesAuthFailureGate() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Workflow hardening", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog("OpenAI auth bundle is missing or no longer valid; sign in again.");
+        var body = ReviewDiagnostics.BuildWorkflowFailOpenSummaryBody(context, "source", "owner/repo", failure);
+
+        AssertContainsText(body, "## IntelligenceX Review (failed)", "workflow auth failure heading");
+        AssertContainsText(body, "ERROR: Reviewer execution failed and this workflow will fail.",
+            "workflow auth failure does not claim fail-open");
+        AssertContainsText(body, "intelligencex auth login --set-github-secret --repo owner/repo",
+            "workflow auth failure keeps remediation guidance");
+        AssertEqual(false, body.Contains("was allowed to pass open", StringComparison.OrdinalIgnoreCase),
+            "workflow auth failure does not say it passed open");
     }
 
     private static void TestFailureSummaryCommentUpdate() {

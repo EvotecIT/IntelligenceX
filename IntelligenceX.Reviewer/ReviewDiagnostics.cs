@@ -107,7 +107,12 @@ internal static class ReviewDiagnostics {
     private const string AuthRefreshTokenReusedSummary = "OpenAI auth refresh token was already used; sign in again";
     private const string UsageBudgetGuardPrefix = "Usage budget guard blocked review run:";
 
-    internal readonly record struct WorkflowFailureInfo(string Kind, string Label, string Detail, bool RequiresAuthRemediation);
+    internal readonly record struct WorkflowFailureInfo(
+        string Kind,
+        string Label,
+        string Detail,
+        bool RequiresAuthRemediation,
+        bool ShouldFailWorkflow);
 
     /// <summary>
     /// Categorizes reviewer failures for reporting and retry logic.
@@ -372,6 +377,7 @@ internal static class ReviewDiagnostics {
                 "usage-budget-guard",
                 "Usage budget guard blocked the review",
                 ExtractUsageBudgetGuardDetail(text),
+                false,
                 false);
         }
 
@@ -381,18 +387,16 @@ internal static class ReviewDiagnostics {
                 "openai-auth-refresh-reused",
                 "OpenAI auth refresh token was already used",
                 "OpenAI auth refresh token was already used; sign in again.",
+                true,
                 true);
         }
 
-        if (text.IndexOf("OAuth token request failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            text.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            text.IndexOf("auth bundle", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            text.IndexOf("INTELLIGENCEX_AUTH_B64", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            text.IndexOf("signing in again", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (IsOpenAiAuthRemediationFailureLog(text)) {
             return new WorkflowFailureInfo(
                 "openai-auth",
                 "OpenAI auth bundle is missing or stale",
                 "OpenAI auth bundle is missing or no longer valid; sign in again.",
+                true,
                 true);
         }
 
@@ -400,7 +404,34 @@ internal static class ReviewDiagnostics {
             "reviewer-runtime",
             "Reviewer runtime failed",
             "Reviewer execution failed after the workflow created the progress summary.",
+            false,
             false);
+    }
+
+    private static bool IsOpenAiAuthRemediationFailureLog(string text) {
+        if (text.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("OpenAI auth refresh failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("token refresh", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("signing in again", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("Interactive ChatGPT sign-in cannot run inside GitHub Actions", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("Failed to decode INTELLIGENCEX_AUTH_B64", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("Set INTELLIGENCEX_AUTH_B64", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        if (text.IndexOf("OAuth token request failed", StringComparison.OrdinalIgnoreCase) >= 0 &&
+            (text.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             text.IndexOf("refresh_token_reused", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             text.IndexOf("signing in again", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             text.IndexOf("refresh token has already been used", StringComparison.OrdinalIgnoreCase) >= 0)) {
+            return true;
+        }
+
+        return text.IndexOf("No OpenAI auth bundle found", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("OpenAI auth bundle expired", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("OpenAI auth bundle could not be loaded", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("OpenAI auth bundle is stale", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("OpenAI auth bundle is missing", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string ExtractUsageBudgetGuardDetail(string text) {
@@ -420,12 +451,18 @@ internal static class ReviewDiagnostics {
 
     internal static string BuildWorkflowFailOpenSummaryBody(PullRequestContext context, string reviewerSource,
         string remediationRepo, WorkflowFailureInfo failure) {
+        var heading = failure.ShouldFailWorkflow
+            ? "## IntelligenceX Review (failed)"
+            : "## IntelligenceX Review (failed open)";
+        var warning = failure.ShouldFailWorkflow
+            ? "ERROR: Reviewer execution failed and this workflow will fail."
+            : "WARNING: Reviewer execution failed and this workflow was allowed to pass open.";
         var lines = new List<string> {
             WorkflowSummaryMarker,
-            "## IntelligenceX Review (failed open)",
+            heading,
             $"Reviewing this pull request: **{context.Title.Replace("\r", string.Empty).Replace("\n", " ")}**",
             string.Empty,
-            "WARNING: Reviewer execution failed and this workflow was allowed to pass open.",
+            warning,
             string.Empty,
             $"- Reviewer source: {reviewerSource}",
             $"- Failure type: {failure.Label}"

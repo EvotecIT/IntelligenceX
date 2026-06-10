@@ -493,6 +493,32 @@ jobs:
             "reusable workflow uploads durable reviewer artifacts");
         AssertContainsText(content, "path: artifacts/reviewer",
             "reusable workflow uploads reviewer artifact directory");
+        AssertContainsText(content, "Enforce reviewer runtime failure policy",
+            "reusable workflow has a final reviewer failure policy gate");
+        AssertContainsText(content, "ci reviewer-failure-gate",
+            "reusable workflow delegates reviewer failure policy to the CLI helper");
+        AssertContainsText(content, "Reviewer failure policy gate using shell fallback",
+            "reusable workflow enforces auth failures when CLI source is unavailable");
+        AssertContainsText(content, "OpenAI auth bundle is missing",
+            "reusable workflow shell fallback detects stale auth bundle logs");
+        AssertContainsText(content, "refresh_token_reused",
+            "reusable workflow shell fallback detects reused refresh token logs");
+        AssertContainsText(content, "OpenAI auth refresh failed",
+            "reusable workflow shell fallback detects auth refresh summary logs");
+        AssertContainsText(content, "token refresh",
+            "reusable workflow shell fallback detects token refresh failure logs");
+        AssertContainsText(content, "invalid_grant",
+            "reusable workflow shell fallback detects invalid grant logs");
+        AssertContainsText(content, "Failed to decode INTELLIGENCEX_AUTH_B64",
+            "reusable workflow shell fallback detects invalid auth bundle secret logs");
+        AssertContainsText(content, "::error title=IntelligenceX reviewer auth failure::",
+            "reusable workflow shell fallback fails required checks for auth remediation");
+        AssertContainsText(content, "--source-reviewer-exit \"${{ steps.reviewer_run_source.outputs.exit_code }}\"",
+            "reusable workflow passes source reviewer exit code to failure gate");
+        AssertEqual(true,
+            content.IndexOf("Enforce reviewer runtime failure policy", StringComparison.Ordinal) >
+            content.IndexOf("Upload reviewer artifacts", StringComparison.Ordinal),
+            "reusable workflow runs reviewer failure policy after reporting and artifact upload");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),
