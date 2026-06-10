@@ -247,6 +247,14 @@ internal static partial class Program {
         AssertEqual(true, failure.ShouldFailWorkflow, "workflow auth failure fails required check");
     }
 
+    private static void TestWorkflowFailOpenLogClassificationUsesTokenRefreshSummary() {
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
+            "OpenAI auth refresh failed; sign in again. The token refresh request failed.");
+        AssertEqual("openai-auth", failure.Kind, "workflow auth refresh summary failure kind");
+        AssertEqual(true, failure.RequiresAuthRemediation, "workflow auth refresh summary remediation flag");
+        AssertEqual(true, failure.ShouldFailWorkflow, "workflow auth refresh summary fails required check");
+    }
+
     private static void TestWorkflowFailOpenLogClassificationPrefersUsageBudgetGuard() {
         var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
             "Usage budget guard blocked review run: credits exhausted (balance 0); weekly limit exhausted.\n"

@@ -503,6 +503,10 @@ jobs:
             "reusable workflow shell fallback detects stale auth bundle logs");
         AssertContainsText(content, "refresh_token_reused",
             "reusable workflow shell fallback detects reused refresh token logs");
+        AssertContainsText(content, "OpenAI auth refresh failed",
+            "reusable workflow shell fallback detects auth refresh summary logs");
+        AssertContainsText(content, "token refresh",
+            "reusable workflow shell fallback detects token refresh failure logs");
         AssertContainsText(content, "invalid_grant",
             "reusable workflow shell fallback detects invalid grant logs");
         AssertContainsText(content, "Failed to decode INTELLIGENCEX_AUTH_B64",

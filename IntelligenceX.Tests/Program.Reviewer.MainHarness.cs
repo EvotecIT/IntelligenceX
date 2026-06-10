@@ -83,6 +83,7 @@ internal static partial class Program {
         failed += Run("Build auth remediation command quotes repo when needed", TestBuildAuthRemediationCommandQuotesRepoWhenNeeded);
         failed += Run("Build auth remediation command escapes embedded quotes", TestBuildAuthRemediationCommandEscapesEmbeddedQuotes);
         failed += Run("Workflow fail-open log classification uses auth refresh label", TestWorkflowFailOpenLogClassificationUsesAuthRefreshLabel);
+        failed += Run("Workflow fail-open log classification uses token refresh summary", TestWorkflowFailOpenLogClassificationUsesTokenRefreshSummary);
         failed += Run("Workflow fail-open log classification prefers usage budget guard", TestWorkflowFailOpenLogClassificationPrefersUsageBudgetGuard);
         failed += Run("Workflow fail-open log classification ignores generic auth bundle diagnostics", TestWorkflowFailOpenLogClassificationIgnoresGenericAuthBundleDiagnostics);
         failed += Run("Workflow fail-open summary body uses runtime guidance", TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance);

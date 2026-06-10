@@ -410,6 +410,8 @@ internal static class ReviewDiagnostics {
 
     private static bool IsOpenAiAuthRemediationFailureLog(string text) {
         if (text.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("OpenAI auth refresh failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("token refresh", StringComparison.OrdinalIgnoreCase) >= 0 ||
             text.IndexOf("signing in again", StringComparison.OrdinalIgnoreCase) >= 0 ||
             text.IndexOf("Interactive ChatGPT sign-in cannot run inside GitHub Actions", StringComparison.OrdinalIgnoreCase) >= 0 ||
             text.IndexOf("Failed to decode INTELLIGENCEX_AUTH_B64", StringComparison.OrdinalIgnoreCase) >= 0 ||
