@@ -252,14 +252,16 @@ internal static partial class Program {
             AssertEqual(0, exit, "review-fail-open-summary exit code");
             AssertEqual(1, patchHits, "review-fail-open-summary updates existing comment");
             AssertEqual(false, string.IsNullOrWhiteSpace(updatedBody), "review-fail-open-summary updates trusted comment body");
-            AssertContainsText(updatedBody ?? string.Empty, "## IntelligenceX Review (failed open)",
-                "review-fail-open-summary uses fail-open heading");
+            AssertContainsText(updatedBody ?? string.Empty, "## IntelligenceX Review (failed)",
+                "review-fail-open-summary uses blocking heading for auth failures");
             AssertContainsText(updatedBody ?? string.Empty, "Reviewing this pull request: **Workflow hardening**",
                 "review-fail-open-summary uses PR title");
             AssertContainsText(updatedBody ?? string.Empty, "- Reviewer source: source",
                 "review-fail-open-summary records reviewer source");
             AssertContainsText(updatedBody ?? string.Empty, "intelligencex auth login --set-github-secret --repo owner/repo",
                 "review-fail-open-summary includes reauth guidance");
+            AssertEqual(false, (updatedBody ?? string.Empty).Contains("was allowed to pass open", StringComparison.OrdinalIgnoreCase),
+                "review-fail-open-summary does not claim auth failures pass open");
         } finally {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
@@ -439,7 +441,7 @@ internal static partial class Program {
             var content = File.ReadAllText(summaryPath);
             AssertContainsText(content, "## IntelligenceX Reviewer", "reviewer-run-summary heading");
             AssertContainsText(content, "| Source reviewer | `failure` | `1` |", "reviewer-run-summary source reviewer row");
-            AssertContainsText(content, "fail-open by policy", "reviewer-run-summary fail-open note");
+            AssertContainsText(content, "final reviewer failure policy gate", "reviewer-run-summary failure policy note");
             AssertContainsText(content, "Sticky comment deletion is treated as an intentional reset",
                 "reviewer-run-summary sticky deletion policy note");
 
@@ -465,6 +467,32 @@ internal static partial class Program {
                 "reviewer-run-summary analysis pre-run row");
             AssertContainsText(analysisOnlyContent, "Reviewer or analysis execution produced a non-zero exit code",
                 "reviewer-run-summary analysis pre-run fail-open note");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private static void TestCiReviewerFailureGateFailsAuthFailureOnly() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-reviewer-failure-gate-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var authLogPath = Path.Combine(root, "auth.log");
+            File.WriteAllText(authLogPath, "OpenAI auth bundle is missing or no longer valid; sign in again.");
+            var authExit = CiReviewerFailureGateCommand.RunAsync(new[] {
+                    "--source-reviewer-exit", "1",
+                    "--source-log", authLogPath
+                })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, authExit, "reviewer-failure-gate fails auth remediation failures");
+
+            var runtimeLogPath = Path.Combine(root, "runtime.log");
+            File.WriteAllText(runtimeLogPath, "Unhandled exception: reviewer-runtime");
+            var runtimeExit = CiReviewerFailureGateCommand.RunAsync(new[] {
+                    "--source-reviewer-exit", "1",
+                    "--source-log", runtimeLogPath
+                })
+                .GetAwaiter().GetResult();
+            AssertEqual(0, runtimeExit, "reviewer-failure-gate leaves runtime failures fail-open");
         } finally {
             try { Directory.Delete(root, recursive: true); } catch { }
         }

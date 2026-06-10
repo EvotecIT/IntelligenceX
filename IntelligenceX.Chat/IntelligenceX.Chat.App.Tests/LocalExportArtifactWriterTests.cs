@@ -326,10 +326,10 @@ public sealed partial class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures full-transcript export normalization preserves the shared adjacent ordered-list spacing repair.
+    /// Ensures full-transcript export normalization keeps adjacent ordered-list items stable for current OfficeIMO rendering.
     /// </summary>
     [Fact]
-    public void NormalizeTranscriptMarkdownForExport_InsertsBlankLineBetweenAdjacentOrderedItems() {
+    public void NormalizeTranscriptMarkdownForExport_PreservesAdjacentOrderedItems() {
         const string markdown = """
             ### Assistant (10:22:14)
             1. First check
@@ -339,7 +339,7 @@ public sealed partial class LocalExportArtifactWriterTests {
         var normalized = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Contains("1. First check\n\n2. Second check", normalized, StringComparison.Ordinal);
+        Assert.Contains("1. First check\n2. Second check", normalized, StringComparison.Ordinal);
     }
 
     /// <summary>
