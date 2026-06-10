@@ -391,11 +391,7 @@ internal static class ReviewDiagnostics {
                 true);
         }
 
-        if (text.IndexOf("OAuth token request failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            text.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            text.IndexOf("auth bundle", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            text.IndexOf("INTELLIGENCEX_AUTH_B64", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            text.IndexOf("signing in again", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (IsOpenAiAuthRemediationFailureLog(text)) {
             return new WorkflowFailureInfo(
                 "openai-auth",
                 "OpenAI auth bundle is missing or stale",
@@ -410,6 +406,30 @@ internal static class ReviewDiagnostics {
             "Reviewer execution failed after the workflow created the progress summary.",
             false,
             false);
+    }
+
+    private static bool IsOpenAiAuthRemediationFailureLog(string text) {
+        if (text.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("signing in again", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("Interactive ChatGPT sign-in cannot run inside GitHub Actions", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("Failed to decode INTELLIGENCEX_AUTH_B64", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("Set INTELLIGENCEX_AUTH_B64", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        if (text.IndexOf("OAuth token request failed", StringComparison.OrdinalIgnoreCase) >= 0 &&
+            (text.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             text.IndexOf("refresh_token_reused", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             text.IndexOf("signing in again", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             text.IndexOf("refresh token has already been used", StringComparison.OrdinalIgnoreCase) >= 0)) {
+            return true;
+        }
+
+        return text.IndexOf("No OpenAI auth bundle found", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("OpenAI auth bundle expired", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("OpenAI auth bundle could not be loaded", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("OpenAI auth bundle is stale", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               text.IndexOf("OpenAI auth bundle is missing", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string ExtractUsageBudgetGuardDetail(string text) {

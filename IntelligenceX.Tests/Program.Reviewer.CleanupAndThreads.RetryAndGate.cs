@@ -258,6 +258,19 @@ internal static partial class Program {
         AssertEqual(false, failure.ShouldFailWorkflow, "workflow budget failure remains passable by policy");
     }
 
+    private static void TestWorkflowFailOpenLogClassificationIgnoresGenericAuthBundleDiagnostics() {
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
+            "Provider request failed.\n"
+            + "Category: Unknown (transient)\n"
+            + "Secrets audit:\n"
+            + "- OpenAI auth bundle 'openai-codex' from /tmp/intelligencex-reviewer/auth.json\n"
+            + "Cause: TimeoutException: provider timed out.");
+
+        AssertEqual("reviewer-runtime", failure.Kind, "workflow generic auth bundle diagnostic failure kind");
+        AssertEqual(false, failure.RequiresAuthRemediation, "workflow generic auth bundle diagnostic omits auth remediation");
+        AssertEqual(false, failure.ShouldFailWorkflow, "workflow generic auth bundle diagnostic remains passable");
+    }
+
     private static void TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Workflow hardening", null, false, "head", "base",
             Array.Empty<string>(), "owner/repo", false, null);

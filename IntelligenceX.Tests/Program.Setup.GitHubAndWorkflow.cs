@@ -501,6 +501,12 @@ jobs:
             "reusable workflow enforces auth failures when CLI source is unavailable");
         AssertContainsText(content, "OpenAI auth bundle is missing",
             "reusable workflow shell fallback detects stale auth bundle logs");
+        AssertContainsText(content, "refresh_token_reused",
+            "reusable workflow shell fallback detects reused refresh token logs");
+        AssertContainsText(content, "invalid_grant",
+            "reusable workflow shell fallback detects invalid grant logs");
+        AssertContainsText(content, "Failed to decode INTELLIGENCEX_AUTH_B64",
+            "reusable workflow shell fallback detects invalid auth bundle secret logs");
         AssertContainsText(content, "::error title=IntelligenceX reviewer auth failure::",
             "reusable workflow shell fallback fails required checks for auth remediation");
         AssertContainsText(content, "--source-reviewer-exit \"${{ steps.reviewer_run_source.outputs.exit_code }}\"",

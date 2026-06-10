@@ -1002,7 +1002,8 @@ jobs:
               if [ -z "$exit_code" ] || [ "$exit_code" = "0" ]; then
                 return
               fi
-              if [ -f "$log_path" ] && grep -Eiq 'OpenAI auth bundle is missing|OpenAI auth bundle is missing or no longer valid|OpenAI auth refresh token was already used|Interactive ChatGPT sign-in cannot run inside GitHub Actions' "$log_path"; then
+              auth_pattern='refresh_token_reused|refresh token has already been used|invalid_grant|signing in again|Interactive ChatGPT sign-in cannot run inside GitHub Actions|Failed to decode INTELLIGENCEX_AUTH_B64|Set INTELLIGENCEX_AUTH_B64|No OpenAI auth bundle found|OpenAI auth bundle expired|OpenAI auth bundle could not be loaded|OpenAI auth bundle is stale|OpenAI auth bundle is missing'
+              if [ -f "$log_path" ] && grep -Eiq "$auth_pattern" "$log_path"; then
                 echo "::error title=IntelligenceX reviewer auth failure::$stage exited with $exit_code and requires OpenAI auth remediation."
                 gate_failed=1
               else
