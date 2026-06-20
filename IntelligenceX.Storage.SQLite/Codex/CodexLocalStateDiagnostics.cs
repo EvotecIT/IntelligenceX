@@ -9,7 +9,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using DBAClientX;
-using Microsoft.Data.Sqlite;
 
 namespace IntelligenceX.Codex;
 
@@ -405,14 +404,7 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         var backupDirectory = CreateBackupDirectory(backupRoot);
         var backupDb = Path.Combine(backupDirectory, "state_5.sqlite");
 
-        var builder = new SqliteConnectionStringBuilder {
-            DataSource = stateDb,
-            Mode = SqliteOpenMode.ReadWrite
-        };
-        using var connection = new SqliteConnection(builder.ConnectionString);
-        connection.Open();
-        SetBusyTimeout(connection, 10000);
-        BackupDatabase(connection, backupDb);
+        _sqlite.BackupDatabase(stateDb, backupDb, busyTimeoutMs: 10000);
 
         var columns = GetTableColumns(stateDb, "threads");
         var columnNames = columns
@@ -433,39 +425,39 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         }
 
         var activeExpr = BuildActiveThreadExpression(columnNames);
-        var rows = ReadActiveThreadPathRows(connection, pathColumns, activeExpr, cancellationToken);
+        using var session = _sqlite.OpenSession(stateDb);
+        var rows = ReadActiveThreadPathRows(session, pathColumns, activeExpr, cancellationToken);
         var scannedValues = 0;
         var changedValues = 0;
         var changedRows = 0;
 
-        using var transaction = connection.BeginTransaction();
-        foreach (var row in rows) {
-            cancellationToken.ThrowIfCancellationRequested();
-            var updates = new List<(string Column, string OriginalValue, string NormalizedValue)>();
-            foreach (var (column, value) in row.Values) {
-                if (string.IsNullOrWhiteSpace(value)) {
+        session.RunInTransaction(transaction => {
+            foreach (var row in rows) {
+                cancellationToken.ThrowIfCancellationRequested();
+                var updates = new List<(string Column, string OriginalValue, string NormalizedValue)>();
+                foreach (var (column, value) in row.Values) {
+                    if (string.IsNullOrWhiteSpace(value)) {
+                        continue;
+                    }
+
+                    scannedValues++;
+                    if (!TryNormalizeExtendedWindowsPath(value!, out var normalized)) {
+                        continue;
+                    }
+
+                    updates.Add((column, value!, normalized));
+                }
+
+                if (updates.Count == 0) {
                     continue;
                 }
 
-                scannedValues++;
-                if (!TryNormalizeExtendedWindowsPath(value!, out var normalized)) {
-                    continue;
+                if (UpdateThreadPathRow(transaction, row.RowId, updates, activeExpr)) {
+                    changedValues += updates.Count;
+                    changedRows++;
                 }
-
-                updates.Add((column, value!, normalized));
             }
-
-            if (updates.Count == 0) {
-                continue;
-            }
-
-            if (UpdateThreadPathRow(connection, transaction, row.RowId, updates, activeExpr)) {
-                changedValues += updates.Count;
-                changedRows++;
-            }
-        }
-
-        transaction.Commit();
+        });
         return new CodexLocalStatePathRepairResult {
             CodexHome = home,
             StateDatabasePath = stateDb,
@@ -605,20 +597,17 @@ public sealed partial class CodexLocalStateDiagnosticsService {
             var activeExpr = BuildActiveThreadExpression(columnNames);
             var selectedColumns = string.Join(", ", pathColumns.Select(QuoteIdentifier));
             var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var builder = new SqliteConnectionStringBuilder {
-                DataSource = stateDb,
-                Mode = SqliteOpenMode.ReadOnly
+            using var sqlite = new SQLite {
+                CommandTimeout = 10
             };
-            using var connection = new SqliteConnection(builder.ConnectionString);
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = $"SELECT {selectedColumns} FROM threads WHERE {activeExpr};";
-            using var reader = command.ExecuteReader();
-            var ordinals = pathColumns.Select(reader.GetOrdinal).ToArray();
-            while (reader.Read()) {
-                foreach (var ordinal in ordinals) {
-                    if (!reader.IsDBNull(ordinal)
-                        && TryResolveActiveSessionPath(reader.GetString(ordinal), out var activePath)) {
+            using var session = sqlite.OpenSession(stateDb);
+            var rows = session.QueryAsList(
+                $"SELECT {selectedColumns} FROM threads WHERE {activeExpr};",
+                row => pathColumns.Select(column => GetNullableString(row, column)).ToArray());
+            foreach (var row in rows) {
+                foreach (var value in row) {
+                    if (!string.IsNullOrWhiteSpace(value)
+                        && TryResolveActiveSessionPath(value!, out var activePath)) {
                         result.Add(activePath);
                     }
                 }
@@ -914,103 +903,62 @@ public sealed partial class CodexLocalStateDiagnosticsService {
     }
 
     private static IReadOnlyList<(string Name, string Type)> GetTableColumns(string stateDb, string table) {
-        var columns = new List<(string Name, string Type)>();
-        var builder = new SqliteConnectionStringBuilder {
-            DataSource = stateDb,
-            Mode = SqliteOpenMode.ReadOnly
+        using var sqlite = new SQLite {
+            ReturnType = ReturnType.DataTable,
+            CommandTimeout = 10
         };
-        using var connection = new SqliteConnection(builder.ConnectionString);
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = $"PRAGMA table_info({QuoteString(table)});";
-        using var reader = command.ExecuteReader();
-        var nameOrdinal = reader.GetOrdinal("name");
-        var typeOrdinal = reader.GetOrdinal("type");
-        while (reader.Read()) {
-            var name = reader.IsDBNull(nameOrdinal) ? string.Empty : reader.GetString(nameOrdinal);
-            if (string.IsNullOrWhiteSpace(name)) {
-                continue;
-            }
-
-            var type = reader.IsDBNull(typeOrdinal) ? string.Empty : reader.GetString(typeOrdinal);
-            columns.Add((name, type));
-        }
-
-        return columns;
+        using var session = sqlite.OpenSession(stateDb);
+        return session.QueryAsList(
+                $"PRAGMA table_info({QuoteString(table)});",
+                static row => (
+                    Name: GetString(row, "name"),
+                    Type: GetString(row, "type")))
+            .Where(static column => !string.IsNullOrWhiteSpace(column.Name))
+            .ToArray();
     }
 
     private static IReadOnlyList<(long RowId, IReadOnlyList<(string Column, string? Value)> Values)> ReadActiveThreadPathRows(
-        SqliteConnection connection,
+        SQLiteSession session,
         IReadOnlyList<string> pathColumns,
         string activeExpr,
         CancellationToken cancellationToken) {
         var selectedColumns = string.Join(", ", pathColumns.Select(QuoteIdentifier));
-        using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT rowid AS __ix_rowid, {selectedColumns} FROM threads WHERE {activeExpr};";
-        using var reader = command.ExecuteReader();
-        var rowIdOrdinal = reader.GetOrdinal("__ix_rowid");
-        var columnOrdinals = pathColumns
-            .Select(column => (Column: column, Ordinal: reader.GetOrdinal(column)))
-            .ToArray();
-        var rows = new List<(long RowId, IReadOnlyList<(string Column, string? Value)> Values)>();
-        while (reader.Read()) {
-            cancellationToken.ThrowIfCancellationRequested();
-            var values = new List<(string Column, string? Value)>(columnOrdinals.Length);
-            foreach (var (column, ordinal) in columnOrdinals) {
-                values.Add((column, reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal)));
-            }
+        return session.QueryAsList(
+            $"SELECT rowid AS __ix_rowid, {selectedColumns} FROM threads WHERE {activeExpr};",
+            row => {
+                cancellationToken.ThrowIfCancellationRequested();
+                var values = new List<(string Column, string? Value)>(pathColumns.Count);
+                foreach (var column in pathColumns) {
+                    values.Add((column, GetNullableString(row, column)));
+                }
 
-            rows.Add((reader.GetInt64(rowIdOrdinal), values));
-        }
-
-        return rows;
+                return (RowId: Convert.ToInt64(row.GetValue(row.GetOrdinal("__ix_rowid")), CultureInfo.InvariantCulture), Values: (IReadOnlyList<(string Column, string? Value)>)values);
+            });
     }
 
     private static bool UpdateThreadPathRow(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
+        SQLiteSession session,
         long rowId,
         IReadOnlyList<(string Column, string OriginalValue, string NormalizedValue)> updates,
         string activeExpr) {
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "UPDATE threads SET "
-                              + string.Join(", ", updates.Select((item, index) => $"{QuoteIdentifier(item.Column)} = @p{index.ToString(CultureInfo.InvariantCulture)}"))
-                              + " WHERE rowid = @rowid AND "
-                              + activeExpr
-                              + " AND "
-                              + string.Join(" AND ", updates.Select((item, index) => $"{QuoteIdentifier(item.Column)} = @old{index.ToString(CultureInfo.InvariantCulture)}"))
-                              + ";";
+        var parameters = new Dictionary<string, object?> {
+            ["@rowid"] = rowId
+        };
         var parameterIndex = 0;
         foreach (var item in updates) {
-            command.Parameters.AddWithValue("@p" + parameterIndex.ToString(CultureInfo.InvariantCulture), item.NormalizedValue);
-            command.Parameters.AddWithValue("@old" + parameterIndex.ToString(CultureInfo.InvariantCulture), item.OriginalValue);
+            parameters["@p" + parameterIndex.ToString(CultureInfo.InvariantCulture)] = item.NormalizedValue;
+            parameters["@old" + parameterIndex.ToString(CultureInfo.InvariantCulture)] = item.OriginalValue;
             parameterIndex++;
         }
 
-        command.Parameters.AddWithValue("@rowid", rowId);
-        return command.ExecuteNonQuery() == 1;
-    }
-
-    private static void BackupDatabase(SqliteConnection sourceConnection, string backupDb) {
-        var directory = Path.GetDirectoryName(backupDb);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            Directory.CreateDirectory(directory);
-        }
-
-        var builder = new SqliteConnectionStringBuilder {
-            DataSource = backupDb,
-            Mode = SqliteOpenMode.ReadWriteCreate
-        };
-        using var destination = new SqliteConnection(builder.ConnectionString);
-        destination.Open();
-        sourceConnection.BackupDatabase(destination);
-    }
-
-    private static void SetBusyTimeout(SqliteConnection connection, int milliseconds) {
-        using var command = connection.CreateCommand();
-        command.CommandText = "PRAGMA busy_timeout = " + milliseconds.ToString(CultureInfo.InvariantCulture) + ";";
-        command.ExecuteNonQuery();
+        var command = "UPDATE threads SET "
+                      + string.Join(", ", updates.Select((item, index) => $"{QuoteIdentifier(item.Column)} = @p{index.ToString(CultureInfo.InvariantCulture)}"))
+                      + " WHERE rowid = @rowid AND "
+                      + activeExpr
+                      + " AND "
+                      + string.Join(" AND ", updates.Select((item, index) => $"{QuoteIdentifier(item.Column)} = @old{index.ToString(CultureInfo.InvariantCulture)}"))
+                      + ";";
+        return session.ExecuteNonQuery(command, parameters) == 1;
     }
 
     private static int CountConfigExtendedPaths(string codexHome) {
@@ -1034,6 +982,21 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         return value is DataTable table
             ? table.Rows.Cast<DataRow>().ToArray()
             : [];
+    }
+
+    private static string GetString(IDataRecord row, string column) {
+        var ordinal = row.GetOrdinal(column);
+        return row.IsDBNull(ordinal) ? string.Empty : Convert.ToString(row.GetValue(ordinal), CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+
+    private static string? GetNullableString(IDataRecord row, string column) {
+        var ordinal = row.GetOrdinal(column);
+        return row.IsDBNull(ordinal) ? null : Convert.ToString(row.GetValue(ordinal), CultureInfo.InvariantCulture);
+    }
+
+    private static bool IsSqliteProviderException(Exception exception) {
+        return string.Equals(exception.GetType().FullName, "Microsoft.Data.Sqlite.SqliteException", StringComparison.Ordinal)
+               || exception.InnerException is not null && IsSqliteProviderException(exception.InnerException);
     }
 
     private static CodexLocalStateHealthStatus BuildStatus(

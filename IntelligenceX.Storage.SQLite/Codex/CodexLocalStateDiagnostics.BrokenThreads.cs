@@ -6,7 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Microsoft.Data.Sqlite;
+using DBAClientX;
 
 namespace IntelligenceX.Codex;
 
@@ -37,7 +37,9 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         IReadOnlyList<(string ThreadId, int FailureCount, long LastSeen)> loggedCandidates;
         try {
             loggedCandidates = ReadBrokenThreadLogCandidates(logsDb, cancellationToken);
-        } catch (SqliteException) {
+        } catch (DbaClientXException) {
+            return [];
+        } catch (Exception ex) when (IsSqliteProviderException(ex)) {
             return [];
         } catch (IOException) {
             return [];
@@ -72,48 +74,49 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         string logsDb,
         CancellationToken cancellationToken) {
         var since = DateTimeOffset.UtcNow.AddHours(-BrokenThreadLogLookbackHours).ToUnixTimeSeconds();
-        var builder = new SqliteConnectionStringBuilder {
-            DataSource = logsDb,
-            Mode = SqliteOpenMode.ReadOnly
-        };
-        using var connection = new SqliteConnection(builder.ConnectionString);
-        connection.Open();
-        SetBusyTimeout(connection, 1000);
-        using var command = connection.CreateCommand();
         var filters = string.Join(
             " OR ",
             BrokenThreadLogPrefixes.Select((_, index) => $"lower(ltrim(coalesce(feedback_log_body,''), @trimCharacters)) LIKE @pattern{index.ToString(CultureInfo.InvariantCulture)}"));
-        command.CommandText = $"""
-                              SELECT ts, thread_id, feedback_log_body
-                              FROM logs
-                              WHERE ts >= @since
-                                AND ({filters})
-                              ORDER BY ts DESC;
-                              """;
-        command.Parameters.AddWithValue("@since", since);
-        command.Parameters.AddWithValue("@trimCharacters", " \t\r\n");
+        var parameters = new Dictionary<string, object?> {
+            ["@since"] = since,
+            ["@trimCharacters"] = " \t\r\n"
+        };
         for (var i = 0; i < BrokenThreadLogPrefixes.Length; i++) {
-            command.Parameters.AddWithValue("@pattern" + i.ToString(CultureInfo.InvariantCulture), BrokenThreadLogPrefixes[i] + "%");
+            parameters["@pattern" + i.ToString(CultureInfo.InvariantCulture)] = BrokenThreadLogPrefixes[i] + "%";
         }
 
+        using var sqlite = new SQLite {
+            CommandTimeout = 10
+        };
+        using var session = sqlite.OpenSession(logsDb);
+        var rows = session.QueryAsList(
+            $"""
+             SELECT ts, thread_id, feedback_log_body
+             FROM logs
+             WHERE ts >= @since
+               AND ({filters})
+             ORDER BY ts DESC;
+             """,
+            static row => (
+                Ts: row.IsDBNull(0) ? 0L : Convert.ToInt64(row.GetValue(0), CultureInfo.InvariantCulture),
+                ThreadId: row.IsDBNull(1) ? string.Empty : Convert.ToString(row.GetValue(1), CultureInfo.InvariantCulture) ?? string.Empty,
+                Body: row.IsDBNull(2) ? string.Empty : Convert.ToString(row.GetValue(2), CultureInfo.InvariantCulture) ?? string.Empty),
+            parameters);
+
         var candidates = new Dictionary<string, (int Count, long LastSeen)>(StringComparer.OrdinalIgnoreCase);
-        using var reader = command.ExecuteReader();
-        while (reader.Read()) {
+        foreach (var row in rows) {
             cancellationToken.ThrowIfCancellationRequested();
-            var ts = reader.IsDBNull(0) ? 0L : Convert.ToInt64(reader.GetValue(0), CultureInfo.InvariantCulture);
-            var explicitThreadId = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
-            var body = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
-            if (!IsBrokenThreadFailureLog(body)) {
+            if (!IsBrokenThreadFailureLog(row.Body)) {
                 continue;
             }
 
-            foreach (var threadId in ExtractThreadIds(explicitThreadId, body)) {
+            foreach (var threadId in ExtractThreadIds(row.ThreadId, row.Body)) {
                 if (!candidates.TryGetValue(threadId, out var current)) {
-                    candidates[threadId] = (1, ts);
+                    candidates[threadId] = (1, row.Ts);
                     continue;
                 }
 
-                candidates[threadId] = (current.Count + 1, Math.Max(current.LastSeen, ts));
+                candidates[threadId] = (current.Count + 1, Math.Max(current.LastSeen, row.Ts));
             }
         }
 
@@ -163,31 +166,31 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         var archivedAtExpr = columns.Contains("archived_at") ? QuoteIdentifier("archived_at") : "NULL";
         var updatedAtExpr = columns.Contains("updated_at") ? QuoteIdentifier("updated_at") : "NULL";
         var recencyAtExpr = columns.Contains("recency_at") ? QuoteIdentifier("recency_at") : "NULL";
-        var builder = new SqliteConnectionStringBuilder {
-            DataSource = stateDb,
-            Mode = SqliteOpenMode.ReadOnly
+        using var sqlite = new SQLite {
+            CommandTimeout = 10
         };
-        using var connection = new SqliteConnection(builder.ConnectionString);
-        connection.Open();
-        SetBusyTimeout(connection, 1000);
+        using var session = sqlite.OpenSession(stateDb);
 
         var result = new Dictionary<string, (string Title, bool IsArchived, long LastActivity)>(StringComparer.OrdinalIgnoreCase);
         foreach (var threadId in ids) {
             cancellationToken.ThrowIfCancellationRequested();
-            using var command = connection.CreateCommand();
-            command.CommandText = $"SELECT {titleExpr}, {archivedExpr}, {archivedAtExpr}, {updatedAtExpr}, {recencyAtExpr} FROM threads WHERE {QuoteIdentifier("id")} = @threadId LIMIT 1;";
-            command.Parameters.AddWithValue("@threadId", threadId);
-            using var reader = command.ExecuteReader();
-            if (!reader.Read()) {
+            var rows = session.QueryAsList(
+                $"SELECT {titleExpr}, {archivedExpr}, {archivedAtExpr}, {updatedAtExpr}, {recencyAtExpr} FROM threads WHERE {QuoteIdentifier("id")} = @threadId LIMIT 1;",
+                static row => (
+                    Title: row.IsDBNull(0) ? string.Empty : Convert.ToString(row.GetValue(0), CultureInfo.InvariantCulture) ?? string.Empty,
+                    Archived: row.IsDBNull(1) ? null : row.GetValue(1),
+                    ArchivedAt: row.IsDBNull(2) ? null : row.GetValue(2),
+                    UpdatedAt: row.IsDBNull(3) ? 0L : Convert.ToInt64(row.GetValue(3), CultureInfo.InvariantCulture),
+                    RecencyAt: row.IsDBNull(4) ? 0L : Convert.ToInt64(row.GetValue(4), CultureInfo.InvariantCulture)),
+                new Dictionary<string, object?> {
+                    ["@threadId"] = threadId
+                });
+            if (rows.Count == 0) {
                 continue;
             }
 
-            var title = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
-            var archived = reader.IsDBNull(1) ? null : reader.GetValue(1);
-            var archivedAt = reader.IsDBNull(2) ? null : reader.GetValue(2);
-            var updatedAt = reader.IsDBNull(3) ? 0L : Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture);
-            var recencyAt = reader.IsDBNull(4) ? 0L : Convert.ToInt64(reader.GetValue(4), CultureInfo.InvariantCulture);
-            result[threadId] = (title, IsTruthySqliteValue(archived) || HasSqliteValue(archivedAt), Math.Max(updatedAt, recencyAt));
+            var row = rows[0];
+            result[threadId] = (row.Title, IsTruthySqliteValue(row.Archived) || HasSqliteValue(row.ArchivedAt), Math.Max(row.UpdatedAt, row.RecencyAt));
         }
 
         return result;

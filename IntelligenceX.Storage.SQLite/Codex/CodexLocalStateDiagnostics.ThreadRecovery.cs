@@ -6,7 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Data.Sqlite;
+using DBAClientX;
 
 namespace IntelligenceX.Codex;
 
@@ -99,14 +99,7 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         var backupDb = Path.Combine(backupDirectory, "state_5.sqlite");
         var automationBackups = BackupThreadAutomations(home, normalizedThreadId, backupDirectory);
 
-        var builder = new SqliteConnectionStringBuilder {
-            DataSource = stateDb,
-            Mode = SqliteOpenMode.ReadWrite
-        };
-        using var connection = new SqliteConnection(builder.ConnectionString);
-        connection.Open();
-        SetBusyTimeout(connection, 10000);
-        BackupDatabase(connection, backupDb);
+        _sqlite.BackupDatabase(stateDb, backupDb, busyTimeoutMs: 10000);
 
         var columnNames = GetTableColumns(stateDb, "threads")
             .Select(static column => column.Name)
@@ -124,7 +117,8 @@ public sealed partial class CodexLocalStateDiagnosticsService {
                 automationBackups: automationBackups);
         }
 
-        var wasArchived = ReadThreadArchivedState(connection, normalizedThreadId, columnNames, cancellationToken);
+        using var session = _sqlite.OpenSession(stateDb);
+        var wasArchived = ReadThreadArchivedState(session, normalizedThreadId, columnNames, cancellationToken);
         if (wasArchived is null) {
             return CreateThreadRecoveryResult(
                 home,
@@ -138,15 +132,11 @@ public sealed partial class CodexLocalStateDiagnosticsService {
                 automationBackups: automationBackups);
         }
 
-        using (var transition = connection.BeginTransaction()) {
-            SetThreadArchivedState(connection, transition, normalizedThreadId, columnNames, archived: !wasArchived.Value);
-            transition.Commit();
-        }
+        session.RunInTransaction(transition =>
+            SetThreadArchivedState(transition, normalizedThreadId, columnNames, archived: !wasArchived.Value));
 
-        using (var restore = connection.BeginTransaction()) {
-            SetThreadArchivedState(connection, restore, normalizedThreadId, columnNames, archived: wasArchived.Value);
-            restore.Commit();
-        }
+        session.RunInTransaction(restore =>
+            SetThreadArchivedState(restore, normalizedThreadId, columnNames, archived: wasArchived.Value));
 
         var restoredAutomations = RestoreMissingThreadAutomations(automationBackups);
 
@@ -291,54 +281,57 @@ public sealed partial class CodexLocalStateDiagnosticsService {
     }
 
     private static bool? ReadThreadArchivedState(
-        SqliteConnection connection,
+        SQLiteSession session,
         string threadId,
         ISet<string> columns,
         CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-        using var command = connection.CreateCommand();
         var archivedExpression = columns.Contains("archived")
             ? QuoteIdentifier("archived")
             : "NULL";
         var archivedAtExpression = columns.Contains("archived_at")
             ? QuoteIdentifier("archived_at")
             : "NULL";
-        command.CommandText = $"SELECT {archivedExpression} AS archived, {archivedAtExpression} AS archived_at FROM threads WHERE {QuoteIdentifier("id")} = @threadId LIMIT 1;";
-        command.Parameters.AddWithValue("@threadId", threadId);
-        using var reader = command.ExecuteReader();
-        if (!reader.Read()) {
+        var rows = session.QueryAsList(
+            $"SELECT {archivedExpression} AS archived, {archivedAtExpression} AS archived_at FROM threads WHERE {QuoteIdentifier("id")} = @threadId LIMIT 1;",
+            static row => (
+                Archived: row.IsDBNull(row.GetOrdinal("archived")) ? null : row.GetValue(row.GetOrdinal("archived")),
+                ArchivedAt: row.IsDBNull(row.GetOrdinal("archived_at")) ? null : row.GetValue(row.GetOrdinal("archived_at"))),
+            new Dictionary<string, object?> {
+                ["@threadId"] = threadId
+            });
+        if (rows.Count == 0) {
             return null;
         }
 
-        var archivedValue = reader.IsDBNull(0) ? null : reader.GetValue(0);
-        var archivedAtValue = reader.IsDBNull(1) ? null : reader.GetValue(1);
-        return IsTruthySqliteValue(archivedValue) || HasSqliteValue(archivedAtValue);
+        var row = rows[0];
+        return IsTruthySqliteValue(row.Archived) || HasSqliteValue(row.ArchivedAt);
     }
 
     private static void SetThreadArchivedState(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
+        SQLiteSession session,
         string threadId,
         ISet<string> columns,
         bool archived) {
         var assignments = new List<string>();
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
+        var parameters = new Dictionary<string, object?> {
+            ["@threadId"] = threadId
+        };
         if (columns.Contains("archived")) {
             assignments.Add($"{QuoteIdentifier("archived")} = @archived");
-            command.Parameters.AddWithValue("@archived", archived ? 1 : 0);
+            parameters["@archived"] = archived ? 1 : 0;
         }
 
         if (columns.Contains("archived_at")) {
             assignments.Add($"{QuoteIdentifier("archived_at")} = @archivedAt");
-            command.Parameters.AddWithValue("@archivedAt", archived ? DateTimeOffset.UtcNow.ToUnixTimeSeconds() : DBNull.Value);
+            parameters["@archivedAt"] = archived ? DateTimeOffset.UtcNow.ToUnixTimeSeconds() : DBNull.Value;
         }
 
-        command.CommandText = "UPDATE threads SET "
-                              + string.Join(", ", assignments)
-                              + $" WHERE {QuoteIdentifier("id")} = @threadId;";
-        command.Parameters.AddWithValue("@threadId", threadId);
-        command.ExecuteNonQuery();
+        session.ExecuteNonQuery(
+            "UPDATE threads SET "
+            + string.Join(", ", assignments)
+            + $" WHERE {QuoteIdentifier("id")} = @threadId;",
+            parameters);
     }
 
     private static bool IsTruthySqliteValue(object? value) {
