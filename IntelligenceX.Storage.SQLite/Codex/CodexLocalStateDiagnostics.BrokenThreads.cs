@@ -80,7 +80,7 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         using var command = connection.CreateCommand();
         var filters = string.Join(
             " OR ",
-            BrokenThreadLogPrefixes.Select((_, index) => $"lower(coalesce(feedback_log_body,'')) LIKE @pattern{index.ToString(CultureInfo.InvariantCulture)}"));
+            BrokenThreadLogPrefixes.Select((_, index) => $"lower(ltrim(coalesce(feedback_log_body,''), @trimCharacters)) LIKE @pattern{index.ToString(CultureInfo.InvariantCulture)}"));
         command.CommandText = $"""
                               SELECT ts, thread_id, feedback_log_body
                               FROM logs
@@ -89,6 +89,7 @@ public sealed partial class CodexLocalStateDiagnosticsService {
                               ORDER BY ts DESC;
                               """;
         command.Parameters.AddWithValue("@since", since);
+        command.Parameters.AddWithValue("@trimCharacters", " \t\r\n");
         for (var i = 0; i < BrokenThreadLogPrefixes.Length; i++) {
             command.Parameters.AddWithValue("@pattern" + i.ToString(CultureInfo.InvariantCulture), BrokenThreadLogPrefixes[i] + "%");
         }

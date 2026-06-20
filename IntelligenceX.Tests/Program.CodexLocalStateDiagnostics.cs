@@ -397,6 +397,16 @@ internal static partial class Program {
                 """,
                 new Dictionary<string, object?> {
                     ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ["@body"] = " \t\r\nfailed to queue MCP refresh for thread 12121212-1212-1212-1212-121212121212: internal error; agent loop died unexpectedly"
+                });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'WARN', 'codex_app_server::mcp_refresh', @body, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                     ["@body"] = "failed to queue MCP refresh for thread 34343434-3434-3434-3434-343434343434: internal error; agent loop died unexpectedly"
                 });
             sqlite.ExecuteNonQuery(
@@ -432,7 +442,7 @@ internal static partial class Program {
             AssertEqual("12121212-1212-1212-1212-121212121212", candidate.ThreadId, "codex broken thread candidate id");
             AssertEqual(true, candidate.ThreadFound, "codex broken thread candidate found");
             AssertEqual(false, candidate.IsArchived, "codex broken thread candidate active");
-            AssertEqual(1, candidate.FailureCount, "codex broken thread candidate failures");
+            AssertEqual(2, candidate.FailureCount, "codex broken thread candidate failures");
             AssertEqual(true, archivedCandidate.ThreadFound, "codex archived broken thread candidate found");
             AssertEqual(true, archivedCandidate.IsArchived, "codex archived broken thread candidate archived");
             AssertEqual(true, diagnostics.Findings.Any(f => f.Key == "broken-thread-candidates"), "codex broken thread finding");

@@ -138,10 +138,16 @@ public sealed partial class CodexLocalStateDiagnosticsService {
                 automationBackups: automationBackups);
         }
 
-        using var transaction = connection.BeginTransaction();
-        SetThreadArchivedState(connection, transaction, normalizedThreadId, columnNames, archived: true);
-        SetThreadArchivedState(connection, transaction, normalizedThreadId, columnNames, archived: wasArchived.Value);
-        transaction.Commit();
+        using (var transition = connection.BeginTransaction()) {
+            SetThreadArchivedState(connection, transition, normalizedThreadId, columnNames, archived: !wasArchived.Value);
+            transition.Commit();
+        }
+
+        using (var restore = connection.BeginTransaction()) {
+            SetThreadArchivedState(connection, restore, normalizedThreadId, columnNames, archived: wasArchived.Value);
+            restore.Commit();
+        }
+
         var restoredAutomations = RestoreMissingThreadAutomations(automationBackups);
 
         return CreateThreadRecoveryResult(
