@@ -1,0 +1,338 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+
+namespace IntelligenceX.Chat.App.Native;
+
+internal sealed partial class NativeChatWindow {
+    private FrameworkElement BuildChatWorkspace() {
+        var workspace = new Grid {
+            RowSpacing = 0,
+            Background = NativeControlBrushes.AppBackground
+        };
+        workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        workspace.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var header = BuildWorkspaceHeader();
+        Grid.SetRow(header, 0);
+        workspace.Children.Add(header);
+
+        _transcriptList = new ListView {
+            Name = "TranscriptList",
+            ItemsSource = _viewModel.Transcript,
+            ItemContainerStyle = BuildTranscriptItemContainerStyle(),
+            SelectionMode = ListViewSelectionMode.None,
+            IsItemClickEnabled = false,
+            Padding = new Thickness(24, 18, 24, 18),
+            VerticalAlignment = VerticalAlignment.Stretch,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent)
+        };
+        _transcriptList.ContainerContentChanging += OnTranscriptContainerContentChanging;
+        _emptyTranscriptHost = new Grid {
+            Padding = new Thickness(24, 18, 24, 18)
+        };
+        var transcriptHost = new Grid {
+            Children = {
+                _transcriptList,
+                _emptyTranscriptHost
+            }
+        };
+        var transcriptSurface = new Border {
+            CornerRadius = new CornerRadius(0),
+            BorderThickness = new Thickness(0),
+            Background = NativeControlBrushes.AppBackground,
+            Child = transcriptHost
+        };
+        Grid.SetRow(transcriptSurface, 1);
+        workspace.Children.Add(transcriptSurface);
+
+        var composer = BuildComposer();
+        Grid.SetRow(composer, 2);
+        workspace.Children.Add(composer);
+
+        RenderTranscript();
+
+        return workspace;
+    }
+
+    private static Style BuildTranscriptItemContainerStyle() {
+        var style = new Style(typeof(ListViewItem));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0)));
+        style.Setters.Add(new Setter(ListViewItem.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+        return style;
+    }
+
+    private static void OnTranscriptContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args) {
+        if (args.ItemContainer is not ListViewItem container) {
+            return;
+        }
+
+        if (args.InRecycleQueue) {
+            container.Content = null;
+            args.Handled = true;
+            return;
+        }
+
+        if (args.Item is not NativeChatTranscriptItem item) {
+            return;
+        }
+
+        if (container.Content is not NativeTranscriptMessageControl control) {
+            control = new NativeTranscriptMessageControl();
+            container.Content = control;
+        }
+
+        control.DataContext = item;
+        args.Handled = true;
+    }
+
+    private FrameworkElement BuildWorkspaceHeader() {
+        var shell = new Border {
+            CornerRadius = new CornerRadius(0),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            BorderBrush = NativeControlBrushes.Border,
+            Background = NativeControlBrushes.Surface,
+            Padding = new Thickness(24, 16, 24, 16)
+        };
+        var grid = new Grid {
+            ColumnSpacing = 16
+        };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        shell.Child = grid;
+
+        var stack = new StackPanel {
+            Spacing = 2
+        };
+        _workspaceTitleText = new TextBlock {
+            Text = _selectedSidebarItem.WorkspaceTitle,
+            FontSize = 20,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = NativeControlBrushes.TextPrimary
+        };
+        stack.Children.Add(_workspaceTitleText);
+        _workspaceSubtitleText = new TextBlock {
+            Text = _selectedSidebarItem.WorkspaceSubtitle,
+            FontSize = 12,
+            Foreground = NativeControlBrushes.TextSecondary
+        };
+        stack.Children.Add(_workspaceSubtitleText);
+        Grid.SetColumn(stack, 0);
+        grid.Children.Add(stack);
+
+        var actions = new StackPanel {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8
+        };
+        actions.Children.Add(BuildStatusChip("Manual"));
+        actions.Children.Add(BuildStatusChip("AI assisted"));
+        actions.Children.Add(BuildStatusChip("Artifacts"));
+        _exportButton = new Button {
+            Content = "Export",
+            MinWidth = 74,
+            MinHeight = 32
+        };
+        _exportButton.Click += async (_, _) => await ExportNativeTranscriptAsync().ConfigureAwait(true);
+        actions.Children.Add(_exportButton);
+        Grid.SetColumn(actions, 1);
+        grid.Children.Add(actions);
+        return shell;
+    }
+
+    private static Border BuildStatusChip(string text) =>
+        new() {
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(9, 5, 9, 5),
+            Background = NativeControlBrushes.SurfaceMuted,
+            BorderBrush = NativeControlBrushes.Border,
+            BorderThickness = new Thickness(1),
+            Child = new TextBlock {
+                Text = text,
+                FontSize = 12,
+                Foreground = NativeControlBrushes.TextSecondary
+            }
+        };
+
+    private void RenderTranscript() {
+        if (_viewModel.Transcript.Count == 0) {
+            _emptyTranscriptHost.Children.Clear();
+            _emptyTranscriptHost.Children.Add(BuildEmptyTranscriptState());
+            _emptyTranscriptHost.Visibility = Visibility.Visible;
+            _transcriptList.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _emptyTranscriptHost.Children.Clear();
+        _emptyTranscriptHost.Visibility = Visibility.Collapsed;
+        _transcriptList.Visibility = Visibility.Visible;
+    }
+
+    private FrameworkElement BuildEmptyTranscriptState() {
+        var title = ResolveEmptyStateTitle();
+        var body = ResolveEmptyStateBody();
+        var detail = ResolveEmptyStateDetail();
+        var stack = new StackPanel {
+            Spacing = 10,
+            MaxWidth = 520,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        stack.Children.Add(new TextBlock {
+            Text = title,
+            FontSize = 19,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextAlignment = TextAlignment.Center,
+            Foreground = NativeControlBrushes.TextPrimary
+        });
+        stack.Children.Add(new TextBlock {
+            Text = body,
+            FontSize = 13,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = NativeControlBrushes.TextSecondary
+        });
+        stack.Children.Add(new Border {
+            Height = 1,
+            Margin = new Thickness(0, 6, 0, 0),
+            Background = NativeControlBrushes.Border
+        });
+        stack.Children.Add(new TextBlock {
+            Text = detail,
+            FontSize = 12,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = NativeControlBrushes.TextSecondary
+        });
+        var actions = BuildEmptyStateActions();
+        if (actions != null) {
+            stack.Children.Add(actions);
+        }
+
+        return new Grid {
+            MinHeight = 420,
+            Children = {
+                stack
+            }
+        };
+    }
+
+    private string ResolveEmptyStateTitle() {
+        if (_sampleDataRequested) {
+            return "Sample investigation loaded";
+        }
+
+        return _viewModel.AuthenticationState switch {
+            NativeAuthenticationState.Checking => "Checking account and runtime",
+            NativeAuthenticationState.SignedIn => "Ready for live chat",
+            NativeAuthenticationState.Required => "Sign in to start live chat",
+            NativeAuthenticationState.Failed => "Sign-in needs attention",
+            _ => "Preparing native chat"
+        };
+    }
+
+    private string ResolveEmptyStateBody() {
+        if (_sampleDataRequested) {
+            return "Assistant responses render as native text, tables, diagrams, evidence, and exportable artifacts.";
+        }
+
+        return _viewModel.AuthenticationState switch {
+            NativeAuthenticationState.Checking => "The native app is checking whether the chat service already has an authenticated account.",
+            NativeAuthenticationState.SignedIn => "Ask a question, run a safe check, or request AD and Microsoft 365 evidence.",
+            NativeAuthenticationState.Required => "Use Sign in in the header, then continue with a normal operator request.",
+            NativeAuthenticationState.Failed => _viewModel.StatusText,
+            _ => "The native shell is active. Account and runtime status will appear in the header."
+        };
+    }
+
+    private string ResolveEmptyStateDetail() {
+        if (_sampleDataRequested) {
+            return "Sample mode is ready for review.";
+        }
+
+        return _viewModel.AuthenticationState switch {
+            NativeAuthenticationState.SignedIn => "Pick a starter or type a request.",
+            NativeAuthenticationState.Required => "Authentication is required before live requests can run.",
+            NativeAuthenticationState.Failed => "Retry sign-in or recheck the existing session.",
+            NativeAuthenticationState.Checking => "This usually completes in a moment.",
+            _ => "Runtime status appears in the header."
+        };
+    }
+
+    private FrameworkElement? BuildEmptyStateActions() {
+        if (_sampleDataRequested) {
+            return null;
+        }
+
+        var stack = new StackPanel {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+
+        switch (_viewModel.AuthenticationState) {
+            case NativeAuthenticationState.SignedIn:
+                stack.Children.Add(BuildDraftStarterButton("Risky admins", "Review risky inactive admins and show the evidence as tables."));
+                stack.Children.Add(BuildDraftStarterButton("M365 exceptions", "Review Microsoft 365 MFA exceptions and summarize remediation options."));
+                break;
+            case NativeAuthenticationState.Required:
+            case NativeAuthenticationState.Failed:
+            case NativeAuthenticationState.Unknown:
+                stack.Children.Add(BuildActionButton("Sign in", async () => await StartSignInFromNativeAsync().ConfigureAwait(true), primary: true));
+                stack.Children.Add(BuildActionButton("Recheck", async () => await CheckSignInFromNativeAsync().ConfigureAwait(true), primary: false));
+                break;
+            case NativeAuthenticationState.Checking:
+                stack.Children.Add(BuildActionButton("Checking", () => Task.CompletedTask, primary: false, enabled: false));
+                break;
+        }
+
+        return stack.Children.Count == 0 ? null : stack;
+    }
+
+    private Button BuildDraftStarterButton(string label, string draft) =>
+        BuildActionButton(label, () => {
+            _viewModel.Draft = draft;
+            _composer.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            return Task.CompletedTask;
+        }, primary: false);
+
+    private static Button BuildActionButton(string label, Func<Task> action, bool primary, bool enabled = true) {
+        var button = new Button {
+            Content = label,
+            IsEnabled = enabled,
+            MinHeight = 34,
+            MinWidth = 92,
+            Padding = new Thickness(12, 6, 12, 6)
+        };
+        if (primary) {
+            button.Background = NativeControlBrushes.Accent;
+            button.BorderBrush = NativeControlBrushes.Accent;
+            button.Foreground = NativeControlBrushes.Surface;
+        }
+
+        button.Click += async (_, _) => await action().ConfigureAwait(true);
+        return button;
+    }
+
+    private void ScrollTranscriptToEnd() {
+        if (_viewModel.Transcript.Count == 0) {
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(() => {
+            var last = _viewModel.Transcript[^1];
+            _transcriptList.ScrollIntoView(last, ScrollIntoViewAlignment.Leading);
+        });
+    }
+
+    private void ScrollTranscriptToStart() {
+        _ = DispatcherQueue.TryEnqueue(() => {
+            if (_viewModel.Transcript.Count > 0) {
+                _transcriptList.ScrollIntoView(_viewModel.Transcript[0], ScrollIntoViewAlignment.Leading);
+            }
+        });
+    }
+}

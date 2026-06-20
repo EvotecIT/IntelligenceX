@@ -25,12 +25,47 @@
     <ProjectReference Include="..\\IntelligenceX.Chat.ExportArtifacts\\IntelligenceX.Chat.ExportArtifacts.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
+  <PropertyGroup>
+    <OfficeImoRepoRootForNativeProjection Condition="'$(OfficeImoRepoRoot)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRoot)\\'))))</OfficeImoRepoRootForNativeProjection>
+    <ChartForgeXRepoRootForNativeProjection Condition="'$(ChartForgeXRepoRoot)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(ChartForgeXRepoRoot)\\'))))</ChartForgeXRepoRootForNativeProjection>
+    <OfficeImoMarkdownProjectForNativeProjection>$(OfficeImoRepoRootForNativeProjection)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectForNativeProjection>
+    <OfficeImoMarkdownRendererProjectForNativeProjection>$(OfficeImoRepoRootForNativeProjection)OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectForNativeProjection>
+    <OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection>$(OfficeImoRepoRootForNativeProjection)OfficeIMO.MarkdownRenderer.IntelligenceX\OfficeIMO.MarkdownRenderer.IntelligenceX.csproj</OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection>
+    <ChartForgeXProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX\ChartForgeX.csproj</ChartForgeXProjectForNativeProjection>
+    <ChartForgeXMarkupProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX.Markup\ChartForgeX.Markup.csproj</ChartForgeXMarkupProjectForNativeProjection>
+    <ChartForgeXMermaidProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX.Mermaid\ChartForgeX.Mermaid.csproj</ChartForgeXMermaidProjectForNativeProjection>
+    <ChartForgeXMarkupMermaidProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX.Markup.Mermaid\ChartForgeX.Markup.Mermaid.csproj</ChartForgeXMarkupMermaidProjectForNativeProjection>
+    <NativeMarkdownEnginesAvailable Condition="'$(UseLocalNativeMarkdownEngines)' == 'true' AND Exists('$(OfficeImoMarkdownProjectForNativeProjection)') AND Exists('$(OfficeImoMarkdownRendererProjectForNativeProjection)') AND Exists('$(OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection)') AND Exists('$(ChartForgeXProjectForNativeProjection)') AND Exists('$(ChartForgeXMarkupProjectForNativeProjection)') AND Exists('$(ChartForgeXMermaidProjectForNativeProjection)') AND Exists('$(ChartForgeXMarkupMermaidProjectForNativeProjection)')">true</NativeMarkdownEnginesAvailable>
+    <DefineConstants>$(DefineConstants);IXCHAT_NATIVE_MARKDOWN_ENGINES</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(NativeMarkdownEnginesAvailable)' == 'true'">
+    <ProjectReference Include="$(OfficeImoMarkdownProjectForNativeProjection)" />
+    <ProjectReference Include="$(OfficeImoMarkdownRendererProjectForNativeProjection)" />
+    <ProjectReference Include="$(OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection)" />
+    <ProjectReference Include="$(ChartForgeXProjectForNativeProjection)" />
+    <ProjectReference Include="$(ChartForgeXMarkupProjectForNativeProjection)" />
+    <ProjectReference Include="$(ChartForgeXMermaidProjectForNativeProjection)" />
+    <ProjectReference Include="$(ChartForgeXMarkupMermaidProjectForNativeProjection)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(NativeMarkdownEnginesAvailable)' != 'true'">
     <!-- Use a stable WinAppSDK version. -->
-    <PackageReference Include="DBAClientX.SQLite" Version="0.6.0" />
+    <PackageReference Include="DBAClientX.SQLite" Version="0.8.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250907003" />
-    <PackageReference Include="OfficeIMO.MarkdownRenderer" Version="$(OfficeImoMarkdownRendererNuGetVersion)" />
     <PackageReference Include="OfficeIMO.Markdown" Version="$(OfficeImoMarkdownNuGetVersion)" />
+    <PackageReference Include="OfficeIMO.MarkdownRenderer" Version="$(OfficeImoMarkdownRendererNuGetVersion)" />
+    <PackageReference Include="OfficeIMO.MarkdownRenderer.IntelligenceX" Version="$(OfficeImoMarkdownRendererIntelligenceXNuGetVersion)" />
+    <PackageReference Include="ChartForgeX" Version="$(ChartForgeXNuGetVersion)" />
+    <PackageReference Include="ChartForgeX.Markup" Version="$(ChartForgeXMarkupNuGetVersion)" />
+    <PackageReference Include="ChartForgeX.Mermaid" Version="$(ChartForgeXMermaidNuGetVersion)" />
+    <PackageReference Include="ChartForgeX.Markup.Mermaid" Version="$(ChartForgeXMarkupMermaidNuGetVersion)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(NativeMarkdownEnginesAvailable)' == 'true'">
+    <!-- Use a stable WinAppSDK version. -->
+    <PackageReference Include="DBAClientX.SQLite" Version="0.8.0" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250907003" />
   </ItemGroup>
 
   <ItemGroup>

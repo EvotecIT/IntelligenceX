@@ -1,13 +1,16 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Markup;
+using Microsoft.UI.Xaml.XamlTypeInfo;
 using System.Runtime.InteropServices;
+using IntelligenceX.Chat.App.Native;
 
 namespace IntelligenceX.Chat.App;
 
 /// <summary>
 /// WinUI 3 application root (code-only; no XAML).
 /// </summary>
-public sealed class App : Application {
+public sealed class App : Application, IXamlMetadataProvider {
     private const int ForegroundRetryMaxAttempts = 5;
     private const int ForegroundRetryIntervalMs = 160;
     private const int SwShow = 5;
@@ -18,7 +21,9 @@ public sealed class App : Application {
     private const uint SwpShowWindow = 0x0040;
     private static readonly IntPtr HwndTopMost = new(-1);
     private static readonly IntPtr HwndNoTopMost = new(-2);
+    private readonly XamlControlsXamlMetaDataProvider _xamlMetadataProvider = new();
     private Window? _window;
+    private bool _resourcesInitialized;
 
     [DllImport("user32.dll", SetLastError = true, ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -55,43 +60,68 @@ public sealed class App : Application {
     /// </summary>
     public App() {
         StartupLog.Write("App.ctor");
+        UnhandledException += OnUnhandledException;
+    }
+
+    /// <inheritdoc />
+    public IXamlType GetXamlType(Type type) => _xamlMetadataProvider.GetXamlType(type);
+
+    /// <inheritdoc />
+    public IXamlType GetXamlType(string fullName) => _xamlMetadataProvider.GetXamlType(fullName);
+
+    /// <inheritdoc />
+    public XmlnsDefinition[] GetXmlnsDefinitions() => _xamlMetadataProvider.GetXmlnsDefinitions();
+
+    private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs args) {
+        StartupLog.Write("App unhandled exception: " + args.Exception);
     }
 
     /// <inheritdoc />
     protected override void OnLaunched(LaunchActivatedEventArgs args) {
         StartupLog.Write("App.OnLaunched enter");
-        if (IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_MIN_WINDOW"))) {
-            _window = new Window {
-                Title = "IntelligenceX Chat (Min Window)",
-                Content = new TextBlock {
-                    Text = "Minimal window mode",
-                    Margin = new Thickness(24)
-                }
-            };
-            StartupLog.Write("Min window constructed");
-        } else if (IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_WEBVIEW_SMOKE"))) {
-            _window = new WebViewSmokeWindow();
-            StartupLog.Write("WebView smoke window constructed");
-        } else {
-            _window = new MainWindow();
-            StartupLog.Write("MainWindow constructed");
-        }
+        EnsureXamlResources();
+        _window = CreateLaunchWindow(ChatAppLaunchModeResolver.Resolve(Environment.GetEnvironmentVariable));
 
         _window.Activate();
         StartupLog.Write("Window activated");
         EnsureWindowForeground(_window);
     }
 
-    private static bool IsTruthy(string? value) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return false;
+    private static Window CreateLaunchWindow(ChatAppLaunchMode launchMode) =>
+        launchMode switch {
+            ChatAppLaunchMode.MinimalWindow => CreateMinimalWindow(),
+            ChatAppLaunchMode.WebViewSmoke => CreateLoggedWindow(new WebViewSmokeWindow(), "WebView smoke window constructed"),
+            ChatAppLaunchMode.LegacyWebView => CreateLoggedWindow(new MainWindow(), "Legacy WebView MainWindow constructed"),
+            _ => CreateLoggedWindow(new NativeChatWindow(), "Native WinUI chat window constructed")
+        };
+
+    private static Window CreateMinimalWindow() {
+        var window = new Window {
+            Title = "IntelligenceX Chat (Min Window)",
+            Content = new TextBlock {
+                Text = "Minimal window mode",
+                Margin = new Thickness(24)
+            }
+        };
+        StartupLog.Write("Min window constructed");
+        return window;
+    }
+
+    private static TWindow CreateLoggedWindow<TWindow>(TWindow window, string message)
+        where TWindow : Window {
+        StartupLog.Write(message);
+        return window;
+    }
+
+    private void EnsureXamlResources() {
+        if (_resourcesInitialized) {
+            return;
         }
 
-        var v = value.Trim();
-        return string.Equals(v, "1", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(v, "yes", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(v, "on", StringComparison.OrdinalIgnoreCase);
+        Resources ??= new ResourceDictionary();
+        Resources.MergedDictionaries.Add(new XamlControlsResources());
+        _resourcesInitialized = true;
+        StartupLog.Write("App resources initialized");
     }
 
     private static void EnsureWindowForeground(Window window) {
