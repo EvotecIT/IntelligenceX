@@ -12,12 +12,13 @@ namespace IntelligenceX.Codex;
 
 public sealed partial class CodexLocalStateDiagnosticsService {
     private const int BrokenThreadLogLookbackHours = 48;
-    private static readonly string[] BrokenThreadLogPatterns = [
-        "agent loop died",
+    private static readonly string[] BrokenThreadLogPrefixes = [
+        "failed to queue mcp refresh for thread ",
         "failed to start turn",
         "failed to update thread settings",
         "error creating task",
-        "error submitting message"
+        "error submitting message",
+        "failed to submit message"
     ];
 
     private static readonly Regex ThreadReferenceRegex = new(
@@ -79,7 +80,7 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         using var command = connection.CreateCommand();
         var filters = string.Join(
             " OR ",
-            BrokenThreadLogPatterns.Select((_, index) => $"lower(coalesce(feedback_log_body,'')) LIKE @pattern{index.ToString(CultureInfo.InvariantCulture)}"));
+            BrokenThreadLogPrefixes.Select((_, index) => $"lower(coalesce(feedback_log_body,'')) LIKE @pattern{index.ToString(CultureInfo.InvariantCulture)}"));
         command.CommandText = $"""
                               SELECT ts, thread_id, feedback_log_body
                               FROM logs
@@ -88,8 +89,8 @@ public sealed partial class CodexLocalStateDiagnosticsService {
                               ORDER BY ts DESC;
                               """;
         command.Parameters.AddWithValue("@since", since);
-        for (var i = 0; i < BrokenThreadLogPatterns.Length; i++) {
-            command.Parameters.AddWithValue("@pattern" + i.ToString(CultureInfo.InvariantCulture), "%" + BrokenThreadLogPatterns[i] + "%");
+        for (var i = 0; i < BrokenThreadLogPrefixes.Length; i++) {
+            command.Parameters.AddWithValue("@pattern" + i.ToString(CultureInfo.InvariantCulture), BrokenThreadLogPrefixes[i] + "%");
         }
 
         var candidates = new Dictionary<string, (int Count, long LastSeen)>(StringComparer.OrdinalIgnoreCase);
@@ -99,6 +100,10 @@ public sealed partial class CodexLocalStateDiagnosticsService {
             var ts = reader.IsDBNull(0) ? 0L : Convert.ToInt64(reader.GetValue(0), CultureInfo.InvariantCulture);
             var explicitThreadId = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
             var body = reader.IsDBNull(2) ? string.Empty : reader.GetString(2);
+            if (!IsBrokenThreadFailureLog(body)) {
+                continue;
+            }
+
             foreach (var threadId in ExtractThreadIds(explicitThreadId, body)) {
                 if (!candidates.TryGetValue(threadId, out var current)) {
                     candidates[threadId] = (1, ts);
@@ -114,6 +119,11 @@ public sealed partial class CodexLocalStateDiagnosticsService {
             .OrderByDescending(static item => item.LastSeen)
             .ThenByDescending(static item => item.Count)
             .ToArray();
+    }
+
+    private static bool IsBrokenThreadFailureLog(string body) {
+        var text = body.TrimStart().ToLowerInvariant();
+        return BrokenThreadLogPrefixes.Any(prefix => text.StartsWith(prefix, StringComparison.Ordinal));
     }
 
     private static IEnumerable<string> ExtractThreadIds(string explicitThreadId, string body) {

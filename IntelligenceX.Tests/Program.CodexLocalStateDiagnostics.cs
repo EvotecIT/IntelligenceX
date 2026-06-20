@@ -388,6 +388,17 @@ internal static partial class Program {
                     ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                     ["@body"] = "user pasted unrelated id aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa while discussing agent loop died"
                 });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'INFO', 'codex_core::session', @body, @threadId);
+                """,
+                new Dictionary<string, object?> {
+                    ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ["@body"] = "session_loop{thread_id=12121212-1212-1212-1212-121212121212}: diagnostic command text mentions agent loop died unexpectedly",
+                    ["@threadId"] = "12121212-1212-1212-1212-121212121212"
+                });
 
             var service = new CodexLocalStateDiagnosticsService();
             var diagnostics = service.CollectAsync(codexHome).GetAwaiter().GetResult();
