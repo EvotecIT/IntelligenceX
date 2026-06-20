@@ -1460,7 +1460,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         var candidate = diagnostics.BrokenThreadCandidates
-            .Where(static item => item.ThreadFound && !item.IsArchived)
+            .Where(static item => item.ThreadFound && !item.IsArchived && item.IsCurrent)
             .OrderByDescending(static item => item.LastSeenUtc)
             .ThenByDescending(static item => item.FailureCount)
             .FirstOrDefault();

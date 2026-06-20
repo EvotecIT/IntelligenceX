@@ -64,15 +64,19 @@ public sealed record CodexLocalStateArea(
 /// <param name="Title">Current local thread title, when available.</param>
 /// <param name="FailureCount">Number of matching recent failure log entries.</param>
 /// <param name="LastSeenUtc">Most recent matching failure timestamp.</param>
+/// <param name="LastActivityUtc">Most recent local thread activity timestamp, when available.</param>
 /// <param name="ThreadFound">Whether the thread id exists in local state.</param>
 /// <param name="IsArchived">Whether the local thread is currently archived, when found.</param>
+/// <param name="IsCurrent">Whether the failure is newer than the last known local thread activity.</param>
 public sealed record CodexLocalStateBrokenThreadCandidate(
     string ThreadId,
     string Title,
     int FailureCount,
     DateTimeOffset LastSeenUtc,
+    DateTimeOffset? LastActivityUtc,
     bool ThreadFound,
-    bool IsArchived);
+    bool IsArchived,
+    bool IsCurrent);
 
 /// <summary>
 /// Snapshot of local Codex state health.
@@ -267,13 +271,13 @@ public sealed partial class CodexLocalStateDiagnosticsService {
                 oversizedMetadataCount));
         }
 
-        var recoverableBrokenThreadCandidateCount = brokenThreadCandidates.Count(static item => item.ThreadFound && !item.IsArchived);
+        var recoverableBrokenThreadCandidateCount = brokenThreadCandidates.Count(static item => item.ThreadFound && !item.IsArchived && item.IsCurrent);
 
         if (brokenThreadCandidates.Count > 0) {
             findings.Add(new CodexLocalStateFinding(
                 "broken-thread-candidates",
                 CodexLocalStateHealthStatus.Warning,
-                $"{brokenThreadCandidates.Count.ToString(CultureInfo.InvariantCulture)} recent Codex thread(s) have agent-loop/start-turn failure logs.",
+                $"{brokenThreadCandidates.Count.ToString(CultureInfo.InvariantCulture)} recent Codex thread failure-log candidate(s) were found.",
                 brokenThreadCandidates.Count));
         }
 

@@ -343,29 +343,45 @@ internal static partial class Program {
                     id TEXT PRIMARY KEY,
                     title TEXT,
                     archived INTEGER,
-                    archived_at INTEGER
+                    archived_at INTEGER,
+                    updated_at INTEGER,
+                    recency_at INTEGER
                 );
                 """);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             sqlite.ExecuteNonQuery(
                 dbPath,
                 """
-                INSERT INTO threads (id, title, archived, archived_at)
-                VALUES (@id, @title, 0, NULL);
+                INSERT INTO threads (id, title, archived, archived_at, updated_at, recency_at)
+                VALUES (@id, @title, 0, NULL, @updatedAt, NULL);
                 """,
                 new Dictionary<string, object?> {
                     ["@id"] = "12121212-1212-1212-1212-121212121212",
-                    ["@title"] = "recoverable candidate"
+                    ["@title"] = "recoverable candidate",
+                    ["@updatedAt"] = now - 100
                 });
             sqlite.ExecuteNonQuery(
                 dbPath,
                 """
-                INSERT INTO threads (id, title, archived, archived_at)
-                VALUES (@id, @title, 1, @archivedAt);
+                INSERT INTO threads (id, title, archived, archived_at, updated_at, recency_at)
+                VALUES (@id, @title, 1, @archivedAt, @updatedAt, NULL);
                 """,
                 new Dictionary<string, object?> {
                     ["@id"] = "34343434-3434-3434-3434-343434343434",
                     ["@title"] = "archived candidate",
-                    ["@archivedAt"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    ["@archivedAt"] = now,
+                    ["@updatedAt"] = now - 100
+                });
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, archived, archived_at, updated_at, recency_at)
+                VALUES (@id, @title, 0, NULL, @updatedAt, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "56565656-5656-5656-5656-565656565656",
+                    ["@title"] = "stale active candidate",
+                    ["@updatedAt"] = now
                 });
             sqlite.ExecuteNonQuery(
                 logsDbPath,
@@ -416,6 +432,16 @@ internal static partial class Program {
                 VALUES (@ts, 'WARN', 'codex_app_server::mcp_refresh', @body, NULL);
                 """,
                 new Dictionary<string, object?> {
+                    ["@ts"] = now - 50,
+                    ["@body"] = "failed to queue MCP refresh for thread 56565656-5656-5656-5656-565656565656: internal error; agent loop died unexpectedly"
+                });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'WARN', 'codex_app_server::mcp_refresh', @body, NULL);
+                """,
+                new Dictionary<string, object?> {
                     ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                     ["@body"] = "user pasted unrelated id aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa while discussing agent loop died"
                 });
@@ -435,16 +461,20 @@ internal static partial class Program {
             var diagnostics = service.CollectAsync(codexHome).GetAwaiter().GetResult();
             var candidate = diagnostics.BrokenThreadCandidates.Single(item => item.ThreadId == "12121212-1212-1212-1212-121212121212");
             var archivedCandidate = diagnostics.BrokenThreadCandidates.Single(item => item.ThreadId == "34343434-3434-3434-3434-343434343434");
+            var staleCandidate = diagnostics.BrokenThreadCandidates.Single(item => item.ThreadId == "56565656-5656-5656-5656-565656565656");
 
             AssertEqual(CodexLocalStateHealthStatus.Warning, diagnostics.Status, "codex broken thread status");
-            AssertEqual(2, diagnostics.BrokenThreadCandidateCount, "codex broken thread candidate count");
+            AssertEqual(3, diagnostics.BrokenThreadCandidateCount, "codex broken thread candidate count");
             AssertEqual(1, diagnostics.RecoverableBrokenThreadCandidateCount, "codex recoverable broken thread candidate count");
             AssertEqual("12121212-1212-1212-1212-121212121212", candidate.ThreadId, "codex broken thread candidate id");
             AssertEqual(true, candidate.ThreadFound, "codex broken thread candidate found");
             AssertEqual(false, candidate.IsArchived, "codex broken thread candidate active");
+            AssertEqual(true, candidate.IsCurrent, "codex broken thread candidate current");
             AssertEqual(2, candidate.FailureCount, "codex broken thread candidate failures");
             AssertEqual(true, archivedCandidate.ThreadFound, "codex archived broken thread candidate found");
             AssertEqual(true, archivedCandidate.IsArchived, "codex archived broken thread candidate archived");
+            AssertEqual(false, staleCandidate.IsArchived, "codex stale broken thread candidate active");
+            AssertEqual(false, staleCandidate.IsCurrent, "codex stale broken thread candidate not current");
             AssertEqual(true, diagnostics.Findings.Any(f => f.Key == "broken-thread-candidates"), "codex broken thread finding");
         } finally {
             TryDeleteCodexDiagnosticsDirectory(root);

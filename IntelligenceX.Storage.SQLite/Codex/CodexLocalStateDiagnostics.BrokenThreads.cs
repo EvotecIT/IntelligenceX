@@ -58,8 +58,10 @@ public sealed partial class CodexLocalStateDiagnosticsService {
                     found ? state.Title : string.Empty,
                     item.FailureCount,
                     DateTimeOffset.FromUnixTimeSeconds(item.LastSeen),
+                    found && state.LastActivity > 0 ? DateTimeOffset.FromUnixTimeSeconds(state.LastActivity) : null,
                     found,
-                    found && state.IsArchived);
+                    found && state.IsArchived,
+                    !found || state.LastActivity <= 0 || item.LastSeen >= state.LastActivity);
             })
             .OrderByDescending(static item => item.LastSeenUtc)
             .ThenByDescending(static item => item.FailureCount)
@@ -140,25 +142,27 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         }
     }
 
-    private static IReadOnlyDictionary<string, (string Title, bool IsArchived)> ReadThreadArchiveStates(
+    private static IReadOnlyDictionary<string, (string Title, bool IsArchived, long LastActivity)> ReadThreadArchiveStates(
         string stateDb,
         IEnumerable<string> threadIds,
         CancellationToken cancellationToken) {
         var ids = threadIds.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (ids.Length == 0 || !File.Exists(stateDb)) {
-            return new Dictionary<string, (string Title, bool IsArchived)>(StringComparer.OrdinalIgnoreCase);
+            return new Dictionary<string, (string Title, bool IsArchived, long LastActivity)>(StringComparer.OrdinalIgnoreCase);
         }
 
         var columns = GetTableColumns(stateDb, "threads")
             .Select(static column => column.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (!columns.Contains("id")) {
-            return new Dictionary<string, (string Title, bool IsArchived)>(StringComparer.OrdinalIgnoreCase);
+            return new Dictionary<string, (string Title, bool IsArchived, long LastActivity)>(StringComparer.OrdinalIgnoreCase);
         }
 
         var titleExpr = columns.Contains("title") ? QuoteIdentifier("title") : "''";
         var archivedExpr = columns.Contains("archived") ? QuoteIdentifier("archived") : "NULL";
         var archivedAtExpr = columns.Contains("archived_at") ? QuoteIdentifier("archived_at") : "NULL";
+        var updatedAtExpr = columns.Contains("updated_at") ? QuoteIdentifier("updated_at") : "NULL";
+        var recencyAtExpr = columns.Contains("recency_at") ? QuoteIdentifier("recency_at") : "NULL";
         var builder = new SqliteConnectionStringBuilder {
             DataSource = stateDb,
             Mode = SqliteOpenMode.ReadOnly
@@ -167,11 +171,11 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         connection.Open();
         SetBusyTimeout(connection, 1000);
 
-        var result = new Dictionary<string, (string Title, bool IsArchived)>(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, (string Title, bool IsArchived, long LastActivity)>(StringComparer.OrdinalIgnoreCase);
         foreach (var threadId in ids) {
             cancellationToken.ThrowIfCancellationRequested();
             using var command = connection.CreateCommand();
-            command.CommandText = $"SELECT {titleExpr}, {archivedExpr}, {archivedAtExpr} FROM threads WHERE {QuoteIdentifier("id")} = @threadId LIMIT 1;";
+            command.CommandText = $"SELECT {titleExpr}, {archivedExpr}, {archivedAtExpr}, {updatedAtExpr}, {recencyAtExpr} FROM threads WHERE {QuoteIdentifier("id")} = @threadId LIMIT 1;";
             command.Parameters.AddWithValue("@threadId", threadId);
             using var reader = command.ExecuteReader();
             if (!reader.Read()) {
@@ -181,7 +185,9 @@ public sealed partial class CodexLocalStateDiagnosticsService {
             var title = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
             var archived = reader.IsDBNull(1) ? null : reader.GetValue(1);
             var archivedAt = reader.IsDBNull(2) ? null : reader.GetValue(2);
-            result[threadId] = (title, IsTruthySqliteValue(archived) || HasSqliteValue(archivedAt));
+            var updatedAt = reader.IsDBNull(3) ? 0L : Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture);
+            var recencyAt = reader.IsDBNull(4) ? 0L : Convert.ToInt64(reader.GetValue(4), CultureInfo.InvariantCulture);
+            result[threadId] = (title, IsTruthySqliteValue(archived) || HasSqliteValue(archivedAt), Math.Max(updatedAt, recencyAt));
         }
 
         return result;
