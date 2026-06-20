@@ -34,9 +34,25 @@ public sealed class CodexLocalStateThreadRecoveryResult {
     public string BackupDirectory { get; init; } = string.Empty;
     /// <summary>Path to the SQLite backup created before mutation.</summary>
     public string BackupDatabasePath { get; init; } = string.Empty;
+    /// <summary>Directory containing automation backups for this thread, when any were found.</summary>
+    public string AutomationBackupDirectory { get; init; } = string.Empty;
+    /// <summary>Automation ids that targeted this thread before recovery.</summary>
+    public IReadOnlyList<string> AutomationIds { get; init; } = [];
+    /// <summary>Number of automations targeting this thread before recovery.</summary>
+    public int AutomationCountBefore { get; init; }
+    /// <summary>Number of automations targeting this thread after recovery and restore checks.</summary>
+    public int AutomationCountAfter { get; init; }
+    /// <summary>Number of automation definitions restored from backup after recovery.</summary>
+    public int AutomationRestoredCount { get; init; }
 }
 
 public sealed partial class CodexLocalStateDiagnosticsService {
+    private sealed class ThreadAutomationBackup {
+        public string AutomationId { get; init; } = string.Empty;
+        public string SourceDirectory { get; init; } = string.Empty;
+        public string BackupDirectory { get; init; } = string.Empty;
+    }
+
     /// <summary>
     /// Backs up the Codex SQLite state database, toggles one thread through an
     /// archived state, then restores its original final active/archived state.
@@ -81,6 +97,7 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         cancellationToken.ThrowIfCancellationRequested();
         var backupDirectory = CreateBackupDirectory(backupRoot);
         var backupDb = Path.Combine(backupDirectory, "state_5.sqlite");
+        var automationBackups = BackupThreadAutomations(home, normalizedThreadId, backupDirectory);
 
         var builder = new SqliteConnectionStringBuilder {
             DataSource = stateDb,
@@ -96,48 +113,175 @@ public sealed partial class CodexLocalStateDiagnosticsService {
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var hasArchiveColumns = columnNames.Contains("archived") || columnNames.Contains("archived_at");
         if (!columnNames.Contains("id") || !hasArchiveColumns) {
-            return new CodexLocalStateThreadRecoveryResult {
-                CodexHome = home,
-                StateDatabasePath = stateDb,
-                ThreadId = normalizedThreadId,
-                DatabaseExists = true,
-                ArchiveColumnsAvailable = false,
-                BackupDirectory = backupDirectory,
-                BackupDatabasePath = backupDb
-            };
+            return CreateThreadRecoveryResult(
+                home,
+                stateDb,
+                normalizedThreadId,
+                databaseExists: true,
+                archiveColumnsAvailable: false,
+                backupDirectory: backupDirectory,
+                backupDb: backupDb,
+                automationBackups: automationBackups);
         }
 
         var wasArchived = ReadThreadArchivedState(connection, normalizedThreadId, columnNames, cancellationToken);
         if (wasArchived is null) {
-            return new CodexLocalStateThreadRecoveryResult {
-                CodexHome = home,
-                StateDatabasePath = stateDb,
-                ThreadId = normalizedThreadId,
-                DatabaseExists = true,
-                ArchiveColumnsAvailable = true,
-                ThreadFound = false,
-                BackupDirectory = backupDirectory,
-                BackupDatabasePath = backupDb
-            };
+            return CreateThreadRecoveryResult(
+                home,
+                stateDb,
+                normalizedThreadId,
+                databaseExists: true,
+                archiveColumnsAvailable: true,
+                threadFound: false,
+                backupDirectory: backupDirectory,
+                backupDb: backupDb,
+                automationBackups: automationBackups);
         }
 
         using var transaction = connection.BeginTransaction();
         SetThreadArchivedState(connection, transaction, normalizedThreadId, columnNames, archived: true);
         SetThreadArchivedState(connection, transaction, normalizedThreadId, columnNames, archived: wasArchived.Value);
         transaction.Commit();
+        var restoredAutomations = RestoreMissingThreadAutomations(automationBackups);
 
+        return CreateThreadRecoveryResult(
+            home,
+            stateDb,
+            normalizedThreadId,
+            databaseExists: true,
+            archiveColumnsAvailable: true,
+            threadFound: true,
+            wasArchived: wasArchived.Value,
+            finalArchived: wasArchived.Value,
+            backupDirectory: backupDirectory,
+            backupDb: backupDb,
+            automationBackups: automationBackups,
+            automationRestoredCount: restoredAutomations);
+    }
+
+    private static CodexLocalStateThreadRecoveryResult CreateThreadRecoveryResult(
+        string home,
+        string stateDb,
+        string threadId,
+        bool databaseExists,
+        bool archiveColumnsAvailable = false,
+        bool threadFound = false,
+        bool wasArchived = false,
+        bool finalArchived = false,
+        string backupDirectory = "",
+        string backupDb = "",
+        IReadOnlyList<ThreadAutomationBackup>? automationBackups = null,
+        int automationRestoredCount = 0) {
+        var backups = automationBackups ?? [];
         return new CodexLocalStateThreadRecoveryResult {
             CodexHome = home,
             StateDatabasePath = stateDb,
-            ThreadId = normalizedThreadId,
-            DatabaseExists = true,
-            ArchiveColumnsAvailable = true,
-            ThreadFound = true,
-            WasArchived = wasArchived.Value,
-            FinalArchived = wasArchived.Value,
+            ThreadId = threadId,
+            DatabaseExists = databaseExists,
+            ArchiveColumnsAvailable = archiveColumnsAvailable,
+            ThreadFound = threadFound,
+            WasArchived = wasArchived,
+            FinalArchived = finalArchived,
             BackupDirectory = backupDirectory,
-            BackupDatabasePath = backupDb
+            BackupDatabasePath = backupDb,
+            AutomationBackupDirectory = backups.Count > 0
+                ? Path.Combine(backupDirectory, "automations")
+                : string.Empty,
+            AutomationIds = backups.Select(static item => item.AutomationId).ToArray(),
+            AutomationCountBefore = backups.Count,
+            AutomationCountAfter = CountThreadAutomations(home, threadId),
+            AutomationRestoredCount = automationRestoredCount
         };
+    }
+
+    private static IReadOnlyList<ThreadAutomationBackup> BackupThreadAutomations(
+        string codexHome,
+        string threadId,
+        string backupDirectory) {
+        var automationsRoot = Path.Combine(codexHome, "automations");
+        if (!Directory.Exists(automationsRoot)) {
+            return [];
+        }
+
+        var backupRoot = Path.Combine(backupDirectory, "automations");
+        var backups = new List<ThreadAutomationBackup>();
+        foreach (var automationDirectory in Directory.EnumerateDirectories(automationsRoot)) {
+            var definitionPath = Path.Combine(automationDirectory, "automation.toml");
+            if (!File.Exists(definitionPath) || !AutomationTargetsThread(definitionPath, threadId)) {
+                continue;
+            }
+
+            var automationId = Path.GetFileName(automationDirectory);
+            var destination = Path.Combine(backupRoot, automationId);
+            CopyDirectory(automationDirectory, destination, overwrite: true);
+            backups.Add(new ThreadAutomationBackup {
+                AutomationId = automationId,
+                SourceDirectory = automationDirectory,
+                BackupDirectory = destination
+            });
+        }
+
+        return backups;
+    }
+
+    private static int RestoreMissingThreadAutomations(IReadOnlyList<ThreadAutomationBackup> backups) {
+        var restored = 0;
+        foreach (var backup in backups) {
+            var sourceDefinition = Path.Combine(backup.SourceDirectory, "automation.toml");
+            if (File.Exists(sourceDefinition)) {
+                continue;
+            }
+
+            CopyDirectory(backup.BackupDirectory, backup.SourceDirectory, overwrite: true);
+            restored++;
+        }
+
+        return restored;
+    }
+
+    private static int CountThreadAutomations(string codexHome, string threadId) {
+        var automationsRoot = Path.Combine(codexHome, "automations");
+        if (!Directory.Exists(automationsRoot)) {
+            return 0;
+        }
+
+        return Directory.EnumerateDirectories(automationsRoot)
+            .Select(static directory => Path.Combine(directory, "automation.toml"))
+            .Count(path => File.Exists(path) && AutomationTargetsThread(path, threadId));
+    }
+
+    private static bool AutomationTargetsThread(string definitionPath, string threadId) {
+        foreach (var line in File.ReadLines(definitionPath)) {
+            var trimmed = line.Trim();
+            if (!trimmed.StartsWith("target_thread_id", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var separator = trimmed.IndexOf('=');
+            if (separator < 0) {
+                continue;
+            }
+
+            var value = trimmed.Substring(separator + 1).Trim().Trim('"');
+            if (string.Equals(value, threadId, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void CopyDirectory(string sourceDirectory, string destinationDirectory, bool overwrite) {
+        Directory.CreateDirectory(destinationDirectory);
+        foreach (var file in Directory.EnumerateFiles(sourceDirectory)) {
+            var destination = Path.Combine(destinationDirectory, Path.GetFileName(file));
+            File.Copy(file, destination, overwrite);
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(sourceDirectory)) {
+            var childDestination = Path.Combine(destinationDirectory, Path.GetFileName(directory));
+            CopyDirectory(directory, childDestination, overwrite);
+        }
     }
 
     private static bool? ReadThreadArchivedState(

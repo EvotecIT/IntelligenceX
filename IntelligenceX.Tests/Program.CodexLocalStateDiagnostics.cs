@@ -254,6 +254,20 @@ internal static partial class Program {
             var codexHome = Path.Combine(root, ".codex");
             var backupRoot = Path.Combine(root, "backups");
             Directory.CreateDirectory(codexHome);
+            var automationDirectory = Path.Combine(codexHome, "automations", "recheck-thread");
+            Directory.CreateDirectory(automationDirectory);
+            var automationPath = Path.Combine(automationDirectory, "automation.toml");
+            File.WriteAllText(
+                automationPath,
+                """
+                version = 1
+                id = "recheck-thread"
+                kind = "heartbeat"
+                name = "Recheck Thread"
+                status = "ACTIVE"
+                rrule = "FREQ=MINUTELY;INTERVAL=15"
+                target_thread_id = "abababab-abab-abab-abab-abababababab"
+                """);
             var dbPath = Path.Combine(codexHome, "state_5.sqlite");
             var sqlite = new SQLite();
             sqlite.ExecuteNonQuery(
@@ -301,6 +315,12 @@ internal static partial class Program {
             AssertEqual(false, result.WasArchived, "codex thread recovery original active");
             AssertEqual(false, result.FinalArchived, "codex thread recovery final active");
             AssertEqual(true, File.Exists(result.BackupDatabasePath), "codex thread recovery backup exists");
+            AssertEqual(1, result.AutomationCountBefore, "codex thread recovery automation count before");
+            AssertEqual(1, result.AutomationCountAfter, "codex thread recovery automation count after");
+            AssertEqual(0, result.AutomationRestoredCount, "codex thread recovery automation restored count");
+            AssertEqual("recheck-thread", result.AutomationIds.Single(), "codex thread recovery automation id");
+            AssertEqual(true, File.Exists(Path.Combine(result.AutomationBackupDirectory, "recheck-thread", "automation.toml")), "codex thread recovery automation backup exists");
+            AssertEqual(true, File.Exists(automationPath), "codex thread recovery automation preserved");
             AssertEqual(0, archived, "codex thread recovery active archived flag");
             AssertEqual(true, archivedAt is null || archivedAt is DBNull, "codex thread recovery active archived_at");
         } finally {

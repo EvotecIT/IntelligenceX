@@ -1510,11 +1510,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private static string BuildCodexThreadRecoveryDetailText(CodexLocalStateThreadRecoveryResult result) {
+        var automationText = result.AutomationCountBefore == 0
+            ? "No thread automations found."
+            : string.Format(
+                CultureInfo.InvariantCulture,
+                "Automations: {0} backed up, {1} restored, {2} present after recovery.",
+                result.AutomationCountBefore,
+                result.AutomationRestoredCount,
+                result.AutomationCountAfter);
         return string.Format(
             CultureInfo.InvariantCulture,
-            "Thread {0} archive state refreshed. Final state: {1}. Backup: {2}",
+            "Thread {0} archive state refreshed. Final state: {1}. {2} Backup: {3}",
             ShortThreadId(result.ThreadId),
             result.FinalArchived ? "archived" : "active",
+            automationText,
             result.BackupDirectory);
     }
 
