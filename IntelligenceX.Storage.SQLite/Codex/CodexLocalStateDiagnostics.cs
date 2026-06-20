@@ -1069,7 +1069,7 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         int recoverableBrokenThreadCandidateCount) {
         return string.Format(
             CultureInfo.InvariantCulture,
-            "{0} active threads • {1} SQLite path findings • {2} config paths • {3} metadata warnings • {4} broken candidates ({5} recoverable)",
+            "{0} active threads • {1} SQLite path findings • {2} config paths • {3} metadata warnings • {4} failure-log candidates ({5} active recoverable)",
             activeThreadCount,
             extendedPathCount,
             configExtendedPathCount,
