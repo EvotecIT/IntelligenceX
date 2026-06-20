@@ -100,6 +100,8 @@ public sealed class CodexLocalStateDiagnostics {
     public int ActiveThreadCount { get; init; }
     /// <summary>Number of recent broken-thread candidates found in local Codex logs.</summary>
     public int BrokenThreadCandidateCount { get; init; }
+    /// <summary>Number of recent broken-thread candidates that are active and can be refreshed automatically.</summary>
+    public int RecoverableBrokenThreadCandidateCount { get; init; }
     /// <summary>Main SQLite state database file size in bytes.</summary>
     public long StateDatabaseBytes { get; init; }
     /// <summary>Total SQLite state size including WAL and shared-memory files.</summary>
@@ -265,6 +267,8 @@ public sealed partial class CodexLocalStateDiagnosticsService {
                 oversizedMetadataCount));
         }
 
+        var recoverableBrokenThreadCandidateCount = brokenThreadCandidates.Count(static item => item.ThreadFound && !item.IsArchived);
+
         if (brokenThreadCandidates.Count > 0) {
             findings.Add(new CodexLocalStateFinding(
                 "broken-thread-candidates",
@@ -280,12 +284,13 @@ public sealed partial class CodexLocalStateDiagnosticsService {
             ScannedAtUtc = DateTimeOffset.UtcNow,
             Status = status,
             StatusText = BuildStatusText(status, findings),
-            DetailText = BuildDetailText(activeThreadCount, extendedPathCount, configExtendedPathCount, oversizedMetadataCount, brokenThreadCandidates.Count),
+            DetailText = BuildDetailText(activeThreadCount, extendedPathCount, configExtendedPathCount, oversizedMetadataCount, brokenThreadCandidates.Count, recoverableBrokenThreadCandidateCount),
             ExtendedPathCount = extendedPathCount,
             ConfigExtendedPathCount = configExtendedPathCount,
             OversizedThreadMetadataCount = oversizedMetadataCount,
             ActiveThreadCount = activeThreadCount,
             BrokenThreadCandidateCount = brokenThreadCandidates.Count,
+            RecoverableBrokenThreadCandidateCount = recoverableBrokenThreadCandidateCount,
             StateDatabaseBytes = sqliteDiagnostics.DatabaseFileSizeBytes,
             StateDatabaseTotalBytes = sqliteDiagnostics.TotalFileSizeBytes,
             SQLiteVersion = sqliteDiagnostics.SQLiteVersion,
@@ -1060,15 +1065,17 @@ public sealed partial class CodexLocalStateDiagnosticsService {
         int extendedPathCount,
         int configExtendedPathCount,
         int oversizedMetadataCount,
-        int brokenThreadCandidateCount) {
+        int brokenThreadCandidateCount,
+        int recoverableBrokenThreadCandidateCount) {
         return string.Format(
             CultureInfo.InvariantCulture,
-            "{0} active threads • {1} SQLite path findings • {2} config paths • {3} metadata warnings • {4} broken candidates",
+            "{0} active threads • {1} SQLite path findings • {2} config paths • {3} metadata warnings • {4} broken candidates ({5} recoverable)",
             activeThreadCount,
             extendedPathCount,
             configExtendedPathCount,
             oversizedMetadataCount,
-            brokenThreadCandidateCount);
+            brokenThreadCandidateCount,
+            recoverableBrokenThreadCandidateCount);
     }
 
     private static bool IsTextColumn(string? columnType) {
