@@ -326,7 +326,7 @@ public sealed partial class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures full-transcript export normalization keeps adjacent ordered-list items stable for current OfficeIMO rendering.
+    /// Ensures full-transcript export normalization preserves adjacent ordered-list items.
     /// </summary>
     [Fact]
     public void NormalizeTranscriptMarkdownForExport_PreservesAdjacentOrderedItems() {
