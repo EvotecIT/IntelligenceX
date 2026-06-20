@@ -741,6 +741,39 @@
                                     </WrapPanel>
                                 </Grid>
 
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Thread ID"
+                                               Style="{StaticResource LabelTextStyle}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0" />
+                                    <TextBox Grid.Column="1"
+                                             Text="{Binding DataContext.CodexThreadRecoveryId, RelativeSource={RelativeSource AncestorType={x:Type Window}}, UpdateSourceTrigger=PropertyChanged}"
+                                             FontFamily="{StaticResource AppFont}"
+                                             FontSize="11"
+                                             Background="{StaticResource SubtleSurfaceBrush}"
+                                             Foreground="{StaticResource PrimaryTextBrush}"
+                                             BorderBrush="{StaticResource BorderBrush}"
+                                             BorderThickness="1"
+                                             Padding="8,5"
+                                             CaretBrush="{StaticResource PrimaryTextBrush}"
+                                             ToolTip="Codex thread id"
+                                             AutomationProperties.Name="Codex thread id" />
+                                    <Button Grid.Column="2"
+                                            Style="{StaticResource LinkButtonStyle}"
+                                            Command="{Binding DataContext.RecoverCodexThreadCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                            ToolTip="Back up and refresh this Codex thread archive state"
+                                            AutomationProperties.Name="Recover Codex thread"
+                                            Margin="6,0,0,0">
+                                        <TextBlock Text="{Binding DataContext.CodexDiagnosticsThreadRecoveryActionLabel, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" />
+                                    </Button>
+                                </Grid>
+
                                 <UniformGrid Columns="4" Margin="0,0,0,10">
                                     <Border CornerRadius="10"
                                             Background="{StaticResource SubtleSurfaceMutedBrush}"

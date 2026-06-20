@@ -89,10 +89,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private bool _isCodexDiagnosticsLoading;
     private bool _isCodexPathRepairRunning;
     private bool _isCodexCleanupRunning;
+    private bool _isCodexThreadRecoveryRunning;
     private bool _isCodexDiagnosticsDetailsExpanded;
     private string _statusText = "Initializing...";
     private string _codexDiagnosticsStatusText = "Codex state not scanned";
     private string _codexDiagnosticsDetailText = "Waiting for first local state check.";
+    private string _codexThreadRecoveryId = string.Empty;
     private string _loadingDetailText = "Preparing tray refresh...";
     private double _loadingProgressValue;
     private double _loadingProgressMaximum = 1d;
@@ -166,6 +168,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         RefreshCodexDiagnosticsCommand = new RelayCommand(RefreshCodexDiagnosticsAsync, CanRunCodexMaintenance);
         RepairCodexPathsCommand = new RelayCommand(RepairCodexPathsAsync, CanRunCodexMaintenance);
         CleanUpCodexStateCommand = new RelayCommand(CleanUpCodexStateAsync, CanRunCodexMaintenance);
+        RecoverCodexThreadCommand = new RelayCommand(RecoverCodexThreadAsync, CanRecoverCodexThread);
         ToggleCodexDiagnosticsDetailsCommand = new RelayCommand(ToggleCodexDiagnosticsDetails);
         RefreshGitHubCommand = new RelayCommand(RefreshGitHubCurrentAsync);
         OpenOpenAiCacheCommand = new RelayCommand(OpenOpenAiCacheAsync);
@@ -305,6 +308,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
     }
 
+    public bool IsCodexThreadRecoveryRunning {
+        get => _isCodexThreadRecoveryRunning;
+        private set {
+            if (SetProperty(ref _isCodexThreadRecoveryRunning, value)) {
+                OnPropertyChanged(nameof(CodexDiagnosticsThreadRecoveryActionLabel));
+                RaiseCodexMaintenanceCanExecuteChanged();
+            }
+        }
+    }
+
     public bool IsCodexDiagnosticsDetailsExpanded {
         get => _isCodexDiagnosticsDetailsExpanded;
         private set {
@@ -365,6 +378,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         private set => SetProperty(ref _codexDiagnosticsDetailText, value);
     }
 
+    public string CodexThreadRecoveryId {
+        get => _codexThreadRecoveryId;
+        set {
+            if (SetProperty(ref _codexThreadRecoveryId, value)) {
+                RecoverCodexThreadCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
     public string CodexDiagnosticsIssueText {
         get {
             if (_latestCodexDiagnostics is null) {
@@ -395,6 +417,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public string CodexDiagnosticsRepairActionLabel => IsCodexPathRepairRunning ? "Repairing" : "Repair paths";
 
     public string CodexDiagnosticsCleanupActionLabel => IsCodexCleanupRunning ? "Cleaning" : "Clean up";
+
+    public string CodexDiagnosticsThreadRecoveryActionLabel => IsCodexThreadRecoveryRunning ? "Recovering" : "Recover thread";
 
     public string CodexDiagnosticsDetailsActionLabel => IsCodexDiagnosticsDetailsExpanded ? "Hide" : "Details";
 
@@ -574,6 +598,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public RelayCommand RefreshCodexDiagnosticsCommand { get; }
     public RelayCommand RepairCodexPathsCommand { get; }
     public RelayCommand CleanUpCodexStateCommand { get; }
+    public RelayCommand RecoverCodexThreadCommand { get; }
     public RelayCommand ToggleCodexDiagnosticsDetailsCommand { get; }
     public RelayCommand RefreshGitHubCommand { get; }
     public RelayCommand OpenOpenAiCacheCommand { get; }
@@ -1219,6 +1244,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 () => _codexDiagnosticsService.CollectAsync(),
                 CancellationToken.None).ConfigureAwait(true);
             _latestCodexDiagnostics = diagnostics;
+            ApplyDetectedCodexThreadCandidate(diagnostics);
             CodexDiagnosticsStatusText = diagnostics.StatusText;
             CodexDiagnosticsDetailText = diagnostics.DetailText;
             OnCodexDiagnosticsSnapshotChanged();
@@ -1323,6 +1349,67 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
     }
 
+    private async Task RecoverCodexThreadAsync() {
+        if (IsCodexThreadRecoveryRunning) {
+            return;
+        }
+
+        var threadId = CodexThreadRecoveryId.Trim();
+        if (!Guid.TryParse(threadId, out _)) {
+            CodexDiagnosticsStatusText = "Codex thread id invalid";
+            CodexDiagnosticsDetailText = "Paste a UUID thread id before recovery.";
+            return;
+        }
+
+        IsCodexThreadRecoveryRunning = true;
+        CodexDiagnosticsStatusText = "Recovering Codex thread...";
+        CodexDiagnosticsDetailText = "Creating a backup before refreshing the thread archive state.";
+        try {
+            var result = await _codexDiagnosticsService.RecoverThreadArchiveStateAsync(threadId).ConfigureAwait(true);
+            await RefreshCodexDiagnosticsAsync().ConfigureAwait(true);
+
+            if (!result.DatabaseExists) {
+                CodexDiagnosticsStatusText = "Codex state database missing";
+                CodexDiagnosticsDetailText = result.StateDatabasePath;
+                return;
+            }
+
+            if (!result.ArchiveColumnsAvailable) {
+                CodexDiagnosticsStatusText = "Codex thread recovery unavailable";
+                CodexDiagnosticsDetailText = "The local threads table does not expose archive-state columns IX can refresh.";
+                return;
+            }
+
+            if (!result.ThreadFound) {
+                CodexDiagnosticsStatusText = "Codex thread not found";
+                CodexDiagnosticsDetailText = "Thread " + ShortThreadId(result.ThreadId) + " was not found in local state. Backup: " + result.BackupDirectory;
+                return;
+            }
+
+            CodexDiagnosticsStatusText = "Codex thread refreshed";
+            CodexDiagnosticsDetailText = BuildCodexThreadRecoveryDetailText(result);
+            if (NotificationsEnabled) {
+                NotificationRequested?.Invoke(this, new TrayNotificationRequestedEventArgs(
+                    "Codex thread refreshed",
+                    CodexDiagnosticsDetailText,
+                    isCritical: false,
+                    providerId: "codex"));
+            }
+        } catch (Exception ex) {
+            CodexDiagnosticsStatusText = "Codex thread recovery failed";
+            CodexDiagnosticsDetailText = ex.Message;
+            if (NotificationsEnabled) {
+                NotificationRequested?.Invoke(this, new TrayNotificationRequestedEventArgs(
+                    "Codex thread recovery failed",
+                    ex.Message,
+                    isCritical: true,
+                    providerId: "codex"));
+            }
+        } finally {
+            IsCodexThreadRecoveryRunning = false;
+        }
+    }
+
     private Task ToggleCodexDiagnosticsDetails() {
         IsCodexDiagnosticsDetailsExpanded = !IsCodexDiagnosticsDetailsExpanded;
         if (IsCodexDiagnosticsDetailsExpanded && !IsCodexProviderSelected) {
@@ -1367,14 +1454,38 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         OnPropertyChanged(nameof(CodexDiagnosticsPrimaryFindingBrush));
     }
 
+    private void ApplyDetectedCodexThreadCandidate(CodexLocalStateDiagnostics diagnostics) {
+        if (!string.IsNullOrWhiteSpace(CodexThreadRecoveryId)) {
+            return;
+        }
+
+        var candidate = diagnostics.BrokenThreadCandidates
+            .Where(static item => item.ThreadFound)
+            .OrderByDescending(static item => item.LastSeenUtc)
+            .ThenByDescending(static item => item.FailureCount)
+            .FirstOrDefault();
+        if (candidate is not null) {
+            CodexThreadRecoveryId = candidate.ThreadId;
+        }
+    }
+
     private bool CanRunCodexMaintenance() {
-        return !IsCodexDiagnosticsLoading && !IsCodexPathRepairRunning && !IsCodexCleanupRunning;
+        return !IsCodexDiagnosticsLoading
+               && !IsCodexPathRepairRunning
+               && !IsCodexCleanupRunning
+               && !IsCodexThreadRecoveryRunning;
+    }
+
+    private bool CanRecoverCodexThread() {
+        return CanRunCodexMaintenance()
+               && Guid.TryParse(CodexThreadRecoveryId.Trim(), out _);
     }
 
     private void RaiseCodexMaintenanceCanExecuteChanged() {
         RefreshCodexDiagnosticsCommand.RaiseCanExecuteChanged();
         RepairCodexPathsCommand.RaiseCanExecuteChanged();
         CleanUpCodexStateCommand.RaiseCanExecuteChanged();
+        RecoverCodexThreadCommand.RaiseCanExecuteChanged();
     }
 
     private static string BuildCodexPathRepairDetailText(CodexLocalStatePathRepairResult result) {
@@ -1396,6 +1507,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             result.ArchivedSessionFileCount,
             FormatBytes(result.ArchivedSessionBytes),
             result.ArchiveDirectory);
+    }
+
+    private static string BuildCodexThreadRecoveryDetailText(CodexLocalStateThreadRecoveryResult result) {
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            "Thread {0} archive state refreshed. Final state: {1}. Backup: {2}",
+            ShortThreadId(result.ThreadId),
+            result.FinalArchived ? "archived" : "active",
+            result.BackupDirectory);
+    }
+
+    private static string ShortThreadId(string threadId) {
+        return threadId.Length > 8 ? threadId.Substring(0, 8) : threadId;
     }
 
     private static string BuildCodexFindingSeverityLabel(CodexLocalStateHealthStatus severity) {

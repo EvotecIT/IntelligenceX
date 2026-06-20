@@ -58,6 +58,23 @@ public sealed record CodexLocalStateArea(
     string Recommendation);
 
 /// <summary>
+/// A Codex thread id observed in recent local failure logs that may benefit from archive-state refresh.
+/// </summary>
+/// <param name="ThreadId">Codex thread id found in a failure log entry.</param>
+/// <param name="Title">Current local thread title, when available.</param>
+/// <param name="FailureCount">Number of matching recent failure log entries.</param>
+/// <param name="LastSeenUtc">Most recent matching failure timestamp.</param>
+/// <param name="ThreadFound">Whether the thread id exists in local state.</param>
+/// <param name="IsArchived">Whether the local thread is currently archived, when found.</param>
+public sealed record CodexLocalStateBrokenThreadCandidate(
+    string ThreadId,
+    string Title,
+    int FailureCount,
+    DateTimeOffset LastSeenUtc,
+    bool ThreadFound,
+    bool IsArchived);
+
+/// <summary>
 /// Snapshot of local Codex state health.
 /// </summary>
 public sealed class CodexLocalStateDiagnostics {
@@ -81,6 +98,8 @@ public sealed class CodexLocalStateDiagnostics {
     public int OversizedThreadMetadataCount { get; init; }
     /// <summary>Number of active threads found in the Codex state database.</summary>
     public int ActiveThreadCount { get; init; }
+    /// <summary>Number of recent broken-thread candidates found in local Codex logs.</summary>
+    public int BrokenThreadCandidateCount { get; init; }
     /// <summary>Main SQLite state database file size in bytes.</summary>
     public long StateDatabaseBytes { get; init; }
     /// <summary>Total SQLite state size including WAL and shared-memory files.</summary>
@@ -97,6 +116,8 @@ public sealed class CodexLocalStateDiagnostics {
     public bool CanConnect { get; init; }
     /// <summary>Detailed local Codex storage areas.</summary>
     public IReadOnlyList<CodexLocalStateArea> Areas { get; init; } = [];
+    /// <summary>Recent thread ids found in Codex failure logs.</summary>
+    public IReadOnlyList<CodexLocalStateBrokenThreadCandidate> BrokenThreadCandidates { get; init; } = [];
     /// <summary>Detailed local state findings.</summary>
     public IReadOnlyList<CodexLocalStateFinding> Findings { get; init; } = [];
 }
@@ -147,7 +168,7 @@ public sealed class CodexLocalStateCleanupResult {
 /// Reads local Codex Desktop/CLI state in a read-only way and summarizes issues
 /// that can make resume/navigation brittle.
 /// </summary>
-public sealed class CodexLocalStateDiagnosticsService {
+public sealed partial class CodexLocalStateDiagnosticsService {
     private const int DefaultTitleLimit = 120;
     private const int DefaultPreviewLimit = 240;
     private const long LargeLogsWarningBytes = 256L * 1024L * 1024L;
@@ -196,11 +217,13 @@ public sealed class CodexLocalStateDiagnosticsService {
         var extendedPathCount = 0;
         var activeThreadCount = 0;
         var oversizedMetadataCount = 0;
+        IReadOnlyList<CodexLocalStateBrokenThreadCandidate> brokenThreadCandidates = [];
         if (sqliteDiagnostics.CanConnect) {
             extendedPathCount = CountExtendedPathRows(stateDb, findings);
             var metadata = CountThreadMetadata(stateDb);
             activeThreadCount = metadata.ActiveThreads;
             oversizedMetadataCount = metadata.OversizedRows;
+            brokenThreadCandidates = CollectBrokenThreadCandidates(home, stateDb, cancellationToken);
         }
 
         var areas = CollectAreas(home, stateDb, sqliteDiagnostics.TotalFileSizeBytes);
@@ -242,6 +265,14 @@ public sealed class CodexLocalStateDiagnosticsService {
                 oversizedMetadataCount));
         }
 
+        if (brokenThreadCandidates.Count > 0) {
+            findings.Add(new CodexLocalStateFinding(
+                "broken-thread-candidates",
+                CodexLocalStateHealthStatus.Warning,
+                $"{brokenThreadCandidates.Count.ToString(CultureInfo.InvariantCulture)} recent Codex thread(s) have agent-loop/start-turn failure logs.",
+                brokenThreadCandidates.Count));
+        }
+
         var status = BuildStatus(findings, sqliteDiagnostics.Exists, sqliteDiagnostics.CanConnect);
         return new CodexLocalStateDiagnostics {
             CodexHome = home,
@@ -249,11 +280,12 @@ public sealed class CodexLocalStateDiagnosticsService {
             ScannedAtUtc = DateTimeOffset.UtcNow,
             Status = status,
             StatusText = BuildStatusText(status, findings),
-            DetailText = BuildDetailText(activeThreadCount, extendedPathCount, configExtendedPathCount, oversizedMetadataCount),
+            DetailText = BuildDetailText(activeThreadCount, extendedPathCount, configExtendedPathCount, oversizedMetadataCount, brokenThreadCandidates.Count),
             ExtendedPathCount = extendedPathCount,
             ConfigExtendedPathCount = configExtendedPathCount,
             OversizedThreadMetadataCount = oversizedMetadataCount,
             ActiveThreadCount = activeThreadCount,
+            BrokenThreadCandidateCount = brokenThreadCandidates.Count,
             StateDatabaseBytes = sqliteDiagnostics.DatabaseFileSizeBytes,
             StateDatabaseTotalBytes = sqliteDiagnostics.TotalFileSizeBytes,
             SQLiteVersion = sqliteDiagnostics.SQLiteVersion,
@@ -262,6 +294,7 @@ public sealed class CodexLocalStateDiagnosticsService {
             DatabaseExists = sqliteDiagnostics.Exists,
             CanConnect = sqliteDiagnostics.CanConnect,
             Areas = areas,
+            BrokenThreadCandidates = brokenThreadCandidates,
             Findings = findings
         };
     }
@@ -1026,14 +1059,16 @@ public sealed class CodexLocalStateDiagnosticsService {
         int activeThreadCount,
         int extendedPathCount,
         int configExtendedPathCount,
-        int oversizedMetadataCount) {
+        int oversizedMetadataCount,
+        int brokenThreadCandidateCount) {
         return string.Format(
             CultureInfo.InvariantCulture,
-            "{0} active threads • {1} SQLite path findings • {2} config paths • {3} metadata warnings",
+            "{0} active threads • {1} SQLite path findings • {2} config paths • {3} metadata warnings • {4} broken candidates",
             activeThreadCount,
             extendedPathCount,
             configExtendedPathCount,
-            oversizedMetadataCount);
+            oversizedMetadataCount,
+            brokenThreadCandidateCount);
     }
 
     private static bool IsTextColumn(string? columnType) {
