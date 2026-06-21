@@ -248,6 +248,239 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCodexLocalStateDiagnosticsRecoversThreadArchiveState() {
+        var root = CreateCodexDiagnosticsTempDirectory();
+        try {
+            var codexHome = Path.Combine(root, ".codex");
+            var backupRoot = Path.Combine(root, "backups");
+            Directory.CreateDirectory(codexHome);
+            var automationDirectory = Path.Combine(codexHome, "automations", "recheck-thread");
+            Directory.CreateDirectory(automationDirectory);
+            var automationPath = Path.Combine(automationDirectory, "automation.toml");
+            File.WriteAllText(
+                automationPath,
+                """
+                version = 1
+                id = "recheck-thread"
+                kind = "heartbeat"
+                name = "Recheck Thread"
+                status = "ACTIVE"
+                rrule = "FREQ=MINUTELY;INTERVAL=15"
+                target_thread_id = "abababab-abab-abab-abab-abababababab"
+                """);
+            var dbPath = Path.Combine(codexHome, "state_5.sqlite");
+            var sqlite = new SQLite();
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    archived INTEGER,
+                    archived_at INTEGER
+                );
+                """);
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, archived, archived_at)
+                VALUES (@id, @title, 0, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "abababab-abab-abab-abab-abababababab",
+                    ["@title"] = "active thread"
+                });
+
+            var service = new CodexLocalStateDiagnosticsService();
+            var result = service
+                .RecoverThreadArchiveStateAsync("abababab-abab-abab-abab-abababababab", codexHome, backupRoot)
+                .GetAwaiter()
+                .GetResult();
+            var archived = Convert.ToInt32(sqlite.ExecuteScalar(
+                dbPath,
+                "SELECT archived FROM threads WHERE id = @id;",
+                new Dictionary<string, object?> {
+                    ["@id"] = "abababab-abab-abab-abab-abababababab"
+                }), CultureInfo.InvariantCulture);
+            var archivedAt = sqlite.ExecuteScalar(
+                dbPath,
+                "SELECT archived_at FROM threads WHERE id = @id;",
+                new Dictionary<string, object?> {
+                    ["@id"] = "abababab-abab-abab-abab-abababababab"
+                });
+
+            AssertEqual(true, result.DatabaseExists, "codex thread recovery database exists");
+            AssertEqual(true, result.ArchiveColumnsAvailable, "codex thread recovery archive columns");
+            AssertEqual(true, result.ThreadFound, "codex thread recovery found target");
+            AssertEqual(false, result.WasArchived, "codex thread recovery original active");
+            AssertEqual(false, result.FinalArchived, "codex thread recovery final active");
+            AssertEqual(true, File.Exists(result.BackupDatabasePath), "codex thread recovery backup exists");
+            AssertEqual(1, result.AutomationCountBefore, "codex thread recovery automation count before");
+            AssertEqual(1, result.AutomationCountAfter, "codex thread recovery automation count after");
+            AssertEqual(0, result.AutomationRestoredCount, "codex thread recovery automation restored count");
+            AssertEqual("recheck-thread", result.AutomationIds.Single(), "codex thread recovery automation id");
+            AssertEqual(true, File.Exists(Path.Combine(result.AutomationBackupDirectory, "recheck-thread", "automation.toml")), "codex thread recovery automation backup exists");
+            AssertEqual(true, File.Exists(automationPath), "codex thread recovery automation preserved");
+            AssertEqual(0, archived, "codex thread recovery active archived flag");
+            AssertEqual(true, archivedAt is null || archivedAt is DBNull, "codex thread recovery active archived_at");
+        } finally {
+            TryDeleteCodexDiagnosticsDirectory(root);
+        }
+    }
+
+    private static void TestCodexLocalStateDiagnosticsDetectsBrokenThreadCandidates() {
+        var root = CreateCodexDiagnosticsTempDirectory();
+        try {
+            var codexHome = Path.Combine(root, ".codex");
+            Directory.CreateDirectory(codexHome);
+            var dbPath = Path.Combine(codexHome, "state_5.sqlite");
+            var logsDbPath = Path.Combine(codexHome, "logs_2.sqlite");
+            var sqlite = new SQLite();
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    archived INTEGER,
+                    archived_at INTEGER,
+                    updated_at INTEGER,
+                    recency_at INTEGER
+                );
+                """);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, archived, archived_at, updated_at, recency_at)
+                VALUES (@id, @title, 0, NULL, @updatedAt, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "12121212-1212-1212-1212-121212121212",
+                    ["@title"] = "recoverable candidate",
+                    ["@updatedAt"] = now - 100
+                });
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, archived, archived_at, updated_at, recency_at)
+                VALUES (@id, @title, 1, @archivedAt, @updatedAt, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "34343434-3434-3434-3434-343434343434",
+                    ["@title"] = "archived candidate",
+                    ["@archivedAt"] = now,
+                    ["@updatedAt"] = now - 100
+                });
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, archived, archived_at, updated_at, recency_at)
+                VALUES (@id, @title, 0, NULL, @updatedAt, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "56565656-5656-5656-5656-565656565656",
+                    ["@title"] = "stale active candidate",
+                    ["@updatedAt"] = now
+                });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                CREATE TABLE logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts INTEGER NOT NULL,
+                    level TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    feedback_log_body TEXT,
+                    thread_id TEXT
+                );
+                """);
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'WARN', 'codex_app_server::mcp_refresh', @body, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ["@body"] = "failed to queue MCP refresh for thread 12121212-1212-1212-1212-121212121212: internal error; agent loop died unexpectedly"
+                });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'WARN', 'codex_app_server::mcp_refresh', @body, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ["@body"] = " \t\r\nfailed to queue MCP refresh for thread 12121212-1212-1212-1212-121212121212: internal error; agent loop died unexpectedly"
+                });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'WARN', 'codex_app_server::mcp_refresh', @body, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ["@body"] = "failed to queue MCP refresh for thread 34343434-3434-3434-3434-343434343434: internal error; agent loop died unexpectedly"
+                });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'WARN', 'codex_app_server::mcp_refresh', @body, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@ts"] = now - 50,
+                    ["@body"] = "failed to queue MCP refresh for thread 56565656-5656-5656-5656-565656565656: internal error; agent loop died unexpectedly"
+                });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'WARN', 'codex_app_server::mcp_refresh', @body, NULL);
+                """,
+                new Dictionary<string, object?> {
+                    ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ["@body"] = "user pasted unrelated id aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa while discussing agent loop died"
+                });
+            sqlite.ExecuteNonQuery(
+                logsDbPath,
+                """
+                INSERT INTO logs (ts, level, target, feedback_log_body, thread_id)
+                VALUES (@ts, 'INFO', 'codex_core::session', @body, @threadId);
+                """,
+                new Dictionary<string, object?> {
+                    ["@ts"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    ["@body"] = "session_loop{thread_id=12121212-1212-1212-1212-121212121212}: diagnostic command text mentions agent loop died unexpectedly",
+                    ["@threadId"] = "12121212-1212-1212-1212-121212121212"
+                });
+
+            var service = new CodexLocalStateDiagnosticsService();
+            var diagnostics = service.CollectAsync(codexHome).GetAwaiter().GetResult();
+            var candidate = diagnostics.BrokenThreadCandidates.Single(item => item.ThreadId == "12121212-1212-1212-1212-121212121212");
+            var archivedCandidate = diagnostics.BrokenThreadCandidates.Single(item => item.ThreadId == "34343434-3434-3434-3434-343434343434");
+            var staleCandidate = diagnostics.BrokenThreadCandidates.Single(item => item.ThreadId == "56565656-5656-5656-5656-565656565656");
+
+            AssertEqual(CodexLocalStateHealthStatus.Warning, diagnostics.Status, "codex broken thread status");
+            AssertEqual(3, diagnostics.BrokenThreadCandidateCount, "codex broken thread candidate count");
+            AssertEqual(1, diagnostics.RecoverableBrokenThreadCandidateCount, "codex recoverable broken thread candidate count");
+            AssertEqual("12121212-1212-1212-1212-121212121212", candidate.ThreadId, "codex broken thread candidate id");
+            AssertEqual(true, candidate.ThreadFound, "codex broken thread candidate found");
+            AssertEqual(false, candidate.IsArchived, "codex broken thread candidate active");
+            AssertEqual(true, candidate.IsCurrent, "codex broken thread candidate current");
+            AssertEqual(2, candidate.FailureCount, "codex broken thread candidate failures");
+            AssertEqual(true, archivedCandidate.ThreadFound, "codex archived broken thread candidate found");
+            AssertEqual(true, archivedCandidate.IsArchived, "codex archived broken thread candidate archived");
+            AssertEqual(false, staleCandidate.IsArchived, "codex stale broken thread candidate active");
+            AssertEqual(false, staleCandidate.IsCurrent, "codex stale broken thread candidate not current");
+            AssertEqual(true, diagnostics.Findings.Any(f => f.Key == "broken-thread-candidates"), "codex broken thread finding");
+        } finally {
+            TryDeleteCodexDiagnosticsDirectory(root);
+        }
+    }
+
     private static void TestCodexLocalStateDiagnosticsReportsStorageAreas() {
         var root = CreateCodexDiagnosticsTempDirectory();
         try {

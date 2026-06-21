@@ -361,6 +361,10 @@ internal static partial class Program {
             TestCodexLocalStateDiagnosticsHandlesMigrationDefaultValues);
         failed += Run("Codex local state diagnostics normalizes active thread paths",
             TestCodexLocalStateDiagnosticsNormalizesActiveThreadPaths);
+        failed += Run("Codex local state diagnostics recovers thread archive state",
+            TestCodexLocalStateDiagnosticsRecoversThreadArchiveState);
+        failed += Run("Codex local state diagnostics detects broken thread candidates",
+            TestCodexLocalStateDiagnosticsDetectsBrokenThreadCandidates);
         failed += Run("Codex local state diagnostics reports storage areas",
             TestCodexLocalStateDiagnosticsReportsStorageAreas);
         failed += Run("Codex local state cleanup archives stale files",
