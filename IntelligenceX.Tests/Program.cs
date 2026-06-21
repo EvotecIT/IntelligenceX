@@ -615,6 +615,8 @@ internal static partial class Program {
             TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
         failed += Run("Setup workflow upgrade resets model when switching to Claude provider",
             TestSetupWorkflowUpgradeResetsModelWhenSwitchingToClaudeProvider);
+        failed += Run("Setup workflow upgrade migrates legacy latest reviewer release tag",
+            TestSetupWorkflowUpgradeMigratesLegacyLatestReviewerReleaseTag);
         failed += Run("Setup workflow template includes OpenAI account routing pass-through",
             TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
         failed += Run("Setup workflow template includes OpenAI model pass-through",

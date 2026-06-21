@@ -2,19 +2,6 @@ name: Release IntelligenceX Reviewer (Public)
 
 on:
   workflow_dispatch:
-    inputs:
-      rids:
-        description: 'Comma-separated runtime IDs (optional)'
-        required: false
-        default: ''
-      framework:
-        description: 'Target framework (optional)'
-        required: false
-        default: ''
-      configuration:
-        description: 'Build configuration (optional)'
-        required: false
-        default: ''
 
 jobs:
   build:
@@ -41,21 +28,13 @@ jobs:
 
       - name: Publish reviewer
         env:
-          INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ''
-          INTELLIGENCEX_REVIEWER_RIDS: ${{ inputs.rids }}
-          INTELLIGENCEX_REVIEWER_FRAMEWORK: ${{ inputs.framework }}
-          INTELLIGENCEX_REVIEWER_CONFIGURATION: ${{ inputs.configuration }}
           POWERFORGE_ROOT: ${{ github.workspace }}/.powerforge/PSPublishModule
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $env:INTELLIGENCEX_REVIEWER_TOKEN = if ([string]::IsNullOrWhiteSpace($env:INTELLIGENCEX_RELEASE_TOKEN)) {
-            $env:GITHUB_TOKEN
-          } else {
-            $env:INTELLIGENCEX_RELEASE_TOKEN
-          }
+          $env:INTELLIGENCEX_REVIEWER_TOKEN = $env:GITHUB_TOKEN
 
           $arguments = @(
             '-NoProfile',
@@ -70,13 +49,4 @@ jobs:
             '-SkipWorkspaceBuild'
           )
 
-          if (-not [string]::IsNullOrWhiteSpace($env:INTELLIGENCEX_REVIEWER_RIDS)) {
-            $arguments += @('-Runtimes', $env:INTELLIGENCEX_REVIEWER_RIDS)
-          }
-          if (-not [string]::IsNullOrWhiteSpace($env:INTELLIGENCEX_REVIEWER_FRAMEWORK)) {
-            $arguments += @('-Frameworks', $env:INTELLIGENCEX_REVIEWER_FRAMEWORK)
-          }
-          if (-not [string]::IsNullOrWhiteSpace($env:INTELLIGENCEX_REVIEWER_CONFIGURATION)) {
-            $arguments += @('-Configuration', $env:INTELLIGENCEX_REVIEWER_CONFIGURATION)
-          }
           & pwsh @arguments

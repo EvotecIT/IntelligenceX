@@ -163,6 +163,42 @@ jobs:
             "workflow upgrade removes stale openai model");
     }
 
+    private static void TestSetupWorkflowUpgradeMigratesLegacyLatestReviewerReleaseTag() {
+        const string beginMarker = "# INTELLIGENCEX:BEGIN";
+        const string endMarker = "# INTELLIGENCEX:END";
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  __IX_BEGIN__
+  review:
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
+    with:
+      reviewer_release_tag: latest
+      provider: openai
+      model: gpt-5.4
+  __IX_END__
+""";
+        seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
+
+        var upgraded = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
+
+        AssertContainsText(upgraded, "reviewer_release_tag: reviewer-latest",
+            "workflow upgrade migrates legacy latest reviewer release tag");
+        AssertEqual(false, upgraded.Contains("reviewer_release_tag: latest", StringComparison.Ordinal),
+            "workflow upgrade removes legacy latest reviewer release tag");
+
+        var explicitLatest = SetupRunner.BuildWorkflowYamlFromSeedForTests(
+            new[] { "--reviewer-release-tag", "latest" },
+            seed);
+        AssertContainsText(explicitLatest, "reviewer_release_tag: latest",
+            "workflow upgrade preserves explicit latest reviewer release tag override");
+    }
+
     private static int CountOccurrencesInText(string value, string marker) {
         if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(marker)) {
             return 0;

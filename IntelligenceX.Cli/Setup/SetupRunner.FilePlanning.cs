@@ -158,7 +158,9 @@ internal static partial class SetupRunner {
                 settings.ReviewerReleaseRepo = snapshot.ReviewerReleaseRepo!;
             }
             if (!options.ReviewerReleaseTagSet && !string.IsNullOrWhiteSpace(snapshot.ReviewerReleaseTag)) {
-                settings.ReviewerReleaseTag = snapshot.ReviewerReleaseTag!;
+                settings.ReviewerReleaseTag = string.Equals(snapshot.ReviewerReleaseTag, "latest", StringComparison.OrdinalIgnoreCase)
+                    ? DefaultReviewerReleaseTag
+                    : snapshot.ReviewerReleaseTag!;
             }
             if (!options.ReviewerReleaseAssetSet && snapshot.ReviewerReleaseAsset is not null) {
                 settings.ReviewerReleaseAsset = snapshot.ReviewerReleaseAsset;
