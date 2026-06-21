@@ -128,7 +128,7 @@ Inputs are mapped to environment variables to keep YAML minimal.
 
 Use `.github/workflows/release-reviewer.yml`.
 The workflow builds reviewer assets through `Build/release.reviewer.json` and replaces the assets on the stable `reviewer-latest` release tag.
-Token env: `INTELLIGENCEX_REVIEWER_TOKEN` (workflow fallback: `INTELLIGENCEX_RELEASE_TOKEN`, `GITHUB_TOKEN`).
+Token env: `INTELLIGENCEX_REVIEWER_TOKEN` (set from the workflow-scoped `GITHUB_TOKEN`).
 
 ## Resolve stale review threads (local)
 
