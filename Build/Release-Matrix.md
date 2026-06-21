@@ -7,6 +7,7 @@ Use this as the quick "which command do I run?" map.
 | Need | Command | Notes |
 | --- | --- | --- |
 | See what will build/publish | `pwsh ./Build/Build-Project.ps1 -Plan` | safest starting point |
+| Build or publish the main NuGet package | `pwsh ./Build/Build-Project.ps1 -PackagesOnly -PublishNuget` | uses `Build\release.packages.json` through the shared PowerForge lane |
 | Publish packages + supported app/tool targets | `pwsh ./Build/Build-Project.ps1` | unified PowerForge path |
 | Publish reviewer release assets | `pwsh ./Build/Advanced/Build-Reviewer.ps1 -PublishGitHub` | stable `reviewer-latest` release |
 | Produce full client release folder | `pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release` | wraps workspace validation + release staging |

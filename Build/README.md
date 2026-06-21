@@ -64,6 +64,9 @@ pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Style
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -ToolOutputs Portable,Installer
 pwsh ./Build/Build-Project.ps1 -StageRoot ./Artifacts/Releases/demo -SkipChecksums
+pwsh ./Build/Build-Project.ps1 -PackagesOnly -Plan
+pwsh ./Build/Build-Project.ps1 -PackagesOnly
+pwsh ./Build/Build-Project.ps1 -PackagesOnly -PublishNuget
 pwsh ./Build/Advanced/Build-Reviewer.ps1
 pwsh ./Build/Advanced/Build-Reviewer.ps1 -PublishGitHub
 pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release
