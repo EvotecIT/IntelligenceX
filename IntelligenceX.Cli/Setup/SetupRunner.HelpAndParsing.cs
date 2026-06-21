@@ -18,7 +18,7 @@ internal static partial class SetupRunner {
         Console.WriteLine($"  --runs-on <json-array|expression> (default {DefaultRunsOn})");
         Console.WriteLine("  --reviewer-source <source|release> (default release)");
         Console.WriteLine("  --reviewer-release-repo <owner/repo> (default EvotecIT/IntelligenceX)");
-        Console.WriteLine("  --reviewer-release-tag <tag> (default reviewer-latest)");
+        Console.WriteLine($"  --reviewer-release-tag <tag> (default {DefaultReviewerReleaseTag})");
         Console.WriteLine("  --reviewer-release-asset <name>");
         Console.WriteLine("  --reviewer-release-url <url>");
         Console.WriteLine("  --provider <openai|claude|copilot> (default openai)");
