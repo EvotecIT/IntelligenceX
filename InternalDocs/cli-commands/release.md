@@ -15,10 +15,11 @@ intelligencex release notes --from v0.1.0 --to v0.2.0 --version 0.2.0 --commit
 ## Release reviewer assets
 
 ```powershell
-intelligencex release reviewer --tag reviewer-$(Get-Date -Format yyyyMMddHHmmss)
+pwsh ./Build/Advanced/Build-Reviewer.ps1
 ```
 
 ## Notes
 
 - Release notes can run in CI via `.github/workflows/release-notes.yml`.
-- Reviewer releases use `release-reviewer.yml` and build multi‑RID assets.
+- Reviewer releases use `.github/workflows/release-reviewer.yml` and `Build/release.reviewer.json`.
+- Published reviewer assets are replaced on the stable `reviewer-latest` release tag.

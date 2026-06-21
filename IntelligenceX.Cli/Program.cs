@@ -159,7 +159,6 @@ internal static partial class Program {
         var rest = args.Skip(1).ToArray();
         return command switch {
             "notes" => await ReleaseNotes.ReleaseNotesRunner.RunAsync(rest).ConfigureAwait(false),
-            "reviewer" => await Release.ReleaseReviewerRunner.RunAsync(rest).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintReleaseHelpReturn(),
             _ => PrintReleaseHelpReturn()
         };

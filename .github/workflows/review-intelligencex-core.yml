@@ -30,7 +30,7 @@ on:
       reviewer_release_tag:
         description: 'Release tag (or latest)'
         required: false
-        default: 'latest'
+        default: 'reviewer-latest'
         type: string
       reviewer_release_asset:
         description: 'Asset name (optional, defaults by OS)'

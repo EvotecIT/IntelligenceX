@@ -11,7 +11,7 @@ internal static partial class SetupRunner {
         public string RunsOn { get; set; } = DefaultRunsOn;
         public string ReviewerSource { get; set; } = "release";
         public string ReviewerReleaseRepo { get; set; } = "EvotecIT/IntelligenceX";
-        public string ReviewerReleaseTag { get; set; } = "latest";
+        public string ReviewerReleaseTag { get; set; } = DefaultReviewerReleaseTag;
         public string? ReviewerReleaseAsset { get; set; }
         public string? ReviewerReleaseUrl { get; set; }
         public string Provider { get; set; } = IntelligenceXDefaults.DefaultProvider;
@@ -41,7 +41,7 @@ internal static partial class SetupRunner {
                 RunsOn = options.RunsOn ?? DefaultRunsOn,
                 ReviewerSource = options.ReviewerSource ?? "release",
                 ReviewerReleaseRepo = options.ReviewerReleaseRepo ?? "EvotecIT/IntelligenceX",
-                ReviewerReleaseTag = options.ReviewerReleaseTag ?? "latest",
+                ReviewerReleaseTag = options.ReviewerReleaseTag ?? DefaultReviewerReleaseTag,
                 ReviewerReleaseAsset = options.ReviewerReleaseAsset,
                 ReviewerReleaseUrl = options.ReviewerReleaseUrl,
                 Provider = options.Provider ?? IntelligenceXDefaults.DefaultProvider,

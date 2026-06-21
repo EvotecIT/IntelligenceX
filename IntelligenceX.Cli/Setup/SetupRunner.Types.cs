@@ -9,6 +9,7 @@ namespace IntelligenceX.Cli.Setup;
 internal static partial class SetupRunner {
     private const string DefaultActionsRepo = "evotecit/intelligencex";
     private const string DefaultActionsRef = "fb72170966841eb32cfcb00c46461bbf8f46233f";
+    private const string DefaultReviewerReleaseTag = "reviewer-latest";
     private const string DefaultRunsOn =
         "${{ github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true' && '[\"self-hosted\",\"ubuntu\"]' || '[\"ubuntu-latest\"]' }}";
 
@@ -37,7 +38,7 @@ internal static partial class SetupRunner {
         public bool OpenAIAccountFailoverSet { get; set; }
         public string? ReviewerSource { get; set; } = "release";
         public string? ReviewerReleaseRepo { get; set; } = "EvotecIT/IntelligenceX";
-        public string? ReviewerReleaseTag { get; set; } = "latest";
+        public string? ReviewerReleaseTag { get; set; } = DefaultReviewerReleaseTag;
         public string? ReviewerReleaseAsset { get; set; }
         public string? ReviewerReleaseUrl { get; set; }
         public bool IncludeIssueComments { get; set; } = true;

@@ -1,4 +1,4 @@
-# Publish IntelligenceX.Reviewer for multiple runtimes
+# Build IntelligenceX.Reviewer release assets through the unified PowerForge path.
 
 [CmdletBinding()] param(
     [ValidateSet('Debug','Release')]
@@ -8,21 +8,37 @@
 
     [string[]] $Runtimes = @('win-x64','linux-x64','osx-x64'),
 
-    [switch] $SelfContained = $true,
-    [switch] $SingleFile = $true,
-    [switch] $Trim,
+    [string] $StageRoot,
 
-    [switch] $Zip = $true
+    [switch] $PublishGitHub
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repo = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$publishScript = Join-Path $repo 'Build/Advanced/Publish-Reviewer.ps1'
-if (-not (Test-Path $publishScript)) { throw "Publish script not found: $publishScript" }
+$buildProjectScript = Join-Path $repo 'Build\Build-Project.ps1'
+$configPath = Join-Path $repo 'Build\release.reviewer.json'
 
-foreach ($rid in $Runtimes) {
-    & pwsh -File $publishScript -Runtime $rid -Configuration $Configuration -Framework $Framework -SelfContained:$SelfContained -SingleFile:$SingleFile -Trim:$Trim -Zip:$Zip
-    if ($LASTEXITCODE -ne 0) { throw "Publish failed for $rid ($LASTEXITCODE)" }
+$parameters = @{
+    ConfigPath = $configPath
+    ToolsOnly = $true
+    Targets = @('IntelligenceX.Reviewer')
+    Runtimes = $Runtimes
+    Frameworks = @($Framework)
+    Styles = @('FrameworkDependent')
+    Configuration = $Configuration
+    SkipWorkspaceBuild = $true
+}
+
+if (-not [string]::IsNullOrWhiteSpace($StageRoot)) {
+    $parameters.StageRoot = $StageRoot
+}
+if ($PublishGitHub) {
+    $parameters.PublishToolGitHub = $true
+}
+
+& pwsh -NoProfile -File $buildProjectScript @parameters
+if ($LASTEXITCODE -ne 0) {
+    throw "Reviewer release build failed with exit code ${LASTEXITCODE}."
 }

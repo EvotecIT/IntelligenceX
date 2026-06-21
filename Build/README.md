@@ -27,6 +27,9 @@ Use these as the main entrypoints:
   - now declares the release-facing `UploadReady` layout, unified repo GitHub release publishing, and default Winget manifest generation for Tray + Chat
 - `release.packages.json`
   - package-only unified release config used automatically by `Build-Project.ps1 -PackagesOnly` when you stay on the default config path
+- `release.reviewer.json`
+  - reviewer-only PowerForge release config used by `release-reviewer.yml`
+  - publishes stable multi-RID reviewer assets to the `reviewer-latest` release tag when `-PublishToolGitHub` is used
 - `Run-Project.ps1`
   - unified local runtime entrypoint for `Chat.Host`, `Chat.App`, `Chat.Service`, `Tray`, and `Cli`
   - prints the resolved PowerForge command so it is easier to see what will actually run
@@ -61,6 +64,8 @@ pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Style
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -ToolOutputs Portable,Installer
 pwsh ./Build/Build-Project.ps1 -StageRoot ./Artifacts/Releases/demo -SkipChecksums
+pwsh ./Build/Advanced/Build-Reviewer.ps1
+pwsh ./Build/Advanced/Build-Reviewer.ps1 -PublishGitHub
 pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release
 pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release -OutDir ./Artifacts/UploadReady/manual-smoke
 pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release -SignInstaller -Publish
@@ -103,6 +108,9 @@ Keep these specialist helpers:
 - `Advanced\Publish-Plugins.ps1`
   - thin wrapper over `powerforge plugin pack`
   - shares the repo plugin/package catalog in `Build\powerforge.plugins.json`
+- `Advanced\Build-Reviewer.ps1`
+  - thin compatibility wrapper over `Build-Project.ps1 -ConfigPath Build\release.reviewer.json`
+  - use `-PublishGitHub` to replace assets on the stable `reviewer-latest` release
 - `Advanced\Package-Portable.ps1`
   - fallback/manual portable bundle helper
   - can smoke-test the finished bundle with `-SmokeScenarioPreset runtime-only` or `-SmokeScenarioPreset runtime-and-toolful`

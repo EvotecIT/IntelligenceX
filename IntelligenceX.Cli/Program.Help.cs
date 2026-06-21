@@ -85,7 +85,6 @@ internal static partial class Program {
         Console.WriteLine();
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");
-        Console.WriteLine("  release reviewer Build and publish reviewer release assets");
         Console.WriteLine();
         Console.WriteLine("Model commands:");
         Console.WriteLine("  models list      List available models and supported options");
@@ -151,7 +150,6 @@ internal static partial class Program {
     private static void PrintReleaseHelp() {
         Console.WriteLine("Release commands:");
         Console.WriteLine("  release notes    Generate release notes from git tags/commits");
-        Console.WriteLine("  release reviewer Build and publish reviewer release assets");
         Console.WriteLine("  release help");
     }
 }
