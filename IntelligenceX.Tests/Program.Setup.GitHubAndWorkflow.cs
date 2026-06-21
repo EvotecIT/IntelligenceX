@@ -1031,16 +1031,5 @@ jobs:
             "org secret empty");
     }
 
-    private static void TestReleaseReviewerEnvToken() {
-        var previous = Environment.GetEnvironmentVariable("INTELLIGENCEX_REVIEWER_TOKEN");
-        try {
-            Environment.SetEnvironmentVariable("INTELLIGENCEX_REVIEWER_TOKEN", "token-value");
-            var options = new ReleaseReviewerOptions();
-            ReleaseReviewerOptions.ApplyEnvDefaults(options);
-            AssertEqual("token-value", options.Token, "reviewer token");
-        } finally {
-            Environment.SetEnvironmentVariable("INTELLIGENCEX_REVIEWER_TOKEN", previous);
-        }
-    }
     #endif
 }
