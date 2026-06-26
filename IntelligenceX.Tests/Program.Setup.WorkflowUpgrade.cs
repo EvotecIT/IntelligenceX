@@ -197,6 +197,16 @@ jobs:
             seed);
         AssertContainsText(explicitLatest, "reviewer_release_tag: latest",
             "workflow upgrade preserves explicit latest reviewer release tag override");
+
+        var customRepoSeed = seed.Replace(
+            "      reviewer_release_tag: latest",
+            "      reviewer_release_repo: Example/ReviewerFork\n      reviewer_release_tag: latest",
+            StringComparison.Ordinal);
+        var customRepoUpgrade = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), customRepoSeed);
+        AssertContainsText(customRepoUpgrade, "reviewer_release_repo: Example/ReviewerFork",
+            "workflow upgrade preserves custom reviewer release repo");
+        AssertContainsText(customRepoUpgrade, "reviewer_release_tag: latest",
+            "workflow upgrade preserves latest tag for custom reviewer release repo");
     }
 
     private static int CountOccurrencesInText(string value, string marker) {

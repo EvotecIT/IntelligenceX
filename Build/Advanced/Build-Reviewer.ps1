@@ -38,7 +38,4 @@ if ($PublishGitHub) {
     $parameters.PublishToolGitHub = $true
 }
 
-& pwsh -NoProfile -File $buildProjectScript @parameters
-if ($LASTEXITCODE -ne 0) {
-    throw "Reviewer release build failed with exit code ${LASTEXITCODE}."
-}
+& $buildProjectScript @parameters

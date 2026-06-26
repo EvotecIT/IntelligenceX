@@ -159,6 +159,7 @@ internal static partial class SetupRunner {
             }
             if (!options.ReviewerReleaseTagSet && !string.IsNullOrWhiteSpace(snapshot.ReviewerReleaseTag)) {
                 settings.ReviewerReleaseTag = string.Equals(snapshot.ReviewerReleaseTag, "latest", StringComparison.OrdinalIgnoreCase)
+                    && IsDefaultReviewerReleaseRepo(settings.ReviewerReleaseRepo)
                     ? DefaultReviewerReleaseTag
                     : snapshot.ReviewerReleaseTag!;
             }
@@ -222,6 +223,10 @@ internal static partial class SetupRunner {
         }
 
         return settings;
+    }
+
+    private static bool IsDefaultReviewerReleaseRepo(string? repository) {
+        return string.Equals(repository?.Trim(), DefaultReviewerReleaseRepo, StringComparison.OrdinalIgnoreCase);
     }
 
     private static ConfigSettings ResolveConfigSettings(SetupOptions options, string? existingContent, out bool parsed) {

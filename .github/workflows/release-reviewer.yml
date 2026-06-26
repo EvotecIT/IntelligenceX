@@ -3,6 +3,10 @@ name: Release IntelligenceX Reviewer (Public)
 on:
   workflow_dispatch:
 
+concurrency:
+  group: release-reviewer-${{ github.repository }}-reviewer-latest
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}

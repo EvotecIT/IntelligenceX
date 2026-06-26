@@ -10,7 +10,7 @@ internal static partial class SetupRunner {
         public bool UseLocalReusableWorkflow { get; set; }
         public string RunsOn { get; set; } = DefaultRunsOn;
         public string ReviewerSource { get; set; } = "release";
-        public string ReviewerReleaseRepo { get; set; } = "EvotecIT/IntelligenceX";
+        public string ReviewerReleaseRepo { get; set; } = DefaultReviewerReleaseRepo;
         public string ReviewerReleaseTag { get; set; } = DefaultReviewerReleaseTag;
         public string? ReviewerReleaseAsset { get; set; }
         public string? ReviewerReleaseUrl { get; set; }
@@ -40,7 +40,7 @@ internal static partial class SetupRunner {
                 UseLocalReusableWorkflow = false,
                 RunsOn = options.RunsOn ?? DefaultRunsOn,
                 ReviewerSource = options.ReviewerSource ?? "release",
-                ReviewerReleaseRepo = options.ReviewerReleaseRepo ?? "EvotecIT/IntelligenceX",
+                ReviewerReleaseRepo = options.ReviewerReleaseRepo ?? DefaultReviewerReleaseRepo,
                 ReviewerReleaseTag = options.ReviewerReleaseTag ?? DefaultReviewerReleaseTag,
                 ReviewerReleaseAsset = options.ReviewerReleaseAsset,
                 ReviewerReleaseUrl = options.ReviewerReleaseUrl,
