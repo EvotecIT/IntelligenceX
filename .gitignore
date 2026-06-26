@@ -387,6 +387,7 @@ build/*
 !Build/Release-Matrix.md
 !Build/release.json
 !Build/release.packages.json
+!Build/release.reviewer.json
 !Build/powerforge.plugins.json
 !Build/powerforge.dotnetpublish.json
 !Build/Run-Project.ps1
@@ -395,10 +396,6 @@ build/*
 !Build/Store/Prepare-TrayStoreSubmission.ps1
 !Build/store.submit.tray.example.json
 !Build/workspace.validation.json
-
-# Allow release command sources under IntelligenceX.Cli/Release
-!IntelligenceX.Cli/Release/
-!IntelligenceX.Cli/Release/**
 
 /.idea/
 

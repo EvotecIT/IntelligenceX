@@ -28,9 +28,9 @@ on:
         default: 'EvotecIT/IntelligenceX'
         type: string
       reviewer_release_tag:
-        description: 'Release tag (or latest)'
+        description: 'Release tag containing reviewer assets'
         required: false
-        default: 'latest'
+        default: 'reviewer-latest'
         type: string
       reviewer_release_asset:
         description: 'Asset name (optional, defaults by OS)'

@@ -7,7 +7,9 @@ Use this as the quick "which command do I run?" map.
 | Need | Command | Notes |
 | --- | --- | --- |
 | See what will build/publish | `pwsh ./Build/Build-Project.ps1 -Plan` | safest starting point |
+| Build or publish the main NuGet package | `pwsh ./Build/Build-Project.ps1 -PackagesOnly -PublishNuget` | uses `Build\release.packages.json` through the shared PowerForge lane |
 | Publish packages + supported app/tool targets | `pwsh ./Build/Build-Project.ps1` | unified PowerForge path |
+| Publish reviewer release assets | `pwsh ./Build/Advanced/Build-Reviewer.ps1 -PublishGitHub` | stable `reviewer-latest` release |
 | Produce full client release folder | `pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release` | wraps workspace validation + release staging |
 | Run local apps/tools | `pwsh ./Build/Run-Project.ps1 -ListTargets` | then pick `-Target` |
 
@@ -51,6 +53,7 @@ Normal `Frontend app` release stays on the unified PowerForge path.
 These are still valid, but they are no longer the default path:
 
 - `Build/Advanced/Publish-Plugins.ps1`
+- `Build/Advanced/Build-Reviewer.ps1`
 - `Build/Advanced/Package-Portable.ps1`
 - `Build/Advanced/Build-Installer.ps1`
 

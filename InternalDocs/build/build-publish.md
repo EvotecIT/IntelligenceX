@@ -69,6 +69,9 @@ Unified package release flow (recommended first):
 
 ```powershell
 pwsh ./Build/Build-Project.ps1 -Plan
+pwsh ./Build/Build-Project.ps1 -PackagesOnly -Plan
+pwsh ./Build/Build-Project.ps1 -PackagesOnly
+pwsh ./Build/Build-Project.ps1 -PackagesOnly -PublishNuget
 pwsh ./Build/Build-Project.ps1
 pwsh ./Build/Build-Project.ps1 -Configuration Debug -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -IncludeSymbols
@@ -85,6 +88,7 @@ pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Style
 What this covers today:
 - workspace preflight via the unified `release.json -> WorkspaceValidation -> workspace.validation.json` path unless `-SkipWorkspaceBuild`
 - workspace/preflight failures now include hints for `-SkipTests`, `-SkipHarness`, and `-SkipWorkspaceBuild` so it is clearer whether the problem is validation or publish
+- main project NuGet packaging through `Build-Project.ps1 -PackagesOnly`, which switches to `Build\release.packages.json`
 - plugin NuGet packaging through PowerForge unified `release.json`
 - `IntelligenceX.Cli`, `IntelligenceX.Tray`, `IntelligenceX.Chat.Host`, `IntelligenceX.Chat.Service`, and `IntelligenceX.Chat.App` publish/zip through PowerForge DotNetPublish
 - `IntelligenceX.Chat.App` portable publish composes the client bundle through PowerForge, including the service sidecar, plugin payload, helper launchers, bundle metadata, zip, and WiX MSI

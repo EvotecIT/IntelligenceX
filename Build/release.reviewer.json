@@ -1,0 +1,68 @@
+{
+  "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/main/Schemas/powerforge.release.schema.json",
+  "SchemaVersion": 1,
+  "Tools": {
+    "DotNetPublish": {
+      "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/main/Schemas/powerforge.dotnetpublish.schema.json",
+      "SchemaVersion": 1,
+      "Projects": [
+        {
+          "Id": "reviewer",
+          "Path": "IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj",
+          "Group": "reviewer"
+        }
+      ],
+      "DotNet": {
+        "ProjectRoot": "..",
+        "Configuration": "Release",
+        "Restore": true,
+        "Build": true,
+        "NoRestoreInPublish": true,
+        "NoBuildInPublish": true
+      },
+      "Targets": [
+        {
+          "Name": "IntelligenceX.Reviewer",
+          "ProjectId": "reviewer",
+          "Kind": "Cli",
+          "Publish": {
+            "Framework": "net8.0",
+            "Styles": [
+              "FrameworkDependent"
+            ],
+            "Runtimes": [
+              "linux-x64",
+              "win-x64",
+              "osx-x64"
+            ],
+            "OutputPath": "Artifacts/IntelligenceX.Reviewer/{rid}/{framework}/{style}",
+            "Zip": true,
+            "ZipNameTemplate": "IntelligenceX.Reviewer-{rid}.zip",
+            "MsBuildProperties": {
+              "SelfContained": "false",
+              "PublishSelfContained": "false",
+              "PublishSingleFile": "false"
+            }
+          }
+        }
+      ],
+      "Outputs": {
+        "ManifestJsonPath": "Artifacts/IntelligenceX.Reviewer/manifest.json",
+        "ManifestTextPath": "Artifacts/IntelligenceX.Reviewer/manifest.txt",
+        "ChecksumsPath": "Artifacts/IntelligenceX.Reviewer/SHA256SUMS.txt",
+        "RunReportPath": "Artifacts/IntelligenceX.Reviewer/run-report.json"
+      }
+    },
+    "GitHub": {
+      "Publish": false,
+      "Owner": "EvotecIT",
+      "Repository": "IntelligenceX",
+      "TokenEnvName": "INTELLIGENCEX_REVIEWER_TOKEN",
+      "GenerateReleaseNotes": false,
+      "IsPreRelease": false,
+      "ReplaceExistingAssets": true,
+      "TagTemplate": "reviewer-latest",
+      "ReleaseNameTemplate": "IntelligenceX Reviewer reviewer-latest"
+    }
+  }
+}

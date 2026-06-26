@@ -27,9 +27,9 @@
       "WebsiteArtifacts"
     ],
     "Configuration": "Release",
-    "StagingPath": "Artifacts/ProjectBuild",
+    "StagingPath": "../Artifacts/ProjectBuild",
     "CleanStaging": true,
-    "PlanOutputPath": "Artifacts/ProjectBuild/project.build.plan.json",
+    "PlanOutputPath": "../Artifacts/ProjectBuild/project.build.plan.json",
     "UpdateVersions": true,
     "Build": true,
     "PublishNuget": false,

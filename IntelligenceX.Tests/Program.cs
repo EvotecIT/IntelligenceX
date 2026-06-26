@@ -615,6 +615,8 @@ internal static partial class Program {
             TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
         failed += Run("Setup workflow upgrade resets model when switching to Claude provider",
             TestSetupWorkflowUpgradeResetsModelWhenSwitchingToClaudeProvider);
+        failed += Run("Setup workflow upgrade migrates legacy latest reviewer release tag",
+            TestSetupWorkflowUpgradeMigratesLegacyLatestReviewerReleaseTag);
         failed += Run("Setup workflow template includes OpenAI account routing pass-through",
             TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
         failed += Run("Setup workflow template includes OpenAI model pass-through",
@@ -743,7 +745,6 @@ internal static partial class Program {
         failed += Run("GitHub repo client dispose ownership semantics", TestGitHubRepoClientDisposeOwnershipSemantics);
         failed += Run("GitHub repo client rejects use after dispose", TestGitHubRepoClientRejectsUseAfterDispose);
         failed += Run("GitHub secrets reject empty value", TestGitHubSecretsRejectEmptyValue);
-        failed += Run("Release reviewer env token", TestReleaseReviewerEnvToken);
         failed += Run("CI path safety rejects non-existent directory leaf", TestCiPathSafetyUnderRootPhysicalRejectsNonexistentDirectoryLeaf);
         failed += Run("CI path safety ensure-safe-dir allows new leaf", TestCiPathSafetyTryEnsureSafeDirectoryAllowsNewDirectoryLeaf);
         failed += Run("CI path safety handles trailing separators", TestCiPathSafetyUnderRootPhysicalTrailingSeparators);

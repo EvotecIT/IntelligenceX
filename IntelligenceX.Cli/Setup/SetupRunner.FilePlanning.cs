@@ -158,7 +158,10 @@ internal static partial class SetupRunner {
                 settings.ReviewerReleaseRepo = snapshot.ReviewerReleaseRepo!;
             }
             if (!options.ReviewerReleaseTagSet && !string.IsNullOrWhiteSpace(snapshot.ReviewerReleaseTag)) {
-                settings.ReviewerReleaseTag = snapshot.ReviewerReleaseTag!;
+                settings.ReviewerReleaseTag = string.Equals(snapshot.ReviewerReleaseTag, "latest", StringComparison.OrdinalIgnoreCase)
+                    && IsDefaultReviewerReleaseRepo(settings.ReviewerReleaseRepo)
+                    ? DefaultReviewerReleaseTag
+                    : snapshot.ReviewerReleaseTag!;
             }
             if (!options.ReviewerReleaseAssetSet && snapshot.ReviewerReleaseAsset is not null) {
                 settings.ReviewerReleaseAsset = snapshot.ReviewerReleaseAsset;
@@ -220,6 +223,10 @@ internal static partial class SetupRunner {
         }
 
         return settings;
+    }
+
+    private static bool IsDefaultReviewerReleaseRepo(string? repository) {
+        return string.Equals(repository?.Trim(), DefaultReviewerReleaseRepo, StringComparison.OrdinalIgnoreCase);
     }
 
     private static ConfigSettings ResolveConfigSettings(SetupOptions options, string? existingContent, out bool parsed) {
