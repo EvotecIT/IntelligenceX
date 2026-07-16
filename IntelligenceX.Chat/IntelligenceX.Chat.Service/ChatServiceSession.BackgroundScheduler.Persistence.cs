@@ -146,7 +146,6 @@ internal sealed partial class ChatServiceSession {
             _backgroundSchedulerRequeuedExecutionCount = Math.Max(0, store.RequeuedExecutionCount);
             _backgroundSchedulerReleasedExecutionCount = Math.Max(0, store.ReleasedExecutionCount);
             _backgroundSchedulerConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
-                store.ConsecutiveFailureCount,
                 normalizedFailureEvents.Length);
             _backgroundSchedulerFailureStreakEvents.Clear();
             _backgroundSchedulerFailureStreakEvents.AddRange(normalizedFailureEvents);
@@ -266,7 +265,7 @@ internal sealed partial class ChatServiceSession {
                 CompletedExecutionCount = Math.Max(0, _backgroundSchedulerCompletedExecutionCount),
                 RequeuedExecutionCount = Math.Max(0, _backgroundSchedulerRequeuedExecutionCount),
                 ReleasedExecutionCount = Math.Max(0, _backgroundSchedulerReleasedExecutionCount),
-                ConsecutiveFailureCount = Math.Max(0, _backgroundSchedulerConsecutiveFailureCount),
+                ConsecutiveFailureCount = _backgroundSchedulerFailureStreakEvents.Count,
                 FailureStreakEvents = CloneBackgroundSchedulerFailureEvents(_backgroundSchedulerFailureStreakEvents),
                 PausedUntilUtcTicks = Math.Max(0, _backgroundSchedulerPausedUntilUtcTicks),
                 PauseReason = NormalizeBackgroundSchedulerActivityText(_backgroundSchedulerPauseReason, maxLength: 120),
@@ -493,7 +492,6 @@ internal sealed partial class ChatServiceSession {
             store.LastFailureUtcTicks,
             store.LastSuccessUtcTicks);
         store.ConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
-            store.ConsecutiveFailureCount,
             store.FailureStreakEvents.Length);
         store.RecentActivity = NormalizeBackgroundSchedulerActivities(store.RecentActivity);
     }
@@ -516,7 +514,6 @@ internal sealed partial class ChatServiceSession {
             RequeuedExecutionCount = Math.Max(0, source.RequeuedExecutionCount),
             ReleasedExecutionCount = Math.Max(0, source.ReleasedExecutionCount),
             ConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
-                source.ConsecutiveFailureCount,
                 failureEvents.Length),
             FailureStreakEvents = failureEvents,
             PausedUntilUtcTicks = Math.Max(0, source.PausedUntilUtcTicks),

@@ -6,9 +6,9 @@ using System.Linq;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    // The runtime store is capped at 512 KiB. This retains far more events than the
-    // maximum configured auto-pause threshold while keeping malformed or abandoned
-    // stores bounded.
+    // The event window is the failure-streak authority and intentionally saturates.
+    // It is far above the maximum auto-pause threshold while keeping the runtime
+    // store below its 512 KiB read limit. Lifetime outcome counters remain separate.
     internal const int MaxBackgroundSchedulerFailureStreakEvents = 4096;
     private const int MaxBackgroundSchedulerFailureEventIdLength = 40;
 
@@ -22,6 +22,7 @@ internal sealed partial class ChatServiceSession {
                 0,
                 _backgroundSchedulerFailureStreakEvents.Count - MaxBackgroundSchedulerFailureStreakEvents);
         }
+        _backgroundSchedulerConsecutiveFailureCount = _backgroundSchedulerFailureStreakEvents.Count;
     }
 
     private static void MergeBackgroundSchedulerConsecutiveFailureState(
@@ -41,27 +42,8 @@ internal sealed partial class ChatServiceSession {
             merged.LastSuccessUtcTicks);
 
         merged.FailureStreakEvents = mergedEvents;
-        var successResetChanged = desired.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks
-            || persisted.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks;
-        if (successResetChanged
-            || (BackgroundSchedulerFailureEventsAreComplete(persisted)
-                && BackgroundSchedulerFailureEventsAreComplete(baseline)
-                && BackgroundSchedulerFailureEventsAreComplete(desired))) {
-            // An overflowed scalar has no event ordering. Once either writer records
-            // a success, only the bounded events after that success are safe to keep.
-            merged.ConsecutiveFailureCount = mergedEvents.Length;
-            return;
-        }
-
-        merged.ConsecutiveFailureCount = AddBackgroundSchedulerCounterDelta(
-            persisted.ConsecutiveFailureCount,
-            baseline.ConsecutiveFailureCount,
-            desired.ConsecutiveFailureCount);
+        merged.ConsecutiveFailureCount = mergedEvents.Length;
     }
-
-    private static bool BackgroundSchedulerFailureEventsAreComplete(BackgroundSchedulerRuntimeStoreDto store) =>
-        Math.Max(0, store.ConsecutiveFailureCount) <= MaxBackgroundSchedulerFailureStreakEvents
-        && Math.Max(0, store.ConsecutiveFailureCount) == store.FailureStreakEvents.Length;
 
     private static BackgroundSchedulerFailureEventDto[] NormalizeBackgroundSchedulerFailureEvents(
         IEnumerable<BackgroundSchedulerFailureEventDto>? failureEvents,
@@ -121,12 +103,8 @@ internal sealed partial class ChatServiceSession {
             })
             .ToArray();
 
-    private static int ResolveBackgroundSchedulerConsecutiveFailureCount(
-        int consecutiveFailureCount,
-        int failureEventCount) =>
-        Math.Max(0, consecutiveFailureCount) <= MaxBackgroundSchedulerFailureStreakEvents
-            ? Math.Max(0, failureEventCount)
-            : Math.Max(Math.Max(0, consecutiveFailureCount), Math.Max(0, failureEventCount));
+    private static int ResolveBackgroundSchedulerConsecutiveFailureCount(int failureEventCount) =>
+        Math.Clamp(failureEventCount, 0, MaxBackgroundSchedulerFailureStreakEvents);
 
     private static string NormalizeBackgroundSchedulerFailureEventId(string? eventId) {
         var normalized = eventId?.Trim() ?? string.Empty;

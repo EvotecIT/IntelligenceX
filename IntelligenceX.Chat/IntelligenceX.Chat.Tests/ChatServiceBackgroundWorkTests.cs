@@ -4135,7 +4135,9 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         var localSession = new ChatServiceSession(options, Stream.Null);
         var concurrentSession = new ChatServiceSession(options, Stream.Null);
-        Assert.Equal(initialConsecutiveFailureCount, localSession.BuildBackgroundSchedulerSummaryForTesting().ConsecutiveFailureCount);
+        Assert.Equal(
+            ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents,
+            localSession.BuildBackgroundSchedulerSummaryForTesting().ConsecutiveFailureCount);
         var firstFailureTicks = DateTime.UtcNow.AddMinutes(-3).Ticks;
         var resetSuccessTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
         var secondFailureTicks = DateTime.UtcNow.AddMinutes(-1).Ticks;

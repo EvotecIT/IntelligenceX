@@ -632,14 +632,12 @@ internal sealed partial class ChatServiceSession {
                 case BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure:
                     _backgroundSchedulerLastFailureUtcTicks = recordedTicks;
                     _backgroundSchedulerRequeuedExecutionCount++;
-                    _backgroundSchedulerConsecutiveFailureCount++;
                     RememberBackgroundSchedulerFailureEventNoLock(recordedTicks);
                     break;
                 case BackgroundSchedulerIterationOutcomeKind.ReleasedAfterEmptyOutput:
                 case BackgroundSchedulerIterationOutcomeKind.ReleasedAfterException:
                     _backgroundSchedulerLastFailureUtcTicks = recordedTicks;
                     _backgroundSchedulerReleasedExecutionCount++;
-                    _backgroundSchedulerConsecutiveFailureCount++;
                     RememberBackgroundSchedulerFailureEventNoLock(recordedTicks);
                     break;
             }
