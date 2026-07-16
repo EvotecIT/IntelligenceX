@@ -364,7 +364,7 @@ public sealed class ToolPackBootstrapMetadataTests {
             "net10.0-windows");
         var trustedAssemblySourcePath = Path.Combine(adPlaygroundOutputRoot, "IntelligenceX.Tools.ADPlayground.dll");
         var trustedDepsSourcePath = Path.Combine(adPlaygroundOutputRoot, "IntelligenceX.Tools.ADPlayground.deps.json");
-        var serviceDependencySourcePath = Path.Combine(AppContext.BaseDirectory, "System.ServiceModel.Primitives.dll");
+        var serviceDependencySourcePath = Assembly.Load(new AssemblyName("System.ServiceModel.Primitives")).Location;
 
         Assert.True(File.Exists(trustedAssemblySourcePath), $"Expected trusted assembly '{trustedAssemblySourcePath}' to exist.");
         Assert.True(File.Exists(trustedDepsSourcePath), $"Expected trusted deps file '{trustedDepsSourcePath}' to exist.");
