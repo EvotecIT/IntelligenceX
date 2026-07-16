@@ -23,6 +23,7 @@ internal sealed partial class ChatServiceSession {
     private int _backgroundSchedulerRuntimeStoreRehydratePending;
     private string _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateEmpty;
     private BackgroundSchedulerRuntimeStoreDto? _backgroundSchedulerRuntimeStoreDeferredPersistStore;
+    private bool _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute;
 
     private static string ResolveDefaultBackgroundSchedulerRuntimeStorePath() =>
         ChatServiceJsonFileStore.ResolveDefaultPath("background-scheduler-runtime.json");
@@ -52,12 +53,16 @@ internal sealed partial class ChatServiceSession {
         var nowTicks = DateTime.UtcNow.Ticks;
         var store = readResult.Store;
         BackgroundSchedulerRuntimeStoreDto? deferredPersistStore;
+        bool deferredPersistIsAbsolute;
         lock (_backgroundSchedulerTelemetryLock) {
             deferredPersistStore = _backgroundSchedulerRuntimeStoreDeferredPersistStore;
+            deferredPersistIsAbsolute = _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute;
         }
 
         if (deferredPersistStore is not null) {
-            store = MergeBackgroundSchedulerRuntimeStore(store, deferredPersistStore);
+            store = deferredPersistIsAbsolute
+                ? CloneBackgroundSchedulerRuntimeStore(deferredPersistStore)
+                : MergeBackgroundSchedulerRuntimeStore(store, deferredPersistStore);
         }
 
         if (store is null) {
@@ -114,8 +119,10 @@ internal sealed partial class ChatServiceSession {
             var retryPending = false;
             lock (_backgroundSchedulerTelemetryLock) {
                 if (_backgroundSchedulerRuntimeStoreDeferredPersistStore is not null
+                    && _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute == deferredPersistIsAbsolute
                     && BackgroundSchedulerRuntimeStoreEquals(_backgroundSchedulerRuntimeStoreDeferredPersistStore, deferredPersistStore)) {
                     _backgroundSchedulerRuntimeStoreDeferredPersistStore = null;
+                    _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute = false;
                 }
                 retryPending = _backgroundSchedulerRuntimeStoreDeferredPersistStore is not null;
                 _backgroundSchedulerRuntimeStoreLoadState = retryPending
@@ -131,6 +138,7 @@ internal sealed partial class ChatServiceSession {
         Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 1);
         lock (_backgroundSchedulerTelemetryLock) {
             _backgroundSchedulerRuntimeStoreDeferredPersistStore = store;
+            _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute = true;
             _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateDeferred;
         }
     }
@@ -148,14 +156,19 @@ internal sealed partial class ChatServiceSession {
         var store = CaptureBackgroundSchedulerRuntimeStoreSnapshot();
         if (Volatile.Read(ref _backgroundSchedulerRuntimeStoreRehydratePending) != 0) {
             lock (_backgroundSchedulerTelemetryLock) {
+                var preserveAbsoluteSemantics = _backgroundSchedulerRuntimeStoreDeferredPersistStore is not null
+                    && _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute;
                 _backgroundSchedulerRuntimeStoreDeferredPersistStore = store;
+                _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute = preserveAbsoluteSemantics;
             }
             return;
         }
 
         BackgroundSchedulerRuntimeStoreDto? deferredBeforePersist;
+        bool deferredBeforePersistIsAbsolute;
         lock (_backgroundSchedulerTelemetryLock) {
             deferredBeforePersist = _backgroundSchedulerRuntimeStoreDeferredPersistStore;
+            deferredBeforePersistIsAbsolute = _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute;
         }
 
         var persisted = TryPersistBackgroundSchedulerRuntimeStoreSnapshot(
@@ -168,11 +181,14 @@ internal sealed partial class ChatServiceSession {
         lock (_backgroundSchedulerTelemetryLock) {
             if (!persisted) {
                 _backgroundSchedulerRuntimeStoreDeferredPersistStore = store;
+                _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute = true;
                 _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateDeferred;
             } else if (deferredBeforePersist is not null
                 && _backgroundSchedulerRuntimeStoreDeferredPersistStore is not null
+                && _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute == deferredBeforePersistIsAbsolute
                 && BackgroundSchedulerRuntimeStoreEquals(_backgroundSchedulerRuntimeStoreDeferredPersistStore, deferredBeforePersist)) {
                 _backgroundSchedulerRuntimeStoreDeferredPersistStore = null;
+                _backgroundSchedulerRuntimeStoreDeferredPersistIsAbsolute = false;
             }
 
             if (persisted && _backgroundSchedulerRuntimeStoreDeferredPersistStore is not null) {

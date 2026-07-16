@@ -3875,6 +3875,47 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerRuntimeState_DoesNotDoubleCountAbsoluteSnapshotDuringRetry() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var recordedTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"completed","lastOutcomeUtcTicks":{{recordedTicks}},"lastSuccessUtcTicks":{{recordedTicks}},"completedExecutionCount":10,"recentActivity":[]}
+            """);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        Assert.Equal(10, session.BuildBackgroundSchedulerSummaryForTesting().CompletedExecutionCount);
+
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            session.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+                TimeSpan.FromSeconds(45),
+                "policy=absolute_retry");
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        var recovered = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.False(recovered.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", recovered.RuntimeStoreLoadState);
+        Assert.Equal(10, recovered.CompletedExecutionCount);
+        Assert.True(recovered.AdaptiveIdleActive);
+        Assert.Contains("policy=absolute_retry", recovered.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+
+        var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(10, restarted.CompletedExecutionCount);
+        Assert.True(restarted.AdaptiveIdleActive);
+        Assert.Contains("policy=absolute_retry", restarted.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task BackgroundSchedulerRuntimeState_ClearsAdaptiveIdleMetadataAfterWorkResumesAcrossRestart() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         const string threadId = "thread-background-scheduler-adaptive-idle-clear-after-work";
