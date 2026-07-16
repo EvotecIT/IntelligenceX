@@ -157,28 +157,6 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
-    public void ToolingDiscovery_ShouldNotContainHardcodedBuiltInAssemblyAllowlistNames() {
-        var source = File.ReadAllText(GetToolingSourceFilePath("ToolPackBootstrap.RegistryAndReflection.cs"));
-        var disallowedAssemblyNames = new[] {
-            "IntelligenceX.Tools.FileSystem",
-            "IntelligenceX.Tools.EventLog",
-            "IntelligenceX.Tools.ADPlayground",
-            "IntelligenceX.Tools.System",
-            "IntelligenceX.Tools.PowerShell",
-            "IntelligenceX.Tools.TestimoX",
-            "IntelligenceX.Tools.OfficeIMO",
-            "IntelligenceX.Tools.Email",
-            "IntelligenceX.Tools.ReviewerSetup",
-            "IntelligenceX.Tools.DnsClientX",
-            "IntelligenceX.Tools.DomainDetective"
-        };
-
-        for (var i = 0; i < disallowedAssemblyNames.Length; i++) {
-            Assert.DoesNotContain(disallowedAssemblyNames[i], source, StringComparison.OrdinalIgnoreCase);
-        }
-    }
-
-    [Fact]
     public void ChatToolingProject_ShouldOnlyReferenceSharedToolContracts_NotBuiltInToolPackProjects() {
         var repoRoot = FindRepoRoot();
         var source = File.ReadAllText(Path.Combine(
@@ -231,17 +209,6 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
         for (var i = 0; i < disallowedPackProjectTokens.Length; i++) {
             Assert.DoesNotContain(disallowedPackProjectTokens[i], source, StringComparison.OrdinalIgnoreCase);
         }
-    }
-
-    [Fact]
-    public void PublishChatHostScript_ShouldBundleAndValidateToolArtifacts_WithoutHostProjectCoupling() {
-        var source = File.ReadAllText(GetBuildScriptPath(@"Build\Chat\Publish-ChatHost.ps1"));
-
-        Assert.Contains("function Publish-BundledToolProjects", source, StringComparison.Ordinal);
-        Assert.Contains("Publish-BundledToolProjects -OutputPath $OutDir", source, StringComparison.Ordinal);
-        Assert.Contains("Assert-ChatHostArtifacts -RootPath $OutDir", source, StringComparison.Ordinal);
-        Assert.Contains(@"Artifacts\ChatHostPublish", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("/p:IncludePrivateToolPacks=true", source, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

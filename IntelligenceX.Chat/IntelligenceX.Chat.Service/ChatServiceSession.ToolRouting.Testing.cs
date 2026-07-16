@@ -38,6 +38,10 @@ internal sealed partial class ChatServiceSession {
         PersistToolRoutingStatsSnapshot();
     }
 
+    internal void ClearToolRoutingCachesForTesting(bool preserveConversationState = false) {
+        ClearToolRoutingCaches(preserveConversationState);
+    }
+
     internal void UpdateToolRoutingStatsForTesting(IReadOnlyList<ToolCall> calls, IReadOnlyList<ToolOutputDto> outputs) {
         ArgumentNullException.ThrowIfNull(calls);
         ArgumentNullException.ThrowIfNull(outputs);
