@@ -49,10 +49,6 @@ internal sealed partial class ChatServiceSession {
             _backgroundSchedulerRuntimeStoreLoadState = readResult.LoadState;
         }
 
-        if (readResult.Store is null) {
-            return;
-        }
-
         var nowTicks = DateTime.UtcNow.Ticks;
         var store = readResult.Store;
         BackgroundSchedulerRuntimeStoreDto? deferredPersistStore;
@@ -115,17 +111,27 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (TryPersistBackgroundSchedulerRuntimeStoreSnapshot(path, store)) {
+            var retryPending = false;
             lock (_backgroundSchedulerTelemetryLock) {
                 if (_backgroundSchedulerRuntimeStoreDeferredPersistStore is not null
                     && BackgroundSchedulerRuntimeStoreEquals(_backgroundSchedulerRuntimeStoreDeferredPersistStore, deferredPersistStore)) {
                     _backgroundSchedulerRuntimeStoreDeferredPersistStore = null;
                 }
+                retryPending = _backgroundSchedulerRuntimeStoreDeferredPersistStore is not null;
+                _backgroundSchedulerRuntimeStoreLoadState = retryPending
+                    ? BackgroundSchedulerRuntimeStoreLoadStateDeferred
+                    : BackgroundSchedulerRuntimeStoreLoadStateLoaded;
+            }
+            if (retryPending) {
+                Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 1);
             }
             return;
         }
 
+        Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 1);
         lock (_backgroundSchedulerTelemetryLock) {
             _backgroundSchedulerRuntimeStoreDeferredPersistStore = store;
+            _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateDeferred;
         }
     }
 
@@ -147,9 +153,36 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        _ = TryPersistBackgroundSchedulerRuntimeStoreSnapshot(
+        BackgroundSchedulerRuntimeStoreDto? deferredBeforePersist;
+        lock (_backgroundSchedulerTelemetryLock) {
+            deferredBeforePersist = _backgroundSchedulerRuntimeStoreDeferredPersistStore;
+        }
+
+        var persisted = TryPersistBackgroundSchedulerRuntimeStoreSnapshot(
             ResolveBackgroundSchedulerRuntimeStorePath(),
             store);
+        if (!persisted) {
+            Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 1);
+        }
+        var retryPending = false;
+        lock (_backgroundSchedulerTelemetryLock) {
+            if (!persisted) {
+                _backgroundSchedulerRuntimeStoreDeferredPersistStore = store;
+                _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateDeferred;
+            } else if (deferredBeforePersist is not null
+                && _backgroundSchedulerRuntimeStoreDeferredPersistStore is not null
+                && BackgroundSchedulerRuntimeStoreEquals(_backgroundSchedulerRuntimeStoreDeferredPersistStore, deferredBeforePersist)) {
+                _backgroundSchedulerRuntimeStoreDeferredPersistStore = null;
+            }
+
+            if (persisted && _backgroundSchedulerRuntimeStoreDeferredPersistStore is not null) {
+                retryPending = true;
+                _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateDeferred;
+            }
+        }
+        if (retryPending) {
+            Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 1);
+        }
     }
 
     private BackgroundSchedulerRuntimeStoreDto CaptureBackgroundSchedulerRuntimeStoreSnapshot() {
@@ -185,14 +218,12 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryPersistBackgroundSchedulerRuntimeStoreSnapshot(string path, BackgroundSchedulerRuntimeStoreDto store) {
-        return TryWithBackgroundSchedulerRuntimeStoreLock(
+        var lockAcquired = TryWithBackgroundSchedulerRuntimeStoreLock(
             path,
-            static state => {
-                WriteBackgroundSchedulerRuntimeStoreNoThrow(state.Path, state.Store);
-                return true;
-            },
+            static state => WriteBackgroundSchedulerRuntimeStoreNoThrow(state.Path, state.Store),
             (Path: path, Store: store),
-            out _);
+            out var persisted);
+        return lockAcquired && persisted;
     }
 
     private static BackgroundSchedulerRuntimeStoreDto MergeBackgroundSchedulerRuntimeStore(
@@ -356,8 +387,8 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
-    private static void WriteBackgroundSchedulerRuntimeStoreNoThrow(string path, BackgroundSchedulerRuntimeStoreDto store) {
-        ChatServiceJsonFileStore.Write(
+    private static bool WriteBackgroundSchedulerRuntimeStoreNoThrow(string path, BackgroundSchedulerRuntimeStoreDto store) {
+        return ChatServiceJsonFileStore.Write(
             path,
             store,
             static value => JsonSerializer.Serialize(

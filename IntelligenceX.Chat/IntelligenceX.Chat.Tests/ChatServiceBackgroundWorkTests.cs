@@ -3065,7 +3065,7 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
-    public void BackgroundSchedulerControlState_ReportsDurableWriteFailure() {
+    public void BackgroundSchedulerControlState_ReportsDurableWriteFailure_WithoutChangingLiveState() {
         var (options, _, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         var storePath = Path.Combine(persistenceDirectory, "background-scheduler-control.json");
         Directory.CreateDirectory(storePath);
@@ -3074,12 +3074,26 @@ public sealed class ChatServiceBackgroundWorkTests {
             var state = new ChatServiceBackgroundSchedulerControlState(options);
 
             Assert.False(state.SetManualPause(paused: true, pauseSeconds: 300, pauseReason: "must-persist"));
-            Assert.True(state.GetSnapshot(DateTime.UtcNow.Ticks).ManualPauseActive);
+            Assert.False(state.GetSnapshot(DateTime.UtcNow.Ticks).ManualPauseActive);
         } finally {
             if (Directory.Exists(persistenceDirectory)) {
                 Directory.Delete(persistenceDirectory, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void BackgroundSchedulerControlState_MergesIndependentUpdatesFromStaleInstances() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var packWriter = new ChatServiceBackgroundSchedulerControlState(options);
+        var threadWriter = new ChatServiceBackgroundSchedulerControlState(options);
+
+        Assert.True(packWriter.UpdateBlockedPacks("replace", new[] { "system" }));
+        Assert.True(threadWriter.UpdateBlockedThreads("replace", new[] { "thread-muted" }));
+
+        var reader = new ChatServiceBackgroundSchedulerControlState(options);
+        Assert.Equal(new[] { "system" }, reader.GetBlockedPackIds(DateTime.UtcNow.Ticks));
+        Assert.Equal(new[] { "thread-muted" }, reader.GetBlockedThreadIds(DateTime.UtcNow.Ticks));
     }
 
     [Fact]
@@ -3817,6 +3831,47 @@ public sealed class ChatServiceBackgroundWorkTests {
         }
 
         Assert.False(File.Exists(runtimeStorePath));
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_RetriesSnapshotAfterDurableWriteFailure() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var session = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = session.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        Directory.CreateDirectory(runtimeStorePath);
+
+        try {
+            session.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+                TimeSpan.FromSeconds(45),
+                "policy=write_retry");
+
+            var deferred = session.BuildBackgroundSchedulerSummaryForTesting();
+            Assert.True(deferred.RuntimeStoreRehydratePending);
+            Assert.Equal("deferred", deferred.RuntimeStoreLoadState);
+            Assert.True(deferred.AdaptiveIdleActive);
+            Assert.Equal(45, deferred.LastAdaptiveIdleDelaySeconds);
+
+            Directory.Delete(runtimeStorePath);
+
+            var recovered = session.BuildBackgroundSchedulerSummaryForTesting();
+            Assert.False(recovered.RuntimeStoreRehydratePending);
+            Assert.Equal("loaded", recovered.RuntimeStoreLoadState);
+            Assert.True(recovered.AdaptiveIdleActive);
+            Assert.Equal(45, recovered.LastAdaptiveIdleDelaySeconds);
+            Assert.Contains("policy=write_retry", recovered.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+            Assert.True(File.Exists(runtimeStorePath));
+
+            var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+            Assert.False(restarted.RuntimeStoreRehydratePending);
+            Assert.Equal("loaded", restarted.RuntimeStoreLoadState);
+            Assert.True(restarted.AdaptiveIdleActive);
+            Assert.Equal(45, restarted.LastAdaptiveIdleDelaySeconds);
+            Assert.Contains("policy=write_retry", restarted.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(runtimeStorePath)) {
+                Directory.Delete(runtimeStorePath, recursive: true);
+            }
+        }
     }
 
     [Fact]

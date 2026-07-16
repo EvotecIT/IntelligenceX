@@ -71,6 +71,10 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
         string Id,
         long ExpiresUtcTicks);
 
+    private readonly record struct StoreMutationResult(
+        bool Persisted,
+        StoreDto Store);
+
     internal ChatServiceBackgroundSchedulerControlState(ServiceOptions options) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _defaultBlockedPackIds = NormalizeBlockedPackIds(_options.BackgroundSchedulerBlockedPackIds);
@@ -81,76 +85,52 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
         _maintenanceWindows = _defaultMaintenanceWindows;
 
         var persisted = ReadStoreStateNoThrow();
-        if (persisted.ManualPauseActive) {
-            _manualPauseActive = true;
-            _pausedUntilUtcTicks = persisted.PausedUntilUtcTicks;
-            _pauseReason = persisted.PauseReason;
-        }
-        if (persisted.BlockedPackIdsCustomized) {
-            _blockedPackIdsCustomized = true;
-            _blockedPackIds = NormalizeBlockedPackIds(persisted.BlockedPackIds);
-        }
-        _temporaryBlockedPackSuppressions = NormalizeTemporarySuppressions(
-            persisted.TemporaryBlockedPacks,
-            maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
-            normalizeId: ToolPackBootstrap.NormalizePackId,
-            StringComparer.OrdinalIgnoreCase,
-            DateTime.UtcNow.Ticks);
-        if (persisted.BlockedThreadIdsCustomized) {
-            _blockedThreadIdsCustomized = true;
-            _blockedThreadIds = NormalizeBlockedThreadIds(persisted.BlockedThreadIds);
-        }
-        _temporaryBlockedThreadSuppressions = NormalizeTemporarySuppressions(
-            persisted.TemporaryBlockedThreads,
-            maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
-            normalizeId: NormalizeMaintenanceWindowThreadId,
-            StringComparer.Ordinal,
-            DateTime.UtcNow.Ticks);
-        if (persisted.MaintenanceWindowsCustomized) {
-            _maintenanceWindowsCustomized = true;
-            _maintenanceWindows = BuildMaintenanceWindows(persisted.MaintenanceWindowSpecs);
-        }
+        ApplyStoreStateNoLock(persisted, DateTime.UtcNow.Ticks);
 
         var snapshot = GetSnapshot(DateTime.UtcNow.Ticks);
         if (!snapshot.ManualPauseActive && _options.BackgroundSchedulerStartPaused) {
             int? pauseSeconds = _options.BackgroundSchedulerStartupPauseSeconds > 0
                 ? _options.BackgroundSchedulerStartupPauseSeconds
                 : null;
-            SetManualPause(
+            if (!SetManualPause(
                 paused: true,
                 pauseSeconds,
-                "startup");
+                "startup")) {
+                lock (_lock) {
+                    ApplyManualPauseNoLock(paused: true, pauseSeconds, "startup", DateTime.UtcNow.Ticks);
+                }
+            }
         }
     }
 
     internal BackgroundSchedulerPauseStateSnapshot GetSnapshot(long nowTicks) {
         lock (_lock) {
             var expired = NormalizeExpiredManualPauseNoLock(nowTicks);
-            var snapshot = BuildSnapshotNoLock(nowTicks);
             if (expired) {
-                PersistStateNoThrow();
+                TrySynchronizeNormalizedStoreNoLock(nowTicks);
             }
 
-            return snapshot;
+            return BuildSnapshotNoLock(nowTicks);
         }
     }
 
     internal bool SetManualPause(bool paused, int? pauseSeconds, string pauseReason) {
-        var nowTicks = DateTime.UtcNow.Ticks;
         lock (_lock) {
-            if (!paused) {
-                _manualPauseActive = false;
-                _pausedUntilUtcTicks = 0;
-                _pauseReason = string.Empty;
-            } else {
-                _manualPauseActive = true;
-                _pausedUntilUtcTicks = pauseSeconds is > 0
+            return TryMutatePersistedStoreNoLock(store => {
+                if (!paused) {
+                    store.ManualPauseActive = false;
+                    store.PausedUntilUtcTicks = 0;
+                    store.PauseReason = string.Empty;
+                    return;
+                }
+
+                store.ManualPauseActive = true;
+                var nowTicks = DateTime.UtcNow.Ticks;
+                store.PausedUntilUtcTicks = pauseSeconds is > 0
                     ? nowTicks + TimeSpan.FromSeconds(pauseSeconds.Value).Ticks
                     : 0;
-                _pauseReason = NormalizeManualPauseReason(pauseReason, pauseSeconds);
-            }
-
-            return PersistStateNoThrow();
+                store.PauseReason = NormalizeManualPauseReason(pauseReason, pauseSeconds);
+            });
         }
     }
 
@@ -173,7 +153,7 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     internal string[] GetBlockedPackIds(long nowTicks) {
         lock (_lock) {
             if (NormalizeExpiredTemporarySuppressionsNoLock(nowTicks)) {
-                PersistStateNoThrow();
+                TrySynchronizeNormalizedStoreNoLock(nowTicks);
             }
 
             return BuildCombinedSuppressionIdsNoLock(_blockedPackIds, _temporaryBlockedPackSuppressions, StringComparer.OrdinalIgnoreCase);
@@ -183,7 +163,7 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     internal SessionCapabilityBackgroundSchedulerSuppressionDto[] GetBlockedPackSuppressions(long nowTicks) {
         lock (_lock) {
             if (NormalizeExpiredTemporarySuppressionsNoLock(nowTicks)) {
-                PersistStateNoThrow();
+                TrySynchronizeNormalizedStoreNoLock(nowTicks);
             }
 
             return BuildSuppressionDtosNoLock(
@@ -197,7 +177,7 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     internal string[] GetBlockedThreadIds(long nowTicks) {
         lock (_lock) {
             if (NormalizeExpiredTemporarySuppressionsNoLock(nowTicks)) {
-                PersistStateNoThrow();
+                TrySynchronizeNormalizedStoreNoLock(nowTicks);
             }
 
             return BuildCombinedSuppressionIdsNoLock(_blockedThreadIds, _temporaryBlockedThreadSuppressions, StringComparer.Ordinal);
@@ -207,7 +187,7 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     internal SessionCapabilityBackgroundSchedulerSuppressionDto[] GetBlockedThreadSuppressions(long nowTicks) {
         lock (_lock) {
             if (NormalizeExpiredTemporarySuppressionsNoLock(nowTicks)) {
-                PersistStateNoThrow();
+                TrySynchronizeNormalizedStoreNoLock(nowTicks);
             }
 
             return BuildSuppressionDtosNoLock(
@@ -260,124 +240,169 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
         var normalizedOperation = NormalizeMaintenanceWindowOperation(operation);
         var normalizedSpecs = NormalizeMaintenanceWindowSpecs(rawSpecs);
         lock (_lock) {
-            switch (normalizedOperation) {
-                case "add":
-                    _maintenanceWindowsCustomized = true;
-                    _maintenanceWindows = MergeMaintenanceWindows(_maintenanceWindows, normalizedSpecs);
-                    break;
-                case "remove":
-                    _maintenanceWindowsCustomized = true;
-                    _maintenanceWindows = RemoveMaintenanceWindows(_maintenanceWindows, normalizedSpecs);
-                    break;
-                case "replace":
-                    _maintenanceWindowsCustomized = true;
-                    _maintenanceWindows = BuildMaintenanceWindows(normalizedSpecs);
-                    break;
-                case "clear":
-                    _maintenanceWindowsCustomized = true;
-                    _maintenanceWindows = Array.Empty<MaintenanceWindow>();
-                    break;
-                case "reset":
-                    _maintenanceWindowsCustomized = false;
-                    _maintenanceWindows = _defaultMaintenanceWindows;
-                    break;
-            }
+            return TryMutatePersistedStoreNoLock(store => {
+                var customized = store.MaintenanceWindowsCustomized;
+                var windows = customized
+                    ? BuildMaintenanceWindows(store.MaintenanceWindowSpecs)
+                    : _defaultMaintenanceWindows;
+                switch (normalizedOperation) {
+                    case "add":
+                        customized = true;
+                        windows = MergeMaintenanceWindows(windows, normalizedSpecs);
+                        break;
+                    case "remove":
+                        customized = true;
+                        windows = RemoveMaintenanceWindows(windows, normalizedSpecs);
+                        break;
+                    case "replace":
+                        customized = true;
+                        windows = BuildMaintenanceWindows(normalizedSpecs);
+                        break;
+                    case "clear":
+                        customized = true;
+                        windows = Array.Empty<MaintenanceWindow>();
+                        break;
+                    case "reset":
+                        customized = false;
+                        windows = _defaultMaintenanceWindows;
+                        break;
+                }
 
-            return PersistStateNoThrow();
+                store.MaintenanceWindowsCustomized = customized;
+                store.MaintenanceWindowSpecs = customized
+                    ? windows.Select(static window => window.NormalizedSpec).ToArray()
+                    : Array.Empty<string>();
+            });
         }
     }
 
     internal bool UpdateBlockedPacks(string operation, IReadOnlyList<string>? rawPackIds, int? durationSeconds = null) {
         var normalizedOperation = NormalizeMaintenanceWindowOperation(operation);
         var normalizedPackIds = NormalizeBlockedPackIds(rawPackIds);
-        var nowTicks = DateTime.UtcNow.Ticks;
         lock (_lock) {
-            NormalizeExpiredTemporarySuppressionsNoLock(nowTicks);
-            switch (normalizedOperation) {
-                case "add":
-                    if (durationSeconds is > 0) {
-                        _temporaryBlockedPackSuppressions = UpsertTemporarySuppressions(
-                            _temporaryBlockedPackSuppressions,
-                            normalizedPackIds,
-                            nowTicks + TimeSpan.FromSeconds(durationSeconds.Value).Ticks,
-                            _blockedPackIds,
-                            StringComparer.OrdinalIgnoreCase);
-                    } else {
-                        _blockedPackIdsCustomized = true;
-                        _blockedPackIds = MergeBlockedPackIds(_blockedPackIds, normalizedPackIds);
-                        _temporaryBlockedPackSuppressions = RemoveTemporarySuppressions(_temporaryBlockedPackSuppressions, normalizedPackIds, StringComparer.OrdinalIgnoreCase);
-                    }
-                    break;
-                case "remove":
-                    _blockedPackIdsCustomized = true;
-                    _blockedPackIds = RemoveBlockedPackIds(_blockedPackIds, normalizedPackIds);
-                    _temporaryBlockedPackSuppressions = RemoveTemporarySuppressions(_temporaryBlockedPackSuppressions, normalizedPackIds, StringComparer.OrdinalIgnoreCase);
-                    break;
-                case "replace":
-                    _blockedPackIdsCustomized = true;
-                    _blockedPackIds = normalizedPackIds;
-                    _temporaryBlockedPackSuppressions = Array.Empty<TemporarySuppression>();
-                    break;
-                case "clear":
-                    _blockedPackIdsCustomized = true;
-                    _blockedPackIds = Array.Empty<string>();
-                    _temporaryBlockedPackSuppressions = Array.Empty<TemporarySuppression>();
-                    break;
-                case "reset":
-                    _blockedPackIdsCustomized = false;
-                    _blockedPackIds = _defaultBlockedPackIds;
-                    _temporaryBlockedPackSuppressions = Array.Empty<TemporarySuppression>();
-                    break;
-            }
+            return TryMutatePersistedStoreNoLock(store => {
+                var nowTicks = DateTime.UtcNow.Ticks;
+                var customized = store.BlockedPackIdsCustomized;
+                var blockedPackIds = customized
+                    ? NormalizeBlockedPackIds(store.BlockedPackIds)
+                    : _defaultBlockedPackIds;
+                var temporarySuppressions = NormalizeTemporarySuppressions(
+                    store.TemporaryBlockedPacks,
+                    maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
+                    normalizeId: ToolPackBootstrap.NormalizePackId,
+                    StringComparer.OrdinalIgnoreCase,
+                    nowTicks);
+                switch (normalizedOperation) {
+                    case "add":
+                        if (durationSeconds is > 0) {
+                            temporarySuppressions = UpsertTemporarySuppressions(
+                                temporarySuppressions,
+                                normalizedPackIds,
+                                nowTicks + TimeSpan.FromSeconds(durationSeconds.Value).Ticks,
+                                blockedPackIds,
+                                StringComparer.OrdinalIgnoreCase);
+                        } else {
+                            customized = true;
+                            blockedPackIds = MergeBlockedPackIds(blockedPackIds, normalizedPackIds);
+                            temporarySuppressions = RemoveTemporarySuppressions(temporarySuppressions, normalizedPackIds, StringComparer.OrdinalIgnoreCase);
+                        }
+                        break;
+                    case "remove":
+                        customized = true;
+                        blockedPackIds = RemoveBlockedPackIds(blockedPackIds, normalizedPackIds);
+                        temporarySuppressions = RemoveTemporarySuppressions(temporarySuppressions, normalizedPackIds, StringComparer.OrdinalIgnoreCase);
+                        break;
+                    case "replace":
+                        customized = true;
+                        blockedPackIds = normalizedPackIds;
+                        temporarySuppressions = Array.Empty<TemporarySuppression>();
+                        break;
+                    case "clear":
+                        customized = true;
+                        blockedPackIds = Array.Empty<string>();
+                        temporarySuppressions = Array.Empty<TemporarySuppression>();
+                        break;
+                    case "reset":
+                        customized = false;
+                        blockedPackIds = _defaultBlockedPackIds;
+                        temporarySuppressions = Array.Empty<TemporarySuppression>();
+                        break;
+                }
 
-            return PersistStateNoThrow();
+                store.BlockedPackIdsCustomized = customized;
+                store.BlockedPackIds = customized ? blockedPackIds : Array.Empty<string>();
+                store.TemporaryBlockedPacks = temporarySuppressions
+                    .Select(static item => new TemporarySuppressionStoreDto {
+                        Id = item.Id,
+                        ExpiresUtcTicks = item.ExpiresUtcTicks
+                    })
+                    .ToArray();
+            });
         }
     }
 
     internal bool UpdateBlockedThreads(string operation, IReadOnlyList<string>? rawThreadIds, int? durationSeconds = null) {
         var normalizedOperation = NormalizeMaintenanceWindowOperation(operation);
         var normalizedThreadIds = NormalizeBlockedThreadIds(rawThreadIds);
-        var nowTicks = DateTime.UtcNow.Ticks;
         lock (_lock) {
-            NormalizeExpiredTemporarySuppressionsNoLock(nowTicks);
-            switch (normalizedOperation) {
-                case "add":
-                    if (durationSeconds is > 0) {
-                        _temporaryBlockedThreadSuppressions = UpsertTemporarySuppressions(
-                            _temporaryBlockedThreadSuppressions,
-                            normalizedThreadIds,
-                            nowTicks + TimeSpan.FromSeconds(durationSeconds.Value).Ticks,
-                            _blockedThreadIds,
-                            StringComparer.Ordinal);
-                    } else {
-                        _blockedThreadIdsCustomized = true;
-                        _blockedThreadIds = MergeBlockedThreadIds(_blockedThreadIds, normalizedThreadIds);
-                        _temporaryBlockedThreadSuppressions = RemoveTemporarySuppressions(_temporaryBlockedThreadSuppressions, normalizedThreadIds, StringComparer.Ordinal);
-                    }
-                    break;
-                case "remove":
-                    _blockedThreadIdsCustomized = true;
-                    _blockedThreadIds = RemoveBlockedThreadIds(_blockedThreadIds, normalizedThreadIds);
-                    _temporaryBlockedThreadSuppressions = RemoveTemporarySuppressions(_temporaryBlockedThreadSuppressions, normalizedThreadIds, StringComparer.Ordinal);
-                    break;
-                case "replace":
-                    _blockedThreadIdsCustomized = true;
-                    _blockedThreadIds = normalizedThreadIds;
-                    _temporaryBlockedThreadSuppressions = Array.Empty<TemporarySuppression>();
-                    break;
-                case "clear":
-                    _blockedThreadIdsCustomized = true;
-                    _blockedThreadIds = Array.Empty<string>();
-                    _temporaryBlockedThreadSuppressions = Array.Empty<TemporarySuppression>();
-                    break;
-                case "reset":
-                    _blockedThreadIdsCustomized = false;
-                    _blockedThreadIds = _defaultBlockedThreadIds;
-                    _temporaryBlockedThreadSuppressions = Array.Empty<TemporarySuppression>();
-                    break;
-            }
+            return TryMutatePersistedStoreNoLock(store => {
+                var nowTicks = DateTime.UtcNow.Ticks;
+                var customized = store.BlockedThreadIdsCustomized;
+                var blockedThreadIds = customized
+                    ? NormalizeBlockedThreadIds(store.BlockedThreadIds)
+                    : _defaultBlockedThreadIds;
+                var temporarySuppressions = NormalizeTemporarySuppressions(
+                    store.TemporaryBlockedThreads,
+                    maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
+                    normalizeId: NormalizeMaintenanceWindowThreadId,
+                    StringComparer.Ordinal,
+                    nowTicks);
+                switch (normalizedOperation) {
+                    case "add":
+                        if (durationSeconds is > 0) {
+                            temporarySuppressions = UpsertTemporarySuppressions(
+                                temporarySuppressions,
+                                normalizedThreadIds,
+                                nowTicks + TimeSpan.FromSeconds(durationSeconds.Value).Ticks,
+                                blockedThreadIds,
+                                StringComparer.Ordinal);
+                        } else {
+                            customized = true;
+                            blockedThreadIds = MergeBlockedThreadIds(blockedThreadIds, normalizedThreadIds);
+                            temporarySuppressions = RemoveTemporarySuppressions(temporarySuppressions, normalizedThreadIds, StringComparer.Ordinal);
+                        }
+                        break;
+                    case "remove":
+                        customized = true;
+                        blockedThreadIds = RemoveBlockedThreadIds(blockedThreadIds, normalizedThreadIds);
+                        temporarySuppressions = RemoveTemporarySuppressions(temporarySuppressions, normalizedThreadIds, StringComparer.Ordinal);
+                        break;
+                    case "replace":
+                        customized = true;
+                        blockedThreadIds = normalizedThreadIds;
+                        temporarySuppressions = Array.Empty<TemporarySuppression>();
+                        break;
+                    case "clear":
+                        customized = true;
+                        blockedThreadIds = Array.Empty<string>();
+                        temporarySuppressions = Array.Empty<TemporarySuppression>();
+                        break;
+                    case "reset":
+                        customized = false;
+                        blockedThreadIds = _defaultBlockedThreadIds;
+                        temporarySuppressions = Array.Empty<TemporarySuppression>();
+                        break;
+                }
 
-            return PersistStateNoThrow();
+                store.BlockedThreadIdsCustomized = customized;
+                store.BlockedThreadIds = customized ? blockedThreadIds : Array.Empty<string>();
+                store.TemporaryBlockedThreads = temporarySuppressions
+                    .Select(static item => new TemporarySuppressionStoreDto {
+                        Id = item.Id,
+                        ExpiresUtcTicks = item.ExpiresUtcTicks
+                    })
+                    .ToArray();
+            });
         }
     }
 
@@ -1431,20 +1456,29 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     }
 
     private static StoreDto ReadStoreStateWithCleanup(string path) {
-        var expiredPauseRemoved = false;
+        var store = ReadNormalizedStoreState(path, DateTime.UtcNow, out var expiredPauseRemoved);
+        if (expiredPauseRemoved) {
+            PersistNormalizedStore(path, store);
+        }
+
+        return store;
+    }
+
+    private static StoreDto ReadNormalizedStoreState(
+        string path,
+        DateTime nowUtc,
+        out bool expiredPauseRemoved) {
+        var pauseRemoved = false;
         var result = ChatServiceJsonFileStore.Read<StoreDto>(
             path,
             MaximumStoreBytes,
             static json => JsonSerializer.Deserialize<StoreDto>(json, StoreJsonOptions),
             static store => store.Version > 0 && store.Version <= StoreVersion,
-            store => expiredPauseRemoved = NormalizeStoreState(store, DateTime.UtcNow),
+            store => pauseRemoved = NormalizeStoreState(store, nowUtc),
             StoreName);
+        expiredPauseRemoved = pauseRemoved;
         if (result.State != ChatServiceJsonFileReadState.Loaded || result.Value is null) {
             return new StoreDto();
-        }
-
-        if (expiredPauseRemoved) {
-            PersistNormalizedStore(path, result.Value);
         }
 
         return result.Value;
@@ -1514,67 +1548,95 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
         return expiredPauseRemoved;
     }
 
-    private bool PersistStateNoThrow() {
-        bool manualPauseActive;
-        long pausedUntilUtcTicks;
-        string pauseReason;
-        bool blockedPackIdsCustomized;
-        string[] blockedPackIds;
-        TemporarySuppressionStoreDto[] temporaryBlockedPacks;
-        bool blockedThreadIdsCustomized;
-        string[] blockedThreadIds;
-        TemporarySuppressionStoreDto[] temporaryBlockedThreads;
-        bool maintenanceWindowsCustomized;
-        string[] maintenanceWindowSpecs;
-        lock (_lock) {
-            var nowTicks = DateTime.UtcNow.Ticks;
-            NormalizeExpiredTemporarySuppressionsNoLock(nowTicks);
-            manualPauseActive = _manualPauseActive;
-            pausedUntilUtcTicks = _pausedUntilUtcTicks;
-            pauseReason = _pauseReason;
-            blockedPackIdsCustomized = _blockedPackIdsCustomized;
-            blockedPackIds = _blockedPackIds.ToArray();
-            temporaryBlockedPacks = _temporaryBlockedPackSuppressions
-                .Select(static item => new TemporarySuppressionStoreDto {
-                    Id = item.Id,
-                    ExpiresUtcTicks = item.ExpiresUtcTicks
-                })
-                .ToArray();
-            blockedThreadIdsCustomized = _blockedThreadIdsCustomized;
-            blockedThreadIds = _blockedThreadIds.ToArray();
-            temporaryBlockedThreads = _temporaryBlockedThreadSuppressions
-                .Select(static item => new TemporarySuppressionStoreDto {
-                    Id = item.Id,
-                    ExpiresUtcTicks = item.ExpiresUtcTicks
-                })
-                .ToArray();
-            maintenanceWindowsCustomized = _maintenanceWindowsCustomized;
-            maintenanceWindowSpecs = _maintenanceWindows
-                .Select(static window => window.NormalizedSpec)
-                .ToArray();
-            var store = new StoreDto {
-                ManualPauseActive = manualPauseActive,
-                PausedUntilUtcTicks = manualPauseActive ? Math.Max(0, pausedUntilUtcTicks) : 0,
-                PauseReason = manualPauseActive ? NormalizeActivityText(pauseReason, MaxPauseReasonLength + 32) : string.Empty,
-                BlockedPackIdsCustomized = blockedPackIdsCustomized,
-                BlockedPackIds = blockedPackIdsCustomized ? blockedPackIds : Array.Empty<string>(),
-                TemporaryBlockedPacks = temporaryBlockedPacks,
-                BlockedThreadIdsCustomized = blockedThreadIdsCustomized,
-                BlockedThreadIds = blockedThreadIdsCustomized ? blockedThreadIds : Array.Empty<string>(),
-                TemporaryBlockedThreads = temporaryBlockedThreads,
-                MaintenanceWindowsCustomized = maintenanceWindowsCustomized,
-                MaintenanceWindowSpecs = maintenanceWindowsCustomized ? maintenanceWindowSpecs : Array.Empty<string>()
-            };
+    private bool TrySynchronizeNormalizedStoreNoLock(long nowTicks) {
+        var nowUtc = TryGetUtcDateTimeFromTicks(nowTicks, out var suppliedNowUtc)
+            ? suppliedNowUtc
+            : DateTime.UtcNow;
+        return TryMutatePersistedStoreNoLock(static _ => { }, nowUtc);
+    }
 
-            var path = ResolveStorePath();
-            var lockAcquired = ChatServiceJsonFileStore.TryWithExclusiveAccess(
-                path,
-                static state => PersistNormalizedStore(state.Path, state.Store),
-                (Path: path, Store: store),
-                out var persisted,
-                StoreName);
-            return lockAcquired && persisted;
+    private bool TryMutatePersistedStoreNoLock(Action<StoreDto> mutation, DateTime? normalizationUtc = null) {
+        ArgumentNullException.ThrowIfNull(mutation);
+        var path = ResolveStorePath();
+        var lockAcquired = ChatServiceJsonFileStore.TryWithExclusiveAccess(
+            path,
+            static state => {
+                var nowUtc = state.NormalizationUtc ?? DateTime.UtcNow;
+                var store = ReadNormalizedStoreState(state.Path, nowUtc, out _);
+                state.Mutation(store);
+                NormalizeStoreState(store, nowUtc);
+                return new StoreMutationResult(
+                    PersistNormalizedStore(state.Path, store),
+                    store);
+            },
+            (Path: path, Mutation: mutation, NormalizationUtc: normalizationUtc),
+            out var result,
+            StoreName);
+        if (!lockAcquired || !result.Persisted) {
+            return false;
         }
+
+        ApplyStoreStateNoLock(result.Store, DateTime.UtcNow.Ticks);
+        return true;
+    }
+
+    private void ApplyStoreStateNoLock(StoreDto store, long nowTicks) {
+        ArgumentNullException.ThrowIfNull(store);
+        ApplyManualPauseNoLock(
+            store.ManualPauseActive,
+            store.PausedUntilUtcTicks,
+            store.PauseReason);
+
+        _blockedPackIdsCustomized = store.BlockedPackIdsCustomized;
+        _blockedPackIds = _blockedPackIdsCustomized
+            ? NormalizeBlockedPackIds(store.BlockedPackIds)
+            : _defaultBlockedPackIds;
+        _temporaryBlockedPackSuppressions = NormalizeTemporarySuppressions(
+            store.TemporaryBlockedPacks,
+            maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
+            normalizeId: ToolPackBootstrap.NormalizePackId,
+            StringComparer.OrdinalIgnoreCase,
+            nowTicks);
+
+        _blockedThreadIdsCustomized = store.BlockedThreadIdsCustomized;
+        _blockedThreadIds = _blockedThreadIdsCustomized
+            ? NormalizeBlockedThreadIds(store.BlockedThreadIds)
+            : _defaultBlockedThreadIds;
+        _temporaryBlockedThreadSuppressions = NormalizeTemporarySuppressions(
+            store.TemporaryBlockedThreads,
+            maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
+            normalizeId: NormalizeMaintenanceWindowThreadId,
+            StringComparer.Ordinal,
+            nowTicks);
+
+        _maintenanceWindowsCustomized = store.MaintenanceWindowsCustomized;
+        _maintenanceWindows = _maintenanceWindowsCustomized
+            ? BuildMaintenanceWindows(store.MaintenanceWindowSpecs)
+            : _defaultMaintenanceWindows;
+    }
+
+    private void ApplyManualPauseNoLock(
+        bool paused,
+        int? pauseSeconds,
+        string pauseReason,
+        long nowTicks) {
+        ApplyManualPauseNoLock(
+            paused,
+            paused && pauseSeconds is > 0
+                ? nowTicks + TimeSpan.FromSeconds(pauseSeconds.Value).Ticks
+                : 0,
+            paused ? NormalizeManualPauseReason(pauseReason, pauseSeconds) : string.Empty);
+    }
+
+    private void ApplyManualPauseNoLock(
+        bool paused,
+        long pausedUntilUtcTicks,
+        string pauseReason) {
+        _manualPauseActive = paused;
+        _pausedUntilUtcTicks = paused ? Math.Max(0, pausedUntilUtcTicks) : 0;
+        _pauseReason = paused
+            ? NormalizeActivityText(pauseReason, MaxPauseReasonLength + 32)
+            : string.Empty;
     }
 
     private static bool PersistNormalizedStore(string path, StoreDto store) {

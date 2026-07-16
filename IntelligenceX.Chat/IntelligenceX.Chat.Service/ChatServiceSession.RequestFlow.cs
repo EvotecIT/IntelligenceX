@@ -289,7 +289,7 @@ internal sealed partial class ChatServiceSession {
         return new ErrorMessage {
             Kind = ChatServiceMessageKind.Response,
             RequestId = requestId,
-            Error = "The background scheduler state changed in memory but could not be persisted. Retry after restoring access to the state directory.",
+            Error = "The background scheduler state was not changed because it could not be persisted. Retry after restoring access to the state directory.",
             Code = "persistence_failed"
         };
     }
