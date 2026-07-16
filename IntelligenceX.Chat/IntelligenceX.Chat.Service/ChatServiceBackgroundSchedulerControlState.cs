@@ -1428,12 +1428,7 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
             return ResolveDefaultPendingActionsStorePath();
         }
 
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-
-        var baseDir = Path.Combine(root, "IntelligenceX.Chat");
+        var baseDir = ChatServiceJsonFileStore.ResolveDefaultDirectory();
         var defaultPath = ResolveDefaultPendingActionsStorePath();
 
         try {

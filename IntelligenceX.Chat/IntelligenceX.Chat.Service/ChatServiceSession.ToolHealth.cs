@@ -364,22 +364,30 @@ internal sealed partial class ChatServiceSession {
 
     private static Dictionary<string, StartupToolHealthCacheEntry> LoadStartupToolHealthCache() {
         var path = ResolveStartupToolHealthCachePath();
-        var result = ChatServiceJsonFileStore.Read<StartupToolHealthCachePayload>(
+        var result = ChatServiceJsonFileStore.Read<Dictionary<string, StartupToolHealthCacheEntry>>(
             path,
             MaximumStartupToolHealthCacheBytes,
-            static json => JsonSerializer.Deserialize<StartupToolHealthCachePayload>(json, StartupToolHealthCacheJson),
-            static payload => payload.Entries is not null,
+            DeserializeStartupToolHealthCache,
+            static _ => true,
             normalize: null,
             StartupToolHealthCacheStoreName);
-        if (result.State != ChatServiceJsonFileReadState.Loaded
-            || result.Value?.Entries is not { Count: > 0 } entries) {
-            return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
-        }
+        return result.State == ChatServiceJsonFileReadState.Loaded && result.Value is not null
+            ? result.Value
+            : new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal static Dictionary<string, StartupToolHealthCacheEntry> DeserializeStartupToolHealthCache(string json) {
+        var payload = JsonSerializer.Deserialize<StartupToolHealthCachePayload>(json, StartupToolHealthCacheJson);
+        var entries = payload?.Entries;
 
         var map = new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+        if (entries is null) {
+            return map;
+        }
+
         for (var i = 0; i < entries.Count; i++) {
             var entry = entries[i];
-            if (string.IsNullOrWhiteSpace(entry.Key)) {
+            if (entry is null || string.IsNullOrWhiteSpace(entry.Key)) {
                 continue;
             }
 
@@ -420,7 +428,7 @@ internal sealed partial class ChatServiceSession {
         return ChatServiceJsonFileStore.ResolveDefaultPath(StartupToolHealthCacheFileName);
     }
 
-    private sealed record StartupToolHealthCacheEntry(
+    internal sealed record StartupToolHealthCacheEntry(
         string ErrorCode,
         string Error,
         DateTime LastFailedUtc,

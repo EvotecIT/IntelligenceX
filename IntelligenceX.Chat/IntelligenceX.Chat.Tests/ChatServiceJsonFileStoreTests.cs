@@ -6,6 +6,18 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed class ChatServiceJsonFileStoreTests {
     [Fact]
+    public void ResolveDefaultPath_UsesTemporaryDirectoryWhenLocalApplicationDataIsUnavailable() {
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
+
+        var path = ChatServiceJsonFileStore.ResolveDefaultPath(
+            "state.json",
+            localApplicationData: " ",
+            temporaryPath: temporaryRoot);
+
+        Assert.Equal(Path.Combine(temporaryRoot, "IntelligenceX.Chat", "state.json"), path);
+    }
+
+    [Fact]
     public void WriteAndRead_RoundTripsThroughAtomicSnapshot() {
         var root = CreateRoot();
         try {

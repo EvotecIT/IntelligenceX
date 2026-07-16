@@ -11,20 +11,39 @@ namespace IntelligenceX.Chat.Service.Persistence;
 /// </summary>
 internal static class ChatServiceJsonFileStore {
     /// <summary>
-    /// Resolves a chat service state file beneath the current user's local application data folder.
+    /// Resolves a chat service state file beneath local application data, with the OS temporary directory as a safe fallback.
     /// </summary>
     internal static string ResolveDefaultPath(string fileName) {
+        return ResolveDefaultPath(
+            fileName,
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Path.GetTempPath());
+    }
+
+    internal static string ResolveDefaultPath(string fileName, string? localApplicationData, string temporaryPath) {
         var normalizedFileName = Path.GetFileName((fileName ?? string.Empty).Trim());
         if (normalizedFileName.Length == 0) {
             throw new ArgumentException("A state file name is required.", nameof(fileName));
         }
 
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return Path.Combine(ResolveDefaultDirectory(localApplicationData, temporaryPath), normalizedFileName);
+    }
+
+    internal static string ResolveDefaultDirectory() {
+        return ResolveDefaultDirectory(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Path.GetTempPath());
+    }
+
+    internal static string ResolveDefaultDirectory(string? localApplicationData, string temporaryPath) {
+        var root = string.IsNullOrWhiteSpace(localApplicationData)
+            ? temporaryPath
+            : localApplicationData;
         if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
+            throw new ArgumentException("A temporary state directory is required when local application data is unavailable.", nameof(temporaryPath));
         }
 
-        return Path.Combine(root, "IntelligenceX.Chat", normalizedFileName);
+        return Path.Combine(root, "IntelligenceX.Chat");
     }
 
     /// <summary>
