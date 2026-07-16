@@ -247,7 +247,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
             maxTotalBytes: maxTotalBytes,
             normalizedExtensions: normalizedExt);
 
-        var projected = DocumentReader.ReadPathDocumentsDetailed(
+        var projected = OfficeDocumentReader.Default.ReadPathDocumentsDetailed(
             path: fullPath,
             folderOptions: folderOptions,
             options: readerOptions,

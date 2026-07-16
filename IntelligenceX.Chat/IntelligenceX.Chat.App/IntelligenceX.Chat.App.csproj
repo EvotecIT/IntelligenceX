@@ -26,22 +26,18 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <OfficeImoRepoRootForNativeProjection Condition="'$(OfficeImoRepoRoot)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRoot)\\'))))</OfficeImoRepoRootForNativeProjection>
     <ChartForgeXRepoRootForNativeProjection Condition="'$(ChartForgeXRepoRoot)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(ChartForgeXRepoRoot)\\'))))</ChartForgeXRepoRootForNativeProjection>
-    <OfficeImoMarkdownProjectForNativeProjection>$(OfficeImoRepoRootForNativeProjection)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectForNativeProjection>
-    <OfficeImoMarkdownRendererProjectForNativeProjection>$(OfficeImoRepoRootForNativeProjection)OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectForNativeProjection>
-    <OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection>$(OfficeImoRepoRootForNativeProjection)OfficeIMO.MarkdownRenderer.IntelligenceX\OfficeIMO.MarkdownRenderer.IntelligenceX.csproj</OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection>
     <ChartForgeXProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX\ChartForgeX.csproj</ChartForgeXProjectForNativeProjection>
     <ChartForgeXMarkupProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX.Markup\ChartForgeX.Markup.csproj</ChartForgeXMarkupProjectForNativeProjection>
     <ChartForgeXMermaidProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX.Mermaid\ChartForgeX.Mermaid.csproj</ChartForgeXMermaidProjectForNativeProjection>
     <ChartForgeXMarkupMermaidProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX.Markup.Mermaid\ChartForgeX.Markup.Mermaid.csproj</ChartForgeXMarkupMermaidProjectForNativeProjection>
-    <NativeMarkdownEnginesAvailable Condition="'$(UseLocalNativeMarkdownEngines)' == 'true' AND Exists('$(OfficeImoMarkdownProjectForNativeProjection)') AND Exists('$(OfficeImoMarkdownRendererProjectForNativeProjection)') AND Exists('$(OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection)') AND Exists('$(ChartForgeXProjectForNativeProjection)') AND Exists('$(ChartForgeXMarkupProjectForNativeProjection)') AND Exists('$(ChartForgeXMermaidProjectForNativeProjection)') AND Exists('$(ChartForgeXMarkupMermaidProjectForNativeProjection)')">true</NativeMarkdownEnginesAvailable>
+    <NativeMarkdownEnginesAvailable Condition="'$(UseLocalNativeMarkdownEngines)' == 'true' AND Exists('$(OfficeImoMarkdownProject)') AND Exists('$(OfficeImoMarkdownRendererProject)') AND Exists('$(OfficeImoMarkdownRendererIntelligenceXProject)') AND Exists('$(ChartForgeXProjectForNativeProjection)') AND Exists('$(ChartForgeXMarkupProjectForNativeProjection)') AND Exists('$(ChartForgeXMermaidProjectForNativeProjection)') AND Exists('$(ChartForgeXMarkupMermaidProjectForNativeProjection)')">true</NativeMarkdownEnginesAvailable>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(NativeMarkdownEnginesAvailable)' == 'true'">
-    <ProjectReference Include="$(OfficeImoMarkdownProjectForNativeProjection)" />
-    <ProjectReference Include="$(OfficeImoMarkdownRendererProjectForNativeProjection)" />
-    <ProjectReference Include="$(OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection)" />
+    <ProjectReference Include="$(OfficeImoMarkdownProject)" />
+    <ProjectReference Include="$(OfficeImoMarkdownRendererProject)" />
+    <ProjectReference Include="$(OfficeImoMarkdownRendererIntelligenceXProject)" />
     <ProjectReference Include="$(ChartForgeXProjectForNativeProjection)" />
     <ProjectReference Include="$(ChartForgeXMarkupProjectForNativeProjection)" />
     <ProjectReference Include="$(ChartForgeXMermaidProjectForNativeProjection)" />

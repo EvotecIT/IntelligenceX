@@ -17,11 +17,19 @@
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate2)</DbaClientXRepoRoot>
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == ''">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
 
-    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">2.0.1</OfficeImoMarkdownNuGetVersion>
-    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">2.0.1</OfficeImoMarkdownRendererNuGetVersion>
+    <UseLocalOfficeImoProjects Condition="'$(UseLocalOfficeImoProjects)' == '' and '$(UseLocalNativeMarkdownEngines)' == 'true'">true</UseLocalOfficeImoProjects>
+    <OfficeImoRepoRootForChat Condition="'$(OfficeImoRepoRoot)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRoot)\'))))</OfficeImoRepoRootForChat>
+    <OfficeImoMarkdownProject>$(OfficeImoRepoRootForChat)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProject>
+    <OfficeImoMarkdownRendererProject>$(OfficeImoRepoRootForChat)OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProject>
+    <OfficeImoMarkdownRendererIntelligenceXProject>$(OfficeImoRepoRootForChat)OfficeIMO.MarkdownRenderer.IntelligenceX\OfficeIMO.MarkdownRenderer.IntelligenceX.csproj</OfficeImoMarkdownRendererIntelligenceXProject>
+    <OfficeImoExcelProject>$(OfficeImoRepoRootForChat)OfficeIMO.Excel\OfficeIMO.Excel.csproj</OfficeImoExcelProject>
+    <OfficeImoWordMarkdownProject>$(OfficeImoRepoRootForChat)OfficeIMO.Word.Markdown\OfficeIMO.Word.Markdown.csproj</OfficeImoWordMarkdownProject>
+
+    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">2.0.2</OfficeImoMarkdownNuGetVersion>
+    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">2.0.2</OfficeImoMarkdownRendererNuGetVersion>
     <OfficeImoMarkdownRendererIntelligenceXNuGetVersion Condition="'$(OfficeImoMarkdownRendererIntelligenceXNuGetVersion)' == ''">2.0.2</OfficeImoMarkdownRendererIntelligenceXNuGetVersion>
-    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">2.0.1</OfficeImoExcelNuGetVersion>
-    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">2.0.1</OfficeImoWordMarkdownNuGetVersion>
+    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">2.0.2</OfficeImoExcelNuGetVersion>
+    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">2.0.2</OfficeImoWordMarkdownNuGetVersion>
     <ChartForgeXNuGetVersion Condition="'$(ChartForgeXNuGetVersion)' == ''">1.0.1</ChartForgeXNuGetVersion>
     <ChartForgeXMarkupNuGetVersion Condition="'$(ChartForgeXMarkupNuGetVersion)' == ''">1.0.1</ChartForgeXMarkupNuGetVersion>
     <ChartForgeXMermaidNuGetVersion Condition="'$(ChartForgeXMermaidNuGetVersion)' == ''">1.0.1</ChartForgeXMermaidNuGetVersion>

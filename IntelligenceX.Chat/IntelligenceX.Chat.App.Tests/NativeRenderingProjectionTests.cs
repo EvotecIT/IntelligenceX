@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ChartForgeX.Markup;
-using ChartForgeX.Topology;
 using ChartForgeX.VisualArtifacts;
 using IntelligenceX.Chat.App.Native.Rendering;
 using Xunit;
@@ -150,13 +149,11 @@ public sealed class NativeRenderingProjectionTests {
     /// </summary>
     [Fact]
     public void TryRender_InvalidArtifact_ReturnsDiagnosticInsteadOfThrowing() {
-        var chart = new TopologyChart();
-        chart.Groups.Add(new TopologyGroup { Id = "invalid", Label = "Invalid" });
-        var artifact = VisualArtifact.Create("invalid", VisualArtifactKind.Topology, chart);
+        var artifact = VisualArtifact.Create("invalid", VisualArtifactKind.Topology, new object());
 
         var preview = NativeVisualPreviewRenderer.TryRender(artifact, out var error);
 
         Assert.Null(preview);
-        Assert.Contains("width must be positive", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("does not expose a supported SVG render model", error, StringComparison.OrdinalIgnoreCase);
     }
 }

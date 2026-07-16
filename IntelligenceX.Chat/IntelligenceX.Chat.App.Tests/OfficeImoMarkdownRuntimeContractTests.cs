@@ -92,18 +92,18 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
-    /// Verifies the repo declares the current published OfficeIMO package pins used by package-mode adoption.
+    /// Verifies the repo declares the OfficeIMO release-candidate package pins used by package-mode adoption.
     /// </summary>
     [Fact]
-    public void DirectoryBuildProps_PinsCurrentPublishedOfficeImoPackageVersions() {
+    public void DirectoryBuildProps_PinsOfficeImoReleaseCandidatePackageVersions() {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = LoadMsBuildProperties(propsPath);
 
-        Assert.Equal("2.0.1", props["OfficeImoMarkdownNuGetVersion"]);
-        Assert.Equal("2.0.1", props["OfficeImoMarkdownRendererNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoMarkdownNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoMarkdownRendererNuGetVersion"]);
         Assert.Equal("2.0.2", props["OfficeImoMarkdownRendererIntelligenceXNuGetVersion"]);
-        Assert.Equal("2.0.1", props["OfficeImoExcelNuGetVersion"]);
-        Assert.Equal("2.0.1", props["OfficeImoWordMarkdownNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoExcelNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoWordMarkdownNuGetVersion"]);
     }
 
     /// <summary>
