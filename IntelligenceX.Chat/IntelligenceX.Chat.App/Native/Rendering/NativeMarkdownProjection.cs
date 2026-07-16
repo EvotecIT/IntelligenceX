@@ -83,7 +83,8 @@ internal static class NativeMarkdownProjection {
             fenceLine,
             Math.Min(fenceLine + 1, endLine),
             endLine);
-        foreach (var diagnostic in scan.Diagnostics) {
+        var parse = parser.Parse(scan);
+        foreach (var diagnostic in parse.Diagnostics) {
             result.Add(new NativeTranscriptContent(
                 NativeTranscriptContentKind.Diagnostic,
                 diagnostic.Message,
@@ -92,7 +93,7 @@ internal static class NativeMarkdownProjection {
 
         var scanned = scan.Blocks.SingleOrDefault();
         if (scanned is null) {
-            if (scan.Diagnostics.Count == 0) {
+            if (parse.Diagnostics.Count == 0) {
                 result.Add(new NativeTranscriptContent(
                     NativeTranscriptContentKind.Diagnostic,
                     "Unsupported visual fence '" + fenceInfo + "'.",
@@ -102,15 +103,6 @@ internal static class NativeMarkdownProjection {
         }
 
         var visualBlock = scanned;
-        var parse = parser.ParseBlocks(new[] { visualBlock });
-
-        foreach (var diagnostic in parse.Diagnostics) {
-            result.Add(new NativeTranscriptContent(
-                NativeTranscriptContentKind.Diagnostic,
-                diagnostic.Message,
-                sourceLine: diagnostic.Line));
-        }
-
         if (parse.Artifacts.Count == 0) {
             result.Add(new NativeTranscriptContent(
                 NativeTranscriptContentKind.Visual,
