@@ -58,6 +58,7 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         }
 
         conversations.Sort(static (left, right) => right.UpdatedUtc.CompareTo(left.UpdatedUtc));
+        RemoveDuplicateEmptyDrafts(conversations);
         var activeId = conversations.Any(item => string.Equals(item.Id, _state.ActiveConversationId, StringComparison.OrdinalIgnoreCase))
             ? _state.ActiveConversationId!
             : conversations[0].Id;
@@ -132,6 +133,24 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
 
     private static bool IsSystemConversation(string? id) =>
         string.Equals((id ?? string.Empty).Trim(), SystemConversationId, StringComparison.OrdinalIgnoreCase);
+
+    private static void RemoveDuplicateEmptyDrafts(List<NativeConversation> conversations) {
+        var foundEmptyDraft = false;
+        for (var index = 0; index < conversations.Count;) {
+            if (!conversations[index].IsEmptyDraft) {
+                index++;
+                continue;
+            }
+
+            if (!foundEmptyDraft) {
+                foundEmptyDraft = true;
+                index++;
+                continue;
+            }
+
+            conversations.RemoveAt(index);
+        }
+    }
 
     private static DateTime EnsureUtc(DateTime value) => value.Kind switch {
         DateTimeKind.Utc => value,

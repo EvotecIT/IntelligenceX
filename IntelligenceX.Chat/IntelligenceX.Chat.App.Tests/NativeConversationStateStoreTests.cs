@@ -86,6 +86,45 @@ public sealed class NativeConversationStateStoreTests {
         }
     }
 
+    /// <summary>
+    /// Ensures stale empty drafts are collapsed without removing real conversations.
+    /// </summary>
+    [Fact]
+    public async Task LoadAsync_CollapsesDuplicateEmptyDrafts() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        ActiveConversationId = "chat-empty-old",
+                        Conversations = new List<ChatConversationState> {
+                            new() {
+                                Id = "chat-real",
+                                Title = "Real",
+                                Messages = new List<ChatMessageState> {
+                                    new() { Role = "user", Text = "Keep me" }
+                                }
+                            },
+                            new() { Id = "chat-empty-new", Title = "New Chat", UpdatedUtc = DateTime.UtcNow },
+                            new() { Id = "chat-empty-old", Title = "New Chat", UpdatedUtc = DateTime.UtcNow.AddMinutes(-1) }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+
+            Assert.Equal(2, workspace.Conversations.Count);
+            Assert.Single(workspace.Conversations, conversation => conversation.IsEmptyDraft);
+            Assert.Contains(workspace.Conversations, conversation => conversation.Id == "chat-real");
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
     private static string CreateTemporaryDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ix-native-conversations-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);

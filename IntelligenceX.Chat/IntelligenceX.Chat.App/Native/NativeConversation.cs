@@ -31,6 +31,10 @@ internal sealed class NativeConversation {
 
     public List<NativeChatTranscriptItem> Messages { get; }
 
+    public bool IsEmptyDraft => Messages.Count == 0
+                                && string.IsNullOrWhiteSpace(ThreadId)
+                                && string.Equals(Title, "New Chat", StringComparison.OrdinalIgnoreCase);
+
     public string Subtitle => Messages.Count == 0
         ? "No messages yet"
         : UpdatedUtc.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture);

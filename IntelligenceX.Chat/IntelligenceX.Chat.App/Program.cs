@@ -1,3 +1,6 @@
+using System;
+using System.Threading;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
@@ -22,6 +25,10 @@ public static class Program {
 
         Application.Start(p => {
             StartupLog.Write("Application.Start callback");
+            var dispatcher = DispatcherQueue.GetForCurrentThread()
+                ?? throw new InvalidOperationException("The WinUI dispatcher queue is unavailable.");
+            SynchronizationContext.SetSynchronizationContext(new WinUiDispatcherSynchronizationContext(dispatcher));
+            StartupLog.Write("WinUI synchronization context installed");
             _ = new App();
             StartupLog.Write("App constructed");
         });

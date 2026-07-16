@@ -119,7 +119,14 @@ internal static class NativeMarkdownProjection {
         }
 
         foreach (var artifact in parse.Artifacts) {
-            var preview = NativeVisualPreviewRenderer.TryRender(artifact);
+            var preview = NativeVisualPreviewRenderer.TryRender(artifact, out var previewError);
+            if (!string.IsNullOrWhiteSpace(previewError)) {
+                result.Add(new NativeTranscriptContent(
+                    NativeTranscriptContentKind.Diagnostic,
+                    "Visual preview unavailable: " + previewError,
+                    sourceLine: fenceLine));
+            }
+
             result.Add(new NativeTranscriptContent(
                 NativeTranscriptContentKind.Visual,
                 string.Empty,

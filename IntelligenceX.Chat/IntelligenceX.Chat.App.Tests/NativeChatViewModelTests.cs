@@ -184,7 +184,7 @@ public sealed class NativeChatViewModelTests {
         Assert.False(result.IsAuthenticated);
         Assert.Equal("Sign-in failed", model.SignInText);
         Assert.Equal(NativeAuthenticationState.Failed, model.AuthenticationState);
-        Assert.Equal("Sign-in failed: device code expired", model.StatusText);
+        Assert.Equal("Sign-in failed. Use Sign in to reconnect.", model.StatusText);
         Assert.True(model.CanStartSignIn);
         model.Draft = "must not run";
         Assert.False(model.CanSend);
@@ -272,6 +272,22 @@ public sealed class NativeChatViewModelTests {
         Assert.Empty(model.Transcript);
         Assert.Equal(model.ActiveConversation.Id, store.LastSaved?.ActiveConversationId);
         Assert.Equal(2, store.LastSaved?.Conversations.Count);
+    }
+
+    /// <summary>
+    /// Ensures repeated New actions reuse the current empty draft instead of accumulating blank chats.
+    /// </summary>
+    [Fact]
+    public async Task CreateConversationAsync_ReusesCurrentEmptyDraft() {
+        var model = new NativeChatViewModel(
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult(string.Empty, null))));
+        var originalId = model.ActiveConversation.Id;
+
+        var created = await model.CreateConversationAsync();
+
+        Assert.True(created);
+        Assert.Equal(originalId, model.ActiveConversation.Id);
+        Assert.Single(model.Conversations);
     }
 
     /// <summary>

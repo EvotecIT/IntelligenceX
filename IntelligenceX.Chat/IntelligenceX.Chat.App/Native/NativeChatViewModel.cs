@@ -176,6 +176,10 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             return false;
         }
 
+        if (_activeConversation.IsEmptyDraft) {
+            return true;
+        }
+
         await RunOnUiAsync(() => {
             var conversation = NativeConversation.CreateNew();
             Conversations.Insert(0, conversation);
@@ -220,6 +224,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             ApplyLoginResult(result);
             return result;
         } catch (Exception ex) {
+            StartupLog.Write("Native sign-in check failed: " + ex);
             var result = new NativeLoginResult(false, null, ex.Message);
             ApplyLoginResult(result);
             return result;
@@ -251,6 +256,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             ApplyLoginResult(result);
             return result;
         } catch (Exception ex) {
+            StartupLog.Write("Native sign-in failed: " + ex);
             var result = new NativeLoginResult(false, null, ex.Message);
             ApplyLoginResult(result);
             return result;
@@ -531,7 +537,8 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                 ? NativeAuthenticationState.Required
                 : NativeAuthenticationState.Failed;
             if (!string.IsNullOrWhiteSpace(result.Error)) {
-                StatusText = "Sign-in failed: " + result.Error.Trim();
+                StartupLog.Write("Native sign-in result failed: " + result.Error.Trim());
+                StatusText = "Sign-in failed. Use Sign in to reconnect.";
             }
         });
     }
