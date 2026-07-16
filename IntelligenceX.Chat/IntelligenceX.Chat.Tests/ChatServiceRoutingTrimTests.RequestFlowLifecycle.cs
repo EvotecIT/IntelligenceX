@@ -302,7 +302,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public async Task HandleCancelChatAsync_CancelQueuedRun_KeepsRemainingQueueProgressing() {
+    public async Task HandleCancelChatAsync_CancelQueuedRun_EmitsTerminalCancellationAndKeepsRemainingQueueProgressing() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => {
             if (responseIndex == 1) {
                 Thread.Sleep(TimeSpan.FromSeconds(7));
@@ -353,18 +353,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
         await InvokeHandleCancelChatAsync(session, writer, cancelRequest, CancellationToken.None);
 
         await WaitForAckAsync(capture, cancelRequest.RequestId, TimeSpan.FromSeconds(5));
+        await WaitForRequestErrorCodeAsync(capture, canceledQueuedRequest.RequestId!, "chat_canceled", TimeSpan.FromSeconds(5));
         await WaitForRequestStatusAsync(capture, activeRequest.RequestId!, ChatStatusCodes.Done, TimeSpan.FromSeconds(20));
         await WaitForRequestStatusAsync(capture, trailingQueuedRequest.RequestId!, ChatStatusCodes.Done, TimeSpan.FromSeconds(20));
 
         Assert.False(
             HasRequestStatus(capture.Snapshot(), canceledQueuedRequest.RequestId!, ChatStatusCodes.Done),
             "Canceled queued request unexpectedly reached done status.");
-        Assert.False(
+        Assert.True(
             HasRequestErrorCode(capture.Snapshot(), canceledQueuedRequest.RequestId!, "chat_canceled"),
-            "Queued cancellation should remove the queued run without emitting a terminal chat_canceled frame.");
-        Assert.False(
+            "Queued cancellation should emit a terminal chat_canceled response for the original request.");
+        Assert.True(
             HasTerminalFrame(capture.Snapshot(), canceledQueuedRequest.RequestId!),
-            "Canceled queued request unexpectedly emitted a terminal frame.");
+            "Canceled queued request should complete its original client wait with a terminal frame.");
     }
 
     private static async Task InvokeHandleChatRequestAsync(

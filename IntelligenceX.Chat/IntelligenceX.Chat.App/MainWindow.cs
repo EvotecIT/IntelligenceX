@@ -283,6 +283,7 @@ public sealed partial class MainWindow : Window {
     private int _startupBenchAutoSendQueued;
 
     private ChatServiceClient? _client;
+    private ChatServiceTurnRunner? _turnRunner;
     private string? _threadId;
     private int _nextRequestId = 1;
     private (string LoginId, string PromptId, string PromptText)? _pendingLoginPrompt;
@@ -406,11 +407,10 @@ public sealed partial class MainWindow : Window {
     private string? _latestTurnRequestId;
     private string? _activeKickoffRequestId;
     private string? _cancelRequestedTurnRequestId;
-    private CancellationTokenSource? _activeTurnRequestCts;
     private bool _activeTurnFromQueuedAfterLogin;
     private string _activeTurnNormalizedPromptText = string.Empty;
     private string _activeTurnPromptConversationId = string.Empty;
-    // Serializes active-turn request id/CTS handoff, cancel, and teardown.
+    // Serializes active-turn request id, cancel, and teardown.
     private readonly object _activeTurnLifecycleSync = new();
     private readonly object _turnDiagnosticsSync = new();
     private readonly List<string> _activityTimeline = new();

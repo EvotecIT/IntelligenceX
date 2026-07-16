@@ -1099,6 +1099,8 @@ internal sealed partial class ChatServiceSession {
                 requestedModel,
                 runtimeDefaultModel);
             var bufferDraftDeltasForSmartReview = ShouldBufferDraftDeltasForSmartReview(request);
+            ChatMetricsMessage? turnMetrics = null;
+            ChatServiceMessage? turnResponse = null;
             BeginTurnTimelineCapture(request.RequestId);
             try {
                 if (bufferDraftDeltasForSmartReview) {
@@ -1143,7 +1145,7 @@ internal sealed partial class ChatServiceSession {
                         status: ChatStatusCodes.Done,
                         message: "Turn completed.")
                     .ConfigureAwait(false);
-                await WriteAsync(writer, result.Result, CancellationToken.None).ConfigureAwait(false);
+                turnResponse = result.Result;
 
                 await TryRecordRecentModelAsync(telemetryModel, CancellationToken.None).ConfigureAwait(false);
             } catch (OpenAIAuthenticationRequiredException) {
@@ -1156,12 +1158,12 @@ internal sealed partial class ChatServiceSession {
                         status: ChatStatusCodes.Error,
                         message: "Authentication required.")
                     .ConfigureAwait(false);
-                await WriteAsync(writer, new ErrorMessage {
+                turnResponse = new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     Error = "Not authenticated. Run ChatGPT login in a client that can persist ~/.intelligencex/auth.json, then reconnect.",
                     Code = "not_authenticated"
-                }, CancellationToken.None).ConfigureAwait(false);
+                };
             } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
                 outcome = "canceled";
                 outcomeCode = "chat_canceled";
@@ -1172,12 +1174,12 @@ internal sealed partial class ChatServiceSession {
                         status: ChatStatusCodes.Error,
                         message: "Chat canceled by client.")
                     .ConfigureAwait(false);
-                await WriteAsync(writer, new ErrorMessage {
+                turnResponse = new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     Error = "Chat canceled by client.",
                     Code = "chat_canceled"
-                }, CancellationToken.None).ConfigureAwait(false);
+                };
             } catch (OperationCanceledException ex) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken, ex.CancellationToken)) {
                 outcome = "timeout";
                 outcomeCode = "chat_timeout";
@@ -1192,12 +1194,12 @@ internal sealed partial class ChatServiceSession {
                         status: ChatStatusCodes.Timeout,
                         message: timeoutMessage)
                     .ConfigureAwait(false);
-                await WriteAsync(writer, new ErrorMessage {
+                turnResponse = new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     Error = timeoutMessage,
                     Code = "chat_timeout"
-                }, CancellationToken.None).ConfigureAwait(false);
+                };
             } catch (OperationCanceledException) when (sessionCancellationToken.IsCancellationRequested) {
                 // Session shutting down.
                 outcome = "canceled";
@@ -1212,12 +1214,12 @@ internal sealed partial class ChatServiceSession {
                         status: ChatStatusCodes.Error,
                         message: "Chat failed: " + ex.Message)
                     .ConfigureAwait(false);
-                await WriteAsync(writer, new ErrorMessage {
+                turnResponse = new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     Error = $"Chat failed: {ex.Message}",
                     Code = "chat_failed"
-                }, CancellationToken.None).ConfigureAwait(false);
+                };
             } finally {
                 var completedAtUtc = DateTime.UtcNow;
                 var durationMs = (long)Math.Max(0, (completedAtUtc - startedAtUtc).TotalMilliseconds);
@@ -1239,7 +1241,7 @@ internal sealed partial class ChatServiceSession {
                         toolErrors: toolErrors,
                         autonomyCounters: autonomyCounters,
                         completed: string.Equals(outcome, "ok", StringComparison.OrdinalIgnoreCase));
-                    await WriteAsync(writer, new ChatMetricsMessage {
+                    turnMetrics = new ChatMetricsMessage {
                         Kind = ChatServiceMessageKind.Event,
                         RequestId = request.RequestId,
                         ThreadId = threadIdForDelta,
@@ -1265,13 +1267,30 @@ internal sealed partial class ChatServiceSession {
                         EndpointHost = metricsEndpointHost,
                         Outcome = outcome,
                         ErrorCode = outcomeCode
-                    }, CancellationToken.None).ConfigureAwait(false);
+                    };
                 } catch {
-                    // Best-effort; ignore pipe failures.
+                    // Metrics are best-effort; keep the terminal response deliverable.
+                    turnMetrics = null;
                 }
 
                 deltaSubscription?.Dispose();
                 EndTurnTimelineCapture(request.RequestId);
+            }
+
+            // The response is the terminal frame for a request. Keeping metrics and every
+            // other event before it lets clients drain a complete ordered turn without a
+            // timing grace period or a second UI-specific event listener.
+            foreach (var frame in OrderTurnCompletionFrames(turnMetrics, turnResponse)) {
+                if (frame is ChatMetricsMessage) {
+                    try {
+                        await WriteAsync(writer, frame, CancellationToken.None).ConfigureAwait(false);
+                    } catch {
+                        // Metrics remain best-effort; a metrics write must not suppress the response.
+                    }
+                    continue;
+                }
+
+                await WriteAsync(writer, frame, CancellationToken.None).ConfigureAwait(false);
             }
         } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
             await TryWriteStatusAsync(
@@ -1316,6 +1335,18 @@ internal sealed partial class ChatServiceSession {
                 }
             }
         }
+    }
+
+    internal static ChatServiceMessage[] OrderTurnCompletionFrames(
+        ChatMetricsMessage? metrics,
+        ChatServiceMessage? response) {
+        if (metrics is null) {
+            return response is null ? Array.Empty<ChatServiceMessage>() : new[] { response };
+        }
+
+        return response is null
+            ? new ChatServiceMessage[] { metrics }
+            : new ChatServiceMessage[] { metrics, response };
     }
 
     private int GetQueuedChatRunCountNoLock() {
@@ -1696,6 +1727,12 @@ internal sealed partial class ChatServiceSession {
         active.Cancel();
         if (removedQueuedRun) {
             active.MarkCompleted();
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = chatRequestId,
+                Error = "Chat canceled before execution by client.",
+                Code = "chat_canceled"
+            }, cancellationToken).ConfigureAwait(false);
         }
         await WriteAsync(writer, new AckMessage {
             Kind = ChatServiceMessageKind.Response,

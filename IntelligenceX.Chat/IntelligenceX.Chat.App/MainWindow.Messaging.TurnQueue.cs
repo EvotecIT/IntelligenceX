@@ -157,9 +157,7 @@ public sealed partial class MainWindow : Window {
             _activeTurnQueueWaitMs = queueWaitMs;
             ResetActivityTimeline();
             StartTurnWatchdog();
-            CancellationTokenSource? turnRequestCts = null;
             try {
-                turnRequestCts = new CancellationTokenSource();
                 var activeTurnFromQueuedAfterLogin = queuedAtUtc.HasValue && skipUserBubble;
                 var activeTurnPromptText = NormalizeQueuedPromptTextForDispatch(turn.UserText);
                 var activeTurnPromptConversationId = NormalizeQueuedPromptConversationId(turn.ConversationId);
@@ -167,7 +165,6 @@ public sealed partial class MainWindow : Window {
                     _activeTurnRequestId = requestId;
                     _latestTurnRequestId = requestId;
                     _cancelRequestedTurnRequestId = null;
-                    _activeTurnRequestCts = turnRequestCts;
                     _activeRequestConversationId = turn.ConversationId;
                     _activeTurnFromQueuedAfterLogin = activeTurnFromQueuedAfterLogin;
                     _activeTurnNormalizedPromptText = activeTurnPromptText;
@@ -178,7 +175,7 @@ public sealed partial class MainWindow : Window {
                 // Keep dispatch path hot: publish state asynchronously while request starts.
                 _ = PublishTurnStartUiStateBestEffortAsync();
 
-                await ExecuteChatTurnWithReconnectAsync(turn, turnRequestCts.Token).ConfigureAwait(false);
+                await ExecuteChatTurnWithReconnectAsync(turn, CancellationToken.None).ConfigureAwait(false);
             } finally {
                 StopTurnWatchdog();
                 CompleteActiveTurnDispatchSend();
@@ -198,17 +195,6 @@ public sealed partial class MainWindow : Window {
                         _cancelRequestedTurnRequestId = null;
                     }
 
-                    if (ReferenceEquals(_activeTurnRequestCts, turnRequestCts)) {
-                        _activeTurnRequestCts = null;
-                    }
-
-                    if (turnRequestCts is not null) {
-                        try {
-                            turnRequestCts.Dispose();
-                        } catch (ObjectDisposedException) {
-                            // Cancellation may race with completion; disposed CTS is safe to ignore.
-                        }
-                    }
                 }
                 _assistantStreamingState.ClearReceivedDelta();
                 _activeTurnQueueWaitMs = null;
@@ -972,11 +958,6 @@ public sealed partial class MainWindow : Window {
             } else {
                 chatRequestId = _activeTurnRequestId!;
                 _cancelRequestedTurnRequestId = chatRequestId;
-                try {
-                    _activeTurnRequestCts?.Cancel();
-                } catch (ObjectDisposedException) {
-                    // Turn completion may dispose the CTS before cancellation request arrives.
-                }
             }
         }
 
@@ -985,8 +966,8 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var client = _client;
-        if (client is null) {
+        var runner = _turnRunner;
+        if (_client is null || runner is null) {
             await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
             return;
         }
@@ -994,13 +975,8 @@ public sealed partial class MainWindow : Window {
         await SetStatusAsync(SessionStatus.Canceling()).ConfigureAwait(false);
 
         try {
-            var cancelRequest = new CancelChatRequest {
-                RequestId = NextId(),
-                ChatRequestId = chatRequestId
-            };
-
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            _ = await client.RequestAsync<AckMessage>(cancelRequest, cts.Token).ConfigureAwait(false);
+            await runner.CancelAsync(chatRequestId, cts.Token).ConfigureAwait(false);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 AppendSystem(SystemNotice.CancelRequestFailed(ex.Message));

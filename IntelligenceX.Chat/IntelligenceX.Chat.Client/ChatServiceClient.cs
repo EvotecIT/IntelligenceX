@@ -16,7 +16,7 @@ namespace IntelligenceX.Chat.Client;
 /// <summary>
 /// Minimal named-pipe client for <c>IntelligenceX.Chat.Service</c>.
 /// </summary>
-public sealed class ChatServiceClient : IAsyncDisposable {
+public sealed class ChatServiceClient : IChatServiceClient, IAsyncDisposable {
     private readonly ConcurrentDictionary<string, TaskCompletionSource<ChatServiceMessage>> _pending = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private int _disconnectSignaled;

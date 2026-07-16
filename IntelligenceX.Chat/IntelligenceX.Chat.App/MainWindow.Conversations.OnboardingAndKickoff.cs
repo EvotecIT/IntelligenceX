@@ -128,7 +128,9 @@ public sealed partial class MainWindow : Window {
             };
             _activeKickoffRequestId = request.RequestId;
 
-            var result = await client.RequestAsync<ChatResultMessage>(request, CancellationToken.None).ConfigureAwait(false);
+            var runner = ResolveTurnRunner(client);
+            var run = await runner.RunAsync(request, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            var result = run.Response;
             conversation.ThreadId = result.ThreadId;
             if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
                 _threadId = result.ThreadId;
@@ -184,18 +186,14 @@ public sealed partial class MainWindow : Window {
         _activeKickoffRequestId = null;
         _activeRequestConversationId = null;
 
-        var client = _client;
-        if (kickoffRequestId.Length == 0 || client is null) {
+        var runner = _turnRunner;
+        if (kickoffRequestId.Length == 0 || _client is null || runner is null) {
             return;
         }
 
         try {
             using var cts = new CancellationTokenSource(KickoffCancelAckTimeout);
-            var cancelRequest = new CancelChatRequest {
-                RequestId = NextId(),
-                ChatRequestId = kickoffRequestId
-            };
-            _ = await client.RequestAsync<AckMessage>(cancelRequest, cts.Token).ConfigureAwait(false);
+            await runner.CancelAsync(kickoffRequestId, cts.Token).ConfigureAwait(false);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
                 AppendSystem("Kickoff cancel best-effort: " + ex.Message);
