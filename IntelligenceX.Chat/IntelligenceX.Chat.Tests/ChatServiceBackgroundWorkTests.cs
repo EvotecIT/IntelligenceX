@@ -3039,7 +3039,8 @@ public sealed class ChatServiceBackgroundWorkTests {
         var (options, _, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
 
         var writerState = new ChatServiceBackgroundSchedulerControlState(options);
-        var paused = writerState.SetManualPause(paused: true, pauseSeconds: 300, pauseReason: "maintenance-window");
+        Assert.True(writerState.SetManualPause(paused: true, pauseSeconds: 300, pauseReason: "maintenance-window"));
+        var paused = writerState.GetSnapshot(DateTime.UtcNow.Ticks);
         var storePath = writerState.ResolveStorePathForTesting();
 
         Assert.True(paused.ManualPauseActive);
@@ -3061,6 +3062,24 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Equal(0, resumed.PausedUntilUtcTicks);
         Assert.Equal(string.Empty, resumed.PauseReason);
         Assert.False(File.Exists(storePath));
+    }
+
+    [Fact]
+    public void BackgroundSchedulerControlState_ReportsDurableWriteFailure() {
+        var (options, _, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var storePath = Path.Combine(persistenceDirectory, "background-scheduler-control.json");
+        Directory.CreateDirectory(storePath);
+
+        try {
+            var state = new ChatServiceBackgroundSchedulerControlState(options);
+
+            Assert.False(state.SetManualPause(paused: true, pauseSeconds: 300, pauseReason: "must-persist"));
+            Assert.True(state.GetSnapshot(DateTime.UtcNow.Ticks).ManualPauseActive);
+        } finally {
+            if (Directory.Exists(persistenceDirectory)) {
+                Directory.Delete(persistenceDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]

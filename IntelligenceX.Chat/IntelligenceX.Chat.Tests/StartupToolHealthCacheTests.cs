@@ -77,6 +77,7 @@ public sealed class StartupToolHealthCacheTests {
             ]);
 
             Assert.Empty(ChatServiceSession.LoadStartupToolHealthCache(path));
+            Assert.Contains("\"Successful\":true", File.ReadAllText(path), StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }

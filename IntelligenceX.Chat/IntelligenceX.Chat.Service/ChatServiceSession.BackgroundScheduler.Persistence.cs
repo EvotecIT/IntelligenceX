@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using IntelligenceX.Chat.Abstractions.Policy;
@@ -374,75 +371,13 @@ internal sealed partial class ChatServiceSession {
         Func<TState, TStateResult> action,
         TState state,
         out TStateResult result) {
-        ArgumentNullException.ThrowIfNull(action);
-        result = default!;
-
-        var mutexName = BuildBackgroundSchedulerRuntimeStoreMutexName(path);
-        var acquisitionOverride = BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting;
-        if (acquisitionOverride is not null) {
-            var overrideResult = acquisitionOverride(path);
-            if (overrideResult.HasValue) {
-                if (!overrideResult.Value) {
-                    Trace.TraceWarning($"Background scheduler runtime store lock timeout for '{mutexName}'.");
-                    return false;
-                }
-
-                result = action(state);
-                return true;
-            }
-        }
-
-        Mutex? mutex = null;
-        var acquired = false;
-        try {
-            mutex = new Mutex(initiallyOwned: false, mutexName);
-            try {
-                acquired = mutex.WaitOne(TimeSpan.FromSeconds(15));
-            } catch (AbandonedMutexException) {
-                acquired = true;
-            }
-
-            if (!acquired) {
-                Trace.TraceWarning($"Background scheduler runtime store lock timeout for '{mutexName}'.");
-                return false;
-            }
-
-            result = action(state);
-            return true;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Background scheduler runtime store lock failed: {ex.GetType().Name}: {ex.Message}");
-            return false;
-        } finally {
-            if (acquired && mutex is not null) {
-                try {
-                    mutex.ReleaseMutex();
-                } catch {
-                    // Best effort only.
-                }
-            }
-
-            mutex?.Dispose();
-        }
-    }
-
-    private static string BuildBackgroundSchedulerRuntimeStoreMutexName(string path) {
-        var normalizedPath = NormalizeBackgroundSchedulerRuntimeStoreMutexPath(path);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath));
-        return $"IntelligenceX.Chat.BackgroundSchedulerRuntimeStore.{Convert.ToHexString(hash)}";
-    }
-
-    private static string NormalizeBackgroundSchedulerRuntimeStoreMutexPath(string path) {
-        var candidate = string.IsNullOrWhiteSpace(path)
-            ? ResolveDefaultBackgroundSchedulerRuntimeStorePath()
-            : path.Trim();
-
-        try {
-            candidate = Path.GetFullPath(candidate);
-        } catch {
-            // Keep the original candidate when full path resolution fails.
-        }
-
-        return OperatingSystem.IsWindows() ? candidate.ToUpperInvariant() : candidate;
+        return ChatServiceJsonFileStore.TryWithExclusiveAccess(
+            path,
+            action,
+            state,
+            out result,
+            "Background scheduler runtime store",
+            BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting);
     }
 
     private static (long LastAdaptiveIdleUtcTicks, int LastAdaptiveIdleDelaySeconds, string LastAdaptiveIdleReason) NormalizeBackgroundSchedulerAdaptiveIdleState(

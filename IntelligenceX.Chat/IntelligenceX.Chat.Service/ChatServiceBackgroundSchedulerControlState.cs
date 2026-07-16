@@ -17,7 +17,6 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     private const int MaxMaintenanceWindowThreadScopeLength = 120;
     private const int MaximumStoreBytes = 64 * 1024;
     private const string StoreName = "Background scheduler control state";
-    private static readonly object StoreLock = new();
     private static readonly JsonSerializerOptions StoreJsonOptions = new() {
         WriteIndented = false,
         PropertyNameCaseInsensitive = false
@@ -136,9 +135,8 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
         }
     }
 
-    internal BackgroundSchedulerPauseStateSnapshot SetManualPause(bool paused, int? pauseSeconds, string pauseReason) {
+    internal bool SetManualPause(bool paused, int? pauseSeconds, string pauseReason) {
         var nowTicks = DateTime.UtcNow.Ticks;
-        BackgroundSchedulerPauseStateSnapshot snapshot;
         lock (_lock) {
             if (!paused) {
                 _manualPauseActive = false;
@@ -152,15 +150,8 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
                 _pauseReason = NormalizeManualPauseReason(pauseReason, pauseSeconds);
             }
 
-            snapshot = new BackgroundSchedulerPauseStateSnapshot(
-                ManualPauseActive: _manualPauseActive,
-                ScheduledPauseActive: false,
-                PausedUntilUtcTicks: _pausedUntilUtcTicks,
-                PauseReason: _pauseReason);
+            return PersistStateNoThrow();
         }
-
-        PersistStateNoThrow();
-        return snapshot;
     }
 
     internal static string NormalizeManualPauseReason(string? reason, int? pauseSeconds) {
@@ -265,7 +256,7 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
         }
     }
 
-    internal void UpdateMaintenanceWindows(string operation, IReadOnlyList<string>? rawSpecs) {
+    internal bool UpdateMaintenanceWindows(string operation, IReadOnlyList<string>? rawSpecs) {
         var normalizedOperation = NormalizeMaintenanceWindowOperation(operation);
         var normalizedSpecs = NormalizeMaintenanceWindowSpecs(rawSpecs);
         lock (_lock) {
@@ -291,12 +282,12 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
                     _maintenanceWindows = _defaultMaintenanceWindows;
                     break;
             }
-        }
 
-        PersistStateNoThrow();
+            return PersistStateNoThrow();
+        }
     }
 
-    internal void UpdateBlockedPacks(string operation, IReadOnlyList<string>? rawPackIds, int? durationSeconds = null) {
+    internal bool UpdateBlockedPacks(string operation, IReadOnlyList<string>? rawPackIds, int? durationSeconds = null) {
         var normalizedOperation = NormalizeMaintenanceWindowOperation(operation);
         var normalizedPackIds = NormalizeBlockedPackIds(rawPackIds);
         var nowTicks = DateTime.UtcNow.Ticks;
@@ -338,12 +329,12 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
                     _temporaryBlockedPackSuppressions = Array.Empty<TemporarySuppression>();
                     break;
             }
-        }
 
-        PersistStateNoThrow();
+            return PersistStateNoThrow();
+        }
     }
 
-    internal void UpdateBlockedThreads(string operation, IReadOnlyList<string>? rawThreadIds, int? durationSeconds = null) {
+    internal bool UpdateBlockedThreads(string operation, IReadOnlyList<string>? rawThreadIds, int? durationSeconds = null) {
         var normalizedOperation = NormalizeMaintenanceWindowOperation(operation);
         var normalizedThreadIds = NormalizeBlockedThreadIds(rawThreadIds);
         var nowTicks = DateTime.UtcNow.Ticks;
@@ -385,9 +376,9 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
                     _temporaryBlockedThreadSuppressions = Array.Empty<TemporarySuppression>();
                     break;
             }
-        }
 
-        PersistStateNoThrow();
+            return PersistStateNoThrow();
+        }
     }
 
     internal bool TryResolveBlockedPackDurationUntilNextMaintenanceWindow(
@@ -1429,25 +1420,34 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
 
     private StoreDto ReadStoreStateNoThrow() {
         var path = ResolveStorePath();
-        lock (StoreLock) {
-            var expiredPauseRemoved = false;
-            var result = ChatServiceJsonFileStore.Read<StoreDto>(
-                path,
-                MaximumStoreBytes,
-                static json => JsonSerializer.Deserialize<StoreDto>(json, StoreJsonOptions),
-                static store => store.Version > 0 && store.Version <= StoreVersion,
-                store => expiredPauseRemoved = NormalizeStoreState(store, DateTime.UtcNow),
-                StoreName);
-            if (result.State != ChatServiceJsonFileReadState.Loaded || result.Value is null) {
-                return new StoreDto();
-            }
+        return ChatServiceJsonFileStore.TryWithExclusiveAccess(
+                   path,
+                   ReadStoreStateWithCleanup,
+                   path,
+                   out var store,
+                   StoreName)
+            ? store
+            : new StoreDto();
+    }
 
-            if (expiredPauseRemoved) {
-                PersistNormalizedStore(path, result.Value);
-            }
-
-            return result.Value;
+    private static StoreDto ReadStoreStateWithCleanup(string path) {
+        var expiredPauseRemoved = false;
+        var result = ChatServiceJsonFileStore.Read<StoreDto>(
+            path,
+            MaximumStoreBytes,
+            static json => JsonSerializer.Deserialize<StoreDto>(json, StoreJsonOptions),
+            static store => store.Version > 0 && store.Version <= StoreVersion,
+            store => expiredPauseRemoved = NormalizeStoreState(store, DateTime.UtcNow),
+            StoreName);
+        if (result.State != ChatServiceJsonFileReadState.Loaded || result.Value is null) {
+            return new StoreDto();
         }
+
+        if (expiredPauseRemoved) {
+            PersistNormalizedStore(path, result.Value);
+        }
+
+        return result.Value;
     }
 
     private static bool NormalizeStoreState(StoreDto store, DateTime nowUtc) {
@@ -1514,7 +1514,7 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
         return expiredPauseRemoved;
     }
 
-    private void PersistStateNoThrow() {
+    private bool PersistStateNoThrow() {
         bool manualPauseActive;
         long pausedUntilUtcTicks;
         string pauseReason;
@@ -1552,10 +1552,6 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
             maintenanceWindowSpecs = _maintenanceWindows
                 .Select(static window => window.NormalizedSpec)
                 .ToArray();
-        }
-
-        var path = ResolveStorePath();
-        lock (StoreLock) {
             var store = new StoreDto {
                 ManualPauseActive = manualPauseActive,
                 PausedUntilUtcTicks = manualPauseActive ? Math.Max(0, pausedUntilUtcTicks) : 0,
@@ -1569,17 +1565,24 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
                 MaintenanceWindowsCustomized = maintenanceWindowsCustomized,
                 MaintenanceWindowSpecs = maintenanceWindowsCustomized ? maintenanceWindowSpecs : Array.Empty<string>()
             };
-            PersistNormalizedStore(path, store);
+
+            var path = ResolveStorePath();
+            var lockAcquired = ChatServiceJsonFileStore.TryWithExclusiveAccess(
+                path,
+                static state => PersistNormalizedStore(state.Path, state.Store),
+                (Path: path, Store: store),
+                out var persisted,
+                StoreName);
+            return lockAcquired && persisted;
         }
     }
 
-    private static void PersistNormalizedStore(string path, StoreDto store) {
+    private static bool PersistNormalizedStore(string path, StoreDto store) {
         if (!HasPersistableState(store)) {
-            ChatServiceJsonFileStore.Delete(path, StoreName);
-            return;
+            return ChatServiceJsonFileStore.Delete(path, StoreName);
         }
 
-        ChatServiceJsonFileStore.Write(
+        return ChatServiceJsonFileStore.Write(
             path,
             store,
             static value => JsonSerializer.Serialize(value, StoreJsonOptions),

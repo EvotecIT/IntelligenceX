@@ -797,13 +797,11 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private SessionCapabilityBackgroundSchedulerDto SetBackgroundSchedulerManualPause(bool paused, int? pauseSeconds, string? reason) {
-        _backgroundSchedulerControlState.SetManualPause(
+    private bool SetBackgroundSchedulerManualPause(bool paused, int? pauseSeconds, string? reason) {
+        return _backgroundSchedulerControlState.SetManualPause(
             paused,
             pauseSeconds,
             reason ?? string.Empty);
-
-        return BuildBackgroundSchedulerSummary();
     }
 
     private static string NormalizeBackgroundSchedulerOutcome(BackgroundSchedulerIterationOutcomeKind outcome) {

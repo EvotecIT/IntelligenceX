@@ -45,6 +45,25 @@ public static class ChatStatePaths {
         }
     }
 
+    /// <summary>
+    /// Determines whether a file is a direct child of a directory without traversing an existing symbolic link or reparse point.
+    /// </summary>
+    public static bool IsDirectChildPath(string directory, string path) {
+        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(path)) {
+            return false;
+        }
+
+        try {
+            var fullDirectory = Path.GetFullPath(directory);
+            var fullPath = Path.GetFullPath(path);
+            var parent = Path.GetDirectoryName(fullPath);
+            return string.Equals(parent, fullDirectory, PathComparison)
+                   && HasNoReparsePointsBelowDirectory(fullDirectory, fullPath);
+        } catch {
+            return false;
+        }
+    }
+
     internal static string ResolveDefaultPath(
         string fileName,
         string? localApplicationData,
@@ -75,11 +94,11 @@ public static class ChatStatePaths {
         string? userProfile) {
         if (TryNormalizeAbsoluteRoot(localApplicationData, out var root)
             || TryNormalizeAbsoluteRoot(xdgDataHome, out root)) {
-            return Path.Combine(root, ApplicationDirectoryName);
+            return ValidateDefaultDirectory(Path.Combine(root, ApplicationDirectoryName));
         }
 
         if (TryNormalizeAbsoluteRoot(userProfile, out root)) {
-            return Path.Combine(root, ".local", "share", ApplicationDirectoryName);
+            return ValidateDefaultDirectory(Path.Combine(root, ".local", "share", ApplicationDirectoryName));
         }
 
         throw new InvalidOperationException(
@@ -101,6 +120,10 @@ public static class ChatStatePaths {
                               + Path.DirectorySeparatorChar;
         var fullPath = Path.GetFullPath(path);
         if (!fullPath.StartsWith(directoryPrefix, PathComparison)) {
+            return false;
+        }
+
+        if (IsExistingReparsePoint(fullDirectory)) {
             return false;
         }
 
@@ -126,6 +149,25 @@ public static class ChatStatePaths {
         }
 
         return true;
+    }
+
+    private static string ValidateDefaultDirectory(string path) {
+        var fullPath = Path.GetFullPath(path);
+        if (IsExistingReparsePoint(fullPath)) {
+            throw new InvalidOperationException("The shared state directory cannot be a symbolic link or reparse point.");
+        }
+
+        return fullPath;
+    }
+
+    private static bool IsExistingReparsePoint(string path) {
+        try {
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        } catch (FileNotFoundException) {
+            return false;
+        } catch (DirectoryNotFoundException) {
+            return false;
+        }
     }
 
     private static bool TryNormalizeAbsoluteRoot(string? candidate, out string root) {

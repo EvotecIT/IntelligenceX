@@ -44,6 +44,34 @@ public sealed class ChatServiceJsonFileStoreTests {
     }
 
     [Fact]
+    public void ResolveDefaultPath_RejectsSharedStateDirectoryReparsePoint() {
+        var root = CreateRoot();
+        var outside = CreateRoot();
+        var sharedDirectory = Path.Combine(root, "IntelligenceX.Chat");
+        try {
+            try {
+                Directory.CreateSymbolicLink(sharedDirectory, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            Assert.Throws<InvalidOperationException>(() => ChatStatePaths.ResolveDefaultPath(
+                "state.json",
+                localApplicationData: root,
+                xdgDataHome: " ",
+                userProfile: " "));
+        } finally {
+            DeleteDirectoryLink(sharedDirectory);
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+            if (Directory.Exists(outside)) {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ServiceDefaults_UseTheSharedStatePathOwner() {
         Assert.Equal(ChatStatePaths.GetDefaultPath("state.db"), ServiceOptions.GetDefaultStateDbPath());
         Assert.Equal(
@@ -289,6 +317,101 @@ public sealed class ChatServiceJsonFileStoreTests {
     }
 
     [Fact]
+    public void ResolvePathOverrideWithinDefaultDirectory_RejectsRelativeFileReparsePoint() {
+        var directory = ChatStatePaths.GetDefaultDirectory();
+        var outside = Path.Combine(CreateRoot(), "outside.json");
+        var fileName = "reparse-" + Guid.NewGuid().ToString("N") + ".json";
+        var link = Path.Combine(directory, fileName);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(outside, "{}");
+
+        try {
+            try {
+                File.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            Assert.Equal(
+                ChatStatePaths.GetDefaultPath("pending-actions.json"),
+                ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(fileName, "pending-actions.json"));
+        } finally {
+            if (File.Exists(link)) {
+                File.Delete(link);
+            }
+            var outsideDirectory = Path.GetDirectoryName(outside);
+            if (!string.IsNullOrWhiteSpace(outsideDirectory) && Directory.Exists(outsideDirectory)) {
+                Directory.Delete(outsideDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveSiblingPath_RejectsExistingFileReparsePoint() {
+        var root = CreateRoot();
+        var outside = Path.Combine(CreateRoot(), "outside.json");
+        var anchor = Path.Combine(root, "anchor.json");
+        var link = Path.Combine(root, "sibling.json");
+        File.WriteAllText(outside, "{}");
+
+        try {
+            try {
+                File.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            Assert.Equal(string.Empty, ChatServiceJsonFileStore.ResolveSiblingPath(anchor, "sibling.json"));
+        } finally {
+            if (File.Exists(link)) {
+                File.Delete(link);
+            }
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+            var outsideDirectory = Path.GetDirectoryName(outside);
+            if (!string.IsNullOrWhiteSpace(outsideDirectory) && Directory.Exists(outsideDirectory)) {
+                Directory.Delete(outsideDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ReadAndWrite_RejectExistingFileReparsePoint() {
+        var root = CreateRoot();
+        var outsideDirectory = CreateRoot();
+        var outside = Path.Combine(outsideDirectory, "outside.json");
+        var link = Path.Combine(root, "state.json");
+        File.WriteAllText(outside, "{\"Version\":2,\"Value\":\"outside\"}");
+
+        try {
+            try {
+                File.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            Assert.Equal(ChatServiceJsonFileReadState.Invalid, Read(link).State);
+            Assert.False(ChatServiceJsonFileStore.Write(
+                link,
+                new TestStore { Version = 2, Value = "overwritten" },
+                static value => JsonSerializer.Serialize(value),
+                "Test store"));
+            Assert.Contains("outside", File.ReadAllText(outside), StringComparison.Ordinal);
+        } finally {
+            if (File.Exists(link)) {
+                File.Delete(link);
+            }
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+            if (Directory.Exists(outsideDirectory)) {
+                Directory.Delete(outsideDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void ResolvePathOverrideWithinDefaultDirectory_RejectsReparsePointEscape() {
         var root = Path.Combine(
             ChatStatePaths.GetDefaultDirectory(),
@@ -355,6 +478,16 @@ public sealed class ChatServiceJsonFileStoreTests {
         var root = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static void DeleteDirectoryLink(string path) {
+        try {
+            if (Directory.Exists(path)) {
+                Directory.Delete(path);
+            }
+        } catch {
+            // Best-effort cleanup for platforms with unusual link deletion semantics.
+        }
     }
 
     private sealed class TestStore {

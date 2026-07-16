@@ -272,8 +272,8 @@ public sealed partial class MainWindow : Window {
     }
 
     private static StartupWebViewBudgetCacheEntry LoadStartupWebViewBudgetCache() {
-        var path = ResolveStartupWebViewBudgetCachePath();
         try {
+            var path = ResolveStartupWebViewBudgetCachePath();
             var snapshot = ChatJsonFileStore.Read(path, StartupWebViewBudgetCacheMaximumBytes);
             if (snapshot.State != ChatJsonFileReadState.Loaded || snapshot.Json is null) {
                 return StartupWebViewBudgetCacheEntry.Default;
