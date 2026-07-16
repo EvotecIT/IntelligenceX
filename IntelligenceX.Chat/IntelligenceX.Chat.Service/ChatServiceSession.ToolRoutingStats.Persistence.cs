@@ -5,16 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int ToolRoutingStatsStoreVersion = 1;
     private static readonly object ToolRoutingStatsStoreLock = new();
-    private static readonly JsonSerializerOptions ToolRoutingStatsStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class ToolRoutingStatsStoreDto {
         public int Version { get; set; } = ToolRoutingStatsStoreVersion;
@@ -29,24 +26,11 @@ internal sealed partial class ChatServiceSession {
         public long LastSuccessUtcTicks { get; set; }
     }
 
-    private static string ResolveDefaultToolRoutingStatsStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultToolRoutingStatsStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("tool-routing-stats.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "tool-routing-stats.json");
-    }
-
-    private string ResolveToolRoutingStatsStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "tool-routing-stats.json");
-        }
-
-        return ResolveDefaultToolRoutingStatsStorePath();
-    }
+    private string ResolveToolRoutingStatsStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "tool-routing-stats.json");
 
     private void TryRehydrateToolRoutingStats() {
         var path = ResolveToolRoutingStatsStorePath();
@@ -111,91 +95,31 @@ internal sealed partial class ChatServiceSession {
     private void ClearToolRoutingStatsSnapshots() {
         var path = ResolveToolRoutingStatsStorePath();
         lock (ToolRoutingStatsStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Tool routing stats store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Tool routing stats store");
         }
     }
 
     private static ToolRoutingStatsStoreDto ReadToolRoutingStatsStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new ToolRoutingStatsStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 1024 * 1024) {
-                return new ToolRoutingStatsStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new ToolRoutingStatsStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<ToolRoutingStatsStoreDto>(json, ToolRoutingStatsStoreJsonOptions);
-            if (store is null || store.Version != ToolRoutingStatsStoreVersion || store.Tools is null) {
-                return new ToolRoutingStatsStoreDto();
-            }
-
-            if (store.Tools.Comparer != StringComparer.OrdinalIgnoreCase) {
-                store.Tools = new Dictionary<string, ToolRoutingStatsStoreEntryDto>(store.Tools, StringComparer.OrdinalIgnoreCase);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Tool routing stats store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new ToolRoutingStatsStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 1024 * 1024,
+            static json => JsonSerializer.Deserialize<ToolRoutingStatsStoreDto>(json),
+            static store => store.Version == ToolRoutingStatsStoreVersion && store.Tools is not null,
+            static store => {
+                if (store.Tools.Comparer != StringComparer.OrdinalIgnoreCase) {
+                    store.Tools = new Dictionary<string, ToolRoutingStatsStoreEntryDto>(store.Tools, StringComparer.OrdinalIgnoreCase);
+                }
+            },
+            static () => new ToolRoutingStatsStoreDto(),
+            "Tool routing stats store");
     }
 
     private static void WriteToolRoutingStatsStoreNoThrow(string path, ToolRoutingStatsStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, ToolRoutingStatsStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Tool routing stats store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Tool routing stats store");
     }
 
     private static void PruneToolRoutingStatsStore(ToolRoutingStatsStoreDto store) {

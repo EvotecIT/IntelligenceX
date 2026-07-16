@@ -5,16 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int ThreadRecoveryAliasStoreVersion = 1;
     private static readonly object ThreadRecoveryAliasStoreLock = new();
-    private static readonly JsonSerializerOptions ThreadRecoveryAliasStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class ThreadRecoveryAliasStoreDto {
         public int Version { get; set; } = ThreadRecoveryAliasStoreVersion;
@@ -26,24 +23,11 @@ internal sealed partial class ChatServiceSession {
         public long SeenUtcTicks { get; set; }
     }
 
-    private static string ResolveDefaultThreadRecoveryAliasStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultThreadRecoveryAliasStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("thread-recovery-aliases.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "thread-recovery-aliases.json");
-    }
-
-    private string ResolveThreadRecoveryAliasStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "thread-recovery-aliases.json");
-        }
-
-        return ResolveDefaultThreadRecoveryAliasStorePath();
-    }
+    private string ResolveThreadRecoveryAliasStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "thread-recovery-aliases.json");
 
     private void PersistRecoveredThreadAliasSnapshot(string originalThreadId, string recoveredThreadId, long seenUtcTicks) {
         var normalizedOriginal = (originalThreadId ?? string.Empty).Trim();
@@ -87,13 +71,7 @@ internal sealed partial class ChatServiceSession {
     private void ClearRecoveredThreadAliasSnapshots() {
         var path = ResolveThreadRecoveryAliasStorePath();
         lock (ThreadRecoveryAliasStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Thread-recovery alias store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Thread-recovery alias store");
         }
     }
 
@@ -140,80 +118,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static ThreadRecoveryAliasStoreDto ReadThreadRecoveryAliasStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new ThreadRecoveryAliasStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 1024 * 1024) {
-                return new ThreadRecoveryAliasStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new ThreadRecoveryAliasStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<ThreadRecoveryAliasStoreDto>(json, ThreadRecoveryAliasStoreJsonOptions);
-            if (store is null || store.Version != ThreadRecoveryAliasStoreVersion || store.Threads is null) {
-                return new ThreadRecoveryAliasStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, ThreadRecoveryAliasStoreEntryDto>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Thread-recovery alias store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new ThreadRecoveryAliasStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 1024 * 1024,
+            static json => JsonSerializer.Deserialize<ThreadRecoveryAliasStoreDto>(json),
+            static store => store.Version == ThreadRecoveryAliasStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, ThreadRecoveryAliasStoreEntryDto>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new ThreadRecoveryAliasStoreDto(),
+            "Thread-recovery alias store");
     }
 
     private static void WriteThreadRecoveryAliasStoreNoThrow(string path, ThreadRecoveryAliasStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, ThreadRecoveryAliasStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Thread-recovery alias store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Thread-recovery alias store");
     }
 
     private static void PruneThreadRecoveryAliasStore(ThreadRecoveryAliasStoreDto store) {

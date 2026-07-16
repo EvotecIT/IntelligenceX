@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI.ToolCalling;
@@ -19,10 +20,6 @@ internal sealed partial class ChatServiceSession {
     private const string HostBootstrapFailureKindPackPreflight = "pack_preflight";
     private const string HostBootstrapFailureKindRecoveryHelper = "recovery_helper";
     private static readonly object HostBootstrapFailureStoreLock = new();
-    private static readonly JsonSerializerOptions HostBootstrapFailureStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class HostBootstrapFailureStoreDto {
         public int Version { get; set; } = HostBootstrapFailureStoreVersion;
@@ -44,24 +41,11 @@ internal sealed partial class ChatServiceSession {
         string Error,
         long SeenUtcTicks);
 
-    private static string ResolveDefaultHostBootstrapFailureStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultHostBootstrapFailureStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("host-bootstrap-failures.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "host-bootstrap-failures.json");
-    }
-
-    private string ResolveHostBootstrapFailureStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "host-bootstrap-failures.json");
-        }
-
-        return ResolveDefaultHostBootstrapFailureStorePath();
-    }
+    private string ResolveHostBootstrapFailureStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "host-bootstrap-failures.json");
 
     private void RememberHostBootstrapFailure(string threadId, string toolName, string failureKind, ToolOutputDto output) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -251,13 +235,7 @@ internal sealed partial class ChatServiceSession {
     private void ClearHostBootstrapFailureSnapshots() {
         var path = ResolveHostBootstrapFailureStorePath();
         lock (HostBootstrapFailureStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Host bootstrap failure store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Host bootstrap failure store");
         }
     }
 
@@ -343,80 +321,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static HostBootstrapFailureStoreDto ReadHostBootstrapFailureStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new HostBootstrapFailureStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 512 * 1024) {
-                return new HostBootstrapFailureStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new HostBootstrapFailureStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<HostBootstrapFailureStoreDto>(json, HostBootstrapFailureStoreJsonOptions);
-            if (store is null || store.Version != HostBootstrapFailureStoreVersion || store.Threads is null) {
-                return new HostBootstrapFailureStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, HostBootstrapFailureStoreEntryDto[]>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Host bootstrap failure store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new HostBootstrapFailureStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 512 * 1024,
+            static json => JsonSerializer.Deserialize<HostBootstrapFailureStoreDto>(json),
+            static store => store.Version == HostBootstrapFailureStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, HostBootstrapFailureStoreEntryDto[]>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new HostBootstrapFailureStoreDto(),
+            "Host bootstrap failure store");
     }
 
     private static void WriteHostBootstrapFailureStoreNoThrow(string path, HostBootstrapFailureStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, HostBootstrapFailureStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Host bootstrap failure store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Host bootstrap failure store");
     }
 
     private static void PruneHostBootstrapFailureStore(HostBootstrapFailureStoreDto store) {

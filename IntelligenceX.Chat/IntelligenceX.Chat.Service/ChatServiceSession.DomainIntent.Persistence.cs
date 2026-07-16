@@ -5,16 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int DomainIntentStoreVersion = 1;
     private static readonly object DomainIntentStoreLock = new();
-    private static readonly JsonSerializerOptions DomainIntentStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class DomainIntentStoreDto {
         public int Version { get; set; } = DomainIntentStoreVersion;
@@ -26,23 +23,11 @@ internal sealed partial class ChatServiceSession {
         public long SeenUtcTicks { get; set; }
     }
 
-    private static string ResolveDefaultDomainIntentStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-        return Path.Combine(root, "IntelligenceX.Chat", "domain-intent-families.json");
-    }
+    private static string ResolveDefaultDomainIntentStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("domain-intent-families.json");
 
-    private string ResolveDomainIntentStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "domain-intent-families.json");
-        }
-
-        return ResolveDefaultDomainIntentStorePath();
-    }
+    private string ResolveDomainIntentStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "domain-intent-families.json");
 
     private void PersistDomainIntentFamilySnapshot(string threadId, string family, long seenUtcTicks) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -85,13 +70,7 @@ internal sealed partial class ChatServiceSession {
     private void ClearDomainIntentFamilySnapshots() {
         var path = ResolveDomainIntentStorePath();
         lock (DomainIntentStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Domain intent store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Domain intent store");
         }
     }
 
@@ -142,80 +121,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static DomainIntentStoreDto ReadDomainIntentStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new DomainIntentStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 512 * 1024) {
-                return new DomainIntentStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new DomainIntentStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<DomainIntentStoreDto>(json, DomainIntentStoreJsonOptions);
-            if (store is null || store.Version != DomainIntentStoreVersion || store.Threads is null) {
-                return new DomainIntentStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, DomainIntentStoreEntryDto>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Domain intent store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new DomainIntentStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 512 * 1024,
+            static json => JsonSerializer.Deserialize<DomainIntentStoreDto>(json),
+            static store => store.Version == DomainIntentStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, DomainIntentStoreEntryDto>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new DomainIntentStoreDto(),
+            "Domain intent store");
     }
 
     private static void WriteDomainIntentStoreNoThrow(string path, DomainIntentStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, DomainIntentStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Domain intent store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Domain intent store");
     }
 
     private static void PruneDomainIntentStore(DomainIntentStoreDto store) {

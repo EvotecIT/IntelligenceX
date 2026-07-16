@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -26,24 +27,11 @@ internal sealed partial class ChatServiceSession {
     private string _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateEmpty;
     private BackgroundSchedulerRuntimeStoreDto? _backgroundSchedulerRuntimeStoreDeferredPersistStore;
 
-    private static string ResolveDefaultBackgroundSchedulerRuntimeStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultBackgroundSchedulerRuntimeStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("background-scheduler-runtime.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "background-scheduler-runtime.json");
-    }
-
-    private string ResolveBackgroundSchedulerRuntimeStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "background-scheduler-runtime.json");
-        }
-
-        return ResolveDefaultBackgroundSchedulerRuntimeStorePath();
-    }
+    private string ResolveBackgroundSchedulerRuntimeStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "background-scheduler-runtime.json");
 
     private void TryRehydrateBackgroundSchedulerRuntimeState() {
         var path = ResolveBackgroundSchedulerRuntimeStorePath();
@@ -353,84 +341,32 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static BackgroundSchedulerRuntimeStoreReadResult ReadBackgroundSchedulerRuntimeStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return BackgroundSchedulerRuntimeStoreReadResult.Empty();
-            }
+        var result = ChatServiceJsonFileStore.Read(
+            path,
+            maximumBytes: 512 * 1024,
+            static json => JsonSerializer.Deserialize<BackgroundSchedulerRuntimeStoreDto>(
+                json,
+                BackgroundSchedulerRuntimeStoreReadJsonOptions),
+            static store => store.Version == BackgroundSchedulerRuntimeStoreVersion,
+            normalize: null,
+            "Background scheduler runtime store");
 
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 512 * 1024) {
-                return BackgroundSchedulerRuntimeStoreReadResult.Invalid();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return BackgroundSchedulerRuntimeStoreReadResult.Empty();
-            }
-
-            var store = JsonSerializer.Deserialize<BackgroundSchedulerRuntimeStoreDto>(json, BackgroundSchedulerRuntimeStoreReadJsonOptions);
-            if (store is null) {
-                return BackgroundSchedulerRuntimeStoreReadResult.Invalid();
-            }
-
-            if (store.Version != BackgroundSchedulerRuntimeStoreVersion) {
-                Trace.TraceWarning(
-                    $"Background scheduler runtime store version mismatch: expected {BackgroundSchedulerRuntimeStoreVersion}, found {store.Version}.");
-                return BackgroundSchedulerRuntimeStoreReadResult.Invalid();
-            }
-
-            return BackgroundSchedulerRuntimeStoreReadResult.Loaded(store);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Background scheduler runtime store read failed: {ex.GetType().Name}: {ex.Message}");
-            return BackgroundSchedulerRuntimeStoreReadResult.Invalid();
-        }
+        return result.State switch {
+            ChatServiceJsonFileReadState.Loaded when result.Value is not null =>
+                BackgroundSchedulerRuntimeStoreReadResult.Loaded(result.Value),
+            ChatServiceJsonFileReadState.Empty => BackgroundSchedulerRuntimeStoreReadResult.Empty(),
+            _ => BackgroundSchedulerRuntimeStoreReadResult.Invalid()
+        };
     }
 
     private static void WriteBackgroundSchedulerRuntimeStoreNoThrow(string path, BackgroundSchedulerRuntimeStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(
-                store,
-                BackgroundSchedulerRuntimeStoreJsonContext.Default.BackgroundSchedulerRuntimeStoreDto);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Background scheduler runtime store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(
+                value,
+                BackgroundSchedulerRuntimeStoreJsonContext.Default.BackgroundSchedulerRuntimeStoreDto),
+            "Background scheduler runtime store");
     }
 
     private static bool TryWithBackgroundSchedulerRuntimeStoreLock<TState, TStateResult>(

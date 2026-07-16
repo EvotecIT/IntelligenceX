@@ -3,20 +3,15 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int PendingActionStoreVersion = 1;
     private static readonly object PendingActionStoreLock = new();
-    private static readonly JsonSerializerOptions PendingActionStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private static bool TryGetUtcDateTimeFromTicks(long utcTicks, out DateTime value) {
         value = default;
@@ -31,40 +26,6 @@ internal sealed partial class ChatServiceSession {
             return true;
         } catch (ArgumentOutOfRangeException) {
             return false;
-        }
-    }
-
-    private static void TryHardenPendingActionsStoreAclNoThrow(string path) {
-        if (string.IsNullOrWhiteSpace(path)) {
-            return;
-        }
-        if (!OperatingSystem.IsWindows()) {
-            return;
-        }
-
-        try {
-            if (!File.Exists(path)) {
-                return;
-            }
-            var attrs = File.GetAttributes(path);
-            if ((attrs & FileAttributes.Directory) != 0) {
-                return;
-            }
-
-            var currentSid = WindowsIdentity.GetCurrent().User;
-            if (currentSid is null) {
-                return;
-            }
-
-            var fileInfo = new FileInfo(path);
-            var security = fileInfo.GetAccessControl();
-            security.SetOwner(currentSid);
-            // Keep inherited rules to avoid breaking access; LocalAppData already provides per-user isolation.
-            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
-            security.SetAccessRule(new FileSystemAccessRule(currentSid, FileSystemRights.FullControl, AccessControlType.Allow));
-            fileInfo.SetAccessControl(security);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Pending action store ACL hardening failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -89,13 +50,8 @@ internal sealed partial class ChatServiceSession {
         public bool? Mutating { get; set; }
     }
 
-    private static string ResolveDefaultPendingActionsStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-        return Path.Combine(root, "IntelligenceX.Chat", "pending-actions.json");
-    }
+    private static string ResolveDefaultPendingActionsStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("pending-actions.json");
 
     private string ResolvePendingActionsStorePath() {
         var candidate = (_options.PendingActionsStorePath ?? string.Empty).Trim();
@@ -202,13 +158,7 @@ internal sealed partial class ChatServiceSession {
     private void ClearPendingActionsSnapshots() {
         var path = ResolvePendingActionsStorePath();
         lock (PendingActionStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Pending action store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Pending action store");
         }
     }
 
@@ -289,85 +239,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static PendingActionStoreDto ReadPendingActionsStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new PendingActionStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 1024 * 1024) {
-                // Cap read size to avoid local DoS via gigantic store files.
-                return new PendingActionStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new PendingActionStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<PendingActionStoreDto>(json, PendingActionStoreJsonOptions);
-            if (store is null || store.Version != PendingActionStoreVersion || store.Threads is null) {
-                return new PendingActionStoreDto();
-            }
-
-            // Ensure dictionary comparer matches expectations.
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, PendingActionStoreEntryDto>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Pending action store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new PendingActionStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 1024 * 1024,
+            static json => JsonSerializer.Deserialize<PendingActionStoreDto>(json),
+            static store => store.Version == PendingActionStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, PendingActionStoreEntryDto>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new PendingActionStoreDto(),
+            "Pending action store");
     }
 
     private static void WritePendingActionsStoreNoThrow(string path, PendingActionStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) {
-                Directory.CreateDirectory(dir);
-            }
-
-            var json = JsonSerializer.Serialize(store, PendingActionStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(dir) ? tmpName : Path.Combine(dir!, tmpName);
-
-            // CreateNew avoids clobbering attacker-planted tmp files.
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                // Harden as early as possible; with FileShare.None other users can't open this file while we write.
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                // Atomic swap (best-effort) to avoid losing the store if we crash mid-write.
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Pending action store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Ignore cleanup failures; store writes are best-effort.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Pending action store");
     }
 
     private static void PrunePendingActionsStore(PendingActionStoreDto store) {
