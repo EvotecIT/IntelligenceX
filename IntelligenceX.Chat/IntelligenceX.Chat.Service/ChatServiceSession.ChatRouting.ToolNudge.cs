@@ -237,7 +237,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!executionContractApplies && IsArtifactOnlyFollowUpRequest(userRequest)) {
+        if (!executionContractApplies && HasArtifactRequestWithoutExplicitToolIntent(userRequest)) {
             reason = "artifact_only_follow_up_request";
             return false;
         }
@@ -402,14 +402,15 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (IsArtifactOnlyFollowUpRequest(request)) {
-            reason = "artifact_only_follow_up_request";
-            return false;
-        }
-
+        var hasArtifactRequestWithoutExplicitToolIntent = HasArtifactRequestWithoutExplicitToolIntent(request);
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0 || draft.Length > 2400) {
             if (draft.Length == 0) {
+                if (hasArtifactRequestWithoutExplicitToolIntent) {
+                    reason = "artifact_only_follow_up_request";
+                    return false;
+                }
+
                 var requestTokenCount = CountLetterDigitTokens(request, maxTokens: 64);
                 if (requestTokenCount >= 4) {
                     reason = "empty_assistant_draft_retry";
@@ -430,6 +431,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var hasSinglePendingActionEnvelope = TryGetSinglePendingActionEnvelopeMutability(draft, out var singlePendingActionMutability);
+        var hasSingleNonMutatingPendingActionEnvelope = hasSinglePendingActionEnvelope
+                                                        && singlePendingActionMutability != ActionMutability.Mutating;
+        if (hasArtifactRequestWithoutExplicitToolIntent && !hasSingleNonMutatingPendingActionEnvelope) {
+            reason = "artifact_only_follow_up_request";
+            return false;
+        }
+
         // If the user selected an explicit pending action (/act or ordinal selection), we should strongly prefer
         // tool execution over a "talky" draft. This is language-agnostic and works after app restarts.
         if (LooksLikeActionSelectionPayload(request)) {
@@ -443,9 +452,6 @@ internal sealed partial class ChatServiceSession {
         var compactFollowUp = compactFollowUpHint || LooksLikeCompactFollowUp(request);
         var contextualFollowUp = !compactFollowUp && LooksLikeContextualFollowUpForExecutionNudge(request, draft);
         var draftReferencesFollowUp = AssistantDraftReferencesUserRequest(request, draft);
-        var hasSinglePendingActionEnvelope = TryGetSinglePendingActionEnvelopeMutability(draft, out var singlePendingActionMutability);
-        var hasSingleNonMutatingPendingActionEnvelope = hasSinglePendingActionEnvelope
-                                                        && singlePendingActionMutability != ActionMutability.Mutating;
         var hasExecutionAckReference = LooksLikeExecutionAcknowledgeDraft(draft)
                                        && draft.IndexOf('"') < 0
                                        && draft.IndexOf('\'') < 0
@@ -590,7 +596,7 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool IsArtifactOnlyFollowUpRequest(string userRequest) {
+    private static bool HasArtifactRequestWithoutExplicitToolIntent(string userRequest) {
         var request = (userRequest ?? string.Empty).Trim();
         if (request.Length == 0) {
             return false;

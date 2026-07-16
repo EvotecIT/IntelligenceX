@@ -1598,7 +1598,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(5, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
         Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal(7, server.ChatCompletionRequestCount);
+        Assert.Equal(6, server.ChatCompletionRequestCount);
         Assert.Equal(1, CountRoleMessages(server.GetChatRequestBody(0), "user"));
         for (var round = 1; round <= 5; round++) {
             Assert.True(

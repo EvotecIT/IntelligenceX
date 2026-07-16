@@ -382,7 +382,7 @@ internal sealed partial class ChatServiceSession {
             hasSuccessfulToolOutput: hasSuccessfulToolOutput,
             toolCalls: toolCalls,
             toolOutputs: toolOutputs,
-            assistantDraft: assistantDraft,
+            assistantDraft: recoveredAssistantDraft,
             localNoTextDirectRetryUsed: localNoTextDirectRetryUsed,
             isLocalCompatibleLoopback: isLocalCompatibleLoopback,
             availableToolCount: availableToolCount,

@@ -382,7 +382,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ResolveNoExtractedFinalizeNoTextOutcomeForTesting_PreservesFallbackTextButStillSelectsSynthesisRetry() {
+    public void ResolveNoExtractedFinalizeNoTextOutcomeForTesting_PrefersRecoveredToolOutputOverSynthesisRetry() {
         var result = ChatServiceSession.ResolveNoExtractedFinalizeNoTextOutcomeForTesting(
             noTextToolOutputDirectRetryUsed: false,
             planExecuteReviewLoop: true,
@@ -396,8 +396,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             userRequest: "Summarize the tool result.");
 
         Assert.Contains("Recovered findings from executed tools", result.AssistantDraft, StringComparison.Ordinal);
-        Assert.Equal("ToolOutputSynthesisRetry", result.Kind);
-        Assert.Equal("tool_output_synthesis_retry", result.Reason);
+        Assert.Equal("None", result.Kind);
+        Assert.Equal("no_no_text_recovery_selected", result.Reason);
     }
 
     [Fact]
