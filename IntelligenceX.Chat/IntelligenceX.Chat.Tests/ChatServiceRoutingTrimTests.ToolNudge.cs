@@ -18,7 +18,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ShouldAttemptToolExecutionNudge_TriggersForActionSelectionJsonEvenWithoutContinuationSubset() {
-        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run forest probe\",\"request\":\"Run it.\"}}";
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run forest probe\",\"request\":\"Run it.\",\"mutating\":false}}";
         var assistantDraft = "Ok, doing it now.";
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
@@ -31,7 +31,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ShouldAttemptToolExecutionNudge_TriggersForActionSelectionJsonWithCaseVariantKeys() {
-        var userRequest = "{\"IX_Action_Selection\":{\"ActionId\":\"act_001\",\"Title\":\"Run forest probe\",\"Request\":\"Run it.\"}}";
+        var userRequest = "{\"IX_Action_Selection\":{\"ActionId\":\"act_001\",\"Title\":\"Run forest probe\",\"Request\":\"Run it.\",\"Mutating\":false}}";
         var assistantDraft = "Ok, doing it now.";
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
@@ -46,7 +46,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldAttemptToolExecutionNudge_TriggersForFencedActionSelectionJsonPayload() {
         var userRequest = """
                           ```ix_action_selection
-                          {"ix_action_selection":{"id":"act_001","title":"Run forest probe","request":"Run it."}}
+                          {"ix_action_selection":{"id":"act_001","title":"Run forest probe","request":"Run it.","mutating":false}}
                           ```
                           """;
         var assistantDraft = "Ok, doing it now.";
@@ -92,7 +92,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ShouldAttemptToolExecutionNudge_TriggersForNumericActionSelectionId() {
-        var userRequest = "{\"ix_action_selection\":{\"id\":1,\"title\":\"Run\",\"request\":\"Run it.\"}}";
+        var userRequest = "{\"ix_action_selection\":{\"id\":1,\"title\":\"Run\",\"request\":\"Run it.\",\"mutating\":false}}";
         var assistantDraft = "Ok, doing it now.";
 
         var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(

@@ -237,6 +237,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (HasUnknownActionSelection(userRequest)) {
+            reason = "action_selection_mutability_unknown";
+            return false;
+        }
+
         if (!executionContractApplies && HasArtifactRequestWithoutExplicitToolIntent(userRequest)) {
             reason = "artifact_only_follow_up_request";
             return false;
@@ -399,6 +404,11 @@ internal sealed partial class ChatServiceSession {
         var request = (userRequest ?? string.Empty).Trim();
         if (request.Length == 0) {
             reason = "empty_user_request";
+            return false;
+        }
+
+        if (HasUnknownActionSelection(request)) {
+            reason = "action_selection_mutability_unknown";
             return false;
         }
 
@@ -604,13 +614,31 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var hasActionSelection = TryReadActionSelectionIntent(
+            text: request,
+            actionId: out _,
+            mutability: out var actionSelectionMutability,
+            selectedRequest: out var selectedActionRequest);
+        var hasExplicitReadOnlyActionSelection = hasActionSelection
+                                                 && actionSelectionMutability == ActionMutability.ReadOnly;
         if (ExtractExplicitRequestedToolNames(request).Length > 0
-            || LooksLikeActionSelectionPayload(request)
+            || hasExplicitReadOnlyActionSelection
             || ShouldEnforceExecuteOrExplainContract(request)) {
             return false;
         }
 
-        return ResolveRequestedArtifactIntent(request).RequiresArtifact;
+        var artifactRequest = hasActionSelection && !string.IsNullOrWhiteSpace(selectedActionRequest)
+            ? selectedActionRequest
+            : request;
+        return ResolveRequestedArtifactIntent(artifactRequest).RequiresArtifact;
+    }
+
+    private static bool HasUnknownActionSelection(string userRequest) {
+        return TryReadActionSelectionIntent(
+                   text: userRequest,
+                   actionId: out _,
+                   mutability: out var mutability)
+               && mutability == ActionMutability.Unknown;
     }
 
     private static bool LooksLikeStructuredExecutionDeferredDraft(string assistantDraft) {

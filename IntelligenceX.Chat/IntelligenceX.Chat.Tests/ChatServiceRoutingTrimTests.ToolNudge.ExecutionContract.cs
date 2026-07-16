@@ -494,6 +494,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTreatUnknownActionSelectionAsSafeArtifactBypass() {
+        var userRequest = "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Show topology\",\"request\":\"Run replication diagnostics and return a network diagram.\"}}";
+        var assistantDraft = "I will run the replication diagnostics and return the network diagram now.";
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, false, null };
+
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(null, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("action_selection_mutability_unknown", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTreatUnknownPendingActionAsSafeArtifactBypass() {
         var userRequest = "Show the replication topology as a network diagram.";
         var assistantDraft = """

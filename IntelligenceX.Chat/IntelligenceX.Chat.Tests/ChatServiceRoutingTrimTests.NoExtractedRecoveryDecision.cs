@@ -8,7 +8,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ResolveNoExtractedPromptRecoveryDecisionForTesting_PrefersExecutionNudge() {
         var result = ChatServiceSession.ResolveNoExtractedPromptRecoveryDecisionForTesting(
-            userRequest: "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run forest probe\",\"request\":\"Run it.\"}}",
+            userRequest: "{\"ix_action_selection\":{\"id\":\"act_001\",\"title\":\"Run forest probe\",\"request\":\"Run it.\",\"mutating\":false}}",
             assistantDraft: "Ok, doing it now.",
             executionContractApplies: false,
             usedContinuationSubset: false,

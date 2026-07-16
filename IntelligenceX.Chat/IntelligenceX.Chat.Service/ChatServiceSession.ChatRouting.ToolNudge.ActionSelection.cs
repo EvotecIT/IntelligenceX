@@ -438,8 +438,17 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryReadActionSelectionIntent(string text, out string actionId, out ActionMutability mutability) {
+        return TryReadActionSelectionIntent(text, out actionId, out mutability, out _);
+    }
+
+    private static bool TryReadActionSelectionIntent(
+        string text,
+        out string actionId,
+        out ActionMutability mutability,
+        out string selectedRequest) {
         actionId = string.Empty;
         mutability = ActionMutability.Unknown;
+        selectedRequest = string.Empty;
 
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0 || normalized.Length > MaxActionSelectionPayloadChars) {
@@ -494,6 +503,13 @@ internal sealed partial class ChatServiceSession {
             }
 
             mutability = ResolveActionSelectionMutability(selection);
+            if (TryGetObjectPropertyCaseInsensitive(selection, out var request, "request")) {
+                selectedRequest = request.ValueKind == JsonValueKind.String
+                    ? (request.GetString() ?? string.Empty).Trim()
+                    : request.ValueKind is JsonValueKind.Object or JsonValueKind.Array
+                        ? request.GetRawText()
+                        : string.Empty;
+            }
             return true;
         } catch (JsonException) {
             return false;
