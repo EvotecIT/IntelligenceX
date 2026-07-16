@@ -91,6 +91,8 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanSend));
             OnPropertyChanged(nameof(CanStop));
+            OnPropertyChanged(nameof(CanCheckSignIn));
+            OnPropertyChanged(nameof(CanStartSignIn));
         }
     }
 
@@ -144,9 +146,11 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
 
     public bool CanStop => IsSending;
 
-    public bool CanCheckSignIn => !IsCheckingSignIn;
+    public bool CanCheckSignIn => !IsCheckingSignIn && !IsSending;
 
-    public bool CanStartSignIn => !IsCheckingSignIn && AuthenticationState != NativeAuthenticationState.SignedIn;
+    public bool CanStartSignIn => !IsCheckingSignIn
+                                  && !IsSending
+                                  && AuthenticationState != NativeAuthenticationState.SignedIn;
 
     public async Task InitializeConversationsAsync(CancellationToken cancellationToken = default) {
         if (_conversationStore is null) {
@@ -218,6 +222,10 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public async Task<NativeLoginResult> CheckSignInAsync() {
+        if (IsSending) {
+            return new NativeLoginResult(false, null, "Sign-in cannot be checked while a chat turn is running.");
+        }
+
         if (IsCheckingSignIn) {
             return new NativeLoginResult(false, null, "Sign-in check is already running.");
         }
@@ -243,6 +251,10 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public async Task<NativeLoginResult> StartSignInAsync() {
+        if (IsSending) {
+            return new NativeLoginResult(false, null, "Sign-in cannot start while a chat turn is running.");
+        }
+
         if (IsCheckingSignIn) {
             return new NativeLoginResult(false, null, "Sign-in is already running.");
         }

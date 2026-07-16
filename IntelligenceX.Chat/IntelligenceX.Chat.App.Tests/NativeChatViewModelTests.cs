@@ -131,6 +131,27 @@ public sealed class NativeChatViewModelTests {
     }
 
     /// <summary>
+    /// Ensures authentication operations cannot race an active turn on the shared service client.
+    /// </summary>
+    [Fact]
+    public async Task ActiveTurn_DisablesSignInCommands() {
+        var runtime = new CancelableRuntime();
+        var model = new NativeChatViewModel(runtime);
+
+        var sendTask = model.SendAsync("long task");
+        await runtime.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(model.IsSending);
+        Assert.False(model.CanCheckSignIn);
+        Assert.False(model.CanStartSignIn);
+        Assert.Contains("turn is running", (await model.CheckSignInAsync()).Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("turn is running", (await model.StartSignInAsync()).Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        model.CancelActiveTurn();
+        await sendTask;
+    }
+
+    /// <summary>
     /// Ensures sign-in checks update native sign-in state without transcript HTML.
     /// </summary>
     [Fact]
