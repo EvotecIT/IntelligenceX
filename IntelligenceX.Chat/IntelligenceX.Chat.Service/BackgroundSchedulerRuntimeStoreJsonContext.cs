@@ -8,6 +8,7 @@ namespace IntelligenceX.Chat.Service;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(BackgroundSchedulerRuntimeStoreDto))]
+[JsonSerializable(typeof(BackgroundSchedulerFailureEventDto[]))]
 [JsonSerializable(typeof(SessionCapabilityBackgroundSchedulerActivityDto[]))]
 internal sealed partial class BackgroundSchedulerRuntimeStoreJsonContext : JsonSerializerContext;
 
@@ -32,6 +33,8 @@ internal sealed class BackgroundSchedulerRuntimeStoreDto {
     public int ReleasedExecutionCount { get; set; }
     [JsonPropertyName("consecutiveFailureCount")]
     public int ConsecutiveFailureCount { get; set; }
+    [JsonPropertyName("failureStreakEvents")]
+    public BackgroundSchedulerFailureEventDto[] FailureStreakEvents { get; set; } = Array.Empty<BackgroundSchedulerFailureEventDto>();
     [JsonPropertyName("pausedUntilUtcTicks")]
     public long PausedUntilUtcTicks { get; set; }
     [JsonPropertyName("pauseReason")]
@@ -44,4 +47,11 @@ internal sealed class BackgroundSchedulerRuntimeStoreDto {
     public string LastAdaptiveIdleReason { get; set; } = string.Empty;
     [JsonPropertyName("recentActivity")]
     public SessionCapabilityBackgroundSchedulerActivityDto[] RecentActivity { get; set; } = Array.Empty<SessionCapabilityBackgroundSchedulerActivityDto>();
+}
+
+internal sealed class BackgroundSchedulerFailureEventDto {
+    [JsonPropertyName("eventId")]
+    public string EventId { get; set; } = string.Empty;
+    [JsonPropertyName("recordedUtcTicks")]
+    public long RecordedUtcTicks { get; set; }
 }

@@ -625,6 +625,7 @@ internal sealed partial class ChatServiceSession {
                     _backgroundSchedulerLastSuccessUtcTicks = recordedTicks;
                     _backgroundSchedulerCompletedExecutionCount++;
                     _backgroundSchedulerConsecutiveFailureCount = 0;
+                    _backgroundSchedulerFailureStreakEvents.Clear();
                     _backgroundSchedulerPausedUntilUtcTicks = 0;
                     _backgroundSchedulerPauseReason = string.Empty;
                     break;
@@ -632,12 +633,14 @@ internal sealed partial class ChatServiceSession {
                     _backgroundSchedulerLastFailureUtcTicks = recordedTicks;
                     _backgroundSchedulerRequeuedExecutionCount++;
                     _backgroundSchedulerConsecutiveFailureCount++;
+                    RememberBackgroundSchedulerFailureEventNoLock(recordedTicks);
                     break;
                 case BackgroundSchedulerIterationOutcomeKind.ReleasedAfterEmptyOutput:
                 case BackgroundSchedulerIterationOutcomeKind.ReleasedAfterException:
                     _backgroundSchedulerLastFailureUtcTicks = recordedTicks;
                     _backgroundSchedulerReleasedExecutionCount++;
                     _backgroundSchedulerConsecutiveFailureCount++;
+                    RememberBackgroundSchedulerFailureEventNoLock(recordedTicks);
                     break;
             }
 

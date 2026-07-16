@@ -120,6 +120,7 @@ internal sealed partial class ChatServiceSession {
     private int _backgroundSchedulerRequeuedExecutionCount;
     private int _backgroundSchedulerReleasedExecutionCount;
     private int _backgroundSchedulerConsecutiveFailureCount;
+    private readonly List<BackgroundSchedulerFailureEventDto> _backgroundSchedulerFailureStreakEvents = new();
     private long _backgroundSchedulerPausedUntilUtcTicks;
     private string _backgroundSchedulerPauseReason = string.Empty;
     private long _backgroundSchedulerLastAdaptiveIdleUtcTicks;

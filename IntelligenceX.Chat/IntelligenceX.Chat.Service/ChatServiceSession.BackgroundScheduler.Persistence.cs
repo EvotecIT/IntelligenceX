@@ -130,6 +130,11 @@ internal sealed partial class ChatServiceSession {
                 nowTicks);
 
         var normalizedRecentActivity = NormalizeBackgroundSchedulerActivities(store.RecentActivity);
+        var normalizedFailureEvents = NormalizeBackgroundSchedulerFailureEvents(
+            store.FailureStreakEvents,
+            store.ConsecutiveFailureCount,
+            store.LastFailureUtcTicks,
+            store.LastSuccessUtcTicks);
         lock (_backgroundSchedulerTelemetryLock) {
             Interlocked.Exchange(ref _backgroundSchedulerLastTickUtcTicks, Math.Max(0, store.LastSchedulerTickUtcTicks));
             _backgroundSchedulerLastOutcome = NormalizeBackgroundSchedulerActivityText(store.LastOutcome, maxLength: 80);
@@ -139,7 +144,11 @@ internal sealed partial class ChatServiceSession {
             _backgroundSchedulerCompletedExecutionCount = Math.Max(0, store.CompletedExecutionCount);
             _backgroundSchedulerRequeuedExecutionCount = Math.Max(0, store.RequeuedExecutionCount);
             _backgroundSchedulerReleasedExecutionCount = Math.Max(0, store.ReleasedExecutionCount);
-            _backgroundSchedulerConsecutiveFailureCount = Math.Max(0, store.ConsecutiveFailureCount);
+            _backgroundSchedulerConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
+                store.ConsecutiveFailureCount,
+                normalizedFailureEvents.Length);
+            _backgroundSchedulerFailureStreakEvents.Clear();
+            _backgroundSchedulerFailureStreakEvents.AddRange(normalizedFailureEvents);
             _backgroundSchedulerPausedUntilUtcTicks = Math.Max(0, store.PausedUntilUtcTicks);
             _backgroundSchedulerPauseReason = NormalizeBackgroundSchedulerActivityText(store.PauseReason, maxLength: 120);
             _backgroundSchedulerLastAdaptiveIdleUtcTicks = Math.Max(0, store.LastAdaptiveIdleUtcTicks);
@@ -257,6 +266,7 @@ internal sealed partial class ChatServiceSession {
                 RequeuedExecutionCount = Math.Max(0, _backgroundSchedulerRequeuedExecutionCount),
                 ReleasedExecutionCount = Math.Max(0, _backgroundSchedulerReleasedExecutionCount),
                 ConsecutiveFailureCount = Math.Max(0, _backgroundSchedulerConsecutiveFailureCount),
+                FailureStreakEvents = CloneBackgroundSchedulerFailureEvents(_backgroundSchedulerFailureStreakEvents),
                 PausedUntilUtcTicks = Math.Max(0, _backgroundSchedulerPausedUntilUtcTicks),
                 PauseReason = NormalizeBackgroundSchedulerActivityText(_backgroundSchedulerPauseReason, maxLength: 120),
                 LastAdaptiveIdleUtcTicks = Math.Max(0, _backgroundSchedulerLastAdaptiveIdleUtcTicks),
@@ -380,62 +390,6 @@ internal sealed partial class ChatServiceSession {
         return (int)Math.Min(int.MaxValue, Math.Max(0L, persisted) + delta);
     }
 
-    private static void MergeBackgroundSchedulerConsecutiveFailureState(
-        BackgroundSchedulerRuntimeStoreDto merged,
-        BackgroundSchedulerRuntimeStoreDto persisted,
-        BackgroundSchedulerRuntimeStoreDto baseline,
-        BackgroundSchedulerRuntimeStoreDto desired) {
-        var localSuccessChanged = desired.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks;
-        var localFailureChanged = desired.LastFailureUtcTicks > baseline.LastFailureUtcTicks;
-        if (!localSuccessChanged && !localFailureChanged
-            && desired.ConsecutiveFailureCount == baseline.ConsecutiveFailureCount) {
-            return;
-        }
-
-        var persistedSuccessChanged = persisted.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks;
-        if (!localSuccessChanged && !persistedSuccessChanged) {
-            merged.ConsecutiveFailureCount = AddBackgroundSchedulerCounterDelta(
-                persisted.ConsecutiveFailureCount,
-                baseline.ConsecutiveFailureCount,
-                desired.ConsecutiveFailureCount);
-            return;
-        }
-
-        if (localSuccessChanged
-            && (!persistedSuccessChanged || desired.LastSuccessUtcTicks >= persisted.LastSuccessUtcTicks)) {
-            var localPostResetCount = Math.Max(0, desired.ConsecutiveFailureCount);
-            if (persisted.LastFailureUtcTicks > desired.LastSuccessUtcTicks) {
-                var persistedFailureDelta = persistedSuccessChanged
-                    ? Math.Max(0, persisted.ConsecutiveFailureCount)
-                    : Math.Max(
-                        0,
-                        Math.Max(0, persisted.ConsecutiveFailureCount) - Math.Max(0, baseline.ConsecutiveFailureCount));
-                localPostResetCount = AddBackgroundSchedulerCounterDelta(
-                    localPostResetCount,
-                    0,
-                    persistedFailureDelta);
-            }
-
-            merged.ConsecutiveFailureCount = localPostResetCount;
-            return;
-        }
-
-        var persistedPostResetCount = Math.Max(0, persisted.ConsecutiveFailureCount);
-        if (desired.LastFailureUtcTicks > persisted.LastSuccessUtcTicks) {
-            var localFailureDelta = localSuccessChanged
-                ? Math.Max(0, desired.ConsecutiveFailureCount)
-                : Math.Max(
-                    0,
-                    Math.Max(0, desired.ConsecutiveFailureCount) - Math.Max(0, baseline.ConsecutiveFailureCount));
-            persistedPostResetCount = AddBackgroundSchedulerCounterDelta(
-                persistedPostResetCount,
-                0,
-                localFailureDelta);
-        }
-
-        merged.ConsecutiveFailureCount = persistedPostResetCount;
-    }
-
     private static bool BackgroundSchedulerOutcomeStateChanged(
         BackgroundSchedulerRuntimeStoreDto baseline,
         BackgroundSchedulerRuntimeStoreDto desired) =>
@@ -532,11 +486,24 @@ internal sealed partial class ChatServiceSession {
                 store.LastAdaptiveIdleDelaySeconds,
                 store.LastAdaptiveIdleReason,
                 nowTicks);
+        store.FailureStreakEvents = NormalizeBackgroundSchedulerFailureEvents(
+            store.FailureStreakEvents,
+            store.ConsecutiveFailureCount,
+            store.LastFailureUtcTicks,
+            store.LastSuccessUtcTicks);
+        store.ConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
+            store.ConsecutiveFailureCount,
+            store.FailureStreakEvents.Length);
         store.RecentActivity = NormalizeBackgroundSchedulerActivities(store.RecentActivity);
     }
 
     private static BackgroundSchedulerRuntimeStoreDto CloneBackgroundSchedulerRuntimeStore(BackgroundSchedulerRuntimeStoreDto source) {
         ArgumentNullException.ThrowIfNull(source);
+        var failureEvents = NormalizeBackgroundSchedulerFailureEvents(
+            source.FailureStreakEvents,
+            source.ConsecutiveFailureCount,
+            source.LastFailureUtcTicks,
+            source.LastSuccessUtcTicks);
         return new BackgroundSchedulerRuntimeStoreDto {
             Version = BackgroundSchedulerRuntimeStoreVersion,
             LastSchedulerTickUtcTicks = Math.Max(0, source.LastSchedulerTickUtcTicks),
@@ -547,7 +514,10 @@ internal sealed partial class ChatServiceSession {
             CompletedExecutionCount = Math.Max(0, source.CompletedExecutionCount),
             RequeuedExecutionCount = Math.Max(0, source.RequeuedExecutionCount),
             ReleasedExecutionCount = Math.Max(0, source.ReleasedExecutionCount),
-            ConsecutiveFailureCount = Math.Max(0, source.ConsecutiveFailureCount),
+            ConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
+                source.ConsecutiveFailureCount,
+                failureEvents.Length),
+            FailureStreakEvents = failureEvents,
             PausedUntilUtcTicks = Math.Max(0, source.PausedUntilUtcTicks),
             PauseReason = NormalizeBackgroundSchedulerActivityText(source.PauseReason, maxLength: 120),
             LastAdaptiveIdleUtcTicks = Math.Max(0, source.LastAdaptiveIdleUtcTicks),
