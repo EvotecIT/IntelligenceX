@@ -154,24 +154,15 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void EnumerateToolAssemblyNamesForDiscovery_StaysWithinRuntimeDiscoveredDefaultBuiltInAssemblySet() {
-        var method = typeof(ToolPackBootstrap).GetMethod(
-            "EnumerateToolAssemblyNamesForDiscovery",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-        var defaultDiscoveryMethod = typeof(ToolPackBootstrap).GetMethod(
-            "DiscoverDefaultBuiltInAssemblyNames",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(defaultDiscoveryMethod);
-
         var options = new ToolPackBootstrapOptions();
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
+        var discovered = ToolPackBootstrap.EnumerateToolAssemblyNamesForDiscoveryForTesting(options);
         var discoveredNames = discovered
             .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
             .Where(static name => name.Length > 0)
             .ToArray();
         Assert.NotEmpty(discoveredNames);
 
-        var discoveredDefaultAssemblyNames = Assert.IsAssignableFrom<IEnumerable<string>>(defaultDiscoveryMethod!.Invoke(null, new object?[] { null }));
+        var discoveredDefaultAssemblyNames = ToolPackBootstrap.DiscoverDefaultBuiltInAssemblyNamesForTesting();
         var allowlist = new HashSet<string>(
             discoveredDefaultAssemblyNames.Where(static name => !string.IsNullOrWhiteSpace(name)),
             StringComparer.OrdinalIgnoreCase);
@@ -373,16 +364,7 @@ public sealed class ToolPackBootstrapMetadataTests {
             "net10.0-windows");
         var trustedAssemblySourcePath = Path.Combine(adPlaygroundOutputRoot, "IntelligenceX.Tools.ADPlayground.dll");
         var trustedDepsSourcePath = Path.Combine(adPlaygroundOutputRoot, "IntelligenceX.Tools.ADPlayground.deps.json");
-        var serviceDependencySourcePath = Path.Combine(
-            repoRoot,
-            "IntelligenceX.Chat",
-            "IntelligenceX.Chat.App",
-            "bin",
-            "Release",
-            "net10.0-windows10.0.26100.0",
-            "win-x64",
-            "service",
-            "System.ServiceModel.Primitives.dll");
+        var serviceDependencySourcePath = Assembly.Load(new AssemblyName("System.ServiceModel.Primitives")).Location;
 
         Assert.True(File.Exists(trustedAssemblySourcePath), $"Expected trusted assembly '{trustedAssemblySourcePath}' to exist.");
         Assert.True(File.Exists(trustedDepsSourcePath), $"Expected trusted deps file '{trustedDepsSourcePath}' to exist.");
@@ -434,16 +416,11 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void EnumerateToolAssemblyNamesForDiscovery_UsesConfiguredAssemblyNames_WhenDefaultAllowlistIsDisabled() {
-        var method = typeof(ToolPackBootstrap).GetMethod(
-            "EnumerateToolAssemblyNamesForDiscovery",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
         var options = new ToolPackBootstrapOptions {
             UseDefaultBuiltInToolAssemblyNames = false,
             BuiltInToolAssemblyNames = new[] { "IntelligenceX.Tools.System" }
         };
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
+        var discovered = ToolPackBootstrap.EnumerateToolAssemblyNamesForDiscoveryForTesting(options);
         var discoveredNames = discovered
             .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
             .Where(static name => name.Length > 0)
@@ -455,11 +432,6 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void EnumerateToolAssemblyNamesForDiscovery_SkipsInvalidConfiguredAssemblyNames_WithoutThrowing() {
-        var method = typeof(ToolPackBootstrap).GetMethod(
-            "EnumerateToolAssemblyNamesForDiscovery",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
         var warnings = new List<string>();
         var options = new ToolPackBootstrapOptions {
             UseDefaultBuiltInToolAssemblyNames = false,
@@ -469,7 +441,7 @@ public sealed class ToolPackBootstrapMetadataTests {
             },
             OnBootstrapWarning = warnings.Add
         };
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
+        var discovered = ToolPackBootstrap.EnumerateToolAssemblyNamesForDiscoveryForTesting(options);
         var discoveredNames = discovered
             .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
             .Where(static name => name.Length > 0)
@@ -485,16 +457,11 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void EnumerateToolAssemblyNamesForDiscovery_NormalizesConfiguredDisplayNames_ToSimpleAssemblyNameMatching() {
-        var method = typeof(ToolPackBootstrap).GetMethod(
-            "EnumerateToolAssemblyNamesForDiscovery",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
         var options = new ToolPackBootstrapOptions {
             UseDefaultBuiltInToolAssemblyNames = false,
             BuiltInToolAssemblyNames = new[] { "IntelligenceX.Tools.System, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" }
         };
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
+        var discovered = ToolPackBootstrap.EnumerateToolAssemblyNamesForDiscoveryForTesting(options);
         var discoveredNames = discovered
             .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
             .Where(static name => name.Length > 0)
@@ -558,24 +525,13 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void TryResolveTrustedToolAssemblyPath_ResolvesLoadablePath_ForDiscoveredToolAssembly() {
-        var enumerateAssembliesMethod = typeof(ToolPackBootstrap).GetMethod(
-            "EnumerateToolAssemblyNamesForDiscovery",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(enumerateAssembliesMethod);
-        var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
-            "TryResolveTrustedToolAssemblyPath",
-            BindingFlags.NonPublic | BindingFlags.Static,
-            binder: null,
-            types: new[] { typeof(AssemblyName), typeof(ToolPackBootstrapOptions), typeof(string).MakeByRefType() },
-            modifiers: null);
-        Assert.NotNull(resolvePathMethod);
-
         var options = new ToolPackBootstrapOptions();
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, new object[] { options }));
+        var discovered = ToolPackBootstrap.EnumerateToolAssemblyNamesForDiscoveryForTesting(options);
         var assemblyName = Assert.Single(discovered.Take(1));
-        var invocationArguments = new object?[] { assemblyName, options, null };
-        var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
-        var trustedAssemblyPath = Assert.IsType<string>(invocationArguments[2]);
+        var resolved = ToolPackBootstrap.TryResolveTrustedToolAssemblyPathForTesting(
+            assemblyName,
+            options,
+            out var trustedAssemblyPath);
 
         Assert.True(resolved);
         Assert.False(string.IsNullOrWhiteSpace(trustedAssemblyPath));
@@ -584,16 +540,10 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void TryResolveTrustedToolAssemblyPath_ReturnsFalse_WhenAssemblyNameIsMissing() {
-        var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
-            "TryResolveTrustedToolAssemblyPath",
-            BindingFlags.NonPublic | BindingFlags.Static,
-            binder: null,
-            types: new[] { typeof(AssemblyName), typeof(ToolPackBootstrapOptions), typeof(string).MakeByRefType() },
-            modifiers: null);
-        Assert.NotNull(resolvePathMethod);
-        var invocationArguments = new object?[] { new AssemblyName(), new ToolPackBootstrapOptions(), null };
-        var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
-        var trustedAssemblyPath = invocationArguments[2] as string;
+        var resolved = ToolPackBootstrap.TryResolveTrustedToolAssemblyPathForTesting(
+            new AssemblyName(),
+            new ToolPackBootstrapOptions(),
+            out var trustedAssemblyPath);
 
         Assert.False(resolved);
         Assert.Equal(string.Empty, trustedAssemblyPath);
@@ -601,27 +551,16 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void TryResolveTrustedToolAssemblyPath_ResolvesAllDiscoveredAssemblyNames() {
-        var enumerateAssembliesMethod = typeof(ToolPackBootstrap).GetMethod(
-            "EnumerateToolAssemblyNamesForDiscovery",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(enumerateAssembliesMethod);
-        var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
-            "TryResolveTrustedToolAssemblyPath",
-            BindingFlags.NonPublic | BindingFlags.Static,
-            binder: null,
-            types: new[] { typeof(AssemblyName), typeof(ToolPackBootstrapOptions), typeof(string).MakeByRefType() },
-            modifiers: null);
-        Assert.NotNull(resolvePathMethod);
-
         var options = new ToolPackBootstrapOptions();
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, new object[] { options }));
+        var discovered = ToolPackBootstrap.EnumerateToolAssemblyNamesForDiscoveryForTesting(options);
         var discoveredAssemblyNames = discovered.ToArray();
         Assert.NotEmpty(discoveredAssemblyNames);
 
         foreach (var assemblyName in discoveredAssemblyNames) {
-            var invocationArguments = new object?[] { assemblyName, options, null };
-            var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
-            var trustedAssemblyPath = invocationArguments[2] as string;
+            var resolved = ToolPackBootstrap.TryResolveTrustedToolAssemblyPathForTesting(
+                assemblyName,
+                options,
+                out var trustedAssemblyPath);
             Assert.True(resolved, $"Failed to resolve trusted path for '{assemblyName.Name}'.");
             Assert.False(string.IsNullOrWhiteSpace(trustedAssemblyPath));
             Assert.True(File.Exists(trustedAssemblyPath), $"Resolved path '{trustedAssemblyPath}' for '{assemblyName.Name}' does not exist.");
@@ -1072,89 +1011,53 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Fact]
     public void BuildBuiltInPackRegistrationCandidates_SkipsInstantiation_ForDisabledKnownBuiltInPack() {
-        var method = typeof(ToolPackBootstrap).GetMethod(
-            "BuildBuiltInPackRegistrationCandidates",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
         OfficeImoDisabledProbeToolPack.ConstructorCallCount = 0;
-        var result = Assert.IsAssignableFrom<System.Collections.IEnumerable>(method!.Invoke(
-            null,
-            new object[] {
-                new[] { typeof(OfficeImoDisabledProbeToolPack) },
-                new ToolPackBootstrapOptions {
-                    DisabledPackIds = new[] { "officeimo" }
-                }
-            }));
-
-        var candidate = Assert.Single(result.Cast<object>());
-        var candidateType = candidate.GetType();
-        var packId = Assert.IsType<string>(candidateType.GetProperty("PackId")!.GetValue(candidate));
-        var descriptor = Assert.IsType<ToolPackDescriptor>(candidateType.GetProperty("Descriptor")!.GetValue(candidate));
-        var pack = candidateType.GetProperty("Pack")!.GetValue(candidate);
-        var defaultEnabled = Assert.IsType<bool>(candidateType.GetProperty("DefaultEnabled")!.GetValue(candidate));
+        var candidates = ToolPackBootstrap.BuildBuiltInPackRegistrationCandidatesForTesting(
+            new[] { typeof(OfficeImoDisabledProbeToolPack) },
+            new ToolPackBootstrapOptions {
+                DisabledPackIds = new[] { "officeimo" }
+            });
+        var candidate = Assert.Single(
+            candidates,
+            static candidate => string.Equals(candidate.PackId, "officeimo", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(0, OfficeImoDisabledProbeToolPack.ConstructorCallCount);
-        Assert.Equal("officeimo", packId);
-        Assert.Equal("officeimo", descriptor.Id);
-        Assert.Equal("open_source", descriptor.SourceKind);
-        Assert.Equal("officeimo", descriptor.EngineId);
-        Assert.NotEmpty(descriptor.CapabilityTags);
-        Assert.NotEmpty(descriptor.SearchTokens);
-        Assert.Null(pack);
-        Assert.True(defaultEnabled);
+        Assert.Equal("officeimo", candidate.PackId);
+        Assert.Equal("officeimo", candidate.Descriptor.Id);
+        Assert.Equal("open_source", candidate.Descriptor.SourceKind);
+        Assert.Equal("officeimo", candidate.Descriptor.EngineId);
+        Assert.NotEmpty(candidate.Descriptor.CapabilityTags);
+        Assert.NotEmpty(candidate.Descriptor.SearchTokens);
+        Assert.Null(candidate.Pack);
+        Assert.True(candidate.DefaultEnabled);
     }
 
     [Fact]
     public void BuildBuiltInPackRegistrationCandidates_SkipsInstantiation_ForDefaultDisabledKnownBuiltInPack() {
-        var method = typeof(ToolPackBootstrap).GetMethod(
-            "BuildBuiltInPackRegistrationCandidates",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
         PowerShellDisabledByDefaultProbeToolPack.ConstructorCallCount = 0;
-        var result = Assert.IsAssignableFrom<System.Collections.IEnumerable>(method!.Invoke(
-            null,
-            new object[] {
-                new[] { typeof(PowerShellDisabledByDefaultProbeToolPack) },
-                new ToolPackBootstrapOptions()
-            }));
-
-        var candidate = Assert.Single(result.Cast<object>());
-        var candidateType = candidate.GetType();
-        var packId = Assert.IsType<string>(candidateType.GetProperty("PackId")!.GetValue(candidate));
-        var pack = candidateType.GetProperty("Pack")!.GetValue(candidate);
-        var defaultEnabled = Assert.IsType<bool>(candidateType.GetProperty("DefaultEnabled")!.GetValue(candidate));
+        var candidates = ToolPackBootstrap.BuildBuiltInPackRegistrationCandidatesForTesting(
+            new[] { typeof(PowerShellDisabledByDefaultProbeToolPack) },
+            new ToolPackBootstrapOptions());
+        var candidate = Assert.Single(candidates);
 
         Assert.Equal(0, PowerShellDisabledByDefaultProbeToolPack.ConstructorCallCount);
-        Assert.Equal("powershell", packId);
-        Assert.Null(pack);
-        Assert.False(defaultEnabled);
+        Assert.Equal("powershell", candidate.PackId);
+        Assert.Null(candidate.Pack);
+        Assert.False(candidate.DefaultEnabled);
     }
 
     [Fact]
     public void BuildBuiltInPackRegistrationCandidates_InstantiatesKnownBuiltInPack_WhenExplicitlyEnabled() {
-        var method = typeof(ToolPackBootstrap).GetMethod(
-            "BuildBuiltInPackRegistrationCandidates",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
         PowerShellDisabledByDefaultProbeToolPack.ConstructorCallCount = 0;
-        var result = Assert.IsAssignableFrom<System.Collections.IEnumerable>(method!.Invoke(
-            null,
-            new object[] {
-                new[] { typeof(PowerShellDisabledByDefaultProbeToolPack) },
-                new ToolPackBootstrapOptions {
-                    EnabledPackIds = new[] { "powershell" }
-                }
-            }));
-
-        var candidate = Assert.Single(result.Cast<object>());
-        var candidateType = candidate.GetType();
-        var pack = candidateType.GetProperty("Pack")!.GetValue(candidate);
+        var candidates = ToolPackBootstrap.BuildBuiltInPackRegistrationCandidatesForTesting(
+            new[] { typeof(PowerShellDisabledByDefaultProbeToolPack) },
+            new ToolPackBootstrapOptions {
+                EnabledPackIds = new[] { "powershell" }
+            });
+        var candidate = Assert.Single(candidates);
 
         Assert.Equal(1, PowerShellDisabledByDefaultProbeToolPack.ConstructorCallCount);
-        Assert.NotNull(pack);
+        Assert.NotNull(candidate.Pack);
     }
 
     [Fact]

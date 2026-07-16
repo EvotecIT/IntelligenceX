@@ -1324,7 +1324,8 @@ public sealed class ChatServiceToolingBootstrapTests {
                 BindingFlags.NonPublic | BindingFlags.Static);
             Assert.NotNull(keyMethod);
             Assert.NotNull(runtimePolicyOptionsMethod);
-            var options = new ServiceOptions();
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
             var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(runtimePolicyOptionsMethod!.Invoke(
                 null,
                 new object[] { options }));
@@ -1454,7 +1455,8 @@ public sealed class ChatServiceToolingBootstrapTests {
                         }
                     },
                     ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
-                });
+                },
+                previewFingerprint);
 
             var session = new ChatServiceSession(options, Stream.Null, cache);
             var orchestrationCatalogField = typeof(ChatServiceSession).GetField("_toolOrchestrationCatalog", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -1550,7 +1552,8 @@ public sealed class ChatServiceToolingBootstrapTests {
         }
 
         try {
-            var options = new ServiceOptions();
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
             var (previewCacheKey, cacheKey) = BuildToolingBootstrapKeys(options);
             var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
                 ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
@@ -1573,6 +1576,7 @@ public sealed class ChatServiceToolingBootstrapTests {
                 SchemaVersion = 4,
                 CacheKey = previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
                 PreviewCacheKey = previewCacheKey,
+                PreviewDiscoveryFingerprint = previewFingerprint,
                 CachedAtUtc = DateTime.UtcNow,
                 ToolDefinitions = new[] {
                     new ToolDefinitionDto {
@@ -2034,7 +2038,8 @@ public sealed class ChatServiceToolingBootstrapTests {
             Assert.NotNull(tryGetCachedToolCatalogMethod);
             Assert.NotNull(cachedToolDefinitionsField);
 
-            var options = new ServiceOptions();
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
             var (previewCacheKey, cacheKey) = BuildToolingBootstrapKeys(options);
             var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
                 ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
@@ -2057,6 +2062,7 @@ public sealed class ChatServiceToolingBootstrapTests {
                 SchemaVersion = 4,
                 CacheKey = previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
                 PreviewCacheKey = previewCacheKey,
+                PreviewDiscoveryFingerprint = previewFingerprint,
                 CachedAtUtc = DateTime.UtcNow,
                 ToolDefinitions = new[] {
                     new ToolDefinitionDto {
@@ -2163,7 +2169,8 @@ public sealed class ChatServiceToolingBootstrapTests {
             Assert.NotNull(persistedPreviewPackSummariesField);
             Assert.NotNull(persistedPreviewCapabilitySnapshotField);
 
-            var options = new ServiceOptions();
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
             var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(runtimePolicyOptionsMethod!.Invoke(
                 null,
                 new object[] { options }));
@@ -2226,7 +2233,8 @@ public sealed class ChatServiceToolingBootstrapTests {
                         HealthyTools = new[] { "preview_tool" }
                     },
                     ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
-                });
+                },
+                previewFingerprint);
 
             var session = new ChatServiceSession(options, Stream.Null, cache);
             Assert.True(Assert.IsType<bool>(persistedPreviewFlagField!.GetValue(session)));
@@ -2306,7 +2314,8 @@ public sealed class ChatServiceToolingBootstrapTests {
         }
 
         try {
-            var options = new ServiceOptions();
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
             var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(runtimePolicyOptionsMethod!.Invoke(
                 null,
                 new object[] { options }));
@@ -2369,7 +2378,8 @@ public sealed class ChatServiceToolingBootstrapTests {
                         HealthyTools = new[] { "preview_tool" }
                     },
                     ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
-                });
+                },
+                previewFingerprint);
 
             var session = new ChatServiceSession(options, Stream.Null, cache);
             Assert.True(Assert.IsType<bool>(persistedPreviewFlagField!.GetValue(session)));

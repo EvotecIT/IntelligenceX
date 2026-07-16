@@ -11,9 +11,6 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
-    private static readonly MethodInfo ClearToolRoutingCachesMethod =
-        typeof(ChatServiceSession).GetMethod("ClearToolRoutingCaches", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("ClearToolRoutingCaches not found.");
     private static readonly MethodInfo ResolvePendingActionsStorePathMethod =
         typeof(ChatServiceSession).GetMethod("ResolvePendingActionsStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ResolvePendingActionsStorePath not found.");
@@ -151,7 +148,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Directory.CreateDirectory(Path.GetDirectoryName(alternateEngineHealthPath)!);
             File.WriteAllText(alternateEngineHealthPath, "{}");
 
-            ClearToolRoutingCachesMethod.Invoke(session1, Array.Empty<object>());
+            session1.ClearToolRoutingCachesForTesting();
 
             Assert.False(File.Exists(pendingPath));
             Assert.False(File.Exists(userIntentPath));

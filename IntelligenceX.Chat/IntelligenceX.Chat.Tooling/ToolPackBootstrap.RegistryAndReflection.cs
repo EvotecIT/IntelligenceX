@@ -2018,6 +2018,34 @@ public static partial class ToolPackBootstrap {
         return ResolveTrustedBuiltInToolDependencyAssemblyCore(assemblyName, loadAssembly);
     }
 
+    internal static IReadOnlyList<AssemblyName> EnumerateToolAssemblyNamesForDiscoveryForTesting(ToolPackBootstrapOptions options) {
+        return EnumerateToolAssemblyNamesForDiscovery(options).ToArray();
+    }
+
+    internal static IReadOnlyList<string> DiscoverDefaultBuiltInAssemblyNamesForTesting(Action<string>? onWarning = null) {
+        return DiscoverDefaultBuiltInAssemblyNames(onWarning);
+    }
+
+    internal static IReadOnlyList<(string PackId, ToolPackDescriptor Descriptor, IToolPack? Pack, bool DefaultEnabled)>
+        BuildBuiltInPackRegistrationCandidatesForTesting(
+            IReadOnlyList<Type> packTypes,
+            ToolPackBootstrapOptions options) {
+        return BuildBuiltInPackRegistrationCandidates(packTypes, options)
+            .Select(static candidate => (
+                candidate.PackId,
+                candidate.Descriptor,
+                candidate.Pack,
+                candidate.DefaultEnabled))
+            .ToArray();
+    }
+
+    internal static bool TryResolveTrustedToolAssemblyPathForTesting(
+        AssemblyName assemblyName,
+        ToolPackBootstrapOptions options,
+        out string trustedAssemblyPath) {
+        return TryResolveTrustedToolAssemblyPath(assemblyName, options, out trustedAssemblyPath);
+    }
+
     internal static bool TryResolveTrustedToolAssemblyPathForTesting(
         AssemblyName assemblyName,
         ToolPackBootstrapOptions options,
