@@ -383,13 +383,18 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
         out BackgroundWorkReplayCandidate candidate,
         out string reason) {
-        toolDefinitions = EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
-            threadId,
-            toolDefinitions,
-            includeReadyTargets: true,
-            includeBlockedDependencies: false);
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length > 0
+            && TryGetRememberedThreadBackgroundWorkSnapshot(normalizedThreadId, out var snapshot)) {
+            toolDefinitions = MergeDeferredBackgroundWorkToolDefinitions(
+                snapshot.Items,
+                toolDefinitions,
+                includeReadyTargets: true,
+                includeBlockedDependencies: false);
+        }
+
         return TryBuildReadyBackgroundWorkReplayCandidateCore(
-            threadId,
+            normalizedThreadId,
             userRequest,
             toolDefinitions,
             mutatingToolHintsByName,
@@ -599,33 +604,16 @@ internal sealed partial class ChatServiceSession {
         bool includeBlockedDependencies) {
         ArgumentNullException.ThrowIfNull(toolDefinitions);
 
+        var mergedDefinitions = MergeDeferredBackgroundWorkToolDefinitions(
+            items,
+            toolDefinitions,
+            includeReadyTargets,
+            includeBlockedDependencies);
         if (items is null
             || items.Count == 0
             || (!includeReadyTargets && !includeBlockedDependencies)) {
-            return toolDefinitions;
+            return mergedDefinitions;
         }
-
-        var requestedToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < items.Count; i++) {
-            var item = items[i];
-            if (includeReadyTargets
-                && string.Equals(item.State, BackgroundWorkStateReady, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(item.Kind, BackgroundWorkKindToolHandoff, StringComparison.OrdinalIgnoreCase)) {
-                var readyToolName = NormalizeToolNameForAnswerPlan(item.TargetToolName);
-                if (readyToolName.Length > 0) {
-                    requestedToolNames.Add(readyToolName);
-                }
-            }
-
-            if (includeBlockedDependencies && IsBackgroundWorkDependencyBlocked(item)) {
-                var blockedToolName = NormalizeToolNameForAnswerPlan(item.TargetToolName);
-                if (blockedToolName.Length > 0) {
-                    requestedToolNames.Add(blockedToolName);
-                }
-            }
-        }
-
-        var mergedDefinitions = MergeMissingToolDefinitionsFromDeferredDescriptors(toolDefinitions, requestedToolNames);
 
         var activationPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var itemsById = includeBlockedDependencies
@@ -633,34 +621,6 @@ internal sealed partial class ChatServiceSession {
                 .Where(static item => !string.IsNullOrWhiteSpace(item.Id))
                 .ToDictionary(static item => item.Id, static item => item, StringComparer.OrdinalIgnoreCase)
             : null;
-        if (itemsById is not null) {
-            for (var i = 0; i < items.Count; i++) {
-                var item = items[i];
-                if (!IsBackgroundWorkDependencyBlocked(item) || item.DependencyItemIds.Length == 0) {
-                    continue;
-                }
-
-                for (var dependencyIndex = 0; dependencyIndex < item.DependencyItemIds.Length; dependencyIndex++) {
-                    var dependencyId = (item.DependencyItemIds[dependencyIndex] ?? string.Empty).Trim();
-                    if (dependencyId.Length == 0
-                        || !itemsById.TryGetValue(dependencyId, out var dependencyItem)
-                        || string.Equals(
-                            NormalizeBackgroundWorkState(dependencyItem.State),
-                            BackgroundWorkStateCompleted,
-                            StringComparison.OrdinalIgnoreCase)) {
-                        continue;
-                    }
-
-                    var dependencyToolName = NormalizeToolNameForAnswerPlan(dependencyItem.TargetToolName);
-                    if (dependencyToolName.Length > 0) {
-                        requestedToolNames.Add(dependencyToolName);
-                    }
-                }
-            }
-
-            mergedDefinitions = MergeMissingToolDefinitionsFromDeferredDescriptors(toolDefinitions, requestedToolNames);
-        }
-
         for (var i = 0; i < items.Count; i++) {
             var item = items[i];
             if (includeReadyTargets
@@ -720,6 +680,75 @@ internal sealed partial class ChatServiceSession {
         return activatedAny || sawActivePack
             ? _registry.GetDefinitions()
             : mergedDefinitions;
+    }
+
+    private IReadOnlyList<ToolDefinition> MergeDeferredBackgroundWorkToolDefinitions(
+        IReadOnlyList<ThreadBackgroundWorkItem>? items,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        bool includeReadyTargets,
+        bool includeBlockedDependencies) {
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+
+        if (items is null
+            || items.Count == 0
+            || (!includeReadyTargets && !includeBlockedDependencies)) {
+            return toolDefinitions;
+        }
+
+        var requestedToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < items.Count; i++) {
+            var item = items[i];
+            if (includeReadyTargets
+                && string.Equals(item.State, BackgroundWorkStateReady, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.Kind, BackgroundWorkKindToolHandoff, StringComparison.OrdinalIgnoreCase)) {
+                var readyToolName = NormalizeToolNameForAnswerPlan(item.TargetToolName);
+                if (readyToolName.Length > 0) {
+                    requestedToolNames.Add(readyToolName);
+                }
+            }
+
+            if (includeBlockedDependencies && IsBackgroundWorkDependencyBlocked(item)) {
+                var blockedToolName = NormalizeToolNameForAnswerPlan(item.TargetToolName);
+                if (blockedToolName.Length > 0) {
+                    requestedToolNames.Add(blockedToolName);
+                }
+            }
+        }
+
+        var mergedDefinitions = MergeMissingToolDefinitionsFromDeferredDescriptors(toolDefinitions, requestedToolNames);
+        var itemsById = includeBlockedDependencies
+            ? items
+                .Where(static item => !string.IsNullOrWhiteSpace(item.Id))
+                .ToDictionary(static item => item.Id, static item => item, StringComparer.OrdinalIgnoreCase)
+            : null;
+        if (itemsById is not null) {
+            for (var i = 0; i < items.Count; i++) {
+                var item = items[i];
+                if (!IsBackgroundWorkDependencyBlocked(item) || item.DependencyItemIds.Length == 0) {
+                    continue;
+                }
+
+                for (var dependencyIndex = 0; dependencyIndex < item.DependencyItemIds.Length; dependencyIndex++) {
+                    var dependencyId = (item.DependencyItemIds[dependencyIndex] ?? string.Empty).Trim();
+                    if (dependencyId.Length == 0
+                        || !itemsById.TryGetValue(dependencyId, out var dependencyItem)
+                        || string.Equals(
+                            NormalizeBackgroundWorkState(dependencyItem.State),
+                            BackgroundWorkStateCompleted,
+                            StringComparison.OrdinalIgnoreCase)) {
+                        continue;
+                    }
+
+                    var dependencyToolName = NormalizeToolNameForAnswerPlan(dependencyItem.TargetToolName);
+                    if (dependencyToolName.Length > 0) {
+                        requestedToolNames.Add(dependencyToolName);
+                    }
+                }
+            }
+
+            mergedDefinitions = MergeMissingToolDefinitionsFromDeferredDescriptors(toolDefinitions, requestedToolNames);
+        }
+        return mergedDefinitions;
     }
 
     private bool TryCollectDeferredBackgroundWorkActivationPackId(
@@ -2904,7 +2933,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        toolDefinitions = EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+        toolDefinitions = MergeDeferredBackgroundWorkToolDefinitions(
             snapshot.Items,
             toolDefinitions,
             includeReadyTargets: false,

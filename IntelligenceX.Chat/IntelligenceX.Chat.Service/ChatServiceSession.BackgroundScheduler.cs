@@ -170,7 +170,7 @@ internal sealed partial class ChatServiceSession {
             completedItemCount += Math.Max(0, snapshot.CompletedCount);
             pendingReadOnlyItemCount += Math.Max(0, snapshot.PendingReadOnlyCount);
             pendingUnknownItemCount += Math.Max(0, snapshot.PendingUnknownCount);
-            var summaryToolDefinitions = EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+            var summaryToolDefinitions = MergeDeferredBackgroundWorkToolDefinitions(
                 snapshot.Items,
                 activeToolDefinitions,
                 includeReadyTargets: true,
