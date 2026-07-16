@@ -864,15 +864,15 @@ internal sealed partial class ChatServiceSession {
     private static bool HasPlannerContextSignals(PlannerContextMetadata context) {
         return context.RequiresLiveExecution
                || !string.IsNullOrEmpty(context.MissingLiveEvidence)
-               || context.PreferredPackIds?.Length > 0
-               || context.PreferredToolNames?.Length > 0
-               || context.PreferredDeferredWorkCapabilityIds?.Length > 0
-               || context.StructuredNextActionSourceToolNames?.Length > 0
+               || context.PreferredPackIds?.Length is > 0
+               || context.PreferredToolNames?.Length is > 0
+               || context.PreferredDeferredWorkCapabilityIds?.Length is > 0
+               || context.StructuredNextActionSourceToolNames?.Length is > 0
                || !string.IsNullOrEmpty(context.StructuredNextActionReason)
                || context.StructuredNextActionConfidence.HasValue
-               || context.PreferredExecutionBackends?.Length > 0
-               || context.HandoffTargetPackIds?.Length > 0
-               || context.HandoffTargetToolNames?.Length > 0
+               || context.PreferredExecutionBackends?.Length is > 0
+               || context.HandoffTargetPackIds?.Length is > 0
+               || context.HandoffTargetToolNames?.Length is > 0
                || !string.IsNullOrEmpty(context.ContinuationSourceTool)
                || !string.IsNullOrEmpty(context.ContinuationReason)
                || !string.IsNullOrEmpty(context.ContinuationConfidence)
