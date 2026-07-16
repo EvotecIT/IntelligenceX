@@ -14,6 +14,23 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class NativeConversationStateStoreTests {
     /// <summary>
+    /// Ensures service startup cannot silently replace an unloaded profile with defaults.
+    /// </summary>
+    [Fact]
+    public async Task CreateServiceLaunchProfileOptions_BeforeLoadThrows() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            await using var store = new NativeConversationStateStore(Path.Combine(directory, "app-state.db"));
+
+            var exception = Assert.Throws<InvalidOperationException>(store.CreateServiceLaunchProfileOptions);
+
+            Assert.Contains("must be loaded", exception.Message, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies conversation identity, service thread context, and transcript messages survive a store round trip.
     /// </summary>
     [Fact]
@@ -81,6 +98,43 @@ public sealed class NativeConversationStateStoreTests {
             Assert.NotNull(state);
             Assert.Equal("dark", state!.ThemePreset);
             Assert.Contains(state.Conversations, item => item.Id == "chat-system");
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Verifies native service startup uses provider settings from the selected persisted profile.
+    /// </summary>
+    [Fact]
+    public async Task CreateServiceLaunchProfileOptions_UsesLoadedProfileState() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "operations",
+                    new ChatAppState {
+                        ProfileName = "operations",
+                        LocalProviderTransport = "compatible-http",
+                        LocalProviderBaseUrl = "http://127.0.0.1:1234/v1",
+                        LocalProviderModel = "operations-model",
+                        LocalProviderReasoningEffort = "high"
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path, "operations");
+            _ = await nativeStore.LoadAsync(CancellationToken.None);
+            var options = nativeStore.CreateServiceLaunchProfileOptions();
+
+            Assert.Equal("operations", options.LoadProfileName);
+            Assert.Equal("operations", options.SaveProfileName);
+            Assert.Equal("compatible-http", options.OpenAITransport);
+            Assert.Equal("http://127.0.0.1:1234/v1", options.OpenAIBaseUrl);
+            Assert.Equal("operations-model", options.Model);
+            Assert.Equal("high", options.ReasoningEffort);
+            Assert.True(options.OpenAIAllowInsecureHttp);
         } finally {
             DeleteTemporaryDirectory(directory);
         }

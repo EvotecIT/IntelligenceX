@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI;
@@ -385,7 +386,7 @@ public sealed partial class MainWindow : Window {
                 clearOpenAIBasicAuth: false,
                 clearOpenAIApiKey: false,
                 openAIStreaming: true,
-                openAIAllowInsecureHttp: ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+                openAIAllowInsecureHttp: ChatServiceLaunchProfileMapper.ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
                 reasoningEffort: _localProviderReasoningEffort,
                 reasoningSummary: _localProviderReasoningSummary,
                 textVerbosity: _localProviderTextVerbosity,

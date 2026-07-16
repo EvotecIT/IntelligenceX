@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.App.Launch;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -23,9 +24,20 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
     private ChatAppState? _state;
 
     public NativeConversationStateStore(string? databasePath = null, string profileName = "default") {
-        _profileName = string.IsNullOrWhiteSpace(profileName) ? "default" : profileName.Trim();
+        _profileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
         _stateStore = new ChatAppStateStore(
             string.IsNullOrWhiteSpace(databasePath) ? ChatAppStateStore.GetDefaultDbPath() : databasePath);
+    }
+
+    /// <summary>
+    /// Creates local service launch options from the profile loaded by this native store.
+    /// </summary>
+    internal ChatServiceLaunchProfileOptions CreateServiceLaunchProfileOptions() {
+        if (_state is null) {
+            throw new InvalidOperationException("Native profile state must be loaded before the local chat service starts.");
+        }
+
+        return ChatServiceLaunchProfileMapper.Create(_state);
     }
 
     public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {

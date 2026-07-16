@@ -393,7 +393,7 @@ public sealed partial class MainWindow : Window {
     private MemoryDebugSnapshot? _lastMemoryDebugSnapshot;
     private readonly List<MemoryDebugSnapshot> _memoryDebugHistory = new();
     private int _memoryDebugSequence;
-    private string _appProfileName = ResolveAppProfileName(Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
+    private string _appProfileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
     private readonly ChatAppStateStore _stateStore = new(ChatAppStateStore.GetDefaultDbPath());
     private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
     private readonly SemaphoreSlim _onboardingGate = new(1, 1);

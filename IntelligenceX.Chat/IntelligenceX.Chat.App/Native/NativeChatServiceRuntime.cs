@@ -22,13 +22,17 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private static readonly TimeSpan LoginCancellationTimeout = TimeSpan.FromSeconds(5);
 
     private readonly string _pipeName;
+    private readonly Func<ChatServiceLaunchProfileOptions?>? _profileOptionsProvider;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
     private readonly ChatServiceProcessHost _processHost = new();
     private ChatServiceClient? _client;
     private ChatServiceTurnRunner? _turnRunner;
 
-    public NativeChatServiceRuntime(string? pipeName = null) {
+    public NativeChatServiceRuntime(
+        string? pipeName = null,
+        Func<ChatServiceLaunchProfileOptions?>? profileOptionsProvider = null) {
         _pipeName = string.IsNullOrWhiteSpace(pipeName) ? DefaultPipeName : pipeName.Trim();
+        _profileOptionsProvider = profileOptionsProvider;
         _processHost.OutputReceived += line => StartupLog.Write("[native-service] " + line);
         _processHost.ErrorReceived += line => StartupLog.Write("[native-service:err] " + line);
         _processHost.Exited += () => StartupLog.Write("Native chat service exited.");
@@ -230,13 +234,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
 
     private async Task StartServiceAsync(Func<string, Task> status, CancellationToken cancellationToken) {
         await status("Starting local chat service...").ConfigureAwait(false);
-        var result = await _processHost.EnsureRunningAsync(new ChatServiceProcessStartOptions {
-                PipeName = _pipeName,
-                DetachedServiceMode = ChatAppLaunchModeResolver.IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE")),
-                ParentProcessId = Environment.ProcessId,
-                AppBaseDirectory = AppContext.BaseDirectory,
-                StartupExitProbeDelay = ServiceStartupProbeDelay
-            }, cancellationToken)
+        var result = await _processHost.EnsureRunningAsync(CreateServiceProcessStartOptions(), cancellationToken)
             .ConfigureAwait(false);
         if (result.IsRunning) {
             return;
@@ -252,6 +250,16 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         await status(message).ConfigureAwait(false);
         throw new InvalidOperationException(message, result.Exception);
     }
+
+    internal ChatServiceProcessStartOptions CreateServiceProcessStartOptions() =>
+        new() {
+            PipeName = _pipeName,
+            DetachedServiceMode = ChatAppLaunchModeResolver.IsTruthy(Environment.GetEnvironmentVariable("IXCHAT_DETACHED_SERVICE")),
+            ParentProcessId = Environment.ProcessId,
+            ProfileOptions = _profileOptionsProvider?.Invoke(),
+            AppBaseDirectory = AppContext.BaseDirectory,
+            StartupExitProbeDelay = ServiceStartupProbeDelay
+        };
 
     private async Task RetryConnectAsync(
         ChatServiceClient client,

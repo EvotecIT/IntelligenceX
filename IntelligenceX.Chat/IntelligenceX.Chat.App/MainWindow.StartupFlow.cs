@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI.Input;
@@ -1156,7 +1157,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task LoadProfileStateAsync(string profileName, bool render) {
-        var normalized = ResolveAppProfileName(profileName);
+        var normalized = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
         var loaded = await _stateStore.GetAsync(normalized, CancellationToken.None).ConfigureAwait(false);
         var previousTransport = _localProviderTransport;
 
@@ -1189,24 +1190,7 @@ public sealed partial class MainWindow : Window {
         _localProviderImageGenerationOutputCompression = NormalizeLocalProviderImageGenerationOutputCompression(_appState.LocalProviderImageGenerationOutputCompression);
         _localProviderImageGenerationBackground = NormalizeLocalProviderImageGenerationBackground(_appState.LocalProviderImageGenerationBackground);
         _localProviderImageGenerationOutputDirectory = NormalizeLocalProviderImageGenerationOutputDirectory(_appState.LocalProviderImageGenerationOutputDirectory);
-        _appState.LocalProviderTransport = _localProviderTransport;
-        _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
-        _appState.LocalProviderModel = _localProviderModel;
-        _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
-        _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
-        _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
-        _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
-        _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
-        _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
-        _appState.LocalProviderTemperature = _localProviderTemperature;
-        _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
-        _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
-        _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
-        _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
-        _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
-        _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
-        _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
-        _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
+        CaptureLocalProviderSettingsIntoAppState();
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
         } else if (!string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {

@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Chat.App.Launch;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -35,8 +36,12 @@ internal sealed partial class NativeChatWindow : Window {
 
     public NativeChatWindow() {
         Title = "IntelligenceX Chat";
-        _runtime = new NativeChatServiceRuntime(Environment.GetEnvironmentVariable("IXCHAT_SERVICE_PIPE"));
-        _conversationStore = new NativeConversationStateStore();
+        var profileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(
+            Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
+        _conversationStore = new NativeConversationStateStore(profileName: profileName);
+        _runtime = new NativeChatServiceRuntime(
+            Environment.GetEnvironmentVariable("IXCHAT_SERVICE_PIPE"),
+            _conversationStore.CreateServiceLaunchProfileOptions);
         _viewModel = new NativeChatViewModel(_runtime, DispatchToUiThread, _conversationStore) {
             OpenLoginUrlAsync = OpenLoginUrlAsync,
             PromptForLoginInputAsync = PromptForLoginInputAsync

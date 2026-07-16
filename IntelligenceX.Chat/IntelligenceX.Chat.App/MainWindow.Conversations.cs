@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.Client;
@@ -672,7 +673,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task SwitchProfileAsync(string profileName) {
-        var normalized = ResolveAppProfileName(profileName);
+        var normalized = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
         if (string.Equals(normalized, _appProfileName, StringComparison.OrdinalIgnoreCase)) {
             await PublishOptionsStateAsync().ConfigureAwait(false);
             return;
@@ -706,7 +707,7 @@ public sealed partial class MainWindow : Window {
                             clearOpenAIBasicAuth: false,
                             clearOpenAIApiKey: false,
                             openAIStreaming: true,
-                            openAIAllowInsecureHttp: ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+                            openAIAllowInsecureHttp: ChatServiceLaunchProfileMapper.ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
                             reasoningEffort: _localProviderReasoningEffort,
                             reasoningSummary: _localProviderReasoningSummary,
                             textVerbosity: _localProviderTextVerbosity,
