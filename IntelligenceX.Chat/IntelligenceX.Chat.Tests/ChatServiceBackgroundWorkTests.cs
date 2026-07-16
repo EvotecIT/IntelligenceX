@@ -4110,28 +4110,11 @@ public sealed class ChatServiceBackgroundWorkTests {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         var seedSession = new ChatServiceSession(options, Stream.Null);
         var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
-        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
-        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
-        Directory.CreateDirectory(runtimeDirectory!);
         var initialFailureTicks = DateTime.UtcNow.AddMinutes(-5).Ticks;
-        var seedStore = new BackgroundSchedulerRuntimeStoreDto {
-            LastOutcome = "requeued_after_tool_failure",
-            LastOutcomeUtcTicks = initialFailureTicks,
-            LastFailureUtcTicks = initialFailureTicks,
-            RequeuedExecutionCount = initialConsecutiveFailureCount,
-            ConsecutiveFailureCount = initialConsecutiveFailureCount,
-            FailureStreakEvents = Enumerable.Range(0, ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents)
-                .Select(index => new BackgroundSchedulerFailureEventDto {
-                    EventId = $"seed-{index:D4}",
-                    RecordedUtcTicks = initialFailureTicks
-                })
-                .ToArray()
-        };
-        File.WriteAllText(
+        WriteBackgroundSchedulerFailureStreakStore(
             runtimeStorePath,
-            JsonSerializer.Serialize(
-                seedStore,
-                BackgroundSchedulerRuntimeStoreJsonContext.Default.BackgroundSchedulerRuntimeStoreDto));
+            initialConsecutiveFailureCount,
+            initialFailureTicks);
 
         var localSession = new ChatServiceSession(options, Stream.Null);
         var concurrentSession = new ChatServiceSession(options, Stream.Null);
@@ -4185,6 +4168,43 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Equal(1, recovered.ConsecutiveFailureCount);
         var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
         Assert.Equal(1, restarted.ConsecutiveFailureCount);
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_AutoPausesAfterSaturatedFailure() {
+        const int initialConsecutiveFailureCount = 5000;
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        options.EnableBackgroundSchedulerDaemon = true;
+        options.BackgroundSchedulerFailureThreshold = 5;
+        options.BackgroundSchedulerFailurePauseSeconds = 120;
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var initialFailureTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        WriteBackgroundSchedulerFailureStreakStore(
+            runtimeStorePath,
+            initialConsecutiveFailureCount,
+            initialFailureTicks);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        Assert.Equal(
+            ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents,
+            session.BuildBackgroundSchedulerSummaryForTesting().ConsecutiveFailureCount);
+        session.RememberBackgroundSchedulerIterationResultForTesting(
+            new ChatServiceSession.BackgroundSchedulerIterationResult(
+                ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure,
+                "thread-saturated-failure",
+                "item-saturated-failure",
+                "system_info",
+                "saturated_failure",
+                0,
+                "saturated_probe_failed"),
+            DateTime.UtcNow.AddMinutes(-1).Ticks);
+
+        var summary = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(initialConsecutiveFailureCount + 1, summary.RequeuedExecutionCount);
+        Assert.Equal(ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents, summary.ConsecutiveFailureCount);
+        Assert.True(summary.Paused);
+        Assert.Contains("consecutive_failure_threshold_reached", summary.PauseReason, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -7353,6 +7373,37 @@ public sealed class ChatServiceBackgroundWorkTests {
             description: "test tool",
             handoff: handoff,
             writeGovernance: writeGovernance);
+    }
+
+    private static void WriteBackgroundSchedulerFailureStreakStore(
+        string runtimeStorePath,
+        int consecutiveFailureCount,
+        long recordedUtcTicks) {
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var seedStore = new BackgroundSchedulerRuntimeStoreDto {
+            LastOutcome = "requeued_after_tool_failure",
+            LastOutcomeUtcTicks = recordedUtcTicks,
+            LastFailureUtcTicks = recordedUtcTicks,
+            RequeuedExecutionCount = Math.Max(0, consecutiveFailureCount),
+            ConsecutiveFailureCount = Math.Max(0, consecutiveFailureCount),
+            FailureStreakEvents = Enumerable.Range(
+                    0,
+                    Math.Min(
+                        Math.Max(0, consecutiveFailureCount),
+                        ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents))
+                .Select(index => new BackgroundSchedulerFailureEventDto {
+                    EventId = $"seed-{index:D4}",
+                    RecordedUtcTicks = recordedUtcTicks
+                })
+                .ToArray()
+        };
+        File.WriteAllText(
+            runtimeStorePath,
+            JsonSerializer.Serialize(
+                seedStore,
+                BackgroundSchedulerRuntimeStoreJsonContext.Default.BackgroundSchedulerRuntimeStoreDto));
     }
 
     private static ChatServiceSession.ThreadBackgroundWorkItem CreateBackgroundWorkItem(

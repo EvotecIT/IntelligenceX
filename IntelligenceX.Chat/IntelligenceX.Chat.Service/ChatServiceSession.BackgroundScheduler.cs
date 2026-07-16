@@ -830,7 +830,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         var threshold = Math.Max(1, _options.BackgroundSchedulerFailureThreshold);
-        if (_backgroundSchedulerConsecutiveFailureCount <= 0 || _backgroundSchedulerConsecutiveFailureCount % threshold != 0) {
+        var saturatedFailureStreak = _backgroundSchedulerConsecutiveFailureCount
+            >= MaxBackgroundSchedulerFailureStreakEvents;
+        if (_backgroundSchedulerConsecutiveFailureCount <= 0
+            || (!saturatedFailureStreak && _backgroundSchedulerConsecutiveFailureCount % threshold != 0)) {
             return;
         }
 
