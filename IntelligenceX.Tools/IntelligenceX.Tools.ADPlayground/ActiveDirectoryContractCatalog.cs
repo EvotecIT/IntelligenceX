@@ -155,10 +155,11 @@ public static class ActiveDirectoryContractCatalog {
     /// </summary>
     public static ToolHandoffContract CreateMonitoringProbeRunHandoff() {
         var sourceFields = new[] {
-            "normalized_request/domain_controller",
+            "effective_targets/0",
             "normalized_request/targets/0",
-            "domain_controller",
-            "targets/0"
+            "targets/0",
+            "normalized_request/domain_controller",
+            "domain_controller"
         };
 
         return ToolContractDefaults.CreateHandoff(

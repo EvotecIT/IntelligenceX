@@ -416,13 +416,19 @@ public class SystemAdMonitoringParityTests {
             "context/domain_controller", "domain_controllers/0/value");
 
         AssertRouteBindsToTarget(monitoringProbeRun, "system", "system_time_sync", "computer_name",
-            "normalized_request/domain_controller", "normalized_request/targets/0");
+            "effective_targets/0", "normalized_request/targets/0", "normalized_request/domain_controller");
         AssertRouteBindsToTarget(monitoringProbeRun, "system", "system_windows_update_client_status", "computer_name",
-            "normalized_request/domain_controller", "normalized_request/targets/0");
+            "effective_targets/0", "normalized_request/targets/0", "normalized_request/domain_controller");
         AssertRouteBindsToTarget(monitoringProbeRun, "system", "system_logical_disks_list", "computer_name",
-            "normalized_request/domain_controller", "normalized_request/targets/0");
+            "effective_targets/0", "normalized_request/targets/0", "normalized_request/domain_controller");
         AssertRouteBindsToTarget(monitoringProbeRun, "eventlog", "eventlog_channels_list", "machine_name",
-            "normalized_request/domain_controller", "normalized_request/targets/0");
+            "effective_targets/0", "normalized_request/targets/0", "normalized_request/domain_controller");
+
+        var systemInfoRoute = Assert.Single(
+            monitoringProbeRun.Handoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("effective_targets/0", systemInfoRoute.Bindings[0].SourceField);
     }
 
     [Fact]
