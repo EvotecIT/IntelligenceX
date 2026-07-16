@@ -432,9 +432,11 @@ internal sealed partial class ChatServiceSession {
         }
 
         var hasSinglePendingActionEnvelope = TryGetSinglePendingActionEnvelopeMutability(draft, out var singlePendingActionMutability);
-        var hasSingleNonMutatingPendingActionEnvelope = hasSinglePendingActionEnvelope
-                                                        && singlePendingActionMutability != ActionMutability.Mutating;
-        if (hasArtifactRequestWithoutExplicitToolIntent && !hasSingleNonMutatingPendingActionEnvelope) {
+        var hasSingleReadOnlyPendingActionEnvelope = hasSinglePendingActionEnvelope
+                                                     && singlePendingActionMutability == ActionMutability.ReadOnly;
+        var hasSingleExecutionEligiblePendingActionEnvelope = hasSinglePendingActionEnvelope
+                                                              && singlePendingActionMutability != ActionMutability.Mutating;
+        if (hasArtifactRequestWithoutExplicitToolIntent && !hasSingleReadOnlyPendingActionEnvelope) {
             reason = "artifact_only_follow_up_request";
             return false;
         }
@@ -483,7 +485,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (!usedContinuationSubset && !echoedCallToAction && !contextualFollowUp) {
-            if (hasSingleNonMutatingPendingActionEnvelope && !ContainsQuestionSignal(draft)) {
+            if (hasSingleExecutionEligiblePendingActionEnvelope && !ContainsQuestionSignal(draft)) {
                 reason = singlePendingActionMutability == ActionMutability.Unknown
                     ? "single_unknown_pending_action_envelope"
                     : "single_readonly_pending_action_envelope";
@@ -535,7 +537,7 @@ internal sealed partial class ChatServiceSession {
                                   || draft.Contains('{', StringComparison.Ordinal)
                                   || draft.Contains('[', StringComparison.Ordinal);
         if (hasStructuredOutput) {
-            if (hasSingleNonMutatingPendingActionEnvelope && !asksAnotherQuestion) {
+            if (hasSingleExecutionEligiblePendingActionEnvelope && !asksAnotherQuestion) {
                 reason = singlePendingActionMutability == ActionMutability.Unknown
                     ? "structured_draft_single_unknown_pending_action_envelope"
                     : "structured_draft_single_readonly_pending_action_envelope";
@@ -602,7 +604,9 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (ExtractExplicitRequestedToolNames(request).Length > 0 || ShouldEnforceExecuteOrExplainContract(request)) {
+        if (ExtractExplicitRequestedToolNames(request).Length > 0
+            || LooksLikeActionSelectionPayload(request)
+            || ShouldEnforceExecuteOrExplainContract(request)) {
             return false;
         }
 

@@ -401,6 +401,53 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveNoExtractedFinalizeNoTextOutcomeForTesting_PreservesCompleteRequestedArtifactSummary() {
+        var mermaid = """
+            ```mermaid
+            graph TD
+                A[AD1] --> B[AD2]
+                B --> C[AD3]
+            ```
+            """;
+        var result = ChatServiceSession.ResolveNoExtractedFinalizeNoTextOutcomeForTesting(
+            noTextToolOutputDirectRetryUsed: false,
+            planExecuteReviewLoop: true,
+            redactEnabled: false,
+            hasSuccessfulToolOutput: true,
+            assistantDraft: string.Empty,
+            localNoTextDirectRetryUsed: false,
+            isLocalCompatibleLoopback: true,
+            availableToolCount: 2,
+            priorToolCalls: 1,
+            userRequest: "Show the replication topology as a Mermaid diagram.",
+            toolOutputSummaryMarkdown: mermaid);
+
+        Assert.Equal(mermaid, result.AssistantDraft);
+        Assert.Equal("None", result.Kind);
+        Assert.Equal("no_no_text_recovery_selected", result.Reason);
+    }
+
+    [Fact]
+    public void ResolveNoExtractedFinalizeNoTextOutcomeForTesting_RetriesSynthesisWhenToolSummaryMissesRequestedArtifact() {
+        var result = ChatServiceSession.ResolveNoExtractedFinalizeNoTextOutcomeForTesting(
+            noTextToolOutputDirectRetryUsed: false,
+            planExecuteReviewLoop: true,
+            redactEnabled: false,
+            hasSuccessfulToolOutput: true,
+            assistantDraft: string.Empty,
+            localNoTextDirectRetryUsed: false,
+            isLocalCompatibleLoopback: true,
+            availableToolCount: 2,
+            priorToolCalls: 1,
+            userRequest: "Show the replication topology as a Mermaid diagram.",
+            toolOutputSummaryMarkdown: "Replication data was collected successfully.");
+
+        Assert.Equal(string.Empty, result.AssistantDraft);
+        Assert.Equal("ToolOutputSynthesisRetry", result.Kind);
+        Assert.Equal("tool_output_synthesis_retry", result.Reason);
+    }
+
+    [Fact]
     public void BuildNoTextToolOutputSynthesisPrompt_CarriesRequestedArtifactGuidanceIntoRetryPrompt() {
         var prompt = ChatServiceSession.BuildNoTextToolOutputSynthesisPrompt(
             userRequest: "Pokaz to na wykresie topologii replikacji.",
