@@ -28,6 +28,21 @@ public static class ChatStatePaths {
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
     }
 
+    /// <summary>
+    /// Determines whether a file resolves inside the durable per-user state directory.
+    /// </summary>
+    public static bool IsPathInDefaultDirectory(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return false;
+        }
+
+        try {
+            return IsPathWithinDirectory(GetDefaultDirectory(), path);
+        } catch {
+            return false;
+        }
+    }
+
     internal static string ResolveDefaultPath(
         string fileName,
         string? localApplicationData,
@@ -64,6 +79,14 @@ public static class ChatStatePaths {
 
         throw new InvalidOperationException(
             "IntelligenceX Chat cannot resolve a durable per-user state directory. Configure a user profile or an absolute XDG_DATA_HOME path.");
+    }
+
+    internal static bool IsPathWithinDirectory(string directory, string path) {
+        var fullDirectory = Path.GetFullPath(directory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var fullPath = Path.GetFullPath(path);
+        return fullPath.StartsWith(fullDirectory, PathComparison);
     }
 
     private static bool TryNormalizeAbsoluteRoot(string? candidate, out string root) {

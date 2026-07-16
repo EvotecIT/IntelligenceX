@@ -1422,45 +1422,10 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
             "background-scheduler-control.json");
     }
 
-    private string ResolvePendingActionsStorePath() {
-        var candidate = (_options.PendingActionsStorePath ?? string.Empty).Trim();
-        if (candidate.Length == 0) {
-            return ResolveDefaultPendingActionsStorePath();
-        }
-
-        var baseDir = ChatServiceJsonFileStore.ResolveDefaultDirectory();
-        var defaultPath = ResolveDefaultPendingActionsStorePath();
-
-        try {
-            if (candidate.StartsWith(@"\\", StringComparison.Ordinal)) {
-                return defaultPath;
-            }
-
-            if (!Path.IsPathFullyQualified(candidate)) {
-                if (candidate.Contains("..", StringComparison.Ordinal)
-                    || candidate.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) >= 0) {
-                    return defaultPath;
-                }
-
-                return Path.Combine(baseDir, candidate);
-            }
-
-            var fullCandidate = Path.GetFullPath(candidate);
-            var fullBaseDir = Path.GetFullPath(baseDir)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                + Path.DirectorySeparatorChar;
-
-            return fullCandidate.StartsWith(fullBaseDir, StringComparison.OrdinalIgnoreCase)
-                ? fullCandidate
-                : defaultPath;
-        } catch {
-            return defaultPath;
-        }
-    }
-
-    private static string ResolveDefaultPendingActionsStorePath() {
-        return ChatServiceJsonFileStore.ResolveDefaultPath("pending-actions.json");
-    }
+    private string ResolvePendingActionsStorePath() =>
+        ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(
+            _options.PendingActionsStorePath,
+            "pending-actions.json");
 
     private StoreDto ReadStoreStateNoThrow() {
         var path = ResolveStorePath();

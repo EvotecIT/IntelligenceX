@@ -87,7 +87,7 @@ public sealed class ChatServiceJsonFileStoreTests {
     }
 
     [Fact]
-    public void Write_HardensUnixDirectoryAndFilePermissions() {
+    public void Write_DoesNotChangeArbitraryUnixDirectoryPermissions() {
         if (OperatingSystem.IsWindows()) {
             return;
         }
@@ -95,12 +95,46 @@ public sealed class ChatServiceJsonFileStoreTests {
         var root = CreateRoot();
         try {
             var path = Path.Combine(root, "state.json");
+            var originalMode = UnixFileMode.UserRead
+                               | UnixFileMode.UserWrite
+                               | UnixFileMode.UserExecute
+                               | UnixFileMode.GroupRead
+                               | UnixFileMode.GroupExecute
+                               | UnixFileMode.OtherRead
+                               | UnixFileMode.OtherExecute;
+            File.SetUnixFileMode(root, originalMode);
 
             ChatServiceJsonFileStore.Write(
                 path,
                 new TestStore { Version = 2, Value = "private" },
                 static value => JsonSerializer.Serialize(value),
                 "Test store");
+
+            Assert.Equal(originalMode, File.GetUnixFileMode(root));
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(path));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Write_HardensExplicitDedicatedUnixDirectory() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        var root = CreateRoot();
+        try {
+            var path = Path.Combine(root, "state.json");
+            File.SetUnixFileMode(
+                root,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
+            ChatJsonFileStore.Write(path, "{}", hardenExistingDirectory: true);
 
             Assert.Equal(
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
@@ -202,6 +236,43 @@ public sealed class ChatServiceJsonFileStoreTests {
         } finally {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Theory]
+    [InlineData("../escape.json")]
+    [InlineData("nested/escape.json")]
+    [InlineData(".")]
+    [InlineData("..")]
+    public void ResolvePathOverrideWithinDefaultDirectory_RejectsUnsafeRelativePaths(string candidate) {
+        var expected = ChatStatePaths.GetDefaultPath("pending-actions.json");
+
+        var actual = ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(
+            candidate,
+            "pending-actions.json");
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void ResolvePathOverrideWithinDefaultDirectory_AllowsAbsoluteDescendant() {
+        var expected = Path.Combine(ChatStatePaths.GetDefaultDirectory(), "tests", "pending-actions.json");
+
+        var actual = ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(
+            expected,
+            "pending-actions.json");
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void IsPathWithinDirectory_UsesPlatformCaseRules() {
+        var parent = Path.Combine(Path.GetTempPath(), "ix-path-case-" + Guid.NewGuid().ToString("N"));
+        var caseChangedParent = parent.ToUpperInvariant();
+        var candidate = Path.Combine(caseChangedParent, "state.json");
+
+        Assert.Equal(
+            OperatingSystem.IsWindows(),
+            ChatStatePaths.IsPathWithinDirectory(parent, candidate));
     }
 
     private static ChatServiceJsonFileReadResult<TestStore> Read(string path) {

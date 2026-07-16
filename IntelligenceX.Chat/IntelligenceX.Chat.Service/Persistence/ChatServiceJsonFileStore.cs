@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using IntelligenceX.Chat.Abstractions.Storage;
 
 namespace IntelligenceX.Chat.Service.Persistence;
@@ -19,6 +17,41 @@ internal static class ChatServiceJsonFileStore {
 
     internal static string ResolveDefaultDirectory() {
         return ChatStatePaths.GetDefaultDirectory();
+    }
+
+    /// <summary>
+    /// Resolves an optional store override while keeping it inside the shared state directory.
+    /// </summary>
+    internal static string ResolvePathOverrideWithinDefaultDirectory(string? candidate, string defaultFileName) {
+        var defaultPath = ResolveDefaultPath(defaultFileName);
+        var normalizedCandidate = (candidate ?? string.Empty).Trim();
+        if (normalizedCandidate.Length == 0) {
+            return defaultPath;
+        }
+
+        try {
+            if (normalizedCandidate.StartsWith(@"\\", StringComparison.Ordinal)) {
+                return defaultPath;
+            }
+
+            if (!Path.IsPathFullyQualified(normalizedCandidate)) {
+                var fileName = Path.GetFileName(normalizedCandidate);
+                if (fileName.Length == 0
+                    || fileName is "." or ".."
+                    || !string.Equals(fileName, normalizedCandidate, StringComparison.Ordinal)) {
+                    return defaultPath;
+                }
+
+                return Path.Combine(ResolveDefaultDirectory(), fileName);
+            }
+
+            var fullCandidate = Path.GetFullPath(normalizedCandidate);
+            return ChatStatePaths.IsPathInDefaultDirectory(fullCandidate)
+                ? fullCandidate
+                : defaultPath;
+        } catch {
+            return defaultPath;
+        }
     }
 
     /// <summary>
@@ -106,8 +139,10 @@ internal static class ChatServiceJsonFileStore {
             }
 
             var json = serialize(value);
-            ChatJsonFileStore.Write(path, json);
-            TryHardenWindowsFileNoThrow(path, storeName);
+            ChatJsonFileStore.Write(
+                path,
+                json,
+                hardenExistingDirectory: ChatStatePaths.IsPathInDefaultDirectory(path));
         } catch (Exception ex) {
             Trace.TraceWarning($"{NormalizeStoreName(storeName)} write failed: {ex.GetType().Name}: {ex.Message}");
         }
@@ -121,40 +156,6 @@ internal static class ChatServiceJsonFileStore {
             ChatJsonFileStore.Delete(path);
         } catch (Exception ex) {
             Trace.TraceWarning($"{NormalizeStoreName(storeName)} clear failed: {ex.GetType().Name}: {ex.Message}");
-        }
-    }
-
-    private static void TryHardenWindowsFileNoThrow(string path, string storeName) {
-        if (string.IsNullOrWhiteSpace(path) || !OperatingSystem.IsWindows()) {
-            return;
-        }
-
-        try {
-            if (!File.Exists(path)) {
-                return;
-            }
-
-            var attributes = File.GetAttributes(path);
-            if ((attributes & FileAttributes.Directory) != 0) {
-                return;
-            }
-
-            var currentSid = WindowsIdentity.GetCurrent().User;
-            if (currentSid is null) {
-                return;
-            }
-
-            var fileInfo = new FileInfo(path);
-            var security = fileInfo.GetAccessControl();
-            security.SetOwner(currentSid);
-            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
-            security.SetAccessRule(new FileSystemAccessRule(
-                currentSid,
-                FileSystemRights.FullControl,
-                AccessControlType.Allow));
-            fileInfo.SetAccessControl(security);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"{NormalizeStoreName(storeName)} ACL hardening failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

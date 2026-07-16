@@ -339,7 +339,7 @@ public sealed partial class MainWindow : Window {
             };
 
             var json = JsonSerializer.Serialize(payload);
-            ChatJsonFileStore.Write(path, json);
+            ChatJsonFileStore.Write(path, json, hardenExistingDirectory: true);
         } catch {
             // Startup budget cache is best-effort only.
         }
