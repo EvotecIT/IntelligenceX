@@ -66,8 +66,6 @@ internal sealed partial class ChatServiceSession {
         var visibleUserRequest = string.IsNullOrWhiteSpace(userRequest) ? routedUserRequest : userRequest;
         var bootstrapOnlyToolActivity = hostDomainIntentBootstrapReplayUsed
             && HasOnlyHostGeneratedPackPreflightToolActivity(toolCalls, toolOutputs);
-        var priorToolCallsForRecoveryRetry = bootstrapOnlyToolActivity ? 0 : toolCalls.Count;
-        var priorToolOutputsForRecoveryRetry = bootstrapOnlyToolActivity ? 0 : toolOutputs.Count;
 
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
                 var controlPayloadDetected = isLocalCompatibleLoopback && LooksLikeRuntimeControlPayloadArtifact(text);
@@ -145,28 +143,22 @@ internal sealed partial class ChatServiceSession {
                     executionContractApplies: executionContractApplies,
                     compactFollowUpTurn: compactFollowUpTurn,
                     toolsAvailable: toolDefs.Count > 0 || fullToolDefs.Length > 0,
-                    priorToolCalls: priorToolCallsForRecoveryRetry,
-                    priorToolOutputs: priorToolOutputsForRecoveryRetry,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count,
                     userRequest: visibleUserRequest,
                     assistantDraft: text);
                 if (suppressLocalToolRecoveryRetries) {
                     executionNudgeReason = "local_runtime_recovery_disabled";
                 } else if (!executionNudgeUsed) {
-                    if (LooksLikeExecutionAcknowledgeDraft(text)
-                        && AssistantDraftReferencesUserRequest(visibleUserRequest, text)) {
-                        shouldAttemptExecutionNudge = true;
-                        executionNudgeReason = "execution_ack_draft_direct_retry";
-                    } else {
-                        shouldAttemptExecutionNudge = EvaluateToolExecutionNudgeDecision(
-                            userRequest: visibleUserRequest,
-                            assistantDraft: text,
-                            toolsAvailable: toolDefs.Count > 0,
-                            priorToolCalls: priorToolCallsForRecoveryRetry,
-                            assistantDraftToolCalls: extracted.Count,
-                            usedContinuationSubset: usedContinuationSubset,
-                            compactFollowUpHint: compactFollowUpTurn,
-                            out executionNudgeReason);
-                    }
+                    shouldAttemptExecutionNudge = EvaluateToolExecutionNudgeDecision(
+                        userRequest: visibleUserRequest,
+                        assistantDraft: text,
+                        toolsAvailable: toolDefs.Count > 0,
+                        priorToolCalls: toolCalls.Count,
+                        assistantDraftToolCalls: extracted.Count,
+                        usedContinuationSubset: usedContinuationSubset,
+                        compactFollowUpHint: compactFollowUpTurn,
+                        out executionNudgeReason);
                 }
                 if (string.Equals(Environment.GetEnvironmentVariable("IX_CHAT_TRACE_TOOL_NUDGE"), "1", StringComparison.Ordinal)) {
                     Console.Error.WriteLine(
@@ -183,7 +175,7 @@ internal sealed partial class ChatServiceSession {
                         userRequest: visibleUserRequest,
                         usedContinuationSubset: usedContinuationSubset,
                         toolsAvailable: toolDefs.Count > 0,
-                        priorToolCalls: priorToolCallsForRecoveryRetry,
+                        priorToolCalls: toolCalls.Count,
                         assistantDraftToolCalls: extracted.Count,
                         executionNudgeAlreadyUsed: executionNudgeUsed,
                         shouldAttemptNudge: shouldAttemptExecutionNudge,
@@ -219,7 +211,7 @@ internal sealed partial class ChatServiceSession {
                     userRequest: visibleUserRequest,
                     usedContinuationSubset: usedContinuationSubset,
                     toolsAvailable: toolDefs.Count > 0,
-                    priorToolCalls: priorToolCallsForRecoveryRetry,
+                    priorToolCalls: toolCalls.Count,
                     assistantDraftToolCalls: extracted.Count,
                     executionNudgeAlreadyUsed: executionNudgeUsed,
                     shouldAttemptNudge: false,
@@ -231,8 +223,8 @@ internal sealed partial class ChatServiceSession {
                                                             userRequest: visibleUserRequest,
                                                             assistantDraft: text,
                                                             tools: toolDefs,
-                                                            priorToolCalls: priorToolCallsForRecoveryRetry,
-                                                            priorToolOutputs: priorToolOutputsForRecoveryRetry,
+                                                            priorToolCalls: toolCalls.Count,
+                                                            priorToolOutputs: toolOutputs.Count,
                                                             assistantDraftToolCalls: extracted.Count);
 
                 var shouldAttemptWatchdog = false;
@@ -244,8 +236,8 @@ internal sealed partial class ChatServiceSession {
                         userRequest: visibleUserRequest,
                         assistantDraft: text,
                         toolsAvailable: toolDefs.Count > 0,
-                        priorToolCalls: priorToolCallsForRecoveryRetry,
-                        priorToolOutputs: priorToolOutputsForRecoveryRetry,
+                        priorToolCalls: toolCalls.Count,
+                        priorToolOutputs: toolOutputs.Count,
                         assistantDraftToolCalls: extracted.Count,
                         continuationFollowUpTurn: continuationFollowUpTurn,
                         compactFollowUpTurn: compactFollowUpTurn,
@@ -258,8 +250,8 @@ internal sealed partial class ChatServiceSession {
                     userRequest: visibleUserRequest,
                     executionContractApplies: executionContractApplies,
                     toolsAvailable: toolDefs.Count > 0,
-                    priorToolCalls: priorToolCallsForRecoveryRetry,
-                    priorToolOutputs: priorToolOutputsForRecoveryRetry,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count,
                     assistantDraftToolCalls: extracted.Count,
                     continuationFollowUpTurn: continuationFollowUpTurn,
                     compactFollowUpTurn: compactFollowUpTurn,

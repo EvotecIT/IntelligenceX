@@ -371,10 +371,16 @@ internal sealed partial class ChatServiceSession {
         int availableToolCount,
         int priorToolCalls,
         string userRequest) {
-        var recoveredAssistantDraft = ResolveAssistantTextFromToolOutputsFallback(
-            assistantDraft: assistantDraft,
-            toolCalls: toolCalls,
-            toolOutputs: toolOutputs);
+        var requestedArtifactIntent = ResolveRequestedArtifactIntent(userRequest);
+        var recoveredAssistantDraft = requestedArtifactIntent.RequiresArtifact
+            ? ResolveAssistantTextFromRequestedArtifactToolOutputsFallback(
+                userRequest: userRequest,
+                assistantDraft: assistantDraft,
+                toolOutputs: toolOutputs)
+            : ResolveAssistantTextFromToolOutputsFallback(
+                assistantDraft: assistantDraft,
+                toolCalls: toolCalls,
+                toolOutputs: toolOutputs);
         var decision = ResolveNoExtractedFinalizeNoTextDecision(
             noTextToolOutputDirectRetryUsed: noTextToolOutputDirectRetryUsed,
             planExecuteReviewLoop: planExecuteReviewLoop,
@@ -382,7 +388,7 @@ internal sealed partial class ChatServiceSession {
             hasSuccessfulToolOutput: hasSuccessfulToolOutput,
             toolCalls: toolCalls,
             toolOutputs: toolOutputs,
-            assistantDraft: assistantDraft,
+            assistantDraft: recoveredAssistantDraft,
             localNoTextDirectRetryUsed: localNoTextDirectRetryUsed,
             isLocalCompatibleLoopback: isLocalCompatibleLoopback,
             availableToolCount: availableToolCount,
@@ -568,7 +574,8 @@ internal sealed partial class ChatServiceSession {
         bool isLocalCompatibleLoopback,
         int availableToolCount,
         int priorToolCalls,
-        string userRequest) {
+        string userRequest,
+        string? toolOutputSummaryMarkdown = null) {
         var toolCalls = new List<ToolCallDto> {
             new() {
                 CallId = "call_1",
@@ -579,7 +586,8 @@ internal sealed partial class ChatServiceSession {
             new() {
                 CallId = "call_1",
                 Ok = hasSuccessfulToolOutput,
-                Output = "Found 3 relevant results."
+                Output = "Found 3 relevant results.",
+                SummaryMarkdown = toolOutputSummaryMarkdown
             }
         };
 
