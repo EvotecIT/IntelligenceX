@@ -1727,6 +1727,12 @@ internal sealed partial class ChatServiceSession {
         active.Cancel();
         if (removedQueuedRun) {
             active.MarkCompleted();
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = chatRequestId,
+                Error = "Chat canceled before execution by client.",
+                Code = "chat_canceled"
+            }, cancellationToken).ConfigureAwait(false);
         }
         await WriteAsync(writer, new AckMessage {
             Kind = ChatServiceMessageKind.Response,
