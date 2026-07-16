@@ -1,7 +1,6 @@
 using System;
 using System.IO;
-using System.Reflection;
-using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.App.Launch;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -9,13 +8,8 @@ namespace IntelligenceX.Chat.App.Tests;
 /// <summary>
 /// Verifies staged sidecar cache keys reflect the full runtime payload, not only the service executable.
 /// </summary>
-public sealed class MainWindowServiceStagingTests : IDisposable {
-    private static readonly MethodInfo BuildServiceStageKeyMethod = typeof(MainWindow).GetMethod(
-        "BuildServiceStageKey",
-        BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("BuildServiceStageKey method was not found.");
-
-    private readonly string _tempRoot = TempPathTestHelper.CreateTempDirectoryPath(nameof(MainWindowServiceStagingTests));
+public sealed class ChatServiceRuntimeStagerTests : IDisposable {
+    private readonly string _tempRoot = TempPathTestHelper.CreateTempDirectoryPath(nameof(ChatServiceRuntimeStagerTests));
 
     /// <summary>
     /// Ensures the staging key is deterministic for an unchanged service payload.
@@ -80,6 +74,6 @@ public sealed class MainWindowServiceStagingTests : IDisposable {
     }
 
     private static string BuildServiceStageKey(string serviceSourceDir) {
-        return Assert.IsType<string>(BuildServiceStageKeyMethod.Invoke(null, new object[] { serviceSourceDir }));
+        return ChatServiceRuntimeStager.BuildStageKey(serviceSourceDir);
     }
 }

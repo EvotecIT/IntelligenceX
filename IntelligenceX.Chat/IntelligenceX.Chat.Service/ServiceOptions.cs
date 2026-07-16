@@ -262,6 +262,10 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.ImageGenerationQuality = NormalizeOptionalValue(value);
                 continue;
             }
+            if (arg is "--clear-image-generation-quality") {
+                options.ImageGenerationQuality = null;
+                continue;
+            }
             if (arg is "--image-generation-size") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -269,11 +273,19 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.ImageGenerationSize = NormalizeOptionalValue(value);
                 continue;
             }
+            if (arg is "--clear-image-generation-size") {
+                options.ImageGenerationSize = null;
+                continue;
+            }
             if (arg is "--image-generation-output-format") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
                 }
                 options.ImageGenerationOutputFormat = NormalizeOptionalValue(value);
+                continue;
+            }
+            if (arg is "--clear-image-generation-output-format") {
+                options.ImageGenerationOutputFormat = null;
                 continue;
             }
             if (arg is "--image-generation-output-compression") {
@@ -298,11 +310,19 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.ImageGenerationBackground = NormalizeOptionalValue(value);
                 continue;
             }
+            if (arg is "--clear-image-generation-background") {
+                options.ImageGenerationBackground = null;
+                continue;
+            }
             if (arg is "--image-generation-output-directory") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
                 }
                 options.ImageGenerationOutputDirectory = NormalizeOptionalValue(value);
+                continue;
+            }
+            if (arg is "--clear-image-generation-output-directory") {
+                options.ImageGenerationOutputDirectory = null;
                 continue;
             }
             if (arg is "--openai-transport") {
@@ -820,6 +840,13 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
         Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
         Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");
+        Console.WriteLine("  --enable-image-generation | --disable-image-generation  Override image generation availability.");
+        Console.WriteLine("  --image-generation-quality <VALUE> | --clear-image-generation-quality");
+        Console.WriteLine("  --image-generation-size <VALUE> | --clear-image-generation-size");
+        Console.WriteLine("  --image-generation-output-format <VALUE> | --clear-image-generation-output-format");
+        Console.WriteLine("  --image-generation-output-compression <0-100> | --clear-image-generation-output-compression");
+        Console.WriteLine("  --image-generation-background <VALUE> | --clear-image-generation-background");
+        Console.WriteLine("  --image-generation-output-directory <PATH> | --clear-image-generation-output-directory");
         Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http|copilot-cli (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-auth-mode <MODE>  Compatible-http auth mode: bearer|basic|none (default: bearer).");

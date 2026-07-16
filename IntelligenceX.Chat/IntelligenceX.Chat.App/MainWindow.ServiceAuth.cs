@@ -406,7 +406,7 @@ public sealed partial class MainWindow : Window {
                 continue;
             }
 
-            var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
+            var hasTrackedRunningServiceProcess = _serviceProcessHost.IsRunning;
             var prioritizeLatency = ShouldPrioritizeAutoReconnectLatency();
             var baseDelay = AutoReconnectBackoffDelays[Math.Min(attempt, AutoReconnectBackoffDelays.Length - 1)];
             var delay = ResolveAutoReconnectDelay(baseDelay, prioritizeLatency, hasTrackedRunningServiceProcess, attempt);

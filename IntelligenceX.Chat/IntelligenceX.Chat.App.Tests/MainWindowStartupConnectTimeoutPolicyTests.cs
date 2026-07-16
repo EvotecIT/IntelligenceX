@@ -666,51 +666,6 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
-    /// Ensures plugin launch path resolution handles root source directories safely
-    /// and never emits relative fallback paths.
-    /// </summary>
-    [Fact]
-    public void ResolveServiceLaunchPluginPaths_RootSourceDirectory_DoesNotEmitRelativePaths() {
-        var root = Path.GetPathRoot(AppContext.BaseDirectory);
-        Assert.False(string.IsNullOrWhiteSpace(root));
-
-        var paths = MainWindow.ResolveServiceLaunchPluginPaths(root!);
-        Assert.All(paths, static path => Assert.True(Path.IsPathRooted(path)));
-        Assert.DoesNotContain(paths, static path => string.Equals(path.Trim(), "plugins", StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
-    /// Ensures built-in tool probe path resolution uses absolute directories only and never emits a relative tools fallback for root sources.
-    /// </summary>
-    [Fact]
-    public void ResolveServiceLaunchBuiltInToolProbePaths_RootSourceDirectory_DoesNotEmitRelativeFallbacks() {
-        var root = Path.GetPathRoot(AppContext.BaseDirectory);
-        Assert.False(string.IsNullOrWhiteSpace(root));
-
-        var paths = MainWindow.ResolveServiceLaunchBuiltInToolProbePaths(root!);
-        Assert.All(paths, static path => Assert.True(Path.IsPathRooted(path)));
-        Assert.DoesNotContain(paths, static path => string.Equals(path.Trim(), "tools", StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
-    /// Ensures workspace output probing stays opt-in once explicit launch probe paths exist.
-    /// </summary>
-    [Fact]
-    public void ShouldEnableWorkspaceBuiltInToolOutputProbing_WithExplicitProbePaths_ReturnsFalse() {
-        var shouldEnable = MainWindow.ShouldEnableWorkspaceBuiltInToolOutputProbing(new[] { @"C:\service", @"C:\service\tools" });
-        Assert.False(shouldEnable);
-    }
-
-    /// <summary>
-    /// Ensures workspace output probing remains available as a fallback when no explicit probe paths are provided.
-    /// </summary>
-    [Fact]
-    public void ShouldEnableWorkspaceBuiltInToolOutputProbing_WithoutProbePaths_ReturnsTrue() {
-        Assert.True(MainWindow.ShouldEnableWorkspaceBuiltInToolOutputProbing(Array.Empty<string>()));
-        Assert.True(MainWindow.ShouldEnableWorkspaceBuiltInToolOutputProbing(null!));
-    }
-
-    /// <summary>
     /// Ensures tools-loading indicator is shown only while startup metadata is actively pending.
     /// </summary>
     [Theory]

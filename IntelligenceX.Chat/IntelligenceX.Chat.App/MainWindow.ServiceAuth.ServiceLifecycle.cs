@@ -28,245 +28,85 @@ public sealed partial class MainWindow {
     private const string RuntimeConnectedPrefix = "Runtime connected.";
 
     private async Task<bool> EnsureServiceRunningAsync(string pipeName) {
-        if (_serviceProcess is not null && !_serviceProcess.HasExited) {
+        if (_serviceProcessHost.IsRunning) {
             return true;
         }
 
-        var serviceSourceDir = ResolveServiceSourceDirectory();
-        if (string.IsNullOrWhiteSpace(serviceSourceDir)) {
-            AppendSystem(SystemNotice.ServiceSidecarSourceFolderNotFound());
-            return false;
-        }
-        StartupLog.Write("Service source dir: " + serviceSourceDir);
+        var profileOptions = _pendingServiceLaunchProfileOptions ?? CaptureCurrentServiceLaunchProfileOptions();
+        var result = await _serviceProcessHost.EnsureRunningAsync(new ChatServiceProcessStartOptions {
+            PipeName = pipeName,
+            DetachedServiceMode = DetachedServiceMode,
+            ParentProcessId = Environment.ProcessId,
+            ProfileOptions = profileOptions,
+            StartupExitProbeDelay = ServiceStartupExitProbeDelay
+        }).ConfigureAwait(false);
 
-        var serviceDir = EnsureStagedServiceDirectory(serviceSourceDir);
-        if (string.IsNullOrWhiteSpace(serviceDir)) {
-            AppendSystem(SystemNotice.ServiceSidecarStagingFailed());
-            return false;
-        }
-
-        var exe = Path.Combine(serviceDir, "IntelligenceX.Chat.Service.exe");
-        var dll = Path.Combine(serviceDir, "IntelligenceX.Chat.Service.dll");
-
-        if (!File.Exists(exe) && !File.Exists(dll)) {
-            AppendSystem(SystemNotice.ServiceSidecarNotFoundNextToApp());
-            return false;
-        }
-
-        try {
-            var pending = _pendingServiceLaunchProfileOptions;
-            pending ??= CaptureCurrentServiceLaunchProfileOptions();
-            var launchPluginPaths = ResolveServiceLaunchPluginPaths(serviceSourceDir);
-            var launchBuiltInToolProbePaths = ResolveServiceLaunchBuiltInToolProbePaths(serviceSourceDir);
-            if (launchPluginPaths.Count > 0) {
-                StartupLog.Write("Service plugin paths configured count=" + launchPluginPaths.Count.ToString(CultureInfo.InvariantCulture));
+        if (result.IsRunning) {
+            if (result.Launched) {
+                _pendingServiceLaunchProfileOptions = null;
+                StartupLog.Write("Service runtime dir: " + result.ServiceDirectory);
             }
-            if (launchBuiltInToolProbePaths.Count > 0) {
-                StartupLog.Write("Service built-in tool probe paths configured count=" + launchBuiltInToolProbePaths.Count.ToString(CultureInfo.InvariantCulture));
-            }
-            var enableWorkspaceBuiltInToolOutputProbing = ShouldEnableWorkspaceBuiltInToolOutputProbing(launchBuiltInToolProbePaths);
-            var launchArgs = ServiceLaunchArguments.Build(
-                pipeName,
-                DetachedServiceMode,
-                Environment.ProcessId,
-                pending is null ? null : new ServiceLaunchArguments.ProfileOptions {
-                    LoadProfileName = pending.LoadProfileName,
-                    SaveProfileName = pending.SaveProfileName,
-                    Model = pending.Model,
-                    OpenAITransport = pending.OpenAITransport,
-                    OpenAIBaseUrl = pending.OpenAIBaseUrl,
-                    OpenAIAuthMode = pending.OpenAIAuthMode,
-                    OpenAIApiKey = pending.OpenAIApiKey,
-                    OpenAIBasicUsername = pending.OpenAIBasicUsername,
-                    OpenAIBasicPassword = pending.OpenAIBasicPassword,
-                    OpenAIAccountId = pending.OpenAIAccountId,
-                    ClearOpenAIApiKey = pending.ClearOpenAIApiKey,
-                    ClearOpenAIBasicAuth = pending.ClearOpenAIBasicAuth,
-                    OpenAIStreaming = pending.OpenAIStreaming,
-                    OpenAIAllowInsecureHttp = pending.OpenAIAllowInsecureHttp,
-                    ReasoningEffort = pending.ReasoningEffort,
-                    ReasoningSummary = pending.ReasoningSummary,
-                    TextVerbosity = pending.TextVerbosity,
-                    Temperature = pending.Temperature,
-                    ImageGenerationEnabled = pending.ImageGenerationEnabled,
-                    ImageGenerationQuality = pending.ImageGenerationQuality,
-                    ImageGenerationSize = pending.ImageGenerationSize,
-                    ImageGenerationOutputFormat = pending.ImageGenerationOutputFormat,
-                    ImageGenerationOutputCompression = pending.ImageGenerationOutputCompression,
-                    ClearImageGenerationOutputCompression = pending.ClearImageGenerationOutputCompression,
-                    ImageGenerationBackground = pending.ImageGenerationBackground,
-                    ImageGenerationOutputDirectory = pending.ImageGenerationOutputDirectory,
-                    PackToggles = pending.PackToggles
-                },
-                additionalPluginPaths: launchPluginPaths,
-                additionalBuiltInToolProbePaths: launchBuiltInToolProbePaths,
-                enableWorkspaceBuiltInToolOutputProbing: enableWorkspaceBuiltInToolOutputProbing);
-            var hasExe = File.Exists(exe);
-            var psi = new ProcessStartInfo {
-                FileName = hasExe ? exe : "dotnet",
-                WorkingDirectory = serviceDir,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            if (hasExe) {
-                foreach (var arg in launchArgs) {
-                    psi.ArgumentList.Add(arg);
-                }
-            } else {
-                psi.ArgumentList.Add(dll);
-                foreach (var arg in launchArgs) {
-                    psi.ArgumentList.Add(arg);
-                }
-            }
-            psi.Environment.Remove(ChatServiceEnvironmentVariables.OpenAIBasicPassword);
-            if (pending is not null && !pending.ClearOpenAIBasicAuth) {
-                var basicPassword = (pending.OpenAIBasicPassword ?? string.Empty).Trim();
-                if (basicPassword.Length > 0) {
-                    psi.Environment[ChatServiceEnvironmentVariables.OpenAIBasicPassword] = basicPassword;
-                }
-            }
-
-            var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            p.OutputDataReceived += (_, e) => {
-                if (!string.IsNullOrWhiteSpace(e.Data)) {
-                    StartupLog.Write("[service] " + e.Data);
-                    PublishServiceBootstrapStatusFromLogLine(e.Data);
-                }
-                if ((VerboseServiceLogs || _debugMode) && !string.IsNullOrWhiteSpace(e.Data)) {
-                    _ = _dispatcher.TryEnqueue(() => AppendSystem(SystemNotice.ServiceStdOut(e.Data)));
-                }
-            };
-            p.ErrorDataReceived += (_, e) => {
-                if (!string.IsNullOrWhiteSpace(e.Data)) {
-                    StartupLog.Write("[service:err] " + e.Data);
-                    PublishServiceBootstrapStatusFromLogLine(e.Data);
-                }
-                if ((VerboseServiceLogs || _debugMode) && !string.IsNullOrWhiteSpace(e.Data)) {
-                    _ = _dispatcher.TryEnqueue(() => AppendSystem(SystemNotice.ServiceStdErr(e.Data)));
-                }
-            };
-            p.Exited += (_, _) => {
-                _ = _dispatcher.TryEnqueue(() => {
-                    if (!ReferenceEquals(_serviceProcess, p)) {
-                        return;
-                    }
-
-                    if (VerboseServiceLogs || _debugMode) {
-                        AppendSystem(SystemNotice.ServiceExited());
-                    }
-                    _isConnected = false;
-                    SetInteractiveAuthenticationUnknown();
-                    _loginInProgress = false;
-                    if (ShouldResetEnsureLoginProbeCacheForAuthContextChange(
-                            requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
-                            loginCompletedSuccessfully: false,
-                            transportChanged: false,
-                            runtimeExited: true)) {
-                        ResetEnsureLoginProbeCache();
-                    }
-                    _ = SetStatusAsync(SessionStatus.Disconnected());
-                    EnsureAutoReconnectLoop();
-                });
-            };
-
-            if (!p.Start()) {
-                return false;
-            }
-
-            p.BeginOutputReadLine();
-            p.BeginErrorReadLine();
-
-            _serviceProcess = p;
-            _servicePipeName = pipeName;
-            _pendingServiceLaunchProfileOptions = null;
-
-            if (ServiceStartupExitProbeDelay > TimeSpan.Zero) {
-                await Task.Delay(ServiceStartupExitProbeDelay).ConfigureAwait(false);
-            } else {
-                await Task.Yield();
-            }
-
-            if (p.HasExited) {
-                if (ReferenceEquals(_serviceProcess, p)) {
-                    _serviceProcess = null;
-                    _servicePipeName = null;
-                }
-
-                return false;
-            }
-
             return true;
-        } catch (Exception ex) {
-            AppendSystem(SystemNotice.ServiceStartFailed(ex.Message));
-            return false;
         }
-    }
 
-    internal static IReadOnlyList<string> ResolveServiceLaunchPluginPaths(string serviceSourceDir) {
-        var paths = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        if (!string.IsNullOrWhiteSpace(serviceSourceDir)) {
-            try {
-                var normalizedSourceDir = Path.GetFullPath(serviceSourceDir);
-                var sourceParent = Path.GetDirectoryName(normalizedSourceDir);
-                if (!string.IsNullOrWhiteSpace(sourceParent)) {
-                    TryAddLaunchPluginPath(paths, seen, Path.Combine(sourceParent, "plugins"));
+        switch (result.Failure) {
+            case ChatServiceProcessStartFailure.SourceNotFound:
+                AppendSystem(SystemNotice.ServiceSidecarSourceFolderNotFound());
+                break;
+            case ChatServiceProcessStartFailure.StagingFailed:
+                if (result.Exception is not null) {
+                    AppendSystem(SystemNotice.ServiceStagingError(result.Exception.Message));
                 }
-            } catch {
-                // Ignore malformed source-dir values and fall back to app-base plugin path.
+                AppendSystem(SystemNotice.ServiceSidecarStagingFailed());
+                break;
+            case ChatServiceProcessStartFailure.PayloadNotFound:
+                AppendSystem(SystemNotice.ServiceSidecarNotFoundNextToApp());
+                break;
+            case ChatServiceProcessStartFailure.ExitedDuringStartup:
+                AppendSystem(SystemNotice.ServiceStartFailed("The service exited during startup."));
+                break;
+            default:
+                AppendSystem(SystemNotice.ServiceStartFailed(result.Exception?.Message ?? "The service process could not be started."));
+                break;
+        }
+
+        return false;
+    }
+
+    private void OnServiceProcessOutputReceived(string line) {
+        StartupLog.Write("[service] " + line);
+        PublishServiceBootstrapStatusFromLogLine(line);
+        if (VerboseServiceLogs || _debugMode) {
+            _ = _dispatcher.TryEnqueue(() => AppendSystem(SystemNotice.ServiceStdOut(line)));
+        }
+    }
+
+    private void OnServiceProcessErrorReceived(string line) {
+        StartupLog.Write("[service:err] " + line);
+        PublishServiceBootstrapStatusFromLogLine(line);
+        if (VerboseServiceLogs || _debugMode) {
+            _ = _dispatcher.TryEnqueue(() => AppendSystem(SystemNotice.ServiceStdErr(line)));
+        }
+    }
+
+    private void OnServiceProcessExited() {
+        _ = _dispatcher.TryEnqueue(() => {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem(SystemNotice.ServiceExited());
             }
-        }
-
-        TryAddLaunchPluginPath(paths, seen, Path.Combine(AppContext.BaseDirectory, "plugins"));
-
-        return paths;
-    }
-
-    internal static IReadOnlyList<string> ResolveServiceLaunchBuiltInToolProbePaths(string serviceSourceDir) {
-        var paths = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        TryAddLaunchRuntimePath(paths, seen, serviceSourceDir);
-        if (!string.IsNullOrWhiteSpace(serviceSourceDir)) {
-            try {
-                var normalizedSourceDir = Path.GetFullPath(serviceSourceDir);
-                TryAddLaunchRuntimePath(paths, seen, Path.Combine(normalizedSourceDir, "tools"));
-            } catch {
-                // Ignore malformed source-dir values and keep the main source root if available.
+            _isConnected = false;
+            SetInteractiveAuthenticationUnknown();
+            _loginInProgress = false;
+            if (ShouldResetEnsureLoginProbeCacheForAuthContextChange(
+                    requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                    loginCompletedSuccessfully: false,
+                    transportChanged: false,
+                    runtimeExited: true)) {
+                ResetEnsureLoginProbeCache();
             }
-        }
-
-        return paths;
-    }
-
-    internal static bool ShouldEnableWorkspaceBuiltInToolOutputProbing(IReadOnlyCollection<string> launchBuiltInToolProbePaths) {
-        return launchBuiltInToolProbePaths is null || launchBuiltInToolProbePaths.Count == 0;
-    }
-
-    private static void TryAddLaunchPluginPath(List<string> paths, HashSet<string> seen, string candidate) {
-        TryAddLaunchRuntimePath(paths, seen, candidate);
-    }
-
-    private static void TryAddLaunchRuntimePath(List<string> paths, HashSet<string> seen, string candidate) {
-        if (string.IsNullOrWhiteSpace(candidate)) {
-            return;
-        }
-
-        string fullPath;
-        try {
-            fullPath = Path.GetFullPath(candidate);
-        } catch {
-            return;
-        }
-
-        if (!Directory.Exists(fullPath) || !seen.Add(fullPath)) {
-            return;
-        }
-
-        paths.Add(fullPath);
+            _ = SetStatusAsync(SessionStatus.Disconnected());
+            EnsureAutoReconnectLoop();
+        });
     }
 
     private void PublishServiceBootstrapStatusFromLogLine(string rawServiceLine) {
@@ -462,33 +302,12 @@ public sealed partial class MainWindow {
     }
 
     private void StopServiceIfOwned() {
-        var p = _serviceProcess;
-        _serviceProcess = null;
-        _servicePipeName = null;
         EndStartupMetadataSyncTracking();
-
-        if (p is null) {
-            return;
-        }
-
-        if (!ShouldStopOwnedServiceOnWindowClose(DetachedServiceMode)) {
+        var terminateProcess = ShouldStopOwnedServiceOnWindowClose(DetachedServiceMode);
+        if (!terminateProcess && _serviceProcessHost.IsRunning) {
             StartupLog.Write("ServiceLifecycle.stop skipped_owned_process_termination (detached mode)");
-            p.Dispose();
-            _stagedServiceDir = null;
-            return;
         }
-
-        try {
-            if (!p.HasExited) {
-                p.Kill(entireProcessTree: true);
-            }
-        } catch {
-            // Ignore.
-        } finally {
-            p.Dispose();
-        }
-
-        _stagedServiceDir = null;
+        _serviceProcessHost.Stop(terminateProcess);
     }
 
     private async Task DisposeClientAsync() {
