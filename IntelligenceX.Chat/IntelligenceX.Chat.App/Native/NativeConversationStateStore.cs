@@ -41,8 +41,12 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
     }
 
     public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
-        _state = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false)
-                 ?? new ChatAppState { ProfileName = _profileName };
+        var loadedState = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false);
+        _state = loadedState ?? new ChatAppState { ProfileName = _profileName };
+        _state.LocalProviderImageGenerationOverrideActive =
+            ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
+                _state,
+                loadedState is not null);
 
         var conversations = new List<NativeConversation>();
         if (_state.Conversations is { Count: > 0 }) {

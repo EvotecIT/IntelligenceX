@@ -80,14 +80,16 @@ internal static class ChatServiceLaunchProfileMapper {
     /// </summary>
     public static bool HasImageGenerationLaunchOverrides(ChatAppState state) {
         ArgumentNullException.ThrowIfNull(state);
+        return state.LocalProviderImageGenerationOverrideActive;
+    }
+
+    /// <summary>
+    /// Resolves the persisted image-generation override switch, including profiles written before the switch existed.
+    /// </summary>
+    public static bool ResolveImageGenerationOverrideActive(ChatAppState state, bool isLoadedProfile) {
+        ArgumentNullException.ThrowIfNull(state);
         return state.LocalProviderImageGenerationOverrideActive
-               || state.LocalProviderImageGenerationEnabled
-               || !string.IsNullOrWhiteSpace(state.LocalProviderImageGenerationQuality)
-               || !string.IsNullOrWhiteSpace(state.LocalProviderImageGenerationSize)
-               || !string.IsNullOrWhiteSpace(state.LocalProviderImageGenerationOutputFormat)
-               || state.LocalProviderImageGenerationOutputCompression.HasValue
-               || !string.IsNullOrWhiteSpace(state.LocalProviderImageGenerationBackground)
-               || !string.IsNullOrWhiteSpace(state.LocalProviderImageGenerationOutputDirectory);
+               || isLoadedProfile && !state.LocalProviderImageGenerationOverrideActiveWasPresent;
     }
 
     /// <summary>

@@ -77,6 +77,29 @@ public sealed class ChatServiceLaunchProfileMapperTests {
     }
 
     /// <summary>
+    /// Ensures an explicitly inactive override is authoritative even when old values remain in the profile.
+    /// </summary>
+    [Fact]
+    public void Create_ExplicitInactiveImageGenerationOverrideIgnoresStaleValues() {
+        var options = ChatServiceLaunchProfileMapper.Create(new ChatAppState {
+            LocalProviderImageGenerationOverrideActive = false,
+            LocalProviderImageGenerationOverrideActiveWasPresent = true,
+            LocalProviderImageGenerationEnabled = true,
+            LocalProviderImageGenerationQuality = "high",
+            LocalProviderImageGenerationSize = "1024x1024",
+            LocalProviderImageGenerationOutputCompression = 80
+        });
+
+        Assert.Null(options.ImageGenerationEnabled);
+        Assert.Null(options.ImageGenerationQuality);
+        Assert.Null(options.ImageGenerationSize);
+        Assert.Null(options.ImageGenerationOutputCompression);
+        Assert.False(options.ClearImageGenerationQuality);
+        Assert.False(options.ClearImageGenerationSize);
+        Assert.False(options.ClearImageGenerationOutputCompression);
+    }
+
+    /// <summary>
     /// Ensures the native runtime evaluates profile options when the service starts rather than at window construction.
     /// </summary>
     [Fact]

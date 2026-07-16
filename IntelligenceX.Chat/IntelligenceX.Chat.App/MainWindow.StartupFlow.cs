@@ -1183,7 +1183,9 @@ public sealed partial class MainWindow : Window {
         _localProviderTextVerbosity = NormalizeLocalProviderTextVerbosity(_appState.LocalProviderTextVerbosity);
         _localProviderTemperature = NormalizeLocalProviderTemperature(_appState.LocalProviderTemperature);
         _localProviderImageGenerationEnabled = _appState.LocalProviderImageGenerationEnabled;
-        _localProviderImageGenerationOverrideActive = ResolveLocalProviderImageGenerationOverrideActive(_appState, loaded is not null);
+        _localProviderImageGenerationOverrideActive = ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
+            _appState,
+            loaded is not null);
         _localProviderImageGenerationQuality = NormalizeLocalProviderImageGenerationQuality(_appState.LocalProviderImageGenerationQuality);
         _localProviderImageGenerationSize = NormalizeLocalProviderImageGenerationSize(_appState.LocalProviderImageGenerationSize);
         _localProviderImageGenerationOutputFormat = NormalizeLocalProviderImageGenerationOutputFormat(_appState.LocalProviderImageGenerationOutputFormat);
@@ -1277,17 +1279,6 @@ public sealed partial class MainWindow : Window {
         await RenderTranscriptAsync().ConfigureAwait(false);
         await ApplyThemeFromStateAsync().ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
-    }
-
-    internal static bool ResolveLocalProviderImageGenerationOverrideActive(ChatAppState state, bool isLoadedProfile) {
-        if (state is null) {
-            return false;
-        }
-
-        return state.LocalProviderImageGenerationOverrideActive ||
-               isLoadedProfile &&
-               !state.LocalProviderImageGenerationOverrideActiveWasPresent &&
-               !state.LocalProviderImageGenerationEnabled;
     }
 
 }
