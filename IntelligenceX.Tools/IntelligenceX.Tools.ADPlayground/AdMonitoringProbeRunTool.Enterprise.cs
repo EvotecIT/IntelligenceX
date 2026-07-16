@@ -36,6 +36,37 @@ public sealed partial class AdMonitoringProbeRunTool {
         };
     }
 
+    private static string? ValidateEnterpriseProbeRequest(
+        string normalizedKind,
+        JsonObject? arguments,
+        IReadOnlyList<string> resolvedTargets,
+        string? domainName,
+        string? forestName,
+        IReadOnlyList<string> includeDomains,
+        bool includeTrusts,
+        string? domainController,
+        DirectoryDiscoveryFallback discoveryFallback) {
+        if (!IsEngineOwnedTargetResolutionProbe(normalizedKind) || resolvedTargets.Count > 0) {
+            return null;
+        }
+
+        if (string.Equals(normalizedKind, SqlServerProbeKind, StringComparison.OrdinalIgnoreCase)) {
+            return IsSqlDiscoveryEnabled(
+                arguments,
+                resolvedTargets,
+                domainName,
+                forestName,
+                includeDomains,
+                includeTrusts,
+                domainController,
+                discoveryFallback)
+                ? null
+                : "sql_server requires at least one explicit target or Active Directory SPN discovery scope.";
+        }
+
+        return normalizedKind + " requires at least one explicit target or domain_controller.";
+    }
+
     private static Task<ProbeResult> RunEnterpriseProbeAsync(
         string normalizedKind,
         JsonObject? arguments,
@@ -51,6 +82,7 @@ public sealed partial class AdMonitoringProbeRunTool {
         int retries,
         TimeSpan retryDelay,
         int maxConcurrency,
+        DirectoryDiscoveryFallback discoveryFallback,
         CancellationToken cancellationToken) {
         var definition = BuildEnterpriseProbeDefinition(
             normalizedKind: normalizedKind,
@@ -66,7 +98,8 @@ public sealed partial class AdMonitoringProbeRunTool {
             timeout: timeout,
             retries: retries,
             retryDelay: retryDelay,
-            maxConcurrency: maxConcurrency);
+            maxConcurrency: maxConcurrency,
+            discoveryFallback: discoveryFallback);
         var runner = ProbeRunnerCatalog.Create(definition.Type);
         return runner.ExecuteAsync(definition, cancellationToken);
     }
@@ -85,7 +118,8 @@ public sealed partial class AdMonitoringProbeRunTool {
         TimeSpan timeout,
         int retries,
         TimeSpan retryDelay,
-        int maxConcurrency) {
+        int maxConcurrency,
+        DirectoryDiscoveryFallback discoveryFallback = DirectoryDiscoveryFallback.None) {
         ProbeDefinition definition = normalizedKind switch {
             AdfsProbeKind => new AdfsProbeDefinition {
                 Targets = CopyTargets(resolvedTargets),
@@ -104,16 +138,16 @@ public sealed partial class AdMonitoringProbeRunTool {
             },
             SqlServerProbeKind => new SqlServerProbeDefinition {
                 Targets = CopyTargets(resolvedTargets),
-                DiscoverFromActiveDirectory = ToolArgs.GetBoolean(
+                DiscoverFromActiveDirectory = IsSqlDiscoveryEnabled(
                     arguments,
-                    "sql_discover_from_active_directory",
-                    defaultValue: ShouldDiscoverSqlServers(
-                        resolvedTargets,
-                        domainName,
-                        forestName,
-                        includeDomains,
-                        includeTrusts,
-                        domainController)),
+                    resolvedTargets,
+                    domainName,
+                    forestName,
+                    includeDomains,
+                    includeTrusts,
+                    domainController,
+                    discoveryFallback),
+                DiscoveryFallback = discoveryFallback,
                 DomainName = domainName,
                 ForestName = forestName,
                 IncludeDomains = CopyTargets(includeDomains),
@@ -151,19 +185,43 @@ public sealed partial class AdMonitoringProbeRunTool {
         return definition;
     }
 
+    private static bool IsSqlDiscoveryEnabled(
+        JsonObject? arguments,
+        IReadOnlyList<string> resolvedTargets,
+        string? domainName,
+        string? forestName,
+        IReadOnlyList<string> includeDomains,
+        bool includeTrusts,
+        string? domainController,
+        DirectoryDiscoveryFallback discoveryFallback) {
+        return ToolArgs.GetBoolean(
+            arguments,
+            "sql_discover_from_active_directory",
+            defaultValue: ShouldDiscoverSqlServers(
+                resolvedTargets,
+                domainName,
+                forestName,
+                includeDomains,
+                includeTrusts,
+                domainController,
+                discoveryFallback));
+    }
+
     private static bool ShouldDiscoverSqlServers(
         IReadOnlyList<string> resolvedTargets,
         string? domainName,
         string? forestName,
         IReadOnlyList<string> includeDomains,
         bool includeTrusts,
-        string? domainController) {
+        string? domainController,
+        DirectoryDiscoveryFallback discoveryFallback) {
         return resolvedTargets.Count == 0
                && (!string.IsNullOrWhiteSpace(domainName)
                    || !string.IsNullOrWhiteSpace(forestName)
                    || includeDomains.Count > 0
                    || includeTrusts
-                   || !string.IsNullOrWhiteSpace(domainController));
+                   || !string.IsNullOrWhiteSpace(domainController)
+                   || discoveryFallback != DirectoryDiscoveryFallback.None);
     }
 
     private static string[] CopyTargets(IReadOnlyList<string> values) {

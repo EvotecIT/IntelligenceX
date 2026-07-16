@@ -114,6 +114,20 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                 fallback: discoveryFallback,
                 cancellationToken: cancellationToken);
 
+        var enterpriseRequestError = ValidateEnterpriseProbeRequest(
+            normalizedKind: normalizedKind,
+            arguments: arguments,
+            resolvedTargets: resolvedTargets,
+            domainName: domainName,
+            forestName: forestName,
+            includeDomains: includeDomains,
+            includeTrusts: includeTrusts,
+            domainController: domainController,
+            discoveryFallback: discoveryFallback);
+        if (!string.IsNullOrWhiteSpace(enterpriseRequestError)) {
+            return Error("invalid_argument", enterpriseRequestError);
+        }
+
         ProbeResult result;
         try {
             switch (normalizedKind) {
@@ -172,6 +186,7 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                             retries: retries,
                             retryDelay: retryDelay,
                             maxConcurrency: maxConcurrency,
+                            discoveryFallback: discoveryFallback,
                             cancellationToken: cancellationToken)
                         .ConfigureAwait(false);
                     break;

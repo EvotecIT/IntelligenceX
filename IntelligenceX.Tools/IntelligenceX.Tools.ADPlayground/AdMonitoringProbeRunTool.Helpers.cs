@@ -128,10 +128,11 @@ public sealed partial class AdMonitoringProbeRunTool {
         }
 
         var targets = new List<string>();
+        var seenTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (result.Children is { Count: > 0 }) {
             for (var i = 0; i < result.Children.Count; i++) {
                 var target = (result.Children[i]?.Target ?? string.Empty).Trim();
-                if (target.Length > 0 && !targets.Contains(target, StringComparer.OrdinalIgnoreCase)) {
+                if (target.Length > 0 && seenTargets.Add(target)) {
                     targets.Add(target);
                 }
             }

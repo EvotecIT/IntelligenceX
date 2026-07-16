@@ -242,6 +242,65 @@ public class SystemAdMonitoringParityTests {
     }
 
     [Fact]
+    public void BuildEnterpriseProbeDefinition_SqlFallbackUsesEngineOwnedDiscoveryScope() {
+        var definition = Assert.IsType<global::ADPlayground.Monitoring.Probes.SqlServer.SqlServerProbeDefinition>(
+            AdMonitoringProbeRunTool.BuildEnterpriseProbeDefinition(
+                normalizedKind: "sql_server",
+                arguments: null,
+                name: "ix-sql",
+                resolvedTargets: Array.Empty<string>(),
+                domainName: null,
+                forestName: null,
+                includeDomains: Array.Empty<string>(),
+                excludeDomains: Array.Empty<string>(),
+                includeTrusts: false,
+                domainController: null,
+                timeout: TimeSpan.FromSeconds(10),
+                retries: 0,
+                retryDelay: TimeSpan.FromMilliseconds(250),
+                maxConcurrency: 4,
+                discoveryFallback: global::ADPlayground.Monitoring.Probes.DirectoryDiscoveryFallback.CurrentForest));
+
+        Assert.True(definition.DiscoverFromActiveDirectory);
+        Assert.Equal(
+            global::ADPlayground.Monitoring.Probes.DirectoryDiscoveryFallback.CurrentForest,
+            definition.DiscoveryFallback);
+        Assert.Empty(definition.Targets);
+    }
+
+    [Theory]
+    [InlineData("adfs")]
+    [InlineData("entra_connect")]
+    [InlineData("windows_backup")]
+    public async Task AdMonitoringProbeRunTool_EnterpriseProbeWithoutTarget_ShouldFailFast(string probeKind) {
+        var tool = new AdMonitoringProbeRunTool(new ActiveDirectoryToolOptions());
+
+        var json = await tool.InvokeAsync(
+            new JsonObject().Add("probe_kind", probeKind),
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal("invalid_argument", document.RootElement.GetProperty("error_code").GetString());
+        Assert.Contains("requires at least one explicit target", document.RootElement.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AdMonitoringProbeRunTool_SqlWithoutTargetsOrEnabledDiscovery_ShouldFailFast() {
+        var tool = new AdMonitoringProbeRunTool(new ActiveDirectoryToolOptions());
+
+        var json = await tool.InvokeAsync(
+            new JsonObject()
+                .Add("probe_kind", "sql_server")
+                .Add("discovery_fallback", "current_forest")
+                .Add("sql_discover_from_active_directory", false),
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal("invalid_argument", document.RootElement.GetProperty("error_code").GetString());
+        Assert.Contains("explicit target or Active Directory SPN discovery", document.RootElement.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ActiveDirectoryPackRegistry_ShouldExposeMonitoringRuntimeStateTools() {
         var registry = new ToolRegistry();
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
