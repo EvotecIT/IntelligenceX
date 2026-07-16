@@ -5,16 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int StructuredNextActionStoreVersion = 2;
     private static readonly object StructuredNextActionStoreLock = new();
-    private static readonly JsonSerializerOptions StructuredNextActionStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class StructuredNextActionStoreDto {
         public int Version { get; set; } = StructuredNextActionStoreVersion;
@@ -31,24 +28,11 @@ internal sealed partial class ChatServiceSession {
         public long SeenUtcTicks { get; set; }
     }
 
-    private static string ResolveDefaultStructuredNextActionStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultStructuredNextActionStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("structured-next-actions.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "structured-next-actions.json");
-    }
-
-    private string ResolveStructuredNextActionStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "structured-next-actions.json");
-        }
-
-        return ResolveDefaultStructuredNextActionStorePath();
-    }
+    private string ResolveStructuredNextActionStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "structured-next-actions.json");
 
     private void PersistStructuredNextActionSnapshot(string threadId, StructuredNextActionSnapshot snapshot) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -98,13 +82,7 @@ internal sealed partial class ChatServiceSession {
     private void ClearStructuredNextActionSnapshots() {
         var path = ResolveStructuredNextActionStorePath();
         lock (StructuredNextActionStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Structured next-action store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Structured next-action store");
         }
     }
 
@@ -156,80 +134,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static StructuredNextActionStoreDto ReadStructuredNextActionStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new StructuredNextActionStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 1024 * 1024) {
-                return new StructuredNextActionStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new StructuredNextActionStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<StructuredNextActionStoreDto>(json, StructuredNextActionStoreJsonOptions);
-            if (store is null || store.Version != StructuredNextActionStoreVersion || store.Threads is null) {
-                return new StructuredNextActionStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, StructuredNextActionStoreEntryDto>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Structured next-action store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new StructuredNextActionStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 1024 * 1024,
+            static json => JsonSerializer.Deserialize<StructuredNextActionStoreDto>(json),
+            static store => store.Version == StructuredNextActionStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, StructuredNextActionStoreEntryDto>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new StructuredNextActionStoreDto(),
+            "Structured next-action store");
     }
 
     private static void WriteStructuredNextActionStoreNoThrow(string path, StructuredNextActionStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, StructuredNextActionStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Structured next-action store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Structured next-action store");
     }
 
     private static void PruneStructuredNextActionStore(StructuredNextActionStoreDto store) {

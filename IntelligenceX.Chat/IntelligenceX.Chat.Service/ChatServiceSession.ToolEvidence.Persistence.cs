@@ -5,16 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int ToolEvidenceStoreVersion = 1;
     private static readonly object ToolEvidenceStoreLock = new();
-    private static readonly JsonSerializerOptions ToolEvidenceStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class ToolEvidenceStoreDto {
         public int Version { get; set; } = ToolEvidenceStoreVersion;
@@ -35,24 +32,11 @@ internal sealed partial class ChatServiceSession {
         public long SeenUtcTicks { get; set; }
     }
 
-    private static string ResolveDefaultToolEvidenceStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultToolEvidenceStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("tool-evidence-cache.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "tool-evidence-cache.json");
-    }
-
-    private string ResolveToolEvidenceStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "tool-evidence-cache.json");
-        }
-
-        return ResolveDefaultToolEvidenceStorePath();
-    }
+    private string ResolveToolEvidenceStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "tool-evidence-cache.json");
 
     private void PersistThreadToolEvidenceSnapshot(string threadId, IReadOnlyCollection<ThreadToolEvidenceEntry> entries) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -155,95 +139,33 @@ internal sealed partial class ChatServiceSession {
     }
 
     private void ClearThreadToolEvidenceSnapshotsNoThrow() {
-        try {
-            var path = ResolveToolEvidenceStorePath();
-            lock (ToolEvidenceStoreLock) {
-                if (!File.Exists(path)) {
-                    return;
-                }
-
-                File.Delete(path);
-            }
-        } catch {
-            // Best effort only.
+        var path = ResolveToolEvidenceStorePath();
+        lock (ToolEvidenceStoreLock) {
+            ChatServiceJsonFileStore.Delete(path, "Tool evidence store");
         }
     }
 
     private static ToolEvidenceStoreDto ReadToolEvidenceStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new ToolEvidenceStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 1024 * 1024) {
-                return new ToolEvidenceStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new ToolEvidenceStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<ToolEvidenceStoreDto>(json, ToolEvidenceStoreJsonOptions);
-            if (store is null || store.Version != ToolEvidenceStoreVersion || store.Threads is null) {
-                return new ToolEvidenceStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, ToolEvidenceStoreThreadEntryDto>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Tool evidence store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new ToolEvidenceStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 1024 * 1024,
+            static json => JsonSerializer.Deserialize<ToolEvidenceStoreDto>(json),
+            static store => store.Version == ToolEvidenceStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, ToolEvidenceStoreThreadEntryDto>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new ToolEvidenceStoreDto(),
+            "Tool evidence store");
     }
 
     private static void WriteToolEvidenceStoreNoThrow(string path, ToolEvidenceStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, ToolEvidenceStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Tool evidence store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Tool evidence store");
     }
 
     private static void PruneToolEvidenceStore(ToolEvidenceStoreDto store) {

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Chat.Abstractions.Protocol;
 
@@ -15,10 +16,6 @@ internal sealed partial class ChatServiceSession {
     private const int MaxRememberedAlternateEngineHealthEntriesPerThread = 24;
     private static readonly TimeSpan AlternateEngineHealthContextMaxAge = TimeSpan.FromMinutes(30);
     private static readonly object AlternateEngineHealthStoreLock = new();
-    private static readonly JsonSerializerOptions AlternateEngineHealthStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class AlternateEngineHealthStoreDto {
         public int Version { get; set; } = AlternateEngineHealthStoreVersion;
@@ -42,24 +39,11 @@ internal sealed partial class ChatServiceSession {
         long LastSuccessUtcTicks,
         long LastFailureUtcTicks);
 
-    private static string ResolveDefaultAlternateEngineHealthStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultAlternateEngineHealthStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("alternate-engine-health.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "alternate-engine-health.json");
-    }
-
-    private string ResolveAlternateEngineHealthStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "alternate-engine-health.json");
-        }
-
-        return ResolveDefaultAlternateEngineHealthStorePath();
-    }
+    private string ResolveAlternateEngineHealthStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "alternate-engine-health.json");
 
     private void RememberAlternateEngineOutcome(string threadId, string toolName, string engineId, ToolOutputDto output, long? seenUtcTicks = null) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -262,13 +246,7 @@ internal sealed partial class ChatServiceSession {
     private void ClearAlternateEngineHealthSnapshots() {
         var path = ResolveAlternateEngineHealthStorePath();
         lock (AlternateEngineHealthStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Alternate engine health store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Alternate engine health store");
         }
     }
 
@@ -338,80 +316,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static AlternateEngineHealthStoreDto ReadAlternateEngineHealthStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new AlternateEngineHealthStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 512 * 1024) {
-                return new AlternateEngineHealthStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new AlternateEngineHealthStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<AlternateEngineHealthStoreDto>(json, AlternateEngineHealthStoreJsonOptions);
-            if (store is null || store.Version != AlternateEngineHealthStoreVersion || store.Threads is null) {
-                return new AlternateEngineHealthStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, AlternateEngineHealthStoreEntryDto[]>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Alternate engine health store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new AlternateEngineHealthStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 512 * 1024,
+            static json => JsonSerializer.Deserialize<AlternateEngineHealthStoreDto>(json),
+            static store => store.Version == AlternateEngineHealthStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, AlternateEngineHealthStoreEntryDto[]>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new AlternateEngineHealthStoreDto(),
+            "Alternate engine health store");
     }
 
     private static void WriteAlternateEngineHealthStoreNoThrow(string path, AlternateEngineHealthStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, AlternateEngineHealthStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Alternate engine health store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Alternate engine health store");
     }
 
     private static void PruneAlternateEngineHealthStore(AlternateEngineHealthStoreDto store) {

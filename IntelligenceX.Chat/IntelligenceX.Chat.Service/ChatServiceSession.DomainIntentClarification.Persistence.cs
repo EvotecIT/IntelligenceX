@@ -5,16 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int DomainIntentClarificationStoreVersion = 1;
     private static readonly object DomainIntentClarificationStoreLock = new();
-    private static readonly JsonSerializerOptions DomainIntentClarificationStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class DomainIntentClarificationStoreDto {
         public int Version { get; set; } = DomainIntentClarificationStoreVersion;
@@ -26,24 +23,11 @@ internal sealed partial class ChatServiceSession {
         public string[] Families { get; set; } = Array.Empty<string>();
     }
 
-    private static string ResolveDefaultDomainIntentClarificationStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultDomainIntentClarificationStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("domain-intent-clarifications.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "domain-intent-clarifications.json");
-    }
-
-    private string ResolveDomainIntentClarificationStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "domain-intent-clarifications.json");
-        }
-
-        return ResolveDefaultDomainIntentClarificationStorePath();
-    }
+    private string ResolveDomainIntentClarificationStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "domain-intent-clarifications.json");
 
     private void PersistPendingDomainIntentClarificationSnapshot(string threadId, long seenUtcTicks, IReadOnlyList<string>? families) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -83,13 +67,7 @@ internal sealed partial class ChatServiceSession {
     private void ClearPendingDomainIntentClarificationSnapshots() {
         var path = ResolveDomainIntentClarificationStorePath();
         lock (DomainIntentClarificationStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Domain intent clarification store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Domain intent clarification store");
         }
     }
 
@@ -151,80 +129,26 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static DomainIntentClarificationStoreDto ReadDomainIntentClarificationStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new DomainIntentClarificationStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 256 * 1024) {
-                return new DomainIntentClarificationStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new DomainIntentClarificationStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<DomainIntentClarificationStoreDto>(json, DomainIntentClarificationStoreJsonOptions);
-            if (store is null || store.Version != DomainIntentClarificationStoreVersion || store.Threads is null) {
-                return new DomainIntentClarificationStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, DomainIntentClarificationStoreEntryDto>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Domain intent clarification store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new DomainIntentClarificationStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 256 * 1024,
+            static json => JsonSerializer.Deserialize<DomainIntentClarificationStoreDto>(json),
+            static store => store.Version == DomainIntentClarificationStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, DomainIntentClarificationStoreEntryDto>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new DomainIntentClarificationStoreDto(),
+            "Domain intent clarification store");
     }
 
     private static void WriteDomainIntentClarificationStoreNoThrow(string path, DomainIntentClarificationStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, DomainIntentClarificationStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Domain intent clarification store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Domain intent clarification store");
     }
 
     private static void PruneDomainIntentClarificationStore(DomainIntentClarificationStoreDto store) {

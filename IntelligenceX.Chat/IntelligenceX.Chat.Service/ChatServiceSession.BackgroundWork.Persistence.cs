@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
@@ -12,10 +13,6 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const int BackgroundWorkStoreVersion = 4;
     private static readonly object BackgroundWorkStoreLock = new();
-    private static readonly JsonSerializerOptions BackgroundWorkStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class BackgroundWorkStoreDto {
         public int Version { get; set; } = BackgroundWorkStoreVersion;
@@ -60,24 +57,11 @@ internal sealed partial class ChatServiceSession {
         public long UpdatedUtcTicks { get; set; }
     }
 
-    private static string ResolveDefaultBackgroundWorkStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultBackgroundWorkStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("background-work-cache.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "background-work-cache.json");
-    }
-
-    private string ResolveBackgroundWorkStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "background-work-cache.json");
-        }
-
-        return ResolveDefaultBackgroundWorkStorePath();
-    }
+    private string ResolveBackgroundWorkStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "background-work-cache.json");
 
     private void PersistThreadBackgroundWorkSnapshot(string threadId, ThreadBackgroundWorkSnapshot snapshot, long seenUtcTicks) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -345,91 +329,31 @@ internal sealed partial class ChatServiceSession {
     private void ClearBackgroundWorkSnapshots() {
         var path = ResolveBackgroundWorkStorePath();
         lock (BackgroundWorkStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Background work store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Background work store");
         }
     }
 
     private static BackgroundWorkStoreDto ReadBackgroundWorkStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new BackgroundWorkStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 1024 * 1024) {
-                return new BackgroundWorkStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new BackgroundWorkStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<BackgroundWorkStoreDto>(json, BackgroundWorkStoreJsonOptions);
-            if (store is null || store.Version != BackgroundWorkStoreVersion || store.Threads is null) {
-                return new BackgroundWorkStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, BackgroundWorkStoreThreadEntryDto>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Background work store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new BackgroundWorkStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 1024 * 1024,
+            static json => JsonSerializer.Deserialize<BackgroundWorkStoreDto>(json),
+            static store => store.Version == BackgroundWorkStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, BackgroundWorkStoreThreadEntryDto>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new BackgroundWorkStoreDto(),
+            "Background work store");
     }
 
     private static void WriteBackgroundWorkStoreNoThrow(string path, BackgroundWorkStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, BackgroundWorkStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Background work store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Background work store");
     }
 
     private static void PruneBackgroundWorkStore(BackgroundWorkStoreDto store) {

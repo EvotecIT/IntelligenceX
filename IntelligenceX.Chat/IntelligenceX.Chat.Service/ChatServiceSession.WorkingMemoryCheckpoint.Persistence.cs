@@ -5,16 +5,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Service.Persistence;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int WorkingMemoryCheckpointStoreVersion = 2;
     private static readonly object WorkingMemoryCheckpointStoreLock = new();
-    private static readonly JsonSerializerOptions WorkingMemoryCheckpointStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
-    };
 
     private sealed class WorkingMemoryCheckpointStoreDto {
         public int Version { get; set; } = WorkingMemoryCheckpointStoreVersion;
@@ -44,24 +41,11 @@ internal sealed partial class ChatServiceSession {
         public long SeenUtcTicks { get; set; }
     }
 
-    private static string ResolveDefaultWorkingMemoryCheckpointStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
+    private static string ResolveDefaultWorkingMemoryCheckpointStorePath() =>
+        ChatServiceJsonFileStore.ResolveDefaultPath("working-memory-checkpoints.json");
 
-        return Path.Combine(root, "IntelligenceX.Chat", "working-memory-checkpoints.json");
-    }
-
-    private string ResolveWorkingMemoryCheckpointStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "working-memory-checkpoints.json");
-        }
-
-        return ResolveDefaultWorkingMemoryCheckpointStorePath();
-    }
+    private string ResolveWorkingMemoryCheckpointStorePath() =>
+        ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "working-memory-checkpoints.json");
 
     private void PersistWorkingMemoryCheckpointSnapshot(string threadId, WorkingMemoryCheckpoint checkpoint) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -252,91 +236,31 @@ internal sealed partial class ChatServiceSession {
     private void ClearPersistedWorkingMemoryCheckpointStore() {
         var path = ResolveWorkingMemoryCheckpointStorePath();
         lock (WorkingMemoryCheckpointStoreLock) {
-            try {
-                if (File.Exists(path)) {
-                    File.Delete(path);
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Working-memory checkpoint store clear failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            ChatServiceJsonFileStore.Delete(path, "Working-memory checkpoint store");
         }
     }
 
     private static WorkingMemoryCheckpointStoreDto ReadWorkingMemoryCheckpointStoreNoThrow(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new WorkingMemoryCheckpointStoreDto();
-            }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > 1024 * 1024) {
-                return new WorkingMemoryCheckpointStoreDto();
-            }
-
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return new WorkingMemoryCheckpointStoreDto();
-            }
-
-            var store = JsonSerializer.Deserialize<WorkingMemoryCheckpointStoreDto>(json, WorkingMemoryCheckpointStoreJsonOptions);
-            if (store is null || store.Version != WorkingMemoryCheckpointStoreVersion || store.Threads is null) {
-                return new WorkingMemoryCheckpointStoreDto();
-            }
-
-            if (store.Threads.Comparer != StringComparer.Ordinal) {
-                store.Threads = new Dictionary<string, WorkingMemoryCheckpointStoreEntryDto>(store.Threads, StringComparer.Ordinal);
-            }
-
-            return store;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Working-memory checkpoint store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new WorkingMemoryCheckpointStoreDto();
-        }
+        return ChatServiceJsonFileStore.ReadOrCreate(
+            path,
+            maximumBytes: 1024 * 1024,
+            static json => JsonSerializer.Deserialize<WorkingMemoryCheckpointStoreDto>(json),
+            static store => store.Version == WorkingMemoryCheckpointStoreVersion && store.Threads is not null,
+            static store => {
+                if (store.Threads.Comparer != StringComparer.Ordinal) {
+                    store.Threads = new Dictionary<string, WorkingMemoryCheckpointStoreEntryDto>(store.Threads, StringComparer.Ordinal);
+                }
+            },
+            static () => new WorkingMemoryCheckpointStoreDto(),
+            "Working-memory checkpoint store");
     }
 
     private static void WriteWorkingMemoryCheckpointStoreNoThrow(string path, WorkingMemoryCheckpointStoreDto store) {
-        string? tmp = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path)) {
-                return;
-            }
-
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var json = JsonSerializer.Serialize(store, WorkingMemoryCheckpointStoreJsonOptions);
-            var fileName = Path.GetFileName(path);
-            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenPendingActionsStoreAclNoThrow(tmp);
-                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                fs.Flush(true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(tmp, path);
-            }
-
-            TryHardenPendingActionsStoreAclNoThrow(path);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Working-memory checkpoint store write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                try {
-                    File.Delete(tmp);
-                } catch {
-                    // Best effort only.
-                }
-            }
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value),
+            "Working-memory checkpoint store");
     }
 
     private static void PruneWorkingMemoryCheckpointStore(WorkingMemoryCheckpointStoreDto store) {
