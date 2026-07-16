@@ -847,7 +847,7 @@ public sealed partial class MainWindow : Window {
             return true;
         }
 
-        var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
+        var hasTrackedRunningServiceProcess = _serviceProcessHost.IsRunning;
         var prioritizeLatency = ShouldPrioritizeAutoReconnectLatency();
         if (ShouldApplyDispatchConnectFailureCooldown(hasTrackedRunningServiceProcess, prioritizeLatency)
             && TryGetDispatchConnectFailureCooldownRemaining(out _)) {

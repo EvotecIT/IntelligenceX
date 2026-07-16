@@ -281,7 +281,6 @@ public sealed partial class MainWindow : Window {
     private StartupWebViewBudgetCacheEntry _startupWebViewBudgetCache = StartupWebViewBudgetCacheEntry.Default;
     private int _startupWebViewBudgetExceededThisRun;
     private int _startupBenchAutoSendQueued;
-    private int _serviceStagingCleanupInFlight;
 
     private ChatServiceClient? _client;
     private string? _threadId;
@@ -536,10 +535,8 @@ public sealed partial class MainWindow : Window {
     private Task? _persistDebounceWorkerTask;
     private volatile bool _shutdownRequested;
 
-    private Process? _serviceProcess;
-    private string? _servicePipeName;
-    private string? _stagedServiceDir;
-    private ServiceLaunchProfileOptions? _pendingServiceLaunchProfileOptions;
+    private readonly ChatServiceProcessHost _serviceProcessHost = new();
+    private ChatServiceLaunchProfileOptions? _pendingServiceLaunchProfileOptions;
     private readonly object _aliveProbeSync = new();
     private ChatServiceClient? _aliveProbeClient;
     private long _aliveProbeTicksUtc;
@@ -678,37 +675,6 @@ public sealed partial class MainWindow : Window {
         public required Dictionary<int, double> Vector { get; init; }
     }
 
-    private sealed class ServiceLaunchProfileOptions {
-        public string? LoadProfileName { get; init; }
-        public string? SaveProfileName { get; init; }
-        public string? Model { get; init; }
-        public string? OpenAITransport { get; init; }
-        public string? OpenAIBaseUrl { get; init; }
-        public string? OpenAIAuthMode { get; init; }
-        public string? OpenAIApiKey { get; init; }
-        public string? OpenAIBasicUsername { get; init; }
-        public string? OpenAIBasicPassword { get; init; }
-        public string? OpenAIAccountId { get; init; }
-        public bool ClearOpenAIApiKey { get; init; }
-        public bool ClearOpenAIBasicAuth { get; init; }
-        public bool? OpenAIStreaming { get; init; }
-        public bool? OpenAIAllowInsecureHttp { get; init; }
-        public string? ReasoningEffort { get; init; }
-        public string? ReasoningSummary { get; init; }
-        public string? TextVerbosity { get; init; }
-        public double? Temperature { get; init; }
-        public bool? ImageGenerationEnabled { get; init; }
-        public string? ImageGenerationQuality { get; init; }
-        public string? ImageGenerationSize { get; init; }
-        public string? ImageGenerationOutputFormat { get; init; }
-        public int? ImageGenerationOutputCompression { get; init; }
-        public bool ClearImageGenerationOutputCompression { get; init; }
-        public string? ImageGenerationBackground { get; init; }
-        public string? ImageGenerationOutputDirectory { get; init; }
-        public IReadOnlyList<ServiceLaunchArguments.PackToggle>? PackToggles { get; init; }
-    }
-
-
     private sealed class MemoryDebugSnapshot {
         public DateTime UpdatedUtc { get; init; }
         public int Sequence { get; init; }
@@ -779,6 +745,9 @@ public sealed partial class MainWindow : Window {
         _nativeAccountSlots = new string[ResolveNativeAccountSlotCount()];
 
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        _serviceProcessHost.OutputReceived += OnServiceProcessOutputReceived;
+        _serviceProcessHost.ErrorReceived += OnServiceProcessErrorReceived;
+        _serviceProcessHost.Exited += OnServiceProcessExited;
 
         _webView = new WebView2();
         Content = _webView;
@@ -806,6 +775,7 @@ public sealed partial class MainWindow : Window {
             CancelQueuedUiPublishesForShutdown();
             await DisposeClientAsync().ConfigureAwait(false);
             StopServiceIfOwned();
+            _serviceProcessHost.Dispose();
             DetachNativeTitleBarEventSubscriptions();
             LogInputReliabilityTelemetry("shutdown");
             UninstallGlobalWheelHook();

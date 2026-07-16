@@ -56,7 +56,7 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
+            new ChatServiceLaunchProfileOptions {
                 LoadProfileName = "default",
                 SaveProfileName = "default",
                 Model = "gpt-4.1-mini",
@@ -96,7 +96,7 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
+            new ChatServiceLaunchProfileOptions {
                 LoadProfileName = "default",
                 SaveProfileName = "default",
                 OpenAITransport = "compatible-http",
@@ -117,11 +117,11 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
+            new ChatServiceLaunchProfileOptions {
                 PackToggles = new[] {
-                    new ServiceLaunchArguments.PackToggle("powershell", true),
-                    new ServiceLaunchArguments.PackToggle("testimox", false),
-                    new ServiceLaunchArguments.PackToggle("officeimo", true)
+                    new ChatServicePackToggle("powershell", true),
+                    new ChatServicePackToggle("testimox", false),
+                    new ChatServicePackToggle("officeimo", true)
                 }
             });
 
@@ -138,11 +138,11 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
+            new ChatServiceLaunchProfileOptions {
                 PackToggles = new[] {
-                    new ServiceLaunchArguments.PackToggle("Power-Shell", true),
-                    new ServiceLaunchArguments.PackToggle("power_shell", false),
-                    new ServiceLaunchArguments.PackToggle(" testimo x ", true)
+                    new ChatServicePackToggle("Power-Shell", true),
+                    new ChatServicePackToggle("power_shell", false),
+                    new ChatServicePackToggle(" testimo x ", true)
                 }
             });
 
@@ -159,11 +159,11 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
+            new ChatServiceLaunchProfileOptions {
                 PackToggles = new[] {
-                    new ServiceLaunchArguments.PackToggle("ADPlayground", true),
-                    new ServiceLaunchArguments.PackToggle("ComputerX", false),
-                    new ServiceLaunchArguments.PackToggle("fs", true)
+                    new ChatServicePackToggle("ADPlayground", true),
+                    new ChatServicePackToggle("ComputerX", false),
+                    new ChatServicePackToggle("fs", true)
                 }
             });
 
@@ -180,7 +180,7 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions { OpenAITransport = "invalid" }));
+            new ChatServiceLaunchProfileOptions { OpenAITransport = "invalid" }));
     }
 
     /// <summary>
@@ -196,7 +196,7 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions { OpenAITransport = inputTransport });
+            new ChatServiceLaunchProfileOptions { OpenAITransport = inputTransport });
 
         var transportIndex = -1;
         for (var i = 0; i < args.Count; i++) {
@@ -220,7 +220,7 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
+            new ChatServiceLaunchProfileOptions {
                 OpenAITransport = "compatible-http",
                 OpenAIBaseUrl = "http://127.0.0.1:1234/v1",
                 OpenAIAuthMode = "basic",
@@ -245,7 +245,7 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
+            new ChatServiceLaunchProfileOptions {
                 OpenAITransport = "compatible-http",
                 OpenAIBaseUrl = "http://127.0.0.1:1234/v1",
                 ClearOpenAIBasicAuth = true
@@ -265,22 +265,27 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
-                ImageGenerationQuality = string.Empty,
-                ImageGenerationSize = string.Empty,
-                ImageGenerationOutputFormat = string.Empty,
+            new ChatServiceLaunchProfileOptions {
+                ClearImageGenerationQuality = true,
+                ClearImageGenerationSize = true,
+                ClearImageGenerationOutputFormat = true,
                 ClearImageGenerationOutputCompression = true,
-                ImageGenerationBackground = string.Empty,
-                ImageGenerationOutputDirectory = string.Empty
+                ClearImageGenerationBackground = true,
+                ClearImageGenerationOutputDirectory = true
             });
 
-        AssertContainsPair(args, "--image-generation-quality", string.Empty);
-        AssertContainsPair(args, "--image-generation-size", string.Empty);
-        AssertContainsPair(args, "--image-generation-output-format", string.Empty);
+        Assert.Contains("--clear-image-generation-quality", args);
+        Assert.Contains("--clear-image-generation-size", args);
+        Assert.Contains("--clear-image-generation-output-format", args);
         Assert.Contains("--clear-image-generation-output-compression", args);
-        AssertContainsPair(args, "--image-generation-background", string.Empty);
-        AssertContainsPair(args, "--image-generation-output-directory", string.Empty);
+        Assert.Contains("--clear-image-generation-background", args);
+        Assert.Contains("--clear-image-generation-output-directory", args);
+        Assert.DoesNotContain("--image-generation-quality", args);
+        Assert.DoesNotContain("--image-generation-size", args);
+        Assert.DoesNotContain("--image-generation-output-format", args);
         Assert.DoesNotContain("--image-generation-output-compression", args);
+        Assert.DoesNotContain("--image-generation-background", args);
+        Assert.DoesNotContain("--image-generation-output-directory", args);
     }
 
     /// <summary>
@@ -292,7 +297,7 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions());
+            new ChatServiceLaunchProfileOptions());
 
         Assert.DoesNotContain("--enable-image-generation", args);
         Assert.DoesNotContain("--disable-image-generation", args);
@@ -309,7 +314,7 @@ public sealed class ServiceLaunchArgumentsTests {
             "intelligencex.chat",
             detachedServiceMode: true,
             parentProcessId: 12345,
-            new ServiceLaunchArguments.ProfileOptions {
+            new ChatServiceLaunchProfileOptions {
                 ImageGenerationEnabled = false
             });
 

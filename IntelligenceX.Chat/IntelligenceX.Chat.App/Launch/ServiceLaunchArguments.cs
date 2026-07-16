@@ -6,41 +6,52 @@ using IntelligenceX.Chat.Abstractions.Policy;
 namespace IntelligenceX.Chat.App.Launch;
 
 /// <summary>
+/// Declares one tool-pack enablement override for a local service launch.
+/// </summary>
+internal sealed record ChatServicePackToggle(string PackId, bool Enabled);
+
+/// <summary>
+/// Carries profile and runtime overrides applied when the local service starts.
+/// </summary>
+internal sealed class ChatServiceLaunchProfileOptions {
+    public string? LoadProfileName { get; init; }
+    public string? SaveProfileName { get; init; }
+    public string? Model { get; init; }
+    public string? OpenAITransport { get; init; }
+    public string? OpenAIBaseUrl { get; init; }
+    public string? OpenAIAuthMode { get; init; }
+    public string? OpenAIApiKey { get; init; }
+    public string? OpenAIBasicUsername { get; init; }
+    public string? OpenAIBasicPassword { get; init; }
+    public string? OpenAIAccountId { get; init; }
+    public bool ClearOpenAIApiKey { get; init; }
+    public bool ClearOpenAIBasicAuth { get; init; }
+    public bool? OpenAIStreaming { get; init; }
+    public bool? OpenAIAllowInsecureHttp { get; init; }
+    public string? ReasoningEffort { get; init; }
+    public string? ReasoningSummary { get; init; }
+    public string? TextVerbosity { get; init; }
+    public double? Temperature { get; init; }
+    public bool? ImageGenerationEnabled { get; init; }
+    public string? ImageGenerationQuality { get; init; }
+    public bool ClearImageGenerationQuality { get; init; }
+    public string? ImageGenerationSize { get; init; }
+    public bool ClearImageGenerationSize { get; init; }
+    public string? ImageGenerationOutputFormat { get; init; }
+    public bool ClearImageGenerationOutputFormat { get; init; }
+    public int? ImageGenerationOutputCompression { get; init; }
+    public bool ClearImageGenerationOutputCompression { get; init; }
+    public string? ImageGenerationBackground { get; init; }
+    public bool ClearImageGenerationBackground { get; init; }
+    public string? ImageGenerationOutputDirectory { get; init; }
+    public bool ClearImageGenerationOutputDirectory { get; init; }
+    public IReadOnlyList<ChatServicePackToggle>? PackToggles { get; init; }
+}
+
+/// <summary>
 /// Provides typed construction of local runtime service launch arguments.
 /// </summary>
 internal static class ServiceLaunchArguments {
-    internal sealed record PackToggle(string PackId, bool Enabled);
-
-    internal sealed class ProfileOptions {
-        public string? LoadProfileName { get; init; }
-        public string? SaveProfileName { get; init; }
-        public string? Model { get; init; }
-        public string? OpenAITransport { get; init; }
-        public string? OpenAIBaseUrl { get; init; }
-        public string? OpenAIAuthMode { get; init; }
-        public string? OpenAIApiKey { get; init; }
-        public string? OpenAIBasicUsername { get; init; }
-        public string? OpenAIBasicPassword { get; init; }
-        public string? OpenAIAccountId { get; init; }
-        public bool ClearOpenAIApiKey { get; init; }
-        public bool ClearOpenAIBasicAuth { get; init; }
-        public bool? OpenAIStreaming { get; init; }
-        public bool? OpenAIAllowInsecureHttp { get; init; }
-        public string? ReasoningEffort { get; init; }
-        public string? ReasoningSummary { get; init; }
-        public string? TextVerbosity { get; init; }
-        public double? Temperature { get; init; }
-        public bool? ImageGenerationEnabled { get; init; }
-        public string? ImageGenerationQuality { get; init; }
-        public string? ImageGenerationSize { get; init; }
-        public string? ImageGenerationOutputFormat { get; init; }
-        public int? ImageGenerationOutputCompression { get; init; }
-        public bool ClearImageGenerationOutputCompression { get; init; }
-        public string? ImageGenerationBackground { get; init; }
-        public string? ImageGenerationOutputDirectory { get; init; }
-        public IReadOnlyList<PackToggle>? PackToggles { get; init; }
-    }
-
     /// <summary>
     /// Builds runtime service arguments for the configured pipe and lifecycle mode.
     /// </summary>
@@ -56,7 +67,7 @@ internal static class ServiceLaunchArguments {
         string pipeName,
         bool detachedServiceMode,
         int parentProcessId,
-        ProfileOptions? profileOptions = null,
+        ChatServiceLaunchProfileOptions? profileOptions = null,
         IReadOnlyList<string>? additionalPluginPaths = null,
         IReadOnlyList<string>? additionalBuiltInToolProbePaths = null,
         bool enableWorkspaceBuiltInToolOutputProbing = false) {
@@ -119,17 +130,42 @@ internal static class ServiceLaunchArguments {
             if (profileOptions.ImageGenerationEnabled.HasValue) {
                 args.Add(profileOptions.ImageGenerationEnabled.Value ? "--enable-image-generation" : "--disable-image-generation");
             }
-            AddOptionalOverrideArg(args, "--image-generation-quality", profileOptions.ImageGenerationQuality);
-            AddOptionalOverrideArg(args, "--image-generation-size", profileOptions.ImageGenerationSize);
-            AddOptionalOverrideArg(args, "--image-generation-output-format", profileOptions.ImageGenerationOutputFormat);
+            AddOptionalOverrideArg(
+                args,
+                "--image-generation-quality",
+                "--clear-image-generation-quality",
+                profileOptions.ImageGenerationQuality,
+                profileOptions.ClearImageGenerationQuality);
+            AddOptionalOverrideArg(
+                args,
+                "--image-generation-size",
+                "--clear-image-generation-size",
+                profileOptions.ImageGenerationSize,
+                profileOptions.ClearImageGenerationSize);
+            AddOptionalOverrideArg(
+                args,
+                "--image-generation-output-format",
+                "--clear-image-generation-output-format",
+                profileOptions.ImageGenerationOutputFormat,
+                profileOptions.ClearImageGenerationOutputFormat);
             if (profileOptions.ClearImageGenerationOutputCompression) {
                 args.Add("--clear-image-generation-output-compression");
             } else if (profileOptions.ImageGenerationOutputCompression.HasValue) {
                 args.Add("--image-generation-output-compression");
                 args.Add(profileOptions.ImageGenerationOutputCompression.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-            AddOptionalOverrideArg(args, "--image-generation-background", profileOptions.ImageGenerationBackground);
-            AddOptionalOverrideArg(args, "--image-generation-output-directory", profileOptions.ImageGenerationOutputDirectory);
+            AddOptionalOverrideArg(
+                args,
+                "--image-generation-background",
+                "--clear-image-generation-background",
+                profileOptions.ImageGenerationBackground,
+                profileOptions.ClearImageGenerationBackground);
+            AddOptionalOverrideArg(
+                args,
+                "--image-generation-output-directory",
+                "--clear-image-generation-output-directory",
+                profileOptions.ImageGenerationOutputDirectory,
+                profileOptions.ClearImageGenerationOutputDirectory);
 
             AddPackToggleArgs(args, profileOptions.PackToggles);
         }
@@ -195,7 +231,7 @@ internal static class ServiceLaunchArguments {
         return trimmed;
     }
 
-    private static void AddPackToggleArgs(List<string> args, IReadOnlyList<PackToggle>? packToggles) {
+    private static void AddPackToggleArgs(List<string> args, IReadOnlyList<ChatServicePackToggle>? packToggles) {
         if (packToggles is null || packToggles.Count == 0) {
             return;
         }
@@ -238,13 +274,17 @@ internal static class ServiceLaunchArguments {
         args.Add(normalized);
     }
 
-    private static void AddOptionalOverrideArg(List<string> args, string key, string? value) {
-        if (value is null) {
+    private static void AddOptionalOverrideArg(
+        List<string> args,
+        string valueKey,
+        string clearKey,
+        string? value,
+        bool clear) {
+        if (clear) {
+            args.Add(clearKey);
             return;
         }
-
-        args.Add(key);
-        args.Add(value.Trim());
+        AddKeyValueArg(args, valueKey, value);
     }
 
     private static string? NormalizeTransport(string? value) {

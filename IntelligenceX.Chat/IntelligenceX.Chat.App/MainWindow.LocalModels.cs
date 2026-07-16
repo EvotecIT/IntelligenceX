@@ -760,7 +760,7 @@ public sealed partial class MainWindow : Window {
         _pendingServiceLaunchProfileOptions = CaptureCurrentServiceLaunchProfileOptions();
     }
 
-    private ServiceLaunchProfileOptions CaptureCurrentServiceLaunchProfileOptions() {
+    private ChatServiceLaunchProfileOptions CaptureCurrentServiceLaunchProfileOptions() {
         var profileName = (_appProfileName ?? string.Empty).Trim();
         if (profileName.Length == 0) {
             profileName = ResolveAppProfileName("default");
@@ -790,7 +790,7 @@ public sealed partial class MainWindow : Window {
             imageBackground,
             imageOutputDirectory);
 
-        return new ServiceLaunchProfileOptions {
+        return new ChatServiceLaunchProfileOptions {
             LoadProfileName = profileName,
             SaveProfileName = profileName,
             Model = model.Length == 0 ? null : model,
@@ -806,13 +806,18 @@ public sealed partial class MainWindow : Window {
             TextVerbosity = textVerbosity.Length == 0 ? null : textVerbosity,
             Temperature = _localProviderTemperature,
             ImageGenerationEnabled = hasImageGenerationOverrides ? _localProviderImageGenerationEnabled : null,
-            ImageGenerationQuality = hasImageGenerationOverrides ? imageQuality : null,
-            ImageGenerationSize = hasImageGenerationOverrides ? imageSize : null,
-            ImageGenerationOutputFormat = hasImageGenerationOverrides ? imageOutputFormat : null,
+            ImageGenerationQuality = hasImageGenerationOverrides && imageQuality.Length > 0 ? imageQuality : null,
+            ClearImageGenerationQuality = hasImageGenerationOverrides && imageQuality.Length == 0,
+            ImageGenerationSize = hasImageGenerationOverrides && imageSize.Length > 0 ? imageSize : null,
+            ClearImageGenerationSize = hasImageGenerationOverrides && imageSize.Length == 0,
+            ImageGenerationOutputFormat = hasImageGenerationOverrides && imageOutputFormat.Length > 0 ? imageOutputFormat : null,
+            ClearImageGenerationOutputFormat = hasImageGenerationOverrides && imageOutputFormat.Length == 0,
             ImageGenerationOutputCompression = hasImageGenerationOverrides ? _localProviderImageGenerationOutputCompression : null,
             ClearImageGenerationOutputCompression = hasImageGenerationOverrides && _localProviderImageGenerationOutputCompression is null,
-            ImageGenerationBackground = hasImageGenerationOverrides ? imageBackground : null,
-            ImageGenerationOutputDirectory = hasImageGenerationOverrides ? imageOutputDirectory : null,
+            ImageGenerationBackground = hasImageGenerationOverrides && imageBackground.Length > 0 ? imageBackground : null,
+            ClearImageGenerationBackground = hasImageGenerationOverrides && imageBackground.Length == 0,
+            ImageGenerationOutputDirectory = hasImageGenerationOverrides && imageOutputDirectory.Length > 0 ? imageOutputDirectory : null,
+            ClearImageGenerationOutputDirectory = hasImageGenerationOverrides && imageOutputDirectory.Length == 0,
             PackToggles = BuildRuntimePackTogglesFromSessionPolicy()
         };
     }
@@ -835,7 +840,7 @@ public sealed partial class MainWindow : Window {
         !string.IsNullOrWhiteSpace(imageBackground) ||
         !string.IsNullOrWhiteSpace(imageOutputDirectory);
 
-    private ServiceLaunchArguments.PackToggle[]? BuildRuntimePackTogglesFromSessionPolicy() {
+    private ChatServicePackToggle[]? BuildRuntimePackTogglesFromSessionPolicy() {
         var packs = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
             _sessionPolicy,
             _toolCatalogPacks,
@@ -861,10 +866,10 @@ public sealed partial class MainWindow : Window {
 
         var ids = new List<string>(togglesById.Keys);
         ids.Sort(StringComparer.OrdinalIgnoreCase);
-        var toggles = new ServiceLaunchArguments.PackToggle[ids.Count];
+        var toggles = new ChatServicePackToggle[ids.Count];
         for (var i = 0; i < ids.Count; i++) {
             var packId = ids[i];
-            toggles[i] = new ServiceLaunchArguments.PackToggle(packId, togglesById[packId]);
+            toggles[i] = new ChatServicePackToggle(packId, togglesById[packId]);
         }
 
         return toggles;

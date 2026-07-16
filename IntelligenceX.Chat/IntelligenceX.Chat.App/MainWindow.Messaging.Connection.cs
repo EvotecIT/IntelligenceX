@@ -483,15 +483,17 @@ public sealed partial class MainWindow : Window {
             }
 
             var pipeName = _pipeName;
-            if (_serviceProcess is not null && !_serviceProcess.HasExited && !string.Equals(_servicePipeName, pipeName, StringComparison.OrdinalIgnoreCase)) {
-                pipeName = _servicePipeName!;
+            if (_serviceProcessHost.IsRunning
+                && !string.IsNullOrWhiteSpace(_serviceProcessHost.PipeName)
+                && !string.Equals(_serviceProcessHost.PipeName, pipeName, StringComparison.OrdinalIgnoreCase)) {
+                pipeName = _serviceProcessHost.PipeName!;
             }
 
             var client = new ChatServiceClient();
             client.MessageReceived += OnServiceMessage;
             client.Disconnected += OnClientDisconnected;
             Exception? initialConnectException = null;
-            var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
+            var hasTrackedRunningServiceProcess = _serviceProcessHost.IsRunning;
             var initialPipeConnectTimeout = ResolveStartupInitialPipeConnectTimeout(fromUserAction, hasTrackedRunningServiceProcess);
             var useInitialSettlementGrace = ShouldUseStartupInitialConnectSettlementGrace(fromUserAction, hasTrackedRunningServiceProcess);
             var skipInitialPipeConnectProbe = ShouldSkipStartupInitialPipeConnectProbe(
@@ -583,7 +585,7 @@ public sealed partial class MainWindow : Window {
                         LogStartupConnectPhase("pipe_connect.retry", "begin");
                         var startupRetryDisplayTotalAttempts = ResolveStartupConnectRetryDisplayTotalAttempts(StartupConnectRetryTimeouts.Length);
                         for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
-                            if (_serviceProcess is { HasExited: true }) {
+                            if (_serviceProcessHost.HasExited) {
                                 sidecarConnectException = new InvalidOperationException("Service process exited before pipe connect retry could begin.");
                                 break;
                             }
@@ -630,7 +632,7 @@ public sealed partial class MainWindow : Window {
                                     break;
                                 }
 
-                                if (_serviceProcess is { HasExited: true }) {
+                                if (_serviceProcessHost.HasExited) {
                                     break;
                                 }
 
@@ -653,7 +655,7 @@ public sealed partial class MainWindow : Window {
                         }
 
                         if (sidecarConnectException is not null) {
-                            var serviceProcessExited = _serviceProcess is { HasExited: true };
+                            var serviceProcessExited = _serviceProcessHost.HasExited;
                             var shouldAttemptRecovery = ShouldAttemptStartupConnectRecoveryAfterRetryFailure(
                                 fromUserAction: fromUserAction,
                                 captureStartupPhaseTelemetry: captureStartupPhaseTelemetry,
