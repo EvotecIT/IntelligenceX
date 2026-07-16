@@ -26,11 +26,11 @@ internal sealed class ChatServiceToolingBootstrapCache {
     private string _cacheKey = string.Empty;
     private ChatServiceToolingBootstrapSnapshot? _snapshot;
     private ChatServiceToolingBootstrapPersistedSnapshot? _persistedSnapshot;
-    private string? _persistedSnapshotLoadWarning;
+    private string? _persistedSnapshotWarning;
 
     public ChatServiceToolingBootstrapCache(string? persistedSnapshotPath = null) {
         _persistedSnapshotPath = ResolvePersistedSnapshotPath(persistedSnapshotPath);
-        _persistedSnapshot = LoadPersistedSnapshot(_persistedSnapshotPath, out _persistedSnapshotLoadWarning);
+        _persistedSnapshot = LoadPersistedSnapshot(_persistedSnapshotPath, out _persistedSnapshotWarning);
     }
 
     public bool TryGetSnapshot(string cacheKey, out ChatServiceToolingBootstrapSnapshot snapshot) {
@@ -101,30 +101,30 @@ internal sealed class ChatServiceToolingBootstrapCache {
                     normalizedPersistedPreviewDiscoveryFingerprint,
                     normalizedExpectedPreviewDiscoveryFingerprint,
                     StringComparison.Ordinal)) {
-                _persistedSnapshotLoadWarning = StartupBootstrapWarningBuilder.BuildPersistedPreviewIgnoredSummary("preview_fingerprint_mismatch");
+                _persistedSnapshotWarning = StartupBootstrapWarningBuilder.BuildPersistedPreviewIgnoredSummary("preview_fingerprint_mismatch");
                 snapshot = null!;
                 return false;
             }
 
-            _persistedSnapshotLoadWarning = null;
+            _persistedSnapshotWarning = null;
             snapshot = _persistedSnapshot;
             return true;
         }
     }
 
-    public bool TryGetPersistedSnapshotLoadWarning(out string warning) {
+    public bool TryGetPersistedSnapshotWarning(out string warning) {
         lock (_sync) {
-            if (string.IsNullOrWhiteSpace(_persistedSnapshotLoadWarning)) {
+            if (string.IsNullOrWhiteSpace(_persistedSnapshotWarning)) {
                 warning = string.Empty;
                 return false;
             }
 
-            warning = _persistedSnapshotLoadWarning;
+            warning = _persistedSnapshotWarning;
             return true;
         }
     }
 
-    public void StoreSnapshot(
+    public bool StoreSnapshot(
         string cacheKey,
         ChatServiceToolingBootstrapSnapshot snapshot,
         string? previewDiscoveryFingerprint = null) {
@@ -141,8 +141,12 @@ internal sealed class ChatServiceToolingBootstrapCache {
             _cacheKey = normalizedCacheKey;
             _snapshot = snapshot;
             _persistedSnapshot = BuildPersistedSnapshot(normalizedCacheKey, snapshot, previewDiscoveryFingerprint);
-            _persistedSnapshotLoadWarning = null;
-            SavePersistedSnapshot(_persistedSnapshotPath, _persistedSnapshot);
+            _persistedSnapshotWarning = null;
+            var persisted = SavePersistedSnapshot(_persistedSnapshotPath, _persistedSnapshot);
+            if (!persisted) {
+                _persistedSnapshotWarning = StartupBootstrapWarningBuilder.BuildPersistedPreviewIgnoredSummary("write_failed");
+            }
+            return persisted;
         }
     }
 
@@ -151,7 +155,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
             _cacheKey = string.Empty;
             _snapshot = null;
             _persistedSnapshot = null;
-            _persistedSnapshotLoadWarning = null;
+            _persistedSnapshotWarning = null;
             TryDeletePersistedSnapshot(_persistedSnapshotPath);
         }
     }
@@ -360,8 +364,8 @@ internal sealed class ChatServiceToolingBootstrapCache {
         return true;
     }
 
-    private static void SavePersistedSnapshot(string path, ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
-        ChatServiceJsonFileStore.Write(
+    private static bool SavePersistedSnapshot(string path, ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
+        return ChatServiceJsonFileStore.Write(
             path,
             snapshot,
             static value => JsonSerializer.Serialize(value, PersistedSnapshotJson),

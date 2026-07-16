@@ -37,7 +37,9 @@ public static class ChatStatePaths {
         }
 
         try {
-            return IsPathWithinDirectory(GetDefaultDirectory(), path);
+            var directory = GetDefaultDirectory();
+            return IsPathWithinDirectory(directory, path)
+                   && HasNoReparsePointsBelowDirectory(directory, path);
         } catch {
             return false;
         }
@@ -59,6 +61,9 @@ public static class ChatStatePaths {
         var parent = Path.GetDirectoryName(path);
         if (!string.Equals(parent, directory, PathComparison)) {
             throw new ArgumentException("The state file must resolve directly beneath the shared state directory.", nameof(fileName));
+        }
+        if (!HasNoReparsePointsBelowDirectory(directory, path)) {
+            throw new InvalidOperationException("The state file path cannot traverse a symbolic link or reparse point.");
         }
 
         return path;
@@ -89,10 +94,44 @@ public static class ChatStatePaths {
         return fullPath.StartsWith(fullDirectory, PathComparison);
     }
 
+    internal static bool HasNoReparsePointsBelowDirectory(string directory, string path) {
+        var fullDirectory = Path.GetFullPath(directory);
+        var directoryPrefix = fullDirectory
+                                  .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                              + Path.DirectorySeparatorChar;
+        var fullPath = Path.GetFullPath(path);
+        if (!fullPath.StartsWith(directoryPrefix, PathComparison)) {
+            return false;
+        }
+
+        var relativePath = fullPath[directoryPrefix.Length..];
+        var segments = relativePath.Split(
+            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+            StringSplitOptions.RemoveEmptyEntries);
+        var currentPath = fullDirectory;
+        foreach (var segment in segments) {
+            currentPath = Path.Combine(currentPath, segment);
+            FileAttributes attributes;
+            try {
+                attributes = File.GetAttributes(currentPath);
+            } catch (FileNotFoundException) {
+                break;
+            } catch (DirectoryNotFoundException) {
+                break;
+            }
+
+            if ((attributes & FileAttributes.ReparsePoint) != 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static bool TryNormalizeAbsoluteRoot(string? candidate, out string root) {
         root = string.Empty;
         var normalized = (candidate ?? string.Empty).Trim();
-        if (normalized.Length == 0 || !Path.IsPathRooted(normalized)) {
+        if (normalized.Length == 0 || !Path.IsPathFullyQualified(normalized)) {
             return false;
         }
 

@@ -183,8 +183,8 @@ internal sealed partial class ChatServiceSession {
         TryApplyPersistedToolingBootstrapPreview();
         if (_startupWarnings.Length == 0
             && _toolingBootstrapCache is not null
-            && _toolingBootstrapCache.TryGetPersistedSnapshotLoadWarning(out var persistedSnapshotLoadWarning)) {
-            _startupWarnings = NormalizeDistinctStrings(new[] { persistedSnapshotLoadWarning }, maxItems: 64);
+            && _toolingBootstrapCache.TryGetPersistedSnapshotWarning(out var persistedSnapshotWarning)) {
+            _startupWarnings = NormalizeDistinctStrings(new[] { persistedSnapshotWarning }, maxItems: 64);
         }
 
         _json = new JsonSerializerOptions {

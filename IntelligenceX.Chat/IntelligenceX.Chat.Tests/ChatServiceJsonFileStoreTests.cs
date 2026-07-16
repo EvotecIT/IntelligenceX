@@ -148,6 +148,30 @@ public sealed class ChatServiceJsonFileStoreTests {
     }
 
     [Fact]
+    public void Write_CreatesPrivateUnixDirectoryAtomically() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        var root = CreateRoot();
+        try {
+            var stateDirectory = Path.Combine(root, "private-state");
+            var path = Path.Combine(stateDirectory, "state.json");
+
+            ChatJsonFileStore.Write(path, "{}");
+
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                File.GetUnixFileMode(stateDirectory));
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(path));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Read_RejectsSnapshotsAboveTheDomainLimit() {
         var root = CreateRoot();
         try {
@@ -262,6 +286,48 @@ public sealed class ChatServiceJsonFileStoreTests {
             "pending-actions.json");
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void ResolvePathOverrideWithinDefaultDirectory_RejectsReparsePointEscape() {
+        var root = Path.Combine(
+            ChatStatePaths.GetDefaultDirectory(),
+            "tests",
+            "reparse-" + Guid.NewGuid().ToString("N"));
+        var outside = CreateRoot();
+        var link = Path.Combine(root, "redirect");
+        Directory.CreateDirectory(root);
+
+        try {
+            try {
+                Directory.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            var candidate = Path.Combine(link, "pending-actions.json");
+            var expected = ChatStatePaths.GetDefaultPath("pending-actions.json");
+
+            Assert.False(ChatStatePaths.IsPathInDefaultDirectory(candidate));
+            Assert.Equal(
+                expected,
+                ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(candidate, "pending-actions.json"));
+        } finally {
+            try {
+                if (Directory.Exists(link)) {
+                    Directory.Delete(link);
+                }
+            } catch {
+                // Best-effort cleanup for platforms with unusual link deletion semantics.
+            }
+
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+            if (Directory.Exists(outside)) {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
     }
 
     [Fact]

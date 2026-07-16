@@ -124,9 +124,9 @@ internal static class ChatServiceJsonFileStore {
     }
 
     /// <summary>
-    /// Atomically replaces a JSON snapshot and applies best-effort owner-only permissions.
+    /// Atomically replaces a JSON snapshot and reports whether owner-only persistence succeeded.
     /// </summary>
-    internal static void Write<T>(
+    internal static bool Write<T>(
         string path,
         T value,
         Func<T, string> serialize,
@@ -135,7 +135,7 @@ internal static class ChatServiceJsonFileStore {
 
         try {
             if (string.IsNullOrWhiteSpace(path)) {
-                return;
+                return false;
             }
 
             var json = serialize(value);
@@ -143,8 +143,10 @@ internal static class ChatServiceJsonFileStore {
                 path,
                 json,
                 hardenExistingDirectory: ChatStatePaths.IsPathInDefaultDirectory(path));
+            return true;
         } catch (Exception ex) {
             Trace.TraceWarning($"{NormalizeStoreName(storeName)} write failed: {ex.GetType().Name}: {ex.Message}");
+            return false;
         }
     }
 

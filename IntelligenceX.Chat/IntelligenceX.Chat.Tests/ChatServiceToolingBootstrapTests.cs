@@ -21,6 +21,49 @@ public sealed class ChatServiceToolingBootstrapTests {
         return TempPathTestHelper.CreateTempFilePath("ix-chat-" + namePrefix, ".json");
     }
 
+    [Fact]
+    public void ToolingBootstrapCache_ReportsPersistedSnapshotWriteFailure() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-write-failure");
+        Directory.CreateDirectory(cachePath);
+        try {
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+
+            var persisted = cache.StoreSnapshot(
+                "write-failure-cache-key",
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = Array.Empty<ToolDefinitionDto>(),
+                    PackSummaries = Array.Empty<ToolPackInfoDto>(),
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = Array.Empty<ToolPackAvailabilityInfo>(),
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 0,
+                        EnabledPackCount = 0,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = false,
+                        AllowedRootCount = 0
+                    },
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                });
+
+            Assert.False(persisted);
+            Assert.True(cache.TryGetPersistedSnapshotWarning(out var warning));
+            Assert.Contains("write_failed", warning, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            Directory.Delete(cachePath, recursive: true);
+        }
+    }
+
     private static (string PreviewCacheKey, string CacheKey) BuildToolingBootstrapKeys(ServiceOptions options) {
         var runtimePolicyOptionsMethod = typeof(ChatServiceSession).GetMethod(
             "BuildRuntimePolicyOptions",
@@ -1721,7 +1764,7 @@ public sealed class ChatServiceToolingBootstrapTests {
 
             cache = new ChatServiceToolingBootstrapCache(cachePath);
             Assert.False(cache.TryGetPersistedPreviewSnapshot(previewCacheKey, currentPreviewFingerprint, out _));
-            Assert.True(cache.TryGetPersistedSnapshotLoadWarning(out var warning));
+            Assert.True(cache.TryGetPersistedSnapshotWarning(out var warning));
             Assert.Contains("preview_fingerprint_mismatch", warning, StringComparison.OrdinalIgnoreCase);
         } finally {
             try {
@@ -1884,7 +1927,7 @@ public sealed class ChatServiceToolingBootstrapTests {
             File.WriteAllText(cachePath, JsonSerializer.Serialize(persistedSnapshot));
 
             var cache = new ChatServiceToolingBootstrapCache(cachePath);
-            Assert.True(cache.TryGetPersistedSnapshotLoadWarning(out var cacheLoadWarning));
+            Assert.True(cache.TryGetPersistedSnapshotWarning(out var cacheLoadWarning));
             Assert.Contains("descriptor_snapshot_schema_mismatch", cacheLoadWarning, StringComparison.OrdinalIgnoreCase);
 
             var startupWarningsField = typeof(ChatServiceSession).GetField(
@@ -1978,7 +2021,7 @@ public sealed class ChatServiceToolingBootstrapTests {
             File.WriteAllText(cachePath, JsonSerializer.Serialize(persistedSnapshot));
 
             var cache = new ChatServiceToolingBootstrapCache(cachePath);
-            Assert.True(cache.TryGetPersistedSnapshotLoadWarning(out var cacheLoadWarning));
+            Assert.True(cache.TryGetPersistedSnapshotWarning(out var cacheLoadWarning));
             Assert.Contains("schema_mismatch", cacheLoadWarning, StringComparison.OrdinalIgnoreCase);
 
             var startupWarningsField = typeof(ChatServiceSession).GetField(

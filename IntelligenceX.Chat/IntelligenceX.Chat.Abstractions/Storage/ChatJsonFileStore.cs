@@ -10,6 +10,10 @@ namespace IntelligenceX.Chat.Abstractions.Storage;
 /// Provides bounded reads and crash-safe atomic replacement for small JSON state files.
 /// </summary>
 public static class ChatJsonFileStore {
+    private const UnixFileMode PrivateDirectoryMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+    private const UnixFileMode PrivateFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
     /// <summary>
     /// Reads a bounded JSON snapshot and distinguishes missing from malformed storage.
     /// </summary>
@@ -92,14 +96,8 @@ public static class ChatJsonFileStore {
         string? temporaryPath = null;
         try {
             var directory = Path.GetDirectoryName(path);
-            var directoryCreated = false;
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-                directoryCreated = true;
-            }
-
-            if (!string.IsNullOrWhiteSpace(directory) && (directoryCreated || hardenExistingDirectory)) {
-                TryHardenUnixDirectory(directory);
+            if (!string.IsNullOrWhiteSpace(directory)) {
+                EnsureDirectory(directory, hardenExistingDirectory);
             }
 
             var fileName = Path.GetFileName(path);
@@ -108,7 +106,7 @@ public static class ChatJsonFileStore {
                 ? temporaryName
                 : Path.Combine(directory, temporaryName);
 
-            using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+            using (var stream = CreatePrivateTemporaryFile(temporaryPath)) {
                 HardenTemporaryFile(temporaryPath);
                 using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                 writer.Write(json);
@@ -147,16 +145,39 @@ public static class ChatJsonFileStore {
 
     private static void TryHardenUnixDirectory(string path) {
         if (!OperatingSystem.IsWindows()) {
-            File.SetUnixFileMode(
-                path,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(path, PrivateDirectoryMode);
         }
     }
 
     private static void TryHardenUnixFile(string path) {
         if (!OperatingSystem.IsWindows()) {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.SetUnixFileMode(path, PrivateFileMode);
         }
+    }
+
+    private static void EnsureDirectory(string path, bool hardenExistingDirectory) {
+        if (OperatingSystem.IsWindows()) {
+            Directory.CreateDirectory(path);
+            return;
+        }
+
+        Directory.CreateDirectory(path, PrivateDirectoryMode);
+        if (hardenExistingDirectory) {
+            TryHardenUnixDirectory(path);
+        }
+    }
+
+    private static FileStream CreatePrivateTemporaryFile(string path) {
+        var options = new FileStreamOptions {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None
+        };
+        if (!OperatingSystem.IsWindows()) {
+            options.UnixCreateMode = PrivateFileMode;
+        }
+
+        return new FileStream(path, options);
     }
 
     private static void HardenTemporaryFile(string path) {
