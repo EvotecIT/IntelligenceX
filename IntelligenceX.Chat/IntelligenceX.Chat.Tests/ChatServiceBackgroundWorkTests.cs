@@ -3966,6 +3966,66 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerRuntimeState_PreservesConcurrentFailureStreakIncrementsDuringRetry() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var initialTicks = DateTime.UtcNow.AddMinutes(-3).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"requeued_after_tool_failure","lastOutcomeUtcTicks":{{initialTicks}},"lastFailureUtcTicks":{{initialTicks}},"requeuedExecutionCount":3,"consecutiveFailureCount":3,"recentActivity":[]}
+            """);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        var initial = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(3, initial.RequeuedExecutionCount);
+        Assert.Equal(3, initial.ConsecutiveFailureCount);
+
+        var localFailureTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            session.RememberBackgroundSchedulerIterationResultForTesting(
+                new ChatServiceSession.BackgroundSchedulerIterationResult(
+                    ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure,
+                    "thread-local-failure",
+                    "item-local-failure",
+                    "system_info",
+                    "local_failure",
+                    0,
+                    "local_probe_failed"),
+                localFailureTicks);
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        var concurrentFailureTicks = DateTime.UtcNow.AddMinutes(-1).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"requeued_after_tool_failure","lastOutcomeUtcTicks":{{concurrentFailureTicks}},"lastFailureUtcTicks":{{concurrentFailureTicks}},"requeuedExecutionCount":4,"consecutiveFailureCount":4,"recentActivity":[{"recordedUtcTicks":{{concurrentFailureTicks}},"outcome":"requeued_after_tool_failure","threadId":"thread-concurrent-failure","itemId":"item-concurrent-failure","toolName":"system_info","reason":"concurrent_failure","outputCount":0,"failureDetail":"concurrent_probe_failed"}]}
+            """);
+
+        var recovered = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.False(recovered.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", recovered.RuntimeStoreLoadState);
+        Assert.Equal(5, recovered.RequeuedExecutionCount);
+        Assert.Equal(5, recovered.ConsecutiveFailureCount);
+        Assert.Contains(recovered.RecentActivity, activity => string.Equals(activity.Reason, "local_failure", StringComparison.Ordinal));
+        Assert.Contains(recovered.RecentActivity, activity => string.Equals(activity.Reason, "concurrent_failure", StringComparison.Ordinal));
+
+        var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(5, restarted.RequeuedExecutionCount);
+        Assert.Equal(5, restarted.ConsecutiveFailureCount);
+        Assert.Contains(restarted.RecentActivity, activity => string.Equals(activity.Reason, "local_failure", StringComparison.Ordinal));
+        Assert.Contains(restarted.RecentActivity, activity => string.Equals(activity.Reason, "concurrent_failure", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task BackgroundSchedulerRuntimeState_ClearsAdaptiveIdleMetadataAfterWorkResumesAcrossRestart() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         const string threadId = "thread-background-scheduler-adaptive-idle-clear-after-work";

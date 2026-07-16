@@ -385,31 +385,55 @@ internal sealed partial class ChatServiceSession {
         BackgroundSchedulerRuntimeStoreDto persisted,
         BackgroundSchedulerRuntimeStoreDto baseline,
         BackgroundSchedulerRuntimeStoreDto desired) {
-        var localSuccessChanged = desired.LastSuccessUtcTicks != baseline.LastSuccessUtcTicks;
-        var localFailureChanged = desired.LastFailureUtcTicks != baseline.LastFailureUtcTicks;
+        var localSuccessChanged = desired.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks;
+        var localFailureChanged = desired.LastFailureUtcTicks > baseline.LastFailureUtcTicks;
         if (!localSuccessChanged && !localFailureChanged
             && desired.ConsecutiveFailureCount == baseline.ConsecutiveFailureCount) {
             return;
         }
 
-        var localLatestEvent = Math.Max(desired.LastSuccessUtcTicks, desired.LastFailureUtcTicks);
-        var persistedLatestEvent = Math.Max(persisted.LastSuccessUtcTicks, persisted.LastFailureUtcTicks);
-        if (localLatestEvent < persistedLatestEvent) {
+        var persistedSuccessChanged = persisted.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks;
+        if (!localSuccessChanged && !persistedSuccessChanged) {
+            merged.ConsecutiveFailureCount = AddBackgroundSchedulerCounterDelta(
+                persisted.ConsecutiveFailureCount,
+                baseline.ConsecutiveFailureCount,
+                desired.ConsecutiveFailureCount);
             return;
         }
 
-        if (desired.LastSuccessUtcTicks >= desired.LastFailureUtcTicks
-            || desired.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks) {
-            merged.ConsecutiveFailureCount = Math.Max(0, desired.ConsecutiveFailureCount);
+        if (localSuccessChanged
+            && (!persistedSuccessChanged || desired.LastSuccessUtcTicks >= persisted.LastSuccessUtcTicks)) {
+            var localPostResetCount = Math.Max(0, desired.ConsecutiveFailureCount);
+            if (persisted.LastFailureUtcTicks > desired.LastSuccessUtcTicks) {
+                var persistedFailureDelta = persistedSuccessChanged
+                    ? Math.Max(0, persisted.ConsecutiveFailureCount)
+                    : Math.Max(
+                        0,
+                        Math.Max(0, persisted.ConsecutiveFailureCount) - Math.Max(0, baseline.ConsecutiveFailureCount));
+                localPostResetCount = AddBackgroundSchedulerCounterDelta(
+                    localPostResetCount,
+                    0,
+                    persistedFailureDelta);
+            }
+
+            merged.ConsecutiveFailureCount = localPostResetCount;
             return;
         }
 
-        var failureDelta = Math.Max(
-            0,
-            Math.Max(0, desired.ConsecutiveFailureCount) - Math.Max(0, baseline.ConsecutiveFailureCount));
-        merged.ConsecutiveFailureCount = (int)Math.Min(
-            int.MaxValue,
-            (long)Math.Max(0, persisted.ConsecutiveFailureCount) + failureDelta);
+        var persistedPostResetCount = Math.Max(0, persisted.ConsecutiveFailureCount);
+        if (desired.LastFailureUtcTicks > persisted.LastSuccessUtcTicks) {
+            var localFailureDelta = localSuccessChanged
+                ? Math.Max(0, desired.ConsecutiveFailureCount)
+                : Math.Max(
+                    0,
+                    Math.Max(0, desired.ConsecutiveFailureCount) - Math.Max(0, baseline.ConsecutiveFailureCount));
+            persistedPostResetCount = AddBackgroundSchedulerCounterDelta(
+                persistedPostResetCount,
+                0,
+                localFailureDelta);
+        }
+
+        merged.ConsecutiveFailureCount = persistedPostResetCount;
     }
 
     private static bool BackgroundSchedulerOutcomeStateChanged(
