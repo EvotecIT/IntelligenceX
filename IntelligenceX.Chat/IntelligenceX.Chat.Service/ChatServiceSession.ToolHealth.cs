@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Service.Persistence;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 
@@ -15,7 +15,9 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int StartupToolHealthBackoffMaxExponent = 6;
+    private const int MaximumStartupToolHealthCacheBytes = 1024 * 1024;
     private const string StartupToolHealthCacheFileName = "startup-tool-health-cache-v1.json";
+    private const string StartupToolHealthCacheStoreName = "Startup tool health cache";
     private static readonly JsonSerializerOptions StartupToolHealthCacheJson = new() {
         PropertyNameCaseInsensitive = true,
         WriteIndented = false
@@ -362,77 +364,60 @@ internal sealed partial class ChatServiceSession {
 
     private static Dictionary<string, StartupToolHealthCacheEntry> LoadStartupToolHealthCache() {
         var path = ResolveStartupToolHealthCachePath();
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+        var result = ChatServiceJsonFileStore.Read<StartupToolHealthCachePayload>(
+            path,
+            MaximumStartupToolHealthCacheBytes,
+            static json => JsonSerializer.Deserialize<StartupToolHealthCachePayload>(json, StartupToolHealthCacheJson),
+            static payload => payload.Entries is not null,
+            normalize: null,
+            StartupToolHealthCacheStoreName);
+        if (result.State != ChatServiceJsonFileReadState.Loaded
+            || result.Value?.Entries is not { Count: > 0 } entries) {
             return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
         }
 
-        try {
-            var json = File.ReadAllText(path);
-            var payload = JsonSerializer.Deserialize<StartupToolHealthCachePayload>(json, StartupToolHealthCacheJson);
-            if (payload?.Entries is null || payload.Entries.Count == 0) {
-                return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < entries.Count; i++) {
+            var entry = entries[i];
+            if (string.IsNullOrWhiteSpace(entry.Key)) {
+                continue;
             }
 
-            var map = new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < payload.Entries.Count; i++) {
-                var entry = payload.Entries[i];
-                if (string.IsNullOrWhiteSpace(entry.Key)) {
-                    continue;
-                }
-
-                map[entry.Key] = new StartupToolHealthCacheEntry(
-                    ErrorCode: NormalizeHealthErrorCode(entry.ErrorCode),
-                    Error: NormalizeHealthError(entry.Error),
-                    LastFailedUtc: entry.LastFailedUtc,
-                    NextProbeUtc: entry.NextProbeUtc,
-                    ConsecutiveFailures: Math.Clamp(entry.ConsecutiveFailures, 1, 64));
-            }
-
-            return map;
-        } catch {
-            return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
+            map[entry.Key] = new StartupToolHealthCacheEntry(
+                ErrorCode: NormalizeHealthErrorCode(entry.ErrorCode),
+                Error: NormalizeHealthError(entry.Error),
+                LastFailedUtc: entry.LastFailedUtc,
+                NextProbeUtc: entry.NextProbeUtc,
+                ConsecutiveFailures: Math.Clamp(entry.ConsecutiveFailures, 1, 64));
         }
+
+        return map;
     }
 
     private static void SaveStartupToolHealthCache(Dictionary<string, StartupToolHealthCacheEntry> cache) {
         var path = ResolveStartupToolHealthCachePath();
-        if (string.IsNullOrWhiteSpace(path)) {
-            return;
-        }
+        var payload = new StartupToolHealthCachePayload {
+            Entries = cache
+                .Select(static pair => new StartupToolHealthCachePayloadEntry {
+                    Key = pair.Key,
+                    ErrorCode = pair.Value.ErrorCode,
+                    Error = pair.Value.Error,
+                    LastFailedUtc = pair.Value.LastFailedUtc,
+                    NextProbeUtc = pair.Value.NextProbeUtc,
+                    ConsecutiveFailures = pair.Value.ConsecutiveFailures
+                })
+                .ToList()
+        };
 
-        try {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var payload = new StartupToolHealthCachePayload {
-                Entries = cache
-                    .Select(static pair => new StartupToolHealthCachePayloadEntry {
-                        Key = pair.Key,
-                        ErrorCode = pair.Value.ErrorCode,
-                        Error = pair.Value.Error,
-                        LastFailedUtc = pair.Value.LastFailedUtc,
-                        NextProbeUtc = pair.Value.NextProbeUtc,
-                        ConsecutiveFailures = pair.Value.ConsecutiveFailures
-                    })
-                    .ToList()
-            };
-
-            var json = JsonSerializer.Serialize(payload, StartupToolHealthCacheJson);
-            File.WriteAllText(path, json);
-        } catch {
-            // Ignore cache write failures.
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            payload,
+            static value => JsonSerializer.Serialize(value, StartupToolHealthCacheJson),
+            StartupToolHealthCacheStoreName);
     }
 
     private static string ResolveStartupToolHealthCachePath() {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localAppData)) {
-            return Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", StartupToolHealthCacheFileName);
-        }
-
-        return Path.Combine(localAppData, "IntelligenceX.Chat", StartupToolHealthCacheFileName);
+        return ChatServiceJsonFileStore.ResolveDefaultPath(StartupToolHealthCacheFileName);
     }
 
     private sealed record StartupToolHealthCacheEntry(

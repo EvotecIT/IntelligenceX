@@ -3064,6 +3064,45 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerControlState_ExpiredPauseCleanupPreservesOtherPersistedOverrides() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedState = new ChatServiceBackgroundSchedulerControlState(options);
+        var storePath = seedState.ResolveStorePathForTesting();
+        var expiredPauseTicks = DateTime.UtcNow.AddMinutes(-5).Ticks;
+        File.WriteAllText(
+            storePath,
+            $$"""
+            {
+              "Version": 4,
+              "ManualPauseActive": true,
+              "PausedUntilUtcTicks": {{expiredPauseTicks}},
+              "PauseReason": "manual_pause:60s:expired",
+              "BlockedPackIdsCustomized": true,
+              "BlockedPackIds": ["system"],
+              "TemporaryBlockedPacks": [],
+              "BlockedThreadIdsCustomized": false,
+              "BlockedThreadIds": [],
+              "TemporaryBlockedThreads": [],
+              "MaintenanceWindowsCustomized": false,
+              "MaintenanceWindowSpecs": []
+            }
+            """);
+
+        var firstRestart = new ChatServiceBackgroundSchedulerControlState(options);
+        var firstSnapshot = firstRestart.GetSnapshot(DateTime.UtcNow.Ticks);
+
+        Assert.False(firstSnapshot.ManualPauseActive);
+        Assert.Equal(new[] { "system" }, firstRestart.GetBlockedPackIds(DateTime.UtcNow.Ticks));
+        Assert.True(File.Exists(storePath));
+
+        var secondRestart = new ChatServiceBackgroundSchedulerControlState(options);
+        var secondSnapshot = secondRestart.GetSnapshot(DateTime.UtcNow.Ticks);
+
+        Assert.False(secondSnapshot.ManualPauseActive);
+        Assert.Equal(new[] { "system" }, secondRestart.GetBlockedPackIds(DateTime.UtcNow.Ticks));
+    }
+
+    [Fact]
     public void BuildBackgroundSchedulerSummary_RehydratesPersistedManualPauseFromFreshControlState() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         var writerState = new ChatServiceBackgroundSchedulerControlState(options);

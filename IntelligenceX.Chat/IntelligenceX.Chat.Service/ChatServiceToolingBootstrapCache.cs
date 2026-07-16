@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Service.Persistence;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -12,7 +13,9 @@ namespace IntelligenceX.Chat.Service;
 internal sealed class ChatServiceToolingBootstrapCache {
     private const int PersistedSnapshotSchemaVersion = 4;
     private const int PersistedDescriptorSnapshotSchemaVersion = 1;
+    private const int MaximumPersistedSnapshotBytes = 16 * 1024 * 1024;
     private const string DefaultPersistedSnapshotFileName = "tooling-bootstrap-cache-v1.json";
+    private const string PersistedSnapshotStoreName = "Tooling bootstrap cache";
     private static readonly JsonSerializerOptions PersistedSnapshotJson = new() {
         PropertyNameCaseInsensitive = true,
         WriteIndented = false
@@ -210,22 +213,36 @@ internal sealed class ChatServiceToolingBootstrapCache {
             }
         }
 
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-
-        return Path.Combine(root, "IntelligenceX.Chat", DefaultPersistedSnapshotFileName);
+        return ChatServiceJsonFileStore.ResolveDefaultPath(DefaultPersistedSnapshotFileName);
     }
 
     private static ChatServiceToolingBootstrapPersistedSnapshot? LoadPersistedSnapshot(string path, out string? warning) {
         warning = null;
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return null;
-            }
+        string? validationWarning = null;
+        var result = ChatServiceJsonFileStore.Read<ChatServiceToolingBootstrapPersistedSnapshot>(
+            path,
+            MaximumPersistedSnapshotBytes,
+            json => DeserializeAndNormalizePersistedSnapshot(json, out validationWarning),
+            static _ => true,
+            normalize: null,
+            PersistedSnapshotStoreName);
+        if (result.State == ChatServiceJsonFileReadState.Loaded && result.Value is not null) {
+            return result.Value;
+        }
 
-            var json = File.ReadAllText(path);
+        if (result.State == ChatServiceJsonFileReadState.Invalid) {
+            warning = validationWarning
+                ?? StartupBootstrapWarningBuilder.BuildPersistedPreviewIgnoredSummary("read_failed");
+        }
+
+        return null;
+    }
+
+    private static ChatServiceToolingBootstrapPersistedSnapshot? DeserializeAndNormalizePersistedSnapshot(
+        string json,
+        out string? warning) {
+        warning = null;
+        try {
             var snapshot = JsonSerializer.Deserialize<ChatServiceToolingBootstrapPersistedSnapshot>(json, PersistedSnapshotJson);
             if (snapshot is null) {
                 warning = StartupBootstrapWarningBuilder.BuildPersistedPreviewIgnoredSummary("deserialize_failed");
@@ -344,34 +361,15 @@ internal sealed class ChatServiceToolingBootstrapCache {
     }
 
     private static void SavePersistedSnapshot(string path, ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
-        try {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            var tempPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
-            var json = JsonSerializer.Serialize(snapshot, PersistedSnapshotJson);
-            File.WriteAllText(tempPath, json);
-            if (File.Exists(path)) {
-                File.Delete(path);
-            }
-            File.Move(tempPath, path);
-        } catch {
-            // Persisted startup metadata cache is best-effort.
-        }
+        ChatServiceJsonFileStore.Write(
+            path,
+            snapshot,
+            static value => JsonSerializer.Serialize(value, PersistedSnapshotJson),
+            PersistedSnapshotStoreName);
     }
 
     private static void TryDeletePersistedSnapshot(string path) {
-        try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return;
-            }
-
-            File.Delete(path);
-        } catch {
-            // Best-effort cleanup.
-        }
+        ChatServiceJsonFileStore.Delete(path, PersistedSnapshotStoreName);
     }
 
     private static string NormalizePreviewCacheKey(string? previewCacheKey, string? cacheKey) {

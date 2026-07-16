@@ -1,14 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security.AccessControl;
-using System.Security.Principal;
-using System.Text;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Service.Persistence;
 using IntelligenceX.Chat.Tooling;
 
 namespace IntelligenceX.Chat.Service;
@@ -18,6 +15,8 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     private const int MaxPauseReasonLength = 120;
     private const int MaxMaintenanceWindowSpecLength = 160;
     private const int MaxMaintenanceWindowThreadScopeLength = 120;
+    private const int MaximumStoreBytes = 64 * 1024;
+    private const string StoreName = "Background scheduler control state";
     private static readonly object StoreLock = new();
     private static readonly JsonSerializerOptions StoreJsonOptions = new() {
         WriteIndented = false,
@@ -1418,13 +1417,9 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     }
 
     private string ResolveStorePath() {
-        var pendingActionsPath = ResolvePendingActionsStorePath();
-        var directory = Path.GetDirectoryName(pendingActionsPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            return Path.Combine(directory, "background-scheduler-control.json");
-        }
-
-        return Path.Combine(Environment.CurrentDirectory, "background-scheduler-control.json");
+        return ChatServiceJsonFileStore.ResolveSiblingPath(
+            ResolvePendingActionsStorePath(),
+            "background-scheduler-control.json");
     }
 
     private string ResolvePendingActionsStorePath() {
@@ -1469,96 +1464,94 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
     }
 
     private static string ResolveDefaultPendingActionsStorePath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-
-        return Path.Combine(root, "IntelligenceX.Chat", "pending-actions.json");
+        return ChatServiceJsonFileStore.ResolveDefaultPath("pending-actions.json");
     }
 
     private StoreDto ReadStoreStateNoThrow() {
         var path = ResolveStorePath();
         lock (StoreLock) {
-            try {
-                if (!File.Exists(path)) {
-                    return new StoreDto();
-                }
-
-                var info = new FileInfo(path);
-                if (info.Length <= 0 || info.Length > 64 * 1024) {
-                    return new StoreDto();
-                }
-
-                var json = File.ReadAllText(path, Encoding.UTF8);
-                if (string.IsNullOrWhiteSpace(json)) {
-                    return new StoreDto();
-                }
-
-                var store = JsonSerializer.Deserialize<StoreDto>(json, StoreJsonOptions);
-                if (store is null || store.Version <= 0 || store.Version > StoreVersion) {
-                    return new StoreDto();
-                }
-
-                var normalized = new StoreDto {
-                    ManualPauseActive = store.ManualPauseActive,
-                    PausedUntilUtcTicks = Math.Max(0, store.PausedUntilUtcTicks),
-                    PauseReason = NormalizeActivityText(store.PauseReason, MaxPauseReasonLength + 32),
-                    BlockedPackIdsCustomized = store.BlockedPackIdsCustomized,
-                    BlockedPackIds = NormalizeBlockedPackIds(store.BlockedPackIds),
-                    TemporaryBlockedPacks = NormalizeTemporarySuppressions(
-                            store.TemporaryBlockedPacks,
-                            maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
-                            normalizeId: ToolPackBootstrap.NormalizePackId,
-                            StringComparer.OrdinalIgnoreCase,
-                            DateTime.UtcNow.Ticks)
-                        .Select(static item => new TemporarySuppressionStoreDto {
-                            Id = item.Id,
-                            ExpiresUtcTicks = item.ExpiresUtcTicks
-                        })
-                        .ToArray(),
-                    BlockedThreadIdsCustomized = store.BlockedThreadIdsCustomized,
-                    BlockedThreadIds = NormalizeBlockedThreadIds(store.BlockedThreadIds),
-                    TemporaryBlockedThreads = NormalizeTemporarySuppressions(
-                            store.TemporaryBlockedThreads,
-                            maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
-                            normalizeId: NormalizeMaintenanceWindowThreadId,
-                            StringComparer.Ordinal,
-                            DateTime.UtcNow.Ticks)
-                        .Select(static item => new TemporarySuppressionStoreDto {
-                            Id = item.Id,
-                            ExpiresUtcTicks = item.ExpiresUtcTicks
-                        })
-                        .ToArray(),
-                    MaintenanceWindowsCustomized = store.MaintenanceWindowsCustomized,
-                    MaintenanceWindowSpecs = NormalizeMaintenanceWindowSpecs(store.MaintenanceWindowSpecs)
-                };
-
-                if (!normalized.ManualPauseActive) {
-                    normalized.PausedUntilUtcTicks = 0;
-                    normalized.PauseReason = string.Empty;
-                }
-
-                if (normalized.PausedUntilUtcTicks > 0 && (!TryGetUtcDateTimeFromTicks(normalized.PausedUntilUtcTicks, out var pausedUntilUtc) || pausedUntilUtc <= DateTime.UtcNow)) {
-                    TryDeleteStoreNoThrow(path);
-                    return new StoreDto {
-                        BlockedPackIdsCustomized = normalized.BlockedPackIdsCustomized,
-                        BlockedPackIds = normalized.BlockedPackIds,
-                        TemporaryBlockedPacks = normalized.TemporaryBlockedPacks,
-                        BlockedThreadIdsCustomized = normalized.BlockedThreadIdsCustomized,
-                        BlockedThreadIds = normalized.BlockedThreadIds,
-                        TemporaryBlockedThreads = normalized.TemporaryBlockedThreads,
-                        MaintenanceWindowsCustomized = normalized.MaintenanceWindowsCustomized,
-                        MaintenanceWindowSpecs = normalized.MaintenanceWindowSpecs
-                    };
-                }
-
-                return normalized;
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Background scheduler control state read failed: {ex.GetType().Name}: {ex.Message}");
+            var expiredPauseRemoved = false;
+            var result = ChatServiceJsonFileStore.Read<StoreDto>(
+                path,
+                MaximumStoreBytes,
+                static json => JsonSerializer.Deserialize<StoreDto>(json, StoreJsonOptions),
+                static store => store.Version > 0 && store.Version <= StoreVersion,
+                store => expiredPauseRemoved = NormalizeStoreState(store, DateTime.UtcNow),
+                StoreName);
+            if (result.State != ChatServiceJsonFileReadState.Loaded || result.Value is null) {
                 return new StoreDto();
             }
+
+            if (expiredPauseRemoved) {
+                PersistNormalizedStore(path, result.Value);
+            }
+
+            return result.Value;
         }
+    }
+
+    private static bool NormalizeStoreState(StoreDto store, DateTime nowUtc) {
+        var normalized = new StoreDto {
+            ManualPauseActive = store.ManualPauseActive,
+            PausedUntilUtcTicks = Math.Max(0, store.PausedUntilUtcTicks),
+            PauseReason = NormalizeActivityText(store.PauseReason, MaxPauseReasonLength + 32),
+            BlockedPackIdsCustomized = store.BlockedPackIdsCustomized,
+            BlockedPackIds = NormalizeBlockedPackIds(store.BlockedPackIds),
+            TemporaryBlockedPacks = NormalizeTemporarySuppressions(
+                    store.TemporaryBlockedPacks,
+                    maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
+                    normalizeId: ToolPackBootstrap.NormalizePackId,
+                    StringComparer.OrdinalIgnoreCase,
+                    nowUtc.Ticks)
+                .Select(static item => new TemporarySuppressionStoreDto {
+                    Id = item.Id,
+                    ExpiresUtcTicks = item.ExpiresUtcTicks
+                })
+                .ToArray(),
+            BlockedThreadIdsCustomized = store.BlockedThreadIdsCustomized,
+            BlockedThreadIds = NormalizeBlockedThreadIds(store.BlockedThreadIds),
+            TemporaryBlockedThreads = NormalizeTemporarySuppressions(
+                    store.TemporaryBlockedThreads,
+                    maxIdLength: ChatRequestOptionLimits.MaxToolSelectorLength,
+                    normalizeId: NormalizeMaintenanceWindowThreadId,
+                    StringComparer.Ordinal,
+                    nowUtc.Ticks)
+                .Select(static item => new TemporarySuppressionStoreDto {
+                    Id = item.Id,
+                    ExpiresUtcTicks = item.ExpiresUtcTicks
+                })
+                .ToArray(),
+            MaintenanceWindowsCustomized = store.MaintenanceWindowsCustomized,
+            MaintenanceWindowSpecs = NormalizeMaintenanceWindowSpecs(store.MaintenanceWindowSpecs)
+        };
+
+        if (!normalized.ManualPauseActive) {
+            normalized.PausedUntilUtcTicks = 0;
+            normalized.PauseReason = string.Empty;
+        }
+
+        var expiredPauseRemoved = normalized.PausedUntilUtcTicks > 0
+            && (!TryGetUtcDateTimeFromTicks(normalized.PausedUntilUtcTicks, out var pausedUntilUtc)
+                || pausedUntilUtc <= nowUtc);
+        if (expiredPauseRemoved) {
+            normalized.ManualPauseActive = false;
+            normalized.PausedUntilUtcTicks = 0;
+            normalized.PauseReason = string.Empty;
+        }
+
+        store.Version = StoreVersion;
+        store.ManualPauseActive = normalized.ManualPauseActive;
+        store.PausedUntilUtcTicks = normalized.PausedUntilUtcTicks;
+        store.PauseReason = normalized.PauseReason;
+        store.BlockedPackIdsCustomized = normalized.BlockedPackIdsCustomized;
+        store.BlockedPackIds = normalized.BlockedPackIds;
+        store.TemporaryBlockedPacks = normalized.TemporaryBlockedPacks;
+        store.BlockedThreadIdsCustomized = normalized.BlockedThreadIdsCustomized;
+        store.BlockedThreadIds = normalized.BlockedThreadIds;
+        store.TemporaryBlockedThreads = normalized.TemporaryBlockedThreads;
+        store.MaintenanceWindowsCustomized = normalized.MaintenanceWindowsCustomized;
+        store.MaintenanceWindowSpecs = normalized.MaintenanceWindowSpecs;
+        return expiredPauseRemoved;
     }
 
     private void PersistStateNoThrow() {
@@ -1603,80 +1596,43 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
 
         var path = ResolveStorePath();
         lock (StoreLock) {
-            try {
-                if (!manualPauseActive
-                    && !blockedPackIdsCustomized
-                    && temporaryBlockedPacks.Length == 0
-                    && !blockedThreadIdsCustomized
-                    && temporaryBlockedThreads.Length == 0
-                    && !maintenanceWindowsCustomized) {
-                    TryDeleteStoreNoThrow(path);
-                    return;
-                }
-
-                var directory = Path.GetDirectoryName(path);
-                if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                    Directory.CreateDirectory(directory);
-                }
-
-                var store = new StoreDto {
-                    ManualPauseActive = manualPauseActive,
-                    PausedUntilUtcTicks = manualPauseActive ? Math.Max(0, pausedUntilUtcTicks) : 0,
-                    PauseReason = manualPauseActive ? NormalizeActivityText(pauseReason, MaxPauseReasonLength + 32) : string.Empty,
-                    BlockedPackIdsCustomized = blockedPackIdsCustomized,
-                    BlockedPackIds = blockedPackIdsCustomized ? blockedPackIds : Array.Empty<string>(),
-                    TemporaryBlockedPacks = temporaryBlockedPacks,
-                    BlockedThreadIdsCustomized = blockedThreadIdsCustomized,
-                    BlockedThreadIds = blockedThreadIdsCustomized ? blockedThreadIds : Array.Empty<string>(),
-                    TemporaryBlockedThreads = temporaryBlockedThreads,
-                    MaintenanceWindowsCustomized = maintenanceWindowsCustomized,
-                    MaintenanceWindowSpecs = maintenanceWindowsCustomized ? maintenanceWindowSpecs : Array.Empty<string>()
-                };
-                var json = JsonSerializer.Serialize(store, StoreJsonOptions);
-                string? tmp = null;
-                try {
-                    var fileName = Path.GetFileName(path);
-                    var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-                    tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
-
-                    using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                        TryHardenStoreAclNoThrow(tmp);
-                        using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                        writer.Write(json);
-                        writer.Flush();
-                        fs.Flush(true);
-                    }
-
-                    if (File.Exists(path)) {
-                        File.Replace(tmp, path, null, ignoreMetadataErrors: true);
-                    } else {
-                        File.Move(tmp, path);
-                    }
-
-                    TryHardenStoreAclNoThrow(path);
-                } finally {
-                    if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
-                        try {
-                            File.Delete(tmp);
-                        } catch {
-                            // Best effort only.
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                Trace.TraceWarning($"Background scheduler control state write failed: {ex.GetType().Name}: {ex.Message}");
-            }
+            var store = new StoreDto {
+                ManualPauseActive = manualPauseActive,
+                PausedUntilUtcTicks = manualPauseActive ? Math.Max(0, pausedUntilUtcTicks) : 0,
+                PauseReason = manualPauseActive ? NormalizeActivityText(pauseReason, MaxPauseReasonLength + 32) : string.Empty,
+                BlockedPackIdsCustomized = blockedPackIdsCustomized,
+                BlockedPackIds = blockedPackIdsCustomized ? blockedPackIds : Array.Empty<string>(),
+                TemporaryBlockedPacks = temporaryBlockedPacks,
+                BlockedThreadIdsCustomized = blockedThreadIdsCustomized,
+                BlockedThreadIds = blockedThreadIdsCustomized ? blockedThreadIds : Array.Empty<string>(),
+                TemporaryBlockedThreads = temporaryBlockedThreads,
+                MaintenanceWindowsCustomized = maintenanceWindowsCustomized,
+                MaintenanceWindowSpecs = maintenanceWindowsCustomized ? maintenanceWindowSpecs : Array.Empty<string>()
+            };
+            PersistNormalizedStore(path, store);
         }
     }
 
-    private static void TryDeleteStoreNoThrow(string path) {
-        try {
-            if (File.Exists(path)) {
-                File.Delete(path);
-            }
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Background scheduler control state clear failed: {ex.GetType().Name}: {ex.Message}");
+    private static void PersistNormalizedStore(string path, StoreDto store) {
+        if (!HasPersistableState(store)) {
+            ChatServiceJsonFileStore.Delete(path, StoreName);
+            return;
         }
+
+        ChatServiceJsonFileStore.Write(
+            path,
+            store,
+            static value => JsonSerializer.Serialize(value, StoreJsonOptions),
+            StoreName);
+    }
+
+    private static bool HasPersistableState(StoreDto store) {
+        return store.ManualPauseActive
+            || store.BlockedPackIdsCustomized
+            || store.TemporaryBlockedPacks.Length > 0
+            || store.BlockedThreadIdsCustomized
+            || store.TemporaryBlockedThreads.Length > 0
+            || store.MaintenanceWindowsCustomized;
     }
 
     private static bool TryGetUtcDateTimeFromTicks(long utcTicks, out DateTime value) {
@@ -1690,37 +1646,6 @@ internal sealed class ChatServiceBackgroundSchedulerControlState {
             return true;
         } catch (ArgumentOutOfRangeException) {
             return false;
-        }
-    }
-
-    private static void TryHardenStoreAclNoThrow(string path) {
-        if (string.IsNullOrWhiteSpace(path) || !OperatingSystem.IsWindows()) {
-            return;
-        }
-
-        try {
-            if (!File.Exists(path)) {
-                return;
-            }
-
-            var attrs = File.GetAttributes(path);
-            if ((attrs & FileAttributes.Directory) != 0) {
-                return;
-            }
-
-            var currentSid = WindowsIdentity.GetCurrent().User;
-            if (currentSid is null) {
-                return;
-            }
-
-            var fileInfo = new FileInfo(path);
-            var security = fileInfo.GetAccessControl();
-            security.SetOwner(currentSid);
-            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
-            security.SetAccessRule(new FileSystemAccessRule(currentSid, FileSystemRights.FullControl, AccessControlType.Allow));
-            fileInfo.SetAccessControl(security);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Background scheduler control state ACL hardening failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
