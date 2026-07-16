@@ -108,14 +108,14 @@ internal sealed partial class NativeChatWindow {
             Spacing = 2
         };
         _workspaceTitleText = new TextBlock {
-            Text = _selectedSidebarItem.WorkspaceTitle,
+            Text = _viewModel.ActiveConversation.Title,
             FontSize = 20,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = NativeControlBrushes.TextPrimary
         };
         stack.Children.Add(_workspaceTitleText);
         _workspaceSubtitleText = new TextBlock {
-            Text = _selectedSidebarItem.WorkspaceSubtitle,
+            Text = "New conversation",
             FontSize = 12,
             Foreground = NativeControlBrushes.TextSecondary
         };
@@ -127,9 +127,6 @@ internal sealed partial class NativeChatWindow {
             Orientation = Orientation.Horizontal,
             Spacing = 8
         };
-        actions.Children.Add(BuildStatusChip("Manual"));
-        actions.Children.Add(BuildStatusChip("AI assisted"));
-        actions.Children.Add(BuildStatusChip("Artifacts"));
         _exportButton = new Button {
             Content = "Export",
             MinWidth = 74,
@@ -141,20 +138,6 @@ internal sealed partial class NativeChatWindow {
         grid.Children.Add(actions);
         return shell;
     }
-
-    private static Border BuildStatusChip(string text) =>
-        new() {
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(9, 5, 9, 5),
-            Background = NativeControlBrushes.SurfaceMuted,
-            BorderBrush = NativeControlBrushes.Border,
-            BorderThickness = new Thickness(1),
-            Child = new TextBlock {
-                Text = text,
-                FontSize = 12,
-                Foreground = NativeControlBrushes.TextSecondary
-            }
-        };
 
     private void RenderTranscript() {
         if (_viewModel.Transcript.Count == 0) {
@@ -220,10 +203,6 @@ internal sealed partial class NativeChatWindow {
     }
 
     private string ResolveEmptyStateTitle() {
-        if (_sampleDataRequested) {
-            return "Sample investigation loaded";
-        }
-
         return _viewModel.AuthenticationState switch {
             NativeAuthenticationState.Checking => "Checking account and runtime",
             NativeAuthenticationState.SignedIn => "Ready for live chat",
@@ -234,10 +213,6 @@ internal sealed partial class NativeChatWindow {
     }
 
     private string ResolveEmptyStateBody() {
-        if (_sampleDataRequested) {
-            return "Assistant responses render as native text, tables, diagrams, evidence, and exportable artifacts.";
-        }
-
         return _viewModel.AuthenticationState switch {
             NativeAuthenticationState.Checking => "The native app is checking whether the chat service already has an authenticated account.",
             NativeAuthenticationState.SignedIn => "Ask a question, run a safe check, or request AD and Microsoft 365 evidence.",
@@ -248,10 +223,6 @@ internal sealed partial class NativeChatWindow {
     }
 
     private string ResolveEmptyStateDetail() {
-        if (_sampleDataRequested) {
-            return "Sample mode is ready for review.";
-        }
-
         return _viewModel.AuthenticationState switch {
             NativeAuthenticationState.SignedIn => "Pick a starter or type a request.",
             NativeAuthenticationState.Required => "Authentication is required before live requests can run.",
@@ -262,10 +233,6 @@ internal sealed partial class NativeChatWindow {
     }
 
     private FrameworkElement? BuildEmptyStateActions() {
-        if (_sampleDataRequested) {
-            return null;
-        }
-
         var stack = new StackPanel {
             Orientation = Orientation.Horizontal,
             Spacing = 8,

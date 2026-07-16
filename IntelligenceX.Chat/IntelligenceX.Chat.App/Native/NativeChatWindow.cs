@@ -12,9 +12,9 @@ namespace IntelligenceX.Chat.App.Native;
 /// Native WinUI chat shell used by the rebuild path.
 /// </summary>
 internal sealed partial class NativeChatWindow : Window {
-    private readonly NativeChatServiceTurnRunner _runner;
+    private readonly NativeChatServiceRuntime _runtime;
+    private readonly NativeConversationStateStore _conversationStore;
     private readonly NativeChatViewModel _viewModel;
-    private readonly bool _sampleDataRequested;
     private TextBox _composer = null!;
     private Button _sendButton = null!;
     private Button _stopButton = null!;
@@ -27,34 +27,29 @@ internal sealed partial class NativeChatWindow : Window {
     private TextBlock _runtimeStatusText = null!;
     private TextBlock _workspaceTitleText = null!;
     private TextBlock _workspaceSubtitleText = null!;
-    private StackPanel _sidebarItemsPanel = null!;
+    private ListView _sidebarItemsPanel = null!;
     private TextBox _sidebarSearchBox = null!;
-    private NativeSidebarItem _selectedSidebarItem = NativeSidebarItem.Default;
     private TextBlock _selectedContextText = null!;
     private ListView _transcriptList = null!;
     private Grid _emptyTranscriptHost = null!;
 
     public NativeChatWindow() {
         Title = "IntelligenceX Chat";
-        _runner = new NativeChatServiceTurnRunner(Environment.GetEnvironmentVariable("IXCHAT_SERVICE_PIPE"));
-        _viewModel = new NativeChatViewModel(_runner, DispatchToUiThread) {
+        _runtime = new NativeChatServiceRuntime(Environment.GetEnvironmentVariable("IXCHAT_SERVICE_PIPE"));
+        _conversationStore = new NativeConversationStateStore();
+        _viewModel = new NativeChatViewModel(_runtime, DispatchToUiThread, _conversationStore) {
             OpenLoginUrlAsync = OpenLoginUrlAsync,
             PromptForLoginInputAsync = PromptForLoginInputAsync
         };
-        _sampleDataRequested = IsSampleDataRequested();
-        SeedSampleTranscriptIfRequested();
 
         var root = BuildShell();
         Content = root;
         root.Loaded += async (_, _) => {
             StartupLog.Write("NativeChatWindow root loaded");
             ConfigureWindowPlacement();
-            if (_sampleDataRequested) {
-                _viewModel.SetHostStatus("Sample data loaded");
-                _viewModel.SetHostSignInText("Sample mode");
-            } else {
-                _ = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
-            }
+            await _viewModel.InitializeConversationsAsync().ConfigureAwait(true);
+            RefreshConversationChrome();
+            _ = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
 
             UpdateCommandState();
         };
@@ -76,16 +71,23 @@ internal sealed partial class NativeChatWindow : Window {
             if (args.PropertyName is nameof(NativeChatViewModel.Draft)) {
                 UpdateViewStateFromViewModel(refreshEmptyState: false);
             }
+
+            if (args.PropertyName is nameof(NativeChatViewModel.ActiveConversation)) {
+                RefreshConversationChrome();
+            }
         };
+        _viewModel.Conversations.CollectionChanged += (_, _) => RenderSidebarItems();
         _viewModel.Transcript.CollectionChanged += (_, _) => {
             RenderTranscript();
             ScrollTranscriptToEnd();
+            RefreshConversationChrome();
             UpdateCommandState();
         };
         UpdateCommandState();
 
         Closed += async (_, _) => {
-            await _runner.DisposeAsync().ConfigureAwait(false);
+            await _runtime.DisposeAsync().ConfigureAwait(false);
+            await _conversationStore.DisposeAsync().ConfigureAwait(false);
         };
     }
 
@@ -135,7 +137,9 @@ internal sealed partial class NativeChatWindow : Window {
             return;
         }
 
-        _ = dispatcher.TryEnqueue(() => action());
+        if (!dispatcher.TryEnqueue(() => action())) {
+            throw new InvalidOperationException("The native chat UI dispatcher is no longer available.");
+        }
     }
 
     private void ConfigureWindowPlacement() {

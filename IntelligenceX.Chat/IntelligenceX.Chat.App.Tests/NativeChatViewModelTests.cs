@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Native;
+using IntelligenceX.Chat.Client;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -16,13 +18,13 @@ public sealed class NativeChatViewModelTests {
     /// </summary>
     [Fact]
     public async Task SendDraftAsync_AppendsNativeTranscriptItemsAndSettlesAssistantText() {
-        var runner = new ScriptedRunner(async callbacks => {
-            await callbacks.Status("Thinking").ConfigureAwait(false);
-            await callbacks.Delta("Hello").ConfigureAwait(false);
-            await callbacks.Delta(" there").ConfigureAwait(false);
-            return new NativeChatTurnResult("Hello there.", "thread-1");
+        var runtime = new ScriptedRuntime(async updates => {
+            await updates.Status("Thinking").ConfigureAwait(false);
+            await updates.Delta("Hello").ConfigureAwait(false);
+            await updates.Delta(" there").ConfigureAwait(false);
+            return CreateTurnResult("Hello there.", "thread-1");
         });
-        var model = new NativeChatViewModel(runner) {
+        var model = new NativeChatViewModel(runtime) {
             Draft = "  say hello  "
         };
 
@@ -45,7 +47,7 @@ public sealed class NativeChatViewModelTests {
     /// </summary>
     [Fact]
     public async Task SendDraftAsync_IgnoresBlankPrompt() {
-        var model = new NativeChatViewModel(new ScriptedRunner(_ => Task.FromResult(new NativeChatTurnResult("", null)))) {
+        var model = new NativeChatViewModel(new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("", null)))) {
             Draft = "  "
         };
 
@@ -61,7 +63,7 @@ public sealed class NativeChatViewModelTests {
     /// </summary>
     [Fact]
     public async Task SendAsync_ReportsRunnerFailureInAssistantItem() {
-        var model = new NativeChatViewModel(new ScriptedRunner(_ => throw new InvalidOperationException("pipe unavailable")));
+        var model = new NativeChatViewModel(new ScriptedRuntime(_ => throw new InvalidOperationException("pipe unavailable")));
 
         var sent = await model.SendAsync("hello");
 
@@ -73,22 +75,40 @@ public sealed class NativeChatViewModelTests {
     }
 
     /// <summary>
-    /// Ensures provisional assistant text replaces the current draft instead of duplicating streamed fragments.
+    /// Ensures provisional snapshot fragments merge with deltas instead of duplicating the current draft.
     /// </summary>
     [Fact]
-    public async Task SendAsync_InterimReplacesStreamingDraft() {
-        var runner = new ScriptedRunner(async callbacks => {
-            await callbacks.Delta("Hello").ConfigureAwait(false);
-            await callbacks.Interim("Hello").ConfigureAwait(false);
-            return new NativeChatTurnResult("Hello final.", "thread-1");
+    public async Task SendAsync_ProvisionalSnapshotsMergeWithStreamingDraft() {
+        var runtime = new ScriptedRuntime(async updates => {
+            await updates.Delta("Hello").ConfigureAwait(false);
+            await updates.Provisional("Hello there").ConfigureAwait(false);
+            await updates.Provisional("Hello there.").ConfigureAwait(false);
+            return CreateTurnResult(string.Empty, "thread-1");
         });
-        var model = new NativeChatViewModel(runner);
+        var model = new NativeChatViewModel(runtime);
 
         var sent = await model.SendAsync("hello");
 
         Assert.True(sent);
-        Assert.Equal("Hello final.", model.Transcript[1].Text);
-        Assert.DoesNotContain("HelloHello", model.Transcript[1].Text, StringComparison.Ordinal);
+        Assert.Equal("Hello there.", model.Transcript[1].Text);
+    }
+
+    /// <summary>
+    /// Ensures a separate review snapshot does not erase a live streamed answer before the final response.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_UnrelatedInterimSnapshotDoesNotOverwriteStreamingDraft() {
+        var runtime = new ScriptedRuntime(async updates => {
+            await updates.Delta("Live streamed answer").ConfigureAwait(false);
+            await updates.Interim("Separate review snapshot").ConfigureAwait(false);
+            return CreateTurnResult(string.Empty, "thread-1");
+        });
+        var model = new NativeChatViewModel(runtime);
+
+        var sent = await model.SendAsync("hello");
+
+        Assert.True(sent);
+        Assert.Equal("Live streamed answer", model.Transcript[1].Text);
     }
 
     /// <summary>
@@ -96,17 +116,17 @@ public sealed class NativeChatViewModelTests {
     /// </summary>
     [Fact]
     public async Task CancelActiveTurn_ForwardsCancelRequestToRunner() {
-        var runner = new CancelableRunner();
-        var model = new NativeChatViewModel(runner);
+        var runtime = new CancelableRuntime();
+        var model = new NativeChatViewModel(runtime);
 
         var sendTask = model.SendAsync("long task");
-        await runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await runtime.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         model.CancelActiveTurn();
 
         await sendTask;
-        var canceledRequestId = await runner.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(runner.Requests[0].RequestId, canceledRequestId);
+        var canceledRequestId = await runtime.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(runtime.Requests[0].RequestId, canceledRequestId);
         Assert.Equal("Canceled", model.StatusText);
     }
 
@@ -116,7 +136,7 @@ public sealed class NativeChatViewModelTests {
     [Fact]
     public async Task CheckSignInAsync_UpdatesSignInText() {
         var model = new NativeChatViewModel(
-            new ScriptedRunner(_ => Task.FromResult(new NativeChatTurnResult("", null))) {
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("", null))) {
                 EnsureLoginHandler = _ => Task.FromResult(new NativeLoginResult(true, "user@example.com"))
             });
 
@@ -135,7 +155,7 @@ public sealed class NativeChatViewModelTests {
     [Fact]
     public async Task CheckSignInAsync_ReportsRequiredAuthenticationState() {
         var model = new NativeChatViewModel(
-            new ScriptedRunner(_ => Task.FromResult(new NativeChatTurnResult("", null))) {
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("", null))) {
                 EnsureLoginHandler = _ => Task.FromResult(new NativeLoginResult(false, null))
             });
 
@@ -145,6 +165,8 @@ public sealed class NativeChatViewModelTests {
         Assert.Equal("Sign-in required", model.SignInText);
         Assert.Equal(NativeAuthenticationState.Required, model.AuthenticationState);
         Assert.True(model.CanStartSignIn);
+        model.Draft = "must not run";
+        Assert.False(model.CanSend);
     }
 
     /// <summary>
@@ -153,7 +175,7 @@ public sealed class NativeChatViewModelTests {
     [Fact]
     public async Task CheckSignInAsync_ReportsFailedAuthenticationState() {
         var model = new NativeChatViewModel(
-            new ScriptedRunner(_ => Task.FromResult(new NativeChatTurnResult("", null))) {
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("", null))) {
                 EnsureLoginHandler = _ => Task.FromResult(new NativeLoginResult(false, null, "device code expired"))
             });
 
@@ -164,6 +186,8 @@ public sealed class NativeChatViewModelTests {
         Assert.Equal(NativeAuthenticationState.Failed, model.AuthenticationState);
         Assert.Equal("Sign-in failed: device code expired", model.StatusText);
         Assert.True(model.CanStartSignIn);
+        model.Draft = "must not run";
+        Assert.False(model.CanSend);
     }
 
     /// <summary>
@@ -173,14 +197,14 @@ public sealed class NativeChatViewModelTests {
     public async Task StartSignInAsync_UsesLoginCallbacksAndUpdatesState() {
         Uri? opened = null;
         NativeLoginPrompt? prompt = null;
-        var runner = new ScriptedRunner(_ => Task.FromResult(new NativeChatTurnResult("", null))) {
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("", null))) {
             StartLoginHandler = callbacks => {
                 _ = callbacks.OpenUrl(new Uri("https://example.test/login"));
                 _ = callbacks.PromptForInput(new NativeLoginPrompt("login-1", "prompt-1", "Paste code"));
                 return Task.FromResult(new NativeLoginResult(true, null));
             }
         };
-        var model = new NativeChatViewModel(runner) {
+        var model = new NativeChatViewModel(runtime) {
             OpenLoginUrlAsync = uri => {
                 opened = uri;
                 return Task.CompletedTask;
@@ -199,6 +223,55 @@ public sealed class NativeChatViewModelTests {
         Assert.Equal("Signed in", model.SignInText);
         Assert.Equal(NativeAuthenticationState.SignedIn, model.AuthenticationState);
         Assert.False(model.CanStartSignIn);
+    }
+
+    /// <summary>
+    /// Ensures selecting a persisted conversation restores its transcript and service thread context.
+    /// </summary>
+    [Fact]
+    public async Task SelectConversationAsync_RestoresTranscriptAndUsesConversationThread() {
+        var first = new NativeConversation(
+            "chat-first",
+            "First chat",
+            "thread-first",
+            messages: new[] { new NativeChatTranscriptItem("user", "Earlier question", DateTimeOffset.UtcNow) });
+        var second = new NativeConversation("chat-second", "Second chat", "thread-second");
+        var store = new FakeConversationStore(new NativeConversationWorkspace(new[] { first, second }, second.Id));
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("Answer", "thread-first-next")));
+        var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await model.InitializeConversationsAsync();
+
+        var selected = await model.SelectConversationAsync(first.Id);
+        var sent = await model.SendAsync("Follow up");
+
+        Assert.True(selected);
+        Assert.True(sent);
+        Assert.Equal("Earlier question", model.Transcript[0].Text);
+        Assert.Equal("thread-first", Assert.Single(runtime.Requests).ThreadId);
+        Assert.Equal("thread-first-next", first.ThreadId);
+        Assert.True(store.SaveCount >= 2);
+        Assert.Equal(first.Id, store.LastSaved?.ActiveConversationId);
+    }
+
+    /// <summary>
+    /// Ensures a new chat is a real empty persisted conversation rather than a canned workspace.
+    /// </summary>
+    [Fact]
+    public async Task CreateConversationAsync_CreatesAndPersistsEmptyActiveConversation() {
+        var existing = new NativeConversation("chat-existing", "Existing chat");
+        var store = new FakeConversationStore(new NativeConversationWorkspace(new[] { existing }, existing.Id));
+        var model = new NativeChatViewModel(
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult(string.Empty, null))),
+            conversationStore: store);
+        await model.InitializeConversationsAsync();
+
+        var created = await model.CreateConversationAsync();
+
+        Assert.True(created);
+        Assert.Equal("New Chat", model.ActiveConversation.Title);
+        Assert.Empty(model.Transcript);
+        Assert.Equal(model.ActiveConversation.Id, store.LastSaved?.ActiveConversationId);
+        Assert.Equal(2, store.LastSaved?.Conversations.Count);
     }
 
     /// <summary>
@@ -259,14 +332,22 @@ public sealed class NativeChatViewModelTests {
         Assert.Contains("| svc-sync | High |", markdown, StringComparison.Ordinal);
     }
 
-    private sealed class ScriptedRunner : INativeChatTurnRunner {
-        private readonly Func<NativeChatTurnCallbacks, Task<NativeChatTurnResult>> _handler;
+    private static ChatTurnRunResult CreateTurnResult(string text, string? threadId) =>
+        new(new ChatResultMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "test-result",
+            ThreadId = threadId ?? string.Empty,
+            Text = text
+        }, null);
 
-        public ScriptedRunner(Func<NativeChatTurnCallbacks, Task<NativeChatTurnResult>> handler) {
+    private sealed class ScriptedRuntime : INativeChatRuntime {
+        private readonly Func<TestTurnUpdates, Task<ChatTurnRunResult>> _handler;
+
+        public ScriptedRuntime(Func<TestTurnUpdates, Task<ChatTurnRunResult>> handler) {
             _handler = handler;
         }
 
-        public List<NativeChatTurnRequest> Requests { get; } = new();
+        public List<ChatRequest> Requests { get; } = new();
 
         public Func<Func<string, Task>, Task<NativeLoginResult>> EnsureLoginHandler { get; init; } =
             _ => Task.FromResult(new NativeLoginResult(false, null));
@@ -274,16 +355,16 @@ public sealed class NativeChatViewModelTests {
         public Func<NativeLoginCallbacks, Task<NativeLoginResult>> StartLoginHandler { get; init; } =
             _ => Task.FromResult(new NativeLoginResult(false, null));
 
-        public async Task<NativeChatTurnResult> SendAsync(
-            NativeChatTurnRequest request,
-            NativeChatTurnCallbacks callbacks,
+        public async Task<ChatTurnRunResult> RunTurnAsync(
+            ChatRequest request,
+            Func<ChatTurnUpdate, CancellationToken, ValueTask>? onUpdate,
             CancellationToken cancellationToken) {
             Requests.Add(request);
             cancellationToken.ThrowIfCancellationRequested();
-            return await _handler(callbacks).ConfigureAwait(false);
+            return await _handler(new TestTurnUpdates(onUpdate, cancellationToken)).ConfigureAwait(false);
         }
 
-        public Task CancelAsync(string requestId, CancellationToken cancellationToken) {
+        public Task CancelTurnAsync(string requestId, CancellationToken cancellationToken) {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.CompletedTask;
         }
@@ -303,24 +384,50 @@ public sealed class NativeChatViewModelTests {
         }
     }
 
-    private sealed class CancelableRunner : INativeChatTurnRunner {
-        public List<NativeChatTurnRequest> Requests { get; } = new();
+    private sealed class FakeConversationStore : INativeConversationStore {
+        private readonly NativeConversationWorkspace _workspace;
+
+        public FakeConversationStore(NativeConversationWorkspace workspace) {
+            _workspace = workspace;
+        }
+
+        public int SaveCount { get; private set; }
+
+        public NativeConversationWorkspace? LastSaved { get; private set; }
+
+        public Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(_workspace);
+        }
+
+        public Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+            SaveCount++;
+            LastSaved = workspace;
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class CancelableRuntime : INativeChatRuntime {
+        public List<ChatRequest> Requests { get; } = new();
 
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource<string> Canceled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public async Task<NativeChatTurnResult> SendAsync(
-            NativeChatTurnRequest request,
-            NativeChatTurnCallbacks callbacks,
+        public async Task<ChatTurnRunResult> RunTurnAsync(
+            ChatRequest request,
+            Func<ChatTurnUpdate, CancellationToken, ValueTask>? onUpdate,
             CancellationToken cancellationToken) {
             Requests.Add(request);
             Started.TrySetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
-            return new NativeChatTurnResult(string.Empty, null);
+            return CreateTurnResult(string.Empty, null);
         }
 
-        public Task CancelAsync(string requestId, CancellationToken cancellationToken) {
+        public Task CancelTurnAsync(string requestId, CancellationToken cancellationToken) {
             cancellationToken.ThrowIfCancellationRequested();
             Canceled.TrySetResult(requestId);
             return Task.CompletedTask;
@@ -335,5 +442,49 @@ public sealed class NativeChatViewModelTests {
             NativeLoginCallbacks callbacks,
             CancellationToken cancellationToken) =>
             Task.FromResult(new NativeLoginResult(false, null));
+    }
+
+    private sealed class TestTurnUpdates {
+        private readonly Func<ChatTurnUpdate, CancellationToken, ValueTask>? _callback;
+        private readonly CancellationToken _cancellationToken;
+
+        public TestTurnUpdates(
+            Func<ChatTurnUpdate, CancellationToken, ValueTask>? callback,
+            CancellationToken cancellationToken) {
+            _callback = callback;
+            _cancellationToken = cancellationToken;
+        }
+
+        public ValueTask Status(string message) => PublishAsync(new ChatTurnStatusUpdate(new ChatStatusMessage {
+            Kind = ChatServiceMessageKind.Event,
+            RequestId = "test-request",
+            ThreadId = "test-thread",
+            Status = "thinking",
+            Message = message
+        }));
+
+        public ValueTask Delta(string text) => PublishAsync(new ChatTurnDeltaUpdate(new ChatDeltaMessage {
+            Kind = ChatServiceMessageKind.Event,
+            RequestId = "test-request",
+            ThreadId = "test-thread",
+            Text = text
+        }));
+
+        public ValueTask Provisional(string text) => PublishAsync(new ChatTurnProvisionalUpdate(new ChatAssistantProvisionalMessage {
+            Kind = ChatServiceMessageKind.Event,
+            RequestId = "test-request",
+            ThreadId = "test-thread",
+            Text = text
+        }));
+
+        public ValueTask Interim(string text) => PublishAsync(new ChatTurnInterimUpdate(new ChatInterimResultMessage {
+            Kind = ChatServiceMessageKind.Event,
+            RequestId = "test-request",
+            ThreadId = "test-thread",
+            Text = text
+        }));
+
+        private ValueTask PublishAsync(ChatTurnUpdate update) =>
+            _callback is null ? ValueTask.CompletedTask : _callback(update, _cancellationToken);
     }
 }

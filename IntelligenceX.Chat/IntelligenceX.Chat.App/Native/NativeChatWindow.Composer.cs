@@ -117,12 +117,12 @@ internal sealed partial class NativeChatWindow {
     private void UpdateCommandState() {
         _sendButton.IsEnabled = _viewModel.CanSend;
         _stopButton.IsEnabled = _viewModel.CanStop;
-        _checkSignInButton.IsEnabled = !_sampleDataRequested && _viewModel.CanCheckSignIn;
-        _signInButton.IsEnabled = !_sampleDataRequested && _viewModel.CanStartSignIn;
-        _checkSignInButton.Visibility = _sampleDataRequested ? Visibility.Collapsed : Visibility.Visible;
-        _signInButton.Visibility = _sampleDataRequested ? Visibility.Collapsed : Visibility.Visible;
+        _checkSignInButton.IsEnabled = _viewModel.CanCheckSignIn;
+        _signInButton.IsEnabled = _viewModel.CanStartSignIn;
+        _checkSignInButton.Visibility = Visibility.Visible;
+        _signInButton.Visibility = Visibility.Visible;
         _signInStatusChip.Visibility = Visibility.Visible;
-        _runtimeStatusChip.Visibility = _sampleDataRequested ? Visibility.Collapsed : Visibility.Visible;
+        _runtimeStatusChip.Visibility = Visibility.Visible;
         _exportButton.IsEnabled = _viewModel.Transcript.Count > 0;
     }
 

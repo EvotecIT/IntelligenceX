@@ -1,24 +1,18 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Client;
 
 namespace IntelligenceX.Chat.App.Native;
 
-internal sealed record NativeChatTurnRequest(string RequestId, string Text, string? ThreadId);
-
-internal sealed record NativeChatTurnResult(string Text, string? ThreadId);
-
 internal sealed record NativeLoginPrompt(string LoginId, string PromptId, string PromptText);
 
-internal sealed record NativeLoginResult(bool IsAuthenticated, string? AccountId, string? Error = null);
-
-internal sealed class NativeChatTurnCallbacks {
-    public Func<string, Task> Status { get; init; } = _ => Task.CompletedTask;
-
-    public Func<string, Task> Delta { get; init; } = _ => Task.CompletedTask;
-
-    public Func<string, Task> Interim { get; init; } = _ => Task.CompletedTask;
-}
+internal sealed record NativeLoginResult(
+    bool IsAuthenticated,
+    string? AccountId,
+    string? Error = null,
+    bool IsCanceled = false);
 
 internal sealed class NativeLoginCallbacks {
     public Func<string, Task> Status { get; init; } = _ => Task.CompletedTask;
@@ -29,15 +23,15 @@ internal sealed class NativeLoginCallbacks {
 }
 
 /// <summary>
-/// Boundary between the native WinUI shell and the chat runtime.
+/// Native-only authentication additions over the shared chat runtime contract.
 /// </summary>
-internal interface INativeChatTurnRunner {
-    Task<NativeChatTurnResult> SendAsync(
-        NativeChatTurnRequest request,
-        NativeChatTurnCallbacks callbacks,
+internal interface INativeChatRuntime {
+    Task<ChatTurnRunResult> RunTurnAsync(
+        ChatRequest request,
+        Func<ChatTurnUpdate, CancellationToken, ValueTask>? onUpdate,
         CancellationToken cancellationToken);
 
-    Task CancelAsync(
+    Task CancelTurnAsync(
         string requestId,
         CancellationToken cancellationToken);
 
