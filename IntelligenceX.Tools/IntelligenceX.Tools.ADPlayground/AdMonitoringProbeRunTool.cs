@@ -62,24 +62,36 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
         var targets = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("targets"));
         if (!string.IsNullOrWhiteSpace(domainController)) {
             includeDomainControllers.Add(domainController!);
-            if (targets.Count == 0) {
+            if (targets.Count == 0 && !string.Equals(normalizedKind, SqlServerProbeKind, StringComparison.OrdinalIgnoreCase)) {
                 targets.Add(domainController!);
             }
         }
 
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", DefaultTimeoutMs, 200, MaxTimeoutMs);
+        var timeoutMs = ToolArgs.GetCappedInt32(
+            arguments,
+            "timeout_ms",
+            ResolveDefaultTimeoutMs(normalizedKind, DefaultTimeoutMs),
+            200,
+            MaxTimeoutMs);
         var retries = ToolArgs.GetCappedInt32(arguments, "retries", DefaultRetries, 0, MaxRetries);
         var retryDelayMs = ToolArgs.GetCappedInt32(arguments, "retry_delay_ms", DefaultRetryDelayMs, 0, MaxRetryDelayMs);
-        var maxConcurrency = ToolArgs.GetCappedInt32(arguments, "max_concurrency", DefaultMaxConcurrency, 1, MaxConcurrency);
+        var maxConcurrency = ToolArgs.GetCappedInt32(
+            arguments,
+            "max_concurrency",
+            ResolveDefaultMaxConcurrency(normalizedKind, DefaultMaxConcurrency),
+            1,
+            MaxConcurrency);
         var includeChildren = ToolArgs.GetBoolean(arguments, "include_children", defaultValue: true);
         var skipRodc = ToolArgs.GetBoolean(arguments, "skip_rodc", defaultValue: false);
         var includeTrusts = ToolArgs.GetBoolean(arguments, "include_trusts", defaultValue: false);
         var splitProtocolResults = ToolArgs.GetBoolean(arguments, "split_protocol_results", defaultValue: false);
-        var defaultDiscoveryFallback =
-            string.Equals(normalizedKind, "replication", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(normalizedKind, "directory", StringComparison.OrdinalIgnoreCase)
-            ? DirectoryDiscoveryFallback.CurrentForest
-            : DirectoryDiscoveryFallback.CurrentDomain;
+        var usesEngineOwnedTargetResolution = IsEngineOwnedTargetResolutionProbe(normalizedKind);
+        var defaultDiscoveryFallback = usesEngineOwnedTargetResolution
+            ? DirectoryDiscoveryFallback.None
+            : (string.Equals(normalizedKind, "replication", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedKind, "directory", StringComparison.OrdinalIgnoreCase)
+                ? DirectoryDiscoveryFallback.CurrentForest
+                : DirectoryDiscoveryFallback.CurrentDomain);
         var discoveryFallback = ToolEnumBinders.ParseOrDefault(
             value: ToolArgs.GetOptionalTrimmed(arguments, "discovery_fallback"),
             map: DiscoveryFallbackModes,
@@ -87,18 +99,20 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
         var timeout = TimeSpan.FromMilliseconds(timeoutMs);
         var retryDelay = TimeSpan.FromMilliseconds(retryDelayMs);
 
-        var resolvedTargets = ResolveDirectoryTargets(
-            explicitTargets: targets,
-            forestName: forestName,
-            domainName: domainName,
-            includeDomains: includeDomains,
-            excludeDomains: excludeDomains,
-            includeDomainControllers: includeDomainControllers,
-            excludeDomainControllers: excludeDomainControllers,
-            skipRodc: skipRodc,
-            includeTrusts: includeTrusts,
-            fallback: discoveryFallback,
-            cancellationToken: cancellationToken);
+        var resolvedTargets = usesEngineOwnedTargetResolution
+            ? targets
+            : ResolveDirectoryTargets(
+                explicitTargets: targets,
+                forestName: forestName,
+                domainName: domainName,
+                includeDomains: includeDomains,
+                excludeDomains: excludeDomains,
+                includeDomainControllers: includeDomainControllers,
+                excludeDomainControllers: excludeDomainControllers,
+                skipRodc: skipRodc,
+                includeTrusts: includeTrusts,
+                fallback: discoveryFallback,
+                cancellationToken: cancellationToken);
 
         ProbeResult result;
         try {
@@ -139,6 +153,28 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                 case "windows_update":
                     result = await RunWindowsUpdateAsync().ConfigureAwait(false);
                     break;
+                case AdfsProbeKind:
+                case EntraConnectProbeKind:
+                case SqlServerProbeKind:
+                case WindowsBackupProbeKind:
+                    result = await RunEnterpriseProbeAsync(
+                            normalizedKind: normalizedKind,
+                            arguments: arguments,
+                            name: name!,
+                            resolvedTargets: resolvedTargets,
+                            domainName: domainName,
+                            forestName: forestName,
+                            includeDomains: includeDomains,
+                            excludeDomains: excludeDomains,
+                            includeTrusts: includeTrusts,
+                            domainController: domainController,
+                            timeout: timeout,
+                            retries: retries,
+                            retryDelay: retryDelay,
+                            maxConcurrency: maxConcurrency,
+                            cancellationToken: cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
                 default:
                     return Error("invalid_argument", "Unsupported probe_kind.");
             }
@@ -146,6 +182,7 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             return ErrorFromException(ex, defaultMessage: "Monitoring probe execution failed.");
         }
 
+        var effectiveTargets = ResolveChainTargets(resolvedTargets, result);
         if (!includeChildren) {
             result.Children = null;
         }
@@ -159,7 +196,7 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             directoryProbeKind: directoryProbeKind,
             arguments: arguments,
             result: result,
-            resolvedTargets: resolvedTargets,
+            resolvedTargets: effectiveTargets,
             domainName: domainName,
             forestName: forestName,
             includeTrusts: includeTrusts,
@@ -168,7 +205,7 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             normalizedKind: normalizedKind,
             directoryProbeKind: directoryProbeKind,
             arguments: arguments,
-            resolvedTargets: resolvedTargets,
+            resolvedTargets: effectiveTargets,
             domainName: domainName,
             forestName: forestName);
         var model = new {

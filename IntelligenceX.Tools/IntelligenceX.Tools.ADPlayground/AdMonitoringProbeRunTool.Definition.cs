@@ -15,6 +15,10 @@ using MonitoringDnsProtocol = ADPlayground.Monitoring.Probes.Dns.DnsProtocol;
 namespace IntelligenceX.Tools.ADPlayground;
 
 public sealed partial class AdMonitoringProbeRunTool {
+    private const string AdfsProbeKind = "adfs";
+    private const string EntraConnectProbeKind = "entra_connect";
+    private const string SqlServerProbeKind = "sql_server";
+    private const string WindowsBackupProbeKind = "windows_backup";
     private const int DefaultTimeoutMs = 5000;
     private const int MaxTimeoutMs = 300_000;
     private const int DefaultMaxConcurrency = 4;
@@ -37,7 +41,11 @@ public sealed partial class AdMonitoringProbeRunTool {
         "adws",
         "directory",
         "ping",
-        "windows_update"
+        "windows_update",
+        AdfsProbeKind,
+        EntraConnectProbeKind,
+        SqlServerProbeKind,
+        WindowsBackupProbeKind
     };
 
     private static readonly string[] DirectoryProbeKinds = {
@@ -96,14 +104,14 @@ public sealed partial class AdMonitoringProbeRunTool {
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_monitoring_probe_run",
-        "Run an AD monitoring probe through ADPlayground.Monitoring (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping/windows_update) with optional domain/forest/DC scoping.",
+        "Run an AD monitoring probe through ADPlayground.Monitoring, including AD FS, Entra Connect, SQL Server, and Windows Backup probes, with probe-appropriate target discovery.",
         ToolSchema.Object(
-                ("probe_kind", ToolSchema.String("Probe kind to execute.").Enum("ldap", "dns", "kerberos", "ntp", "replication", "port", "https", "dns_service", "adws", "directory", "ping", "windows_update")),
-                ("directory_probe_kind", ToolSchema.String("Directory probe kind (required when probe_kind=directory).").Enum("root_dse", "dns_registration", "srv_coverage", "fsmo", "sysvol_gpt", "netlogon_share", "dns_soa", "ldap_search", "gc_readiness", "client_path", "rpc_endpoint", "share_permissions")),
+                ("probe_kind", ToolSchema.String("Probe kind to execute.").Enum(ProbeKinds)),
+                ("directory_probe_kind", ToolSchema.String("Directory probe kind (required when probe_kind=directory).").Enum(DirectoryProbeKinds)),
                 ("name", ToolSchema.String("Optional probe execution name. If omitted, a generated name is used.")),
-                ("targets", ToolSchema.Array(ToolSchema.String(), "Optional explicit target hosts. When omitted, AD discovery can be used via domain/forest/include filters.")),
+                ("targets", ToolSchema.Array(ToolSchema.String(), "Optional explicit target hosts. When omitted, only probe kinds that support discovery derive targets from domain/forest/include filters.")),
                 ("url", ToolSchema.String("HTTPS only: optional endpoint URL/host/host:port.")),
-                ("domain_controller", ToolSchema.String("Optional single DC host shortcut. If set and targets are omitted, this DC is used as target.")),
+                ("domain_controller", ToolSchema.String("Optional DC host shortcut. Directory probes can use it as a target; SQL Server SPN discovery uses it only as the LDAP discovery server.")),
                 ("domain_name", ToolSchema.String("Optional DNS domain scope used for discovery and probe defaults.")),
                 ("forest_name", ToolSchema.String("Optional forest scope used for discovery.")),
                 ("include_domains", ToolSchema.Array(ToolSchema.String(), "Optional include-domain filter for discovery.")),
@@ -140,11 +148,11 @@ public sealed partial class AdMonitoringProbeRunTool {
                 ("test_ping", ToolSchema.Boolean("Replication only: include ICMP ping check details.")),
                 ("query_mode", ToolSchema.String("Replication only: data source mode.").Enum("auto", "drsr", "sda")),
                 ("include_children", ToolSchema.Boolean("When false, omits nested child results in raw probe_result while keeping parent status.")),
-                ("port", ToolSchema.Integer("Optional port override for adws/https/directory checks.")),
+                ("port", ToolSchema.Integer("Optional port override for adws/https/directory/AD FS/SQL Server checks.")),
                 ("path", ToolSchema.String("ADWS only: endpoint path override.")),
                 ("request_timeout_ms", ToolSchema.Integer("ADWS only: request timeout override (ms).")),
-                ("bind_identity", ToolSchema.String("ADWS and directory LDAP checks: optional bind identity.")),
-                ("bind_secret", ToolSchema.String("ADWS and directory LDAP checks: optional bind secret.")),
+                ("bind_identity", ToolSchema.String("ADWS, directory LDAP, and SQL SPN discovery: optional bind identity.")),
+                ("bind_secret", ToolSchema.String("ADWS, directory LDAP, and SQL SPN discovery: optional secret reference for the bind identity.")),
                 ("tcp_ports", ToolSchema.Array(ToolSchema.Integer(), "Port probe only: explicit TCP ports.")),
                 ("udp_ports", ToolSchema.Array(ToolSchema.Integer(), "Port probe only: explicit UDP ports.")),
                 ("use_ad_core_profile", ToolSchema.Boolean("Port probe only: use built-in AD TCP profile when tcp_ports is empty. Default true.")),
@@ -155,6 +163,20 @@ public sealed partial class AdMonitoringProbeRunTool {
                 ("latency_threshold_ms", ToolSchema.Integer("Ping probe only: latency threshold for degraded status.")),
                 ("p95_latency_threshold_ms", ToolSchema.Integer("Ping probe only: p95 latency threshold for degraded status.")),
                 ("loss_threshold_percent", ToolSchema.Integer("Ping probe only: loss threshold percent for degraded status (0-100).")),
+                ("adfs_monitor_web_application_proxy", ToolSchema.Boolean("AD FS only: also inspect Web Application Proxy service state.")),
+                ("adfs_federation_service_host", ToolSchema.String("AD FS only: optional federation service host for metadata and TLS checks.")),
+                ("adfs_check_federation_metadata", ToolSchema.Boolean("AD FS only: require the federation metadata endpoint. Default true.")),
+                ("sql_discover_from_active_directory", ToolSchema.Boolean("SQL Server only: discover instances from MSSQLSvc SPNs instead of treating domain controllers as SQL targets.")),
+                ("sql_database", ToolSchema.String("SQL Server only: database used for connection-level checks. Default master.")),
+                ("sql_integrated_security", ToolSchema.Boolean("SQL Server only: use the current process identity. Default true.")),
+                ("sql_username", ToolSchema.String("SQL Server only: login name when integrated security is false.")),
+                ("sql_password_secret", ToolSchema.String("SQL Server only: secret reference for the SQL login (for example env:VARIABLE_NAME).")),
+                ("sql_trust_server_certificate", ToolSchema.Boolean("SQL Server only: trust the server certificate while keeping encryption enabled.")),
+                ("sql_check_services", ToolSchema.Boolean("SQL Server only: include related Windows service checks. Default true.")),
+                ("sql_include_system_databases", ToolSchema.Boolean("SQL Server only: include system databases in health checks.")),
+                ("sql_include_agent_jobs", ToolSchema.Boolean("SQL Server only: include SQL Agent job health. Default true.")),
+                ("sql_include_wait_statistics", ToolSchema.Boolean("SQL Server only: include wait statistics.")),
+                ("sql_include_availability_groups", ToolSchema.Boolean("SQL Server only: include Availability Group health.")),
                 ("degraded_above_ms", ToolSchema.Integer("HTTPS/directory checks: degraded threshold in milliseconds.")),
                 ("directory_search_base", ToolSchema.String("Directory LDAP search probe: search base DN.")),
                 ("directory_filter", ToolSchema.String("Directory LDAP search probe: LDAP filter.")),

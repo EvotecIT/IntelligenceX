@@ -14,7 +14,7 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_monitoring_probe_catalog",
-        "List available AD monitoring probe kinds (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping/windows_update) with scope and argument hints.",
+        "List available AD monitoring probe kinds, including AD FS, Entra Connect, SQL Server, and Windows Backup, with target and argument hints.",
         ToolSchema.Object().NoAdditionalProperties());
 
     /// <summary>
@@ -127,7 +127,30 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
                     keyArguments: new[] { "domain_name", "targets", "domain_controller", "require_wsus", "max_concurrency", "discovery_fallback" },
                     preferredFollowUpTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry", "system_updates_installed", "system_patch_compliance", "system_info" },
                     followUpProfiles: CreateWindowsUpdateFollowUpProfiles(),
-                    resultSignalProfiles: CreateWindowsUpdateResultSignalProfiles())
+                    resultSignalProfiles: CreateWindowsUpdateResultSignalProfiles()),
+                CreateProbeKind(
+                    probeKind: "adfs",
+                    summary: "AD FS service, federation metadata, TLS certificate, and event telemetry checks.",
+                    keyArguments: new[] { "targets", "adfs_federation_service_host", "adfs_monitor_web_application_proxy", "adfs_check_federation_metadata", "verify_certificate", "port", "timeout_ms" },
+                    preferredFollowUpTools: new[] { "system_service_list", "system_tls_posture", "system_certificate_posture", "system_info" },
+                    supportsScopeDiscovery: false),
+                CreateProbeKind(
+                    probeKind: "entra_connect",
+                    summary: "Microsoft Entra Connect Sync service and event telemetry checks.",
+                    keyArguments: new[] { "targets", "timeout_ms", "max_concurrency" },
+                    preferredFollowUpTools: new[] { "system_service_list", "system_info", "system_metrics_summary" },
+                    supportsScopeDiscovery: false),
+                CreateProbeKind(
+                    probeKind: "sql_server",
+                    summary: "SQL Server discovery, connectivity, service, database, backup, CHECKDB, Agent, and performance checks.",
+                    keyArguments: new[] { "targets", "sql_discover_from_active_directory", "domain_name", "forest_name", "include_domains", "exclude_domains", "include_trusts", "domain_controller", "bind_identity", "bind_secret", "sql_database", "sql_integrated_security", "sql_username", "sql_password_secret", "port", "sql_trust_server_certificate" },
+                    preferredFollowUpTools: new[] { "system_service_list", "system_ports_list", "system_metrics_summary", "system_info" }),
+                CreateProbeKind(
+                    probeKind: "windows_backup",
+                    summary: "Windows Server Backup freshness and failure telemetry checks.",
+                    keyArguments: new[] { "targets", "timeout_ms", "max_concurrency" },
+                    preferredFollowUpTools: new[] { "system_backup_posture", "system_service_list", "system_info" },
+                    supportsScopeDiscovery: false)
             },
             PreferredExecutionTool = "ad_monitoring_probe_run",
             PreferredStateTools = new[] {
@@ -154,7 +177,7 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
 
         var summary = ToolMarkdown.SummaryText(
             title: "AD Monitoring Probe Catalog",
-            "Use `ad_monitoring_probe_run` with `probe_kind` set to one of: ldap, dns, kerberos, ntp, replication, port, https, dns_service, adws, directory, ping, windows_update.",
+            "Use `ad_monitoring_probe_run` with a probe kind from this catalog. AD FS, Entra Connect, and Windows Backup require explicit targets; SQL Server accepts explicit targets or MSSQLSvc SPN discovery.",
             "Prefer `domain_controller` for single-server diagnostics, `domain_name` for domain-wide checks, and `discovery_fallback=current_forest` for forest-level discovery.",
             "LDAP probe rows already carry LDAPS certificate signal; for LDAP certificate questions, prefer the LDAP probe or `ad_ldap_diagnostics` again rather than a general host certificate-store query.",
             "For persisted monitoring-service health, use `ad_monitoring_service_heartbeat_get`, `ad_monitoring_diagnostics_get`, `ad_monitoring_metrics_get`, or `ad_monitoring_dashboard_state_get`.");
@@ -167,13 +190,14 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
         string summary,
         string[] keyArguments,
         string[] preferredFollowUpTools,
+        bool supportsScopeDiscovery = true,
         object[]? directoryProbeSubKinds = null,
         object[]? followUpProfiles = null,
         object[]? resultSignalProfiles = null) {
         return new {
             ProbeKind = probeKind,
             Summary = summary,
-            SupportsScopeDiscovery = true,
+            SupportsScopeDiscovery = supportsScopeDiscovery,
             SupportsExplicitTargets = true,
             KeyArguments = keyArguments,
             PreferredFollowUpTools = preferredFollowUpTools,

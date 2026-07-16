@@ -153,6 +153,95 @@ public class SystemAdMonitoringParityTests {
     }
 
     [Fact]
+    public async Task AdMonitoringProbeCatalog_ShouldListEnterpriseProbeKindsWithAccurateDiscoveryContracts() {
+        var tool = new AdMonitoringProbeCatalogTool(new ActiveDirectoryToolOptions());
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var probeKinds = document.RootElement.GetProperty("probe_kinds")
+            .EnumerateArray()
+            .ToDictionary(
+                static node => node.GetProperty("probe_kind").GetString() ?? string.Empty,
+                StringComparer.OrdinalIgnoreCase);
+
+        Assert.False(probeKinds["adfs"].GetProperty("supports_scope_discovery").GetBoolean());
+        Assert.False(probeKinds["entra_connect"].GetProperty("supports_scope_discovery").GetBoolean());
+        Assert.True(probeKinds["sql_server"].GetProperty("supports_scope_discovery").GetBoolean());
+        Assert.False(probeKinds["windows_backup"].GetProperty("supports_scope_discovery").GetBoolean());
+    }
+
+    [Fact]
+    public void AdMonitoringProbeRun_Definition_ShouldExposeEnterpriseProbeKindsAndSqlOptions() {
+        var tool = new AdMonitoringProbeRunTool(new ActiveDirectoryToolOptions());
+        var properties = Assert.IsType<JsonObject>(tool.Definition.Parameters?.GetObject("properties"));
+        var probeKind = Assert.IsType<JsonObject>(properties.GetObject("probe_kind"));
+        var enumValues = Assert.IsType<JsonArray>(probeKind.GetArray("enum"))
+            .Select(static value => value.AsString())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+
+        Assert.Contains("adfs", enumValues, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entra_connect", enumValues, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("sql_server", enumValues, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("windows_backup", enumValues, StringComparer.OrdinalIgnoreCase);
+        Assert.NotNull(properties.GetObject("sql_discover_from_active_directory"));
+        Assert.NotNull(properties.GetObject("sql_password_secret"));
+        Assert.NotNull(properties.GetObject("adfs_check_federation_metadata"));
+    }
+
+    [Theory]
+    [InlineData("adfs", typeof(global::ADPlayground.Monitoring.Probes.Adfs.AdfsProbeDefinition))]
+    [InlineData("entra_connect", typeof(global::ADPlayground.Monitoring.Probes.EntraConnect.EntraConnectProbeDefinition))]
+    [InlineData("sql_server", typeof(global::ADPlayground.Monitoring.Probes.SqlServer.SqlServerProbeDefinition))]
+    [InlineData("windows_backup", typeof(global::ADPlayground.Monitoring.Probes.WindowsBackup.WindowsBackupProbeDefinition))]
+    public void BuildEnterpriseProbeDefinition_ShouldUseEngineOwnedTypedDefinition(string probeKind, Type expectedType) {
+        var definition = AdMonitoringProbeRunTool.BuildEnterpriseProbeDefinition(
+            normalizedKind: probeKind,
+            arguments: null,
+            name: "ix-probe",
+            resolvedTargets: new[] { "server01.example.test" },
+            domainName: null,
+            forestName: null,
+            includeDomains: Array.Empty<string>(),
+            excludeDomains: Array.Empty<string>(),
+            includeTrusts: false,
+            domainController: null,
+            timeout: TimeSpan.FromSeconds(15),
+            retries: 0,
+            retryDelay: TimeSpan.FromMilliseconds(250),
+            maxConcurrency: 2);
+
+        Assert.Equal(expectedType, definition.GetType());
+        Assert.Equal("ix-probe", definition.Name);
+        Assert.Equal(TimeSpan.FromSeconds(15), definition.PerTargetTimeout);
+    }
+
+    [Fact]
+    public void BuildEnterpriseProbeDefinition_SqlDomainControllerUsesSpnDiscoveryWithoutInventingDcTargets() {
+        var definition = Assert.IsType<global::ADPlayground.Monitoring.Probes.SqlServer.SqlServerProbeDefinition>(
+            AdMonitoringProbeRunTool.BuildEnterpriseProbeDefinition(
+                normalizedKind: "sql_server",
+                arguments: null,
+                name: "ix-sql",
+                resolvedTargets: Array.Empty<string>(),
+                domainName: null,
+                forestName: null,
+                includeDomains: Array.Empty<string>(),
+                excludeDomains: Array.Empty<string>(),
+                includeTrusts: false,
+                domainController: "dc01.example.test",
+                timeout: TimeSpan.FromSeconds(10),
+                retries: 0,
+                retryDelay: TimeSpan.FromMilliseconds(250),
+                maxConcurrency: 4));
+
+        Assert.True(definition.DiscoverFromActiveDirectory);
+        Assert.Empty(definition.Targets);
+        Assert.Null(definition.DomainName);
+        Assert.Equal("dc01.example.test", definition.DomainController);
+    }
+
+    [Fact]
     public void ActiveDirectoryPackRegistry_ShouldExposeMonitoringRuntimeStateTools() {
         var registry = new ToolRegistry();
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
@@ -574,6 +663,34 @@ public class SystemAdMonitoringParityTests {
                                                             && string.Equals(action.SuggestedArguments["computer_name"], "dc02.contoso.com", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(chain.NextActions, static action => string.Equals(action.Tool, "system_windows_update_telemetry", StringComparison.OrdinalIgnoreCase)
                                                             && string.Equals(action.SuggestedArguments["computer_name"], "dc02.contoso.com", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AdMonitoringProbeRun_ChainContract_ShouldUseSqlTargetsDiscoveredByTheEngine() {
+        var chain = Assert.IsType<ToolChainContractModel>(BuildMonitoringProbeChainContractMethod.Invoke(
+            null,
+            new object?[] {
+                "sql_server",
+                null,
+                null,
+                new ProbeResult {
+                    Status = ProbeStatus.Degraded,
+                    Target = "2 targets",
+                    Children = new List<ProbeResult> {
+                        new() { Target = "sql01.contoso.com" },
+                        new() { Target = "sql02.contoso.com" }
+                    }
+                },
+                Array.Empty<string>(),
+                "contoso.com",
+                string.Empty,
+                false,
+                DirectoryDiscoveryFallback.None
+            }));
+
+        Assert.Contains(chain.NextActions, static action => string.Equals(action.Tool, "system_service_list", StringComparison.OrdinalIgnoreCase)
+                                                            && string.Equals(action.SuggestedArguments["computer_name"], "sql01.contoso.com", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("sql01.contoso.com", chain.Handoff["targets_preview"], StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
