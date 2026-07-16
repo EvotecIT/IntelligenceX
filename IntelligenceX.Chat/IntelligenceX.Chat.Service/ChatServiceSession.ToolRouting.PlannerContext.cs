@@ -863,27 +863,27 @@ internal sealed partial class ChatServiceSession {
 
     private static bool HasPlannerContextSignals(PlannerContextMetadata context) {
         return context.RequiresLiveExecution
-               || context.MissingLiveEvidence.Length > 0
-               || context.PreferredPackIds.Length > 0
-               || context.PreferredToolNames.Length > 0
-               || context.PreferredDeferredWorkCapabilityIds.Length > 0
-               || context.StructuredNextActionSourceToolNames.Length > 0
-               || context.StructuredNextActionReason.Length > 0
+               || !string.IsNullOrEmpty(context.MissingLiveEvidence)
+               || context.PreferredPackIds?.Length is > 0
+               || context.PreferredToolNames?.Length is > 0
+               || context.PreferredDeferredWorkCapabilityIds?.Length is > 0
+               || context.StructuredNextActionSourceToolNames?.Length is > 0
+               || !string.IsNullOrEmpty(context.StructuredNextActionReason)
                || context.StructuredNextActionConfidence.HasValue
-               || context.PreferredExecutionBackends.Length > 0
-               || context.HandoffTargetPackIds.Length > 0
-               || context.HandoffTargetToolNames.Length > 0
-               || context.ContinuationSourceTool.Length > 0
-               || context.ContinuationReason.Length > 0
-               || context.ContinuationConfidence.Length > 0
+               || context.PreferredExecutionBackends?.Length is > 0
+               || context.HandoffTargetPackIds?.Length is > 0
+               || context.HandoffTargetToolNames?.Length is > 0
+               || !string.IsNullOrEmpty(context.ContinuationSourceTool)
+               || !string.IsNullOrEmpty(context.ContinuationReason)
+               || !string.IsNullOrEmpty(context.ContinuationConfidence)
                || context.BackgroundPreparationAllowed
                || context.BackgroundPendingReadOnlyActions > 0
                || context.BackgroundPendingUnknownActions > 0
-               || context.BackgroundFollowUpClasses.Length > 0
-               || context.BackgroundPriorityFocus.Length > 0
-               || context.BackgroundFollowUpFocus.Length > 0
-               || context.BackgroundRecentEvidenceTools.Length > 0
-               || context.MatchingSkills.Length > 0
+               || context.BackgroundFollowUpClasses?.Length > 0
+               || !string.IsNullOrEmpty(context.BackgroundPriorityFocus)
+               || !string.IsNullOrEmpty(context.BackgroundFollowUpFocus)
+               || context.BackgroundRecentEvidenceTools?.Length > 0
+               || context.MatchingSkills?.Length > 0
                || context.AllowCachedEvidenceReuse;
     }
 
