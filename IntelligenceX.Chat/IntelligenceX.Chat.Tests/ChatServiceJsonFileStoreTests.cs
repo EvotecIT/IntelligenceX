@@ -29,6 +29,20 @@ public sealed class ChatServiceJsonFileStoreTests {
             userProfile: " "));
     }
 
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    [InlineData("nested/..")]
+    public void ResolveDefaultPath_RejectsDotSegments(string fileName) {
+        var userProfile = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
+
+        Assert.Throws<ArgumentException>(() => ChatStatePaths.ResolveDefaultPath(
+            fileName,
+            localApplicationData: " ",
+            xdgDataHome: " ",
+            userProfile: userProfile));
+    }
+
     [Fact]
     public void ServiceDefaults_UseTheSharedStatePathOwner() {
         Assert.Equal(ChatStatePaths.GetDefaultPath("state.db"), ServiceOptions.GetDefaultStateDbPath());

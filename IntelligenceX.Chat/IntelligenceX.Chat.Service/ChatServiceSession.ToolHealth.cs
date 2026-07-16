@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -22,6 +23,9 @@ internal sealed partial class ChatServiceSession {
         PropertyNameCaseInsensitive = true,
         WriteIndented = false
     };
+    private static readonly object StartupToolHealthCacheStoreLock = new();
+    private static readonly Dictionary<string, Dictionary<string, DateTime>> StartupToolHealthLatestObservationsByPath = new(
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     internal readonly record struct ToolHealthProbeCatalogEntry(
         string ToolName,
         string PackId,
@@ -96,7 +100,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var cache = LoadStartupToolHealthCache();
-        var cacheUpdated = false;
+        var mutations = new List<StartupToolHealthCacheMutation>();
 
         try {
             foreach (var entry in probeCatalog) {
@@ -131,12 +135,13 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (probe.Ok) {
-                    if (cache.Remove(cacheKey)) {
-                        cacheUpdated = true;
-                    }
+                    var observedUtc = DateTime.UtcNow;
+                    cache.Remove(cacheKey);
+                    mutations.Add(new StartupToolHealthCacheMutation(cacheKey, Entry: null, ObservedUtc: observedUtc));
                     continue;
                 }
 
+                var failedUtc = DateTime.UtcNow;
                 var sourceLabel = ToSourceLabel(entry.SourceKind);
                 var packLabel = entry.PackId.Length == 0 ? "unknown" : entry.PackId;
                 var prefix = ShouldDowngradeStartupToolHealthFailure(entry.SourceKind, probe.ErrorCode)
@@ -148,24 +153,25 @@ internal sealed partial class ChatServiceSession {
                 var errorCode = NormalizeHealthErrorCode(probe.ErrorCode);
                 var nextFailureCount = ResolveNextFailureCount(cachedFailure, errorCode);
                 var nextProbeUtc = ComputeNextStartupToolHealthProbeUtc(
-                    nowUtc,
+                    failedUtc,
                     entry.SourceKind,
                     entry.PackId,
                     errorCode,
                     nextFailureCount);
-                cache[cacheKey] = new StartupToolHealthCacheEntry(
+                var cacheEntry = new StartupToolHealthCacheEntry(
                     ErrorCode: errorCode,
                     Error: NormalizeHealthError(probe.Error),
-                    LastFailedUtc: nowUtc,
+                    LastFailedUtc: failedUtc,
                     NextProbeUtc: nextProbeUtc,
                     ConsecutiveFailures: nextFailureCount);
-                cacheUpdated = true;
+                cache[cacheKey] = cacheEntry;
+                mutations.Add(new StartupToolHealthCacheMutation(cacheKey, cacheEntry, failedUtc));
             }
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             // Startup priming is best-effort and bounded by the startup budget.
         } finally {
-            if (cacheUpdated) {
-                SaveStartupToolHealthCache(cache);
+            if (mutations.Count > 0) {
+                ApplyStartupToolHealthCacheMutations(ResolveStartupToolHealthCachePath(), mutations);
             }
         }
 
@@ -363,7 +369,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static Dictionary<string, StartupToolHealthCacheEntry> LoadStartupToolHealthCache() {
-        var path = ResolveStartupToolHealthCachePath();
+        return LoadStartupToolHealthCache(ResolveStartupToolHealthCachePath());
+    }
+
+    internal static Dictionary<string, StartupToolHealthCacheEntry> LoadStartupToolHealthCache(string path) {
         var result = ChatServiceJsonFileStore.Read<Dictionary<string, StartupToolHealthCacheEntry>>(
             path,
             MaximumStartupToolHealthCacheBytes,
@@ -402,8 +411,74 @@ internal sealed partial class ChatServiceSession {
         return map;
     }
 
-    private static void SaveStartupToolHealthCache(Dictionary<string, StartupToolHealthCacheEntry> cache) {
-        var path = ResolveStartupToolHealthCachePath();
+    internal static void ApplyStartupToolHealthCacheMutations(
+        string path,
+        IReadOnlyList<StartupToolHealthCacheMutation> mutations) {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(mutations);
+        if (mutations.Count == 0) {
+            return;
+        }
+
+        var normalizedPath = Path.GetFullPath(path);
+        lock (StartupToolHealthCacheStoreLock) {
+            var cache = LoadStartupToolHealthCache(normalizedPath);
+            if (!StartupToolHealthLatestObservationsByPath.TryGetValue(normalizedPath, out var latestObservations)) {
+                latestObservations = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+                StartupToolHealthLatestObservationsByPath[normalizedPath] = latestObservations;
+            }
+
+            var changed = false;
+            foreach (var mutation in mutations) {
+                var key = (mutation.Key ?? string.Empty).Trim();
+                if (key.Length == 0) {
+                    continue;
+                }
+
+                var observedUtc = NormalizeStartupToolHealthObservationUtc(mutation.ObservedUtc);
+                var latestUtc = latestObservations.TryGetValue(key, out var knownObservation)
+                    ? NormalizeStartupToolHealthObservationUtc(knownObservation)
+                    : DateTime.MinValue;
+                if (cache.TryGetValue(key, out var currentEntry)) {
+                    var storedUtc = NormalizeStartupToolHealthObservationUtc(currentEntry.LastFailedUtc);
+                    if (storedUtc > latestUtc) {
+                        latestUtc = storedUtc;
+                    }
+                }
+
+                if (observedUtc < latestUtc) {
+                    continue;
+                }
+
+                latestObservations[key] = observedUtc;
+                if (mutation.Entry is null) {
+                    changed |= cache.Remove(key);
+                    continue;
+                }
+
+                if (!cache.TryGetValue(key, out var existing) || existing != mutation.Entry) {
+                    cache[key] = mutation.Entry;
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                SaveStartupToolHealthCache(normalizedPath, cache);
+            }
+        }
+    }
+
+    private static DateTime NormalizeStartupToolHealthObservationUtc(DateTime value) {
+        return value.Kind switch {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
+    }
+
+    private static void SaveStartupToolHealthCache(
+        string path,
+        Dictionary<string, StartupToolHealthCacheEntry> cache) {
         var payload = new StartupToolHealthCachePayload {
             Entries = cache
                 .Select(static pair => new StartupToolHealthCachePayloadEntry {
@@ -434,6 +509,11 @@ internal sealed partial class ChatServiceSession {
         DateTime LastFailedUtc,
         DateTime NextProbeUtc,
         int ConsecutiveFailures);
+
+    internal sealed record StartupToolHealthCacheMutation(
+        string Key,
+        StartupToolHealthCacheEntry? Entry,
+        DateTime ObservedUtc);
 
     private sealed class StartupToolHealthCachePayload {
         public List<StartupToolHealthCachePayloadEntry> Entries { get; set; } = new();

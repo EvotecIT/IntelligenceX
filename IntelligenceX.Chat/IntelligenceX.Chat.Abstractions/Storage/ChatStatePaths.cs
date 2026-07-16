@@ -34,13 +34,19 @@ public static class ChatStatePaths {
         string? xdgDataHome,
         string? userProfile) {
         var normalizedFileName = Path.GetFileName((fileName ?? string.Empty).Trim());
-        if (normalizedFileName.Length == 0) {
+        if (normalizedFileName.Length == 0
+            || normalizedFileName is "." or "..") {
             throw new ArgumentException("A state file name is required.", nameof(fileName));
         }
 
-        return Path.Combine(
-            ResolveDefaultDirectory(localApplicationData, xdgDataHome, userProfile),
-            normalizedFileName);
+        var directory = ResolveDefaultDirectory(localApplicationData, xdgDataHome, userProfile);
+        var path = Path.GetFullPath(Path.Combine(directory, normalizedFileName));
+        var parent = Path.GetDirectoryName(path);
+        if (!string.Equals(parent, directory, PathComparison)) {
+            throw new ArgumentException("The state file must resolve directly beneath the shared state directory.", nameof(fileName));
+        }
+
+        return path;
     }
 
     internal static string ResolveDefaultDirectory(
@@ -75,4 +81,7 @@ public static class ChatStatePaths {
             return false;
         }
     }
+
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 }

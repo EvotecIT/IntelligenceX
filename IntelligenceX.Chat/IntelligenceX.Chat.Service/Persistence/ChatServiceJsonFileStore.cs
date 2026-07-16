@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using System.Text;
 using IntelligenceX.Chat.Abstractions.Storage;
 
 namespace IntelligenceX.Chat.Service.Persistence;
@@ -51,21 +50,15 @@ internal static class ChatServiceJsonFileStore {
         ArgumentNullException.ThrowIfNull(validate);
 
         try {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
+            var snapshot = ChatJsonFileStore.Read(path, maximumBytes);
+            if (snapshot.State == ChatJsonFileReadState.Empty) {
                 return ChatServiceJsonFileReadResult<T>.Empty();
             }
-
-            var info = new FileInfo(path);
-            if (info.Length <= 0 || info.Length > maximumBytes) {
+            if (snapshot.State != ChatJsonFileReadState.Loaded || snapshot.Json is null) {
                 return ChatServiceJsonFileReadResult<T>.Invalid();
             }
 
-            var json = File.ReadAllText(path, Encoding.UTF8);
-            if (string.IsNullOrWhiteSpace(json)) {
-                return ChatServiceJsonFileReadResult<T>.Invalid();
-            }
-
-            var value = deserialize(json);
+            var value = deserialize(snapshot.Json);
             if (value is null || !validate(value)) {
                 return ChatServiceJsonFileReadResult<T>.Invalid();
             }
@@ -107,54 +100,16 @@ internal static class ChatServiceJsonFileStore {
         string storeName) {
         ArgumentNullException.ThrowIfNull(serialize);
 
-        string? temporaryPath = null;
         try {
             if (string.IsNullOrWhiteSpace(path)) {
                 return;
             }
 
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
-            if (!string.IsNullOrWhiteSpace(directory)) {
-                TryHardenDirectoryNoThrow(directory, storeName);
-            }
-
             var json = serialize(value);
-            var fileName = Path.GetFileName(path);
-            var temporaryName = $"{fileName}.{Guid.NewGuid():N}.tmp";
-            temporaryPath = string.IsNullOrWhiteSpace(directory)
-                ? temporaryName
-                : Path.Combine(directory, temporaryName);
-
-            using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenFileNoThrow(temporaryPath, storeName);
-                using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                writer.Write(json);
-                writer.Flush();
-                stream.Flush(flushToDisk: true);
-            }
-
-            if (File.Exists(path)) {
-                File.Replace(temporaryPath, path, destinationBackupFileName: null, ignoreMetadataErrors: true);
-            } else {
-                File.Move(temporaryPath, path);
-            }
-
-            temporaryPath = null;
-            TryHardenFileNoThrow(path, storeName);
+            ChatJsonFileStore.Write(path, json);
+            TryHardenWindowsFileNoThrow(path, storeName);
         } catch (Exception ex) {
             Trace.TraceWarning($"{NormalizeStoreName(storeName)} write failed: {ex.GetType().Name}: {ex.Message}");
-        } finally {
-            if (!string.IsNullOrWhiteSpace(temporaryPath) && File.Exists(temporaryPath)) {
-                try {
-                    File.Delete(temporaryPath);
-                } catch {
-                    // Best effort only.
-                }
-            }
         }
     }
 
@@ -163,44 +118,19 @@ internal static class ChatServiceJsonFileStore {
     /// </summary>
     internal static void Delete(string path, string storeName) {
         try {
-            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) {
-                File.Delete(path);
-            }
+            ChatJsonFileStore.Delete(path);
         } catch (Exception ex) {
             Trace.TraceWarning($"{NormalizeStoreName(storeName)} clear failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
-    private static void TryHardenDirectoryNoThrow(string path, string storeName) {
-        if (string.IsNullOrWhiteSpace(path) || OperatingSystem.IsWindows()) {
-            return;
-        }
-
-        try {
-            if (!Directory.Exists(path)) {
-                return;
-            }
-
-            File.SetUnixFileMode(
-                path,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        } catch (Exception ex) {
-            Trace.TraceWarning($"{NormalizeStoreName(storeName)} directory permission hardening failed: {ex.GetType().Name}: {ex.Message}");
-        }
-    }
-
-    private static void TryHardenFileNoThrow(string path, string storeName) {
-        if (string.IsNullOrWhiteSpace(path)) {
+    private static void TryHardenWindowsFileNoThrow(string path, string storeName) {
+        if (string.IsNullOrWhiteSpace(path) || !OperatingSystem.IsWindows()) {
             return;
         }
 
         try {
             if (!File.Exists(path)) {
-                return;
-            }
-
-            if (!OperatingSystem.IsWindows()) {
-                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                 return;
             }
 

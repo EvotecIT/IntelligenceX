@@ -273,13 +273,13 @@ public sealed partial class MainWindow : Window {
 
     private static StartupWebViewBudgetCacheEntry LoadStartupWebViewBudgetCache() {
         var path = ResolveStartupWebViewBudgetCachePath();
-        if (!File.Exists(path)) {
-            return StartupWebViewBudgetCacheEntry.Default;
-        }
-
         try {
-            var json = File.ReadAllText(path);
-            var payload = JsonSerializer.Deserialize<StartupWebViewBudgetCachePayload>(json);
+            var snapshot = ChatJsonFileStore.Read(path, StartupWebViewBudgetCacheMaximumBytes);
+            if (snapshot.State != ChatJsonFileReadState.Loaded || snapshot.Json is null) {
+                return StartupWebViewBudgetCacheEntry.Default;
+            }
+
+            var payload = JsonSerializer.Deserialize<StartupWebViewBudgetCachePayload>(snapshot.Json);
             if (payload is null) {
                 return StartupWebViewBudgetCacheEntry.Default;
             }
@@ -329,11 +329,6 @@ public sealed partial class MainWindow : Window {
     private static void SaveStartupWebViewBudgetCache(StartupWebViewBudgetCacheEntry cache) {
         try {
             var path = ResolveStartupWebViewBudgetCachePath();
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory)) {
-                Directory.CreateDirectory(directory);
-            }
-
             var payload = new StartupWebViewBudgetCachePayload {
                 LastEnsureWebViewMs = cache.LastEnsureWebViewMs,
                 ConsecutiveBudgetExhaustions = Math.Max(0, cache.ConsecutiveBudgetExhaustions),
@@ -344,7 +339,7 @@ public sealed partial class MainWindow : Window {
             };
 
             var json = JsonSerializer.Serialize(payload);
-            File.WriteAllText(path, json);
+            ChatJsonFileStore.Write(path, json);
         } catch {
             // Startup budget cache is best-effort only.
         }
