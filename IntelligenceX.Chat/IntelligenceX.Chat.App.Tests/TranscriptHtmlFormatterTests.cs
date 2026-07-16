@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.App.Rendering;
+using OfficeIMO.Html;
 using OfficeIMO.Markdown;
 using OfficeIMO.Markdown.Html;
 using OfficeIMO.MarkdownRenderer;
@@ -167,7 +168,7 @@ public sealed partial class TranscriptHtmlFormatterTests {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 23, 12, 4, 18, DateTimeKind.Local);
         string sourceHtml = ReadOfficeImoHtmlFixture("officeimo-shared-visual-hosts.html");
-        string markdown = sourceHtml.ToMarkdown(new HtmlToMarkdownOptions {
+        string markdown = HtmlConversionDocument.Parse(sourceHtml).ToMarkdown(new HtmlToMarkdownOptions {
             BaseUri = new Uri("https://example.com/visuals/archive.html"),
             MarkdownWriteOptions = MarkdownWriteOptions.CreateOfficeIMOProfile()
         });

@@ -164,7 +164,7 @@ public sealed class NativeTranscriptMessageControl : UserControl {
             NativeTranscriptContentKind.Code => CreateCode(content),
             NativeTranscriptContentKind.Table => content.Table == null
                 ? CreateDiagnostic("Table artifact unavailable.")
-                : new NativeTranscriptTablePreviewControl(content.Table),
+                : new NativeTranscriptTablePreviewControl(content.Table, content.Caption),
             NativeTranscriptContentKind.Visual => new NativeVisualArtifactHostControl(content.Visual),
             NativeTranscriptContentKind.Diagnostic => CreateDiagnostic(content.Text),
             _ => CreateParagraph(content.Text)

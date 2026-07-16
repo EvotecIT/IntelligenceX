@@ -36,7 +36,6 @@
     <ChartForgeXMermaidProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX.Mermaid\ChartForgeX.Mermaid.csproj</ChartForgeXMermaidProjectForNativeProjection>
     <ChartForgeXMarkupMermaidProjectForNativeProjection>$(ChartForgeXRepoRootForNativeProjection)ChartForgeX.Markup.Mermaid\ChartForgeX.Markup.Mermaid.csproj</ChartForgeXMarkupMermaidProjectForNativeProjection>
     <NativeMarkdownEnginesAvailable Condition="'$(UseLocalNativeMarkdownEngines)' == 'true' AND Exists('$(OfficeImoMarkdownProjectForNativeProjection)') AND Exists('$(OfficeImoMarkdownRendererProjectForNativeProjection)') AND Exists('$(OfficeImoMarkdownRendererIntelligenceXProjectForNativeProjection)') AND Exists('$(ChartForgeXProjectForNativeProjection)') AND Exists('$(ChartForgeXMarkupProjectForNativeProjection)') AND Exists('$(ChartForgeXMermaidProjectForNativeProjection)') AND Exists('$(ChartForgeXMarkupMermaidProjectForNativeProjection)')">true</NativeMarkdownEnginesAvailable>
-    <DefineConstants>$(DefineConstants);IXCHAT_NATIVE_MARKDOWN_ENGINES</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(NativeMarkdownEnginesAvailable)' == 'true'">

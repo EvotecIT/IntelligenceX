@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using IntelligenceX.Chat.App.Native.Rendering;
 
 namespace IntelligenceX.Chat.App.Native;
@@ -281,31 +280,24 @@ internal sealed class NativeTableWorkspaceViewModel {
         Math.Max(1, windowSize);
 
     private string BuildTsv(IReadOnlyList<NativeTableWorkspaceRow> rows, bool includeHeaders) {
-        var columns = VisibleColumnIndexes;
-        var builder = new StringBuilder();
-        if (includeHeaders && columns.Count > 0) {
-            AppendTsvRow(builder, ProjectHeaderCells(columns));
-        }
-
-        foreach (var row in rows) {
-            AppendTsvRow(builder, ProjectRowCells(row, columns));
-        }
-
-        return builder.ToString();
+        return DelimitedTextFormatter.FormatTsv(ProjectRows(rows, includeHeaders));
     }
 
     private string BuildCsv(IReadOnlyList<NativeTableWorkspaceRow> rows, bool includeHeaders) {
+        return DelimitedTextFormatter.FormatCsv(ProjectRows(rows, includeHeaders));
+    }
+
+    private IEnumerable<IReadOnlyList<string>> ProjectRows(
+        IReadOnlyList<NativeTableWorkspaceRow> rows,
+        bool includeHeaders) {
         var columns = VisibleColumnIndexes;
-        var builder = new StringBuilder();
         if (includeHeaders && columns.Count > 0) {
-            AppendCsvRow(builder, ProjectHeaderCells(columns));
+            yield return ProjectHeaderCells(columns);
         }
 
         foreach (var row in rows) {
-            AppendCsvRow(builder, ProjectRowCells(row, columns));
+            yield return ProjectRowCells(row, columns);
         }
-
-        return builder.ToString();
     }
 
     private IReadOnlyList<string> ProjectHeaderCells(IReadOnlyList<int> columns) =>
@@ -314,56 +306,8 @@ internal sealed class NativeTableWorkspaceViewModel {
     private static IReadOnlyList<string> ProjectRowCells(NativeTableWorkspaceRow row, IReadOnlyList<int> columns) =>
         columns.Select(index => index < row.Cells.Count ? row.Cells[index] : string.Empty).ToArray();
 
-    private static void AppendTsvRow(StringBuilder builder, IReadOnlyList<string> cells) {
-        if (builder.Length > 0) {
-            builder.AppendLine();
-        }
-
-        for (var index = 0; index < cells.Count; index++) {
-            if (index > 0) {
-                builder.Append('\t');
-            }
-
-            builder.Append(SanitizeTsvCell(cells[index]));
-        }
-    }
-
-    private static void AppendCsvRow(StringBuilder builder, IReadOnlyList<string> cells) {
-        if (builder.Length > 0) {
-            builder.AppendLine();
-        }
-
-        for (var index = 0; index < cells.Count; index++) {
-            if (index > 0) {
-                builder.Append(',');
-            }
-
-            builder.Append(EscapeCsvCell(cells[index]));
-        }
-    }
-
     private static string GetSortKey(NativeTableWorkspaceRow row, int columnIndex) =>
         columnIndex < row.Cells.Count ? row.Cells[columnIndex] : string.Empty;
-
-    private static string SanitizeTsvCell(string value) =>
-        (value ?? string.Empty)
-            .Replace('\t', ' ')
-            .Replace("\r\n", " ", StringComparison.Ordinal)
-            .Replace('\r', ' ')
-            .Replace('\n', ' ')
-            .Trim();
-
-    private static string EscapeCsvCell(string value) {
-        var text = value ?? string.Empty;
-        var needsQuotes = text.Contains(',', StringComparison.Ordinal)
-            || text.Contains('"', StringComparison.Ordinal)
-            || text.Contains('\r', StringComparison.Ordinal)
-            || text.Contains('\n', StringComparison.Ordinal);
-
-        return needsQuotes
-            ? "\"" + text.Replace("\"", "\"\"") + "\""
-            : text;
-    }
 }
 
 internal enum NativeTableExportFormat {

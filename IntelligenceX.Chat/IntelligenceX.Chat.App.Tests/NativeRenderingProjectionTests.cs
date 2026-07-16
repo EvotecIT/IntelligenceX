@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ChartForgeX.Markup;
 using IntelligenceX.Chat.App.Native.Rendering;
 using Xunit;
 
@@ -11,46 +12,27 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class NativeRenderingProjectionTests {
     /// <summary>
-    /// Ensures Mermaid fences route to the portable Mermaid visual engine path.
+    /// Ensures supported fences use the ChartForgeX scanner's canonical kind contract.
     /// </summary>
     [Theory]
-    [InlineData("mermaid", "", "")]
-    [InlineData("", "mermaid", "")]
-    [InlineData("", "", "mermaid title=\"Flow\"")]
-    public void TryClassify_RoutesMermaidFences(string semanticKind, string language, string infoString) {
-        var classified = NativeVisualFenceClassifier.TryClassify(
-            semanticKind,
-            language,
-            infoString,
-            out var kind,
-            out var fenceName);
+    [InlineData("mermaid", nameof(VisualMarkupKind.Mermaid), "mermaid")]
+    [InlineData("chartforgex topology v1", nameof(VisualMarkupKind.Topology), "chartforgex topology")]
+    [InlineData("chartforgex flow v1", nameof(VisualMarkupKind.Flow), "chartforgex flow")]
+    [InlineData("chartforgex table v1", nameof(VisualMarkupKind.Table), "chartforgex table")]
+    [InlineData("chartforgex chart v1", nameof(VisualMarkupKind.Chart), "chartforgex chart")]
+    [InlineData("chartforgex timeline v1", nameof(VisualMarkupKind.Timeline), "chartforgex timeline")]
+    [InlineData("chartforgex sequence v1", nameof(VisualMarkupKind.Sequence), "chartforgex sequence")]
+    public void Project_RoutesVisualsThroughCanonicalChartForgeXContract(
+        string infoString,
+        string expectedKindName,
+        string expectedFenceName) {
+        var markdown = "```" + infoString + "\ninvalid test payload\n```";
 
-        Assert.True(classified);
-        Assert.Equal(NativeVisualFenceKind.Mermaid, kind);
-        Assert.Equal("mermaid", fenceName);
-    }
+        var content = NativeMarkdownProjection.Project(markdown);
 
-    /// <summary>
-    /// Ensures explicit ChartForgeX fences route to product-neutral artifact kinds.
-    /// </summary>
-    [Theory]
-    [InlineData("chartforgex topology", nameof(NativeVisualFenceKind.Topology), "chartforgex topology")]
-    [InlineData("chartforgex table", nameof(NativeVisualFenceKind.Table), "chartforgex table")]
-    [InlineData("chartforgex chart title=\"Summary\"", nameof(NativeVisualFenceKind.Chart), "chartforgex chart")]
-    [InlineData("cfx-flow", nameof(NativeVisualFenceKind.Flow), "chartforgex flow")]
-    [InlineData("cfx timeline", nameof(NativeVisualFenceKind.Timeline), "chartforgex timeline")]
-    public void TryClassify_RoutesChartForgeXFences(string infoString, string expectedKindName, string expectedFenceName) {
-        var expectedKind = Enum.Parse<NativeVisualFenceKind>(expectedKindName);
-        var classified = NativeVisualFenceClassifier.TryClassify(
-            semanticKind: null,
-            language: null,
-            infoString: infoString,
-            out var kind,
-            out var fenceName);
-
-        Assert.True(classified);
-        Assert.Equal(expectedKind, kind);
-        Assert.Equal(expectedFenceName, fenceName);
+        var visual = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Visual);
+        Assert.Equal(Enum.Parse<VisualMarkupKind>(expectedKindName), visual.Visual?.Kind);
+        Assert.Equal(expectedFenceName, visual.Visual?.FenceName);
     }
 
     /// <summary>
@@ -60,20 +42,16 @@ public sealed class NativeRenderingProjectionTests {
     [InlineData("dataview")]
     [InlineData("ix-dataview")]
     [InlineData("ix-network")]
-    public void TryClassify_DoesNotPretendLegacyAliasesArePortableArtifacts(string value) {
-        var classified = NativeVisualFenceClassifier.TryClassify(
-            semanticKind: value,
-            language: value,
-            infoString: value,
-            out var kind,
-            out var fenceName);
+    [InlineData("cfx-flow")]
+    [InlineData("chartforgex-flow")]
+    public void Project_DoesNotInventVisualAliasesOutsideChartForgeX(string value) {
+        var markdown = "```" + value + "\nA --> B\n```";
 
-        Assert.False(classified);
-        Assert.Equal(NativeVisualFenceKind.Unsupported, kind);
-        Assert.Equal(string.Empty, fenceName);
+        var content = NativeMarkdownProjection.Project(markdown);
+
+        Assert.DoesNotContain(content, item => item.Kind == NativeTranscriptContentKind.Visual);
     }
 
-#if IXCHAT_NATIVE_MARKDOWN_ENGINES
     /// <summary>
     /// Ensures unsupported visual diagnostics use the best available OfficeIMO fence identifier.
     /// </summary>
@@ -91,25 +69,44 @@ public sealed class NativeRenderingProjectionTests {
 
         Assert.Equal(expected, resolved);
     }
-#endif
-
     /// <summary>
-    /// Ensures OfficeIMO fence metadata can be passed through to ChartForgeX without Markdown rescanning.
+    /// Ensures the shared ChartForgeX scanner owns visual attributes and schema validation.
     /// </summary>
     [Fact]
-    public void BuildAttributes_PreservesStructuredFenceMetadata() {
-        var attributes = NativeVisualFenceClassifier.BuildAttributes(
-            "diagram-1",
-            new[] { "wide", "accent" },
-            new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase) {
-                ["title"] = "Replication",
-                ["interactive"] = null
-            });
+    public void Project_PreservesCanonicalChartForgeXFenceMetadata() {
+        const string markdown = """
+            ```mermaid {#diagram-1 .wide .accent title="Replication" interactive=true}
+            graph TD
+              A --> B
+            ```
+            """;
+
+        var content = NativeMarkdownProjection.Project(markdown);
+
+        var attributes = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Visual).Visual!.Attributes;
 
         Assert.Equal("diagram-1", attributes["id"]);
         Assert.Equal("wide accent", attributes["class"]);
         Assert.Equal("Replication", attributes["title"]);
         Assert.Equal("true", attributes["interactive"]);
+    }
+
+    /// <summary>
+    /// Ensures incomplete ChartForgeX fences surface the shared scanner's schema diagnostic.
+    /// </summary>
+    [Fact]
+    public void Project_MissingChartForgeXSchemaVersion_ReturnsDiagnostic() {
+        const string markdown = """
+            ```chartforgex topology
+            node api "API"
+            ```
+            """;
+
+        var content = NativeMarkdownProjection.Project(markdown);
+
+        Assert.Contains(content, item => item.Kind == NativeTranscriptContentKind.Diagnostic
+            && item.Text.Contains("must declare schema version v1", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(content, item => item.Kind == NativeTranscriptContentKind.Visual);
     }
 
     /// <summary>
@@ -125,12 +122,11 @@ public sealed class NativeRenderingProjectionTests {
         Assert.DoesNotContain("<strong", item.Text, StringComparison.OrdinalIgnoreCase);
     }
 
-#if IXCHAT_NATIVE_MARKDOWN_ENGINES
     /// <summary>
     /// Ensures the OfficeIMO to ChartForgeX path returns a native preview for supported Mermaid diagrams.
     /// </summary>
     [Fact]
-    public void Project_WithLocalNativeEngines_ProducesMermaidVisualPreview() {
+    public void Project_ProducesMermaidVisualPreview() {
         const string markdown = """
             ```mermaid
             graph TD
@@ -140,11 +136,10 @@ public sealed class NativeRenderingProjectionTests {
 
         var content = NativeMarkdownProjection.Project(markdown);
 
-        var visual = Assert.Single(content.Where(item => item.Kind == NativeTranscriptContentKind.Visual));
+        var visual = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Visual);
         Assert.NotNull(visual.Visual);
         Assert.NotNull(visual.Visual.Artifact);
         Assert.NotNull(visual.Visual.Preview);
         Assert.True(visual.Visual.Preview.HasPng);
     }
-#endif
 }

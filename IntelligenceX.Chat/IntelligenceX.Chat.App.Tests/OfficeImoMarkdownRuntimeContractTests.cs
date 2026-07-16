@@ -99,11 +99,11 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = LoadMsBuildProperties(propsPath);
 
-        Assert.Equal("0.6.30", props["OfficeImoMarkdownNuGetVersion"]);
-        Assert.Equal("0.2.30", props["OfficeImoMarkdownRendererNuGetVersion"]);
-        Assert.Equal("0.1.3", props["OfficeImoMarkdownRendererIntelligenceXNuGetVersion"]);
-        Assert.Equal("0.6.41", props["OfficeImoExcelNuGetVersion"]);
-        Assert.Equal("1.0.37", props["OfficeImoWordMarkdownNuGetVersion"]);
+        Assert.Equal("2.0.1", props["OfficeImoMarkdownNuGetVersion"]);
+        Assert.Equal("2.0.1", props["OfficeImoMarkdownRendererNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoMarkdownRendererIntelligenceXNuGetVersion"]);
+        Assert.Equal("2.0.1", props["OfficeImoExcelNuGetVersion"]);
+        Assert.Equal("2.0.1", props["OfficeImoWordMarkdownNuGetVersion"]);
     }
 
     /// <summary>

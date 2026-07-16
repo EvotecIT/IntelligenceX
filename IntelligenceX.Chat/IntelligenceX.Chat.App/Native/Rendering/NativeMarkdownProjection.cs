@@ -1,4 +1,3 @@
-#if IXCHAT_NATIVE_MARKDOWN_ENGINES
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -75,36 +74,34 @@ internal static class NativeMarkdownProjection {
     }
 
     private static void AddVisual(ICollection<NativeTranscriptContent> result, MermaidVisualMarkupParser parser, MarkdownNativeVisualBlock visual) {
-        if (!NativeVisualFenceClassifier.TryClassify(
-                visual.SemanticKind,
-                visual.Language,
-                visual.InfoString,
-                out var nativeKind,
-                out var fenceName)) {
-            var displayName = ResolveVisualFenceIdentifier(visual.SemanticKind, visual.Language, visual.InfoString);
-            result.Add(new NativeTranscriptContent(
-                NativeTranscriptContentKind.Diagnostic,
-                "Unsupported visual fence '" + displayName + "'.",
-                sourceLine: visual.SourceSpan?.StartLine));
-            return;
-        }
-
-        var attributes = NativeVisualFenceClassifier.BuildAttributes(
-            visual.FenceInfo.ElementId,
-            visual.FenceInfo.Classes,
-            visual.FenceInfo.Attributes);
+        var fenceInfo = ResolveVisualFenceIdentifier(visual.SemanticKind, visual.Language, visual.InfoString);
         var fenceLine = visual.SourceSpan?.StartLine ?? 1;
         var endLine = visual.SourceSpan?.EndLine ?? fenceLine;
-        var visualBlock = new VisualMarkupBlock(
-            ToChartForgeXKind(nativeKind),
-            fenceName,
-            visual.InfoString,
-            0,
+        var scan = VisualMarkupScanner.ParseFenceBlock(
+            fenceInfo,
             visual.Content,
             fenceLine,
             Math.Min(fenceLine + 1, endLine),
-            endLine,
-            attributes);
+            endLine);
+        foreach (var diagnostic in scan.Diagnostics) {
+            result.Add(new NativeTranscriptContent(
+                NativeTranscriptContentKind.Diagnostic,
+                diagnostic.Message,
+                sourceLine: diagnostic.Line));
+        }
+
+        var scanned = scan.Blocks.SingleOrDefault();
+        if (scanned is null) {
+            if (scan.Diagnostics.Count == 0) {
+                result.Add(new NativeTranscriptContent(
+                    NativeTranscriptContentKind.Diagnostic,
+                    "Unsupported visual fence '" + fenceInfo + "'.",
+                    sourceLine: fenceLine));
+            }
+            return;
+        }
+
+        var visualBlock = scanned;
         var parse = parser.ParseBlocks(new[] { visualBlock });
 
         foreach (var diagnostic in parse.Diagnostics) {
@@ -119,7 +116,12 @@ internal static class NativeMarkdownProjection {
                 NativeTranscriptContentKind.Visual,
                 string.Empty,
                 caption: visual.Caption,
-                visual: new NativeTranscriptVisual(nativeKind, fenceName, visual.InfoString, visual.Content, attributes),
+                visual: new NativeTranscriptVisual(
+                    visualBlock.Kind,
+                    visualBlock.FenceName,
+                    visualBlock.FenceInfo,
+                    visualBlock.Payload,
+                    visualBlock.Attributes),
                 sourceLine: fenceLine));
             return;
         }
@@ -130,7 +132,14 @@ internal static class NativeMarkdownProjection {
                 NativeTranscriptContentKind.Visual,
                 string.Empty,
                 caption: visual.Caption,
-                visual: new NativeTranscriptVisual(nativeKind, fenceName, visual.InfoString, visual.Content, attributes, artifact, preview),
+                visual: new NativeTranscriptVisual(
+                    visualBlock.Kind,
+                    visualBlock.FenceName,
+                    visualBlock.FenceInfo,
+                    visualBlock.Payload,
+                    visualBlock.Attributes,
+                    artifact,
+                    preview),
                 sourceLine: fenceLine));
         }
     }
@@ -146,17 +155,6 @@ internal static class NativeMarkdownProjection {
             sourceLine: other.SourceSpan?.StartLine));
     }
 
-    private static VisualMarkupKind ToChartForgeXKind(NativeVisualFenceKind kind) =>
-        kind switch {
-            NativeVisualFenceKind.Mermaid => VisualMarkupKind.Mermaid,
-            NativeVisualFenceKind.Topology => VisualMarkupKind.Topology,
-            NativeVisualFenceKind.Flow => VisualMarkupKind.Flow,
-            NativeVisualFenceKind.Table => VisualMarkupKind.Table,
-            NativeVisualFenceKind.Chart => VisualMarkupKind.Chart,
-            NativeVisualFenceKind.Timeline => VisualMarkupKind.Timeline,
-            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unsupported visual fence kind.")
-        };
-
     internal static string ResolveVisualFenceIdentifier(string? semanticKind, string? language, string? infoString) {
         if (!string.IsNullOrWhiteSpace(infoString)) {
             return infoString.Trim();
@@ -170,25 +168,5 @@ internal static class NativeMarkdownProjection {
             ? "unknown"
             : semanticKind.Trim();
     }
+
 }
-#else
-using System;
-using System.Collections.Generic;
-
-namespace IntelligenceX.Chat.App.Native.Rendering;
-
-/// <summary>
-/// Fallback native transcript projection used until OfficeIMO and ChartForgeX native engines are supplied.
-/// </summary>
-internal static class NativeMarkdownProjection {
-    public static IReadOnlyList<NativeTranscriptContent> Project(string? markdown) {
-        if (string.IsNullOrWhiteSpace(markdown)) {
-            return Array.Empty<NativeTranscriptContent>();
-        }
-
-        return new[] {
-            new NativeTranscriptContent(NativeTranscriptContentKind.Paragraph, markdown ?? string.Empty)
-        };
-    }
-}
-#endif

@@ -17,14 +17,14 @@
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate2)</DbaClientXRepoRoot>
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == ''">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
 
-    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">0.6.30</OfficeImoMarkdownNuGetVersion>
-    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.30</OfficeImoMarkdownRendererNuGetVersion>
-    <OfficeImoMarkdownRendererIntelligenceXNuGetVersion Condition="'$(OfficeImoMarkdownRendererIntelligenceXNuGetVersion)' == ''">0.1.3</OfficeImoMarkdownRendererIntelligenceXNuGetVersion>
-    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.41</OfficeImoExcelNuGetVersion>
-    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.37</OfficeImoWordMarkdownNuGetVersion>
-    <ChartForgeXNuGetVersion Condition="'$(ChartForgeXNuGetVersion)' == ''">0.1.8</ChartForgeXNuGetVersion>
-    <ChartForgeXMarkupNuGetVersion Condition="'$(ChartForgeXMarkupNuGetVersion)' == ''">0.1.6</ChartForgeXMarkupNuGetVersion>
-    <ChartForgeXMermaidNuGetVersion Condition="'$(ChartForgeXMermaidNuGetVersion)' == ''">0.1.1</ChartForgeXMermaidNuGetVersion>
-    <ChartForgeXMarkupMermaidNuGetVersion Condition="'$(ChartForgeXMarkupMermaidNuGetVersion)' == ''">0.1.1</ChartForgeXMarkupMermaidNuGetVersion>
+    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">2.0.1</OfficeImoMarkdownNuGetVersion>
+    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">2.0.1</OfficeImoMarkdownRendererNuGetVersion>
+    <OfficeImoMarkdownRendererIntelligenceXNuGetVersion Condition="'$(OfficeImoMarkdownRendererIntelligenceXNuGetVersion)' == ''">2.0.2</OfficeImoMarkdownRendererIntelligenceXNuGetVersion>
+    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">2.0.1</OfficeImoExcelNuGetVersion>
+    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">2.0.1</OfficeImoWordMarkdownNuGetVersion>
+    <ChartForgeXNuGetVersion Condition="'$(ChartForgeXNuGetVersion)' == ''">1.0.1</ChartForgeXNuGetVersion>
+    <ChartForgeXMarkupNuGetVersion Condition="'$(ChartForgeXMarkupNuGetVersion)' == ''">1.0.1</ChartForgeXMarkupNuGetVersion>
+    <ChartForgeXMermaidNuGetVersion Condition="'$(ChartForgeXMermaidNuGetVersion)' == ''">1.0.1</ChartForgeXMermaidNuGetVersion>
+    <ChartForgeXMarkupMermaidNuGetVersion Condition="'$(ChartForgeXMarkupMermaidNuGetVersion)' == ''">1.0.1</ChartForgeXMarkupMermaidNuGetVersion>
   </PropertyGroup>
 </Project>

@@ -216,25 +216,7 @@ internal static class LocalExportArtifactWriter {
 
     private static void WriteCsv(IReadOnlyList<string[]> rows, string outputPath) {
         using var writer = new StreamWriter(outputPath, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-        for (int r = 0; r < rows.Count; r++) {
-            var row = rows[r];
-            for (int c = 0; c < row.Length; c++) {
-                if (c > 0) {
-                    writer.Write(',');
-                }
-                writer.Write(EscapeCsv(row[c] ?? string.Empty));
-            }
-
-            writer.WriteLine();
-        }
-    }
-
-    private static string EscapeCsv(string value) {
-        if (value.IndexOfAny([',', '"', '\r', '\n']) < 0) {
-            return value;
-        }
-
-        return "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+        DelimitedTextFormatter.WriteCsv(writer, rows, terminateLastRow: true);
     }
 
     private static string GetFileExtension(string format) {

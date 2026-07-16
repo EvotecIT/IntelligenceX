@@ -21,10 +21,10 @@ internal sealed class NativeTranscriptTablePreviewControl : UserControl {
     private readonly ComboBox _sortColumn;
     private readonly Button _sortDirection;
 
-    public NativeTranscriptTablePreviewControl(NativeTranscriptTable table) {
+    public NativeTranscriptTablePreviewControl(NativeTranscriptTable table, string? title = null) {
         if (table == null) throw new ArgumentNullException(nameof(table));
         _table = table;
-        _title = NativeTableArtifactTitleResolver.Resolve(table);
+        _title = string.IsNullOrWhiteSpace(title) ? "Table evidence" : title.Trim();
         _viewModel = new NativeTableWorkspaceViewModel(table);
         _grid = CreateGrid();
         _summaryText = new TextBlock {

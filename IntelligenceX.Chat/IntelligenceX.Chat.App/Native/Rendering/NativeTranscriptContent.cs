@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using ChartForgeX.Markup;
+using ChartForgeX.VisualArtifacts;
 
 namespace IntelligenceX.Chat.App.Native.Rendering;
 
@@ -69,12 +71,12 @@ internal sealed class NativeTranscriptTable {
 /// </summary>
 internal sealed class NativeTranscriptVisual {
     public NativeTranscriptVisual(
-        NativeVisualFenceKind kind,
+        VisualMarkupKind kind,
         string fenceName,
         string fenceInfo,
         string payload,
         IReadOnlyDictionary<string, string> attributes,
-        object? artifact = null,
+        VisualArtifact? artifact = null,
         NativeVisualPreview? preview = null) {
         Kind = kind;
         FenceName = fenceName ?? string.Empty;
@@ -85,7 +87,7 @@ internal sealed class NativeTranscriptVisual {
         Preview = preview;
     }
 
-    public NativeVisualFenceKind Kind { get; }
+    public VisualMarkupKind Kind { get; }
 
     public string FenceName { get; }
 
@@ -95,7 +97,7 @@ internal sealed class NativeTranscriptVisual {
 
     public IReadOnlyDictionary<string, string> Attributes { get; }
 
-    public object? Artifact { get; }
+    public VisualArtifact? Artifact { get; }
 
     public NativeVisualPreview? Preview { get; }
 }

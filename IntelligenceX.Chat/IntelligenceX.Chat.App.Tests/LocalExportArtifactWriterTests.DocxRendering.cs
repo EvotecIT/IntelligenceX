@@ -31,7 +31,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, new[] { imagesDirectory });
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             Assert.Single(docx.Images);
         } finally {
             Directory.Delete(root, recursive: true);
@@ -61,7 +61,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, new[] { allowedDirectory });
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("blocked-image", bodyText, StringComparison.Ordinal);
             Assert.Empty(docx.Images);
@@ -87,7 +87,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, additionalAllowedImageDirectories: null);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("Status", bodyText, StringComparison.Ordinal);
             Assert.Contains("healthy", bodyText, StringComparison.OrdinalIgnoreCase);
@@ -115,7 +115,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, additionalAllowedImageDirectories: null);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyParagraphs = docx.Paragraphs
                 .Select(p => string.Concat(p.GetRuns().Select(run => run.Text)))
                 .Where(text => !string.IsNullOrWhiteSpace(text) && !string.Equals(text, "Transcript", StringComparison.Ordinal))
@@ -178,7 +178,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("not-array", bodyText, StringComparison.Ordinal);
             Assert.Empty(docx.Images);
@@ -204,7 +204,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("Interpretation", bodyText, StringComparison.Ordinal);
             Assert.Contains("topology looks clean in this sample.", bodyText, StringComparison.Ordinal);

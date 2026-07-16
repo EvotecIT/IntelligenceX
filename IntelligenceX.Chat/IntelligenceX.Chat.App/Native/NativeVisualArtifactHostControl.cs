@@ -1,7 +1,6 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
+using ChartForgeX.VisualArtifacts;
 using IntelligenceX.Chat.App.Native.Rendering;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -91,41 +90,29 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
         return visual.Kind + ": " + visual.FenceName;
     }
 
-    private static string FormatArtifactTitle(object artifact, NativeTranscriptVisual? visual) {
-        var title = GetPropertyString(artifact, "Title");
-        if (!string.IsNullOrWhiteSpace(title)) {
-            return title!;
+    private static string FormatArtifactTitle(VisualArtifact artifact, NativeTranscriptVisual? visual) {
+        if (!string.IsNullOrWhiteSpace(artifact.Title)) {
+            return artifact.Title;
         }
 
-        var id = GetPropertyString(artifact, "Id");
-        if (!string.IsNullOrWhiteSpace(id)) {
-            return id!;
+        if (!string.IsNullOrWhiteSpace(artifact.Id)) {
+            return artifact.Id;
         }
 
         return FormatVisualTitle(visual);
     }
 
-    private static string FormatArtifactDetail(object artifact, bool hasPreview) {
-        var kind = GetPropertyString(artifact, "Kind");
-        var source = GetPropertyString(artifact, "SourceLanguage");
-        var exports = GetPropertyString(artifact, "ExportFormats");
-        var metadataCount = GetMetadataCount(artifact);
+    private static string FormatArtifactDetail(VisualArtifact artifact, bool hasPreview) {
         var parts = new List<string>();
 
-        if (!string.IsNullOrWhiteSpace(kind)) {
-            parts.Add(kind!);
+        parts.Add(artifact.Kind.ToString());
+        parts.Add(artifact.SourceLanguage.ToString());
+        if (artifact.ExportFormats != VisualArtifactExportFormat.None) {
+            parts.Add(artifact.ExportFormats.ToString());
         }
 
-        if (!string.IsNullOrWhiteSpace(source)) {
-            parts.Add(source!);
-        }
-
-        if (!string.IsNullOrWhiteSpace(exports)) {
-            parts.Add(exports!);
-        }
-
-        if (metadataCount > 0) {
-            parts.Add(metadataCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " metadata");
+        if (artifact.Metadata.Count > 0) {
+            parts.Add(artifact.Metadata.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " metadata");
         }
 
         if (hasPreview) {
@@ -133,17 +120,6 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
         }
 
         return parts.Count == 0 ? "Artifact ready" : string.Join(" | ", parts);
-    }
-
-    private static string? GetPropertyString(object instance, string propertyName) {
-        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-        var value = property?.GetValue(instance);
-        return value?.ToString();
-    }
-
-    private static int GetMetadataCount(object instance) {
-        var property = instance.GetType().GetProperty("Metadata", BindingFlags.Instance | BindingFlags.Public);
-        return property?.GetValue(instance) is ICollection collection ? collection.Count : 0;
     }
 
     private static FrameworkElement CreatePreviewImage(byte[] png) {
