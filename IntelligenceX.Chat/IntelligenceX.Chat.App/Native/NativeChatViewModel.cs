@@ -176,7 +176,16 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             return false;
         }
 
-        if (_activeConversation.IsEmptyDraft) {
+        var existingDraft = FindEmptyDraft();
+        if (existingDraft is not null) {
+            if (!ReferenceEquals(existingDraft, _activeConversation)) {
+                await RunOnUiAsync(() => {
+                    ActivateConversation(existingDraft);
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+                await TryPersistConversationsAsync().ConfigureAwait(false);
+            }
+
             return true;
         }
 
@@ -391,6 +400,16 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         var normalized = (conversationId ?? string.Empty).Trim();
         for (var i = 0; i < Conversations.Count; i++) {
             if (string.Equals(Conversations[i].Id, normalized, StringComparison.OrdinalIgnoreCase)) {
+                return Conversations[i];
+            }
+        }
+
+        return null;
+    }
+
+    private NativeConversation? FindEmptyDraft() {
+        for (var i = 0; i < Conversations.Count; i++) {
+            if (Conversations[i].IsEmptyDraft) {
                 return Conversations[i];
             }
         }

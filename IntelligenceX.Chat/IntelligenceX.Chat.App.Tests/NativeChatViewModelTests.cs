@@ -291,6 +291,28 @@ public sealed class NativeChatViewModelTests {
     }
 
     /// <summary>
+    /// Ensures New selects an existing background draft instead of creating another blank chat.
+    /// </summary>
+    [Fact]
+    public async Task CreateConversationAsync_ReusesExistingInactiveEmptyDraft() {
+        var existing = new NativeConversation("chat-existing", "Existing chat");
+        var draft = new NativeConversation("chat-draft", "New Chat");
+        var store = new FakeConversationStore(new NativeConversationWorkspace(new[] { existing, draft }, existing.Id));
+        var model = new NativeChatViewModel(
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult(string.Empty, null))),
+            conversationStore: store);
+        await model.InitializeConversationsAsync();
+
+        var created = await model.CreateConversationAsync();
+
+        Assert.True(created);
+        Assert.Equal(draft.Id, model.ActiveConversation.Id);
+        Assert.Equal(2, model.Conversations.Count);
+        Assert.Single(model.Conversations, conversation => conversation.IsEmptyDraft);
+        Assert.Equal(draft.Id, store.LastSaved?.ActiveConversationId);
+    }
+
+    /// <summary>
     /// Ensures user transcript items project content immediately for native rendering.
     /// </summary>
     [Fact]
