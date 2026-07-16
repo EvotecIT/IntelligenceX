@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Storage;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
@@ -349,13 +350,8 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private static string ResolveStartupWebViewBudgetCachePath() {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localAppData)) {
-            return Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", StartupWebViewBudgetCacheFileName);
-        }
-
-        return Path.Combine(localAppData, "IntelligenceX.Chat", StartupWebViewBudgetCacheFileName);
+    internal static string ResolveStartupWebViewBudgetCachePath() {
+        return ChatStatePaths.GetDefaultPath(StartupWebViewBudgetCacheFileName);
     }
 
 }

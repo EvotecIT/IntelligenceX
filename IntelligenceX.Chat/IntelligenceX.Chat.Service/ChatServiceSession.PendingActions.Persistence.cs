@@ -59,14 +59,9 @@ internal sealed partial class ChatServiceSession {
             return ResolveDefaultPendingActionsStorePath();
         }
 
-        // Treat overrides as trusted *file names* under LocalAppData by default to avoid arbitrary-path writes.
-        // If a fully-qualified path is provided, only honor it when it still resolves under LocalAppData\IntelligenceX.Chat.
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-
-        var baseDir = Path.Combine(root, "IntelligenceX.Chat");
+        // Treat overrides as trusted file names beneath the shared per-user state directory.
+        // Fully-qualified paths are honored only when they remain inside that directory.
+        var baseDir = ChatServiceJsonFileStore.ResolveDefaultDirectory();
         var defaultPath = ResolveDefaultPendingActionsStorePath();
 
         try {

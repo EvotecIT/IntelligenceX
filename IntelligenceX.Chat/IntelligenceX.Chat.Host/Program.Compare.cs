@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Storage;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
@@ -292,12 +293,7 @@ internal static partial class Program {
     }
 
     private static string WriteCompareArtifact(string prompt, IReadOnlyList<CompareProfileRun> runs, ReplOptions options) {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-
-        var folder = Path.Combine(root, "IntelligenceX.Chat", "benchmarks");
+        var folder = Path.Combine(ChatStatePaths.GetDefaultDirectory(), "benchmarks");
         Directory.CreateDirectory(folder);
 
         var timestamp = DateTime.UtcNow;

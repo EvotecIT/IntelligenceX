@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
+using IntelligenceX.Chat.Abstractions.Storage;
 
 namespace IntelligenceX.Chat.Service.Persistence;
 
@@ -11,39 +12,14 @@ namespace IntelligenceX.Chat.Service.Persistence;
 /// </summary>
 internal static class ChatServiceJsonFileStore {
     /// <summary>
-    /// Resolves a chat service state file beneath local application data, with the OS temporary directory as a safe fallback.
+    /// Resolves a chat service state file beneath the shared durable per-user state directory.
     /// </summary>
     internal static string ResolveDefaultPath(string fileName) {
-        return ResolveDefaultPath(
-            fileName,
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            Path.GetTempPath());
-    }
-
-    internal static string ResolveDefaultPath(string fileName, string? localApplicationData, string temporaryPath) {
-        var normalizedFileName = Path.GetFileName((fileName ?? string.Empty).Trim());
-        if (normalizedFileName.Length == 0) {
-            throw new ArgumentException("A state file name is required.", nameof(fileName));
-        }
-
-        return Path.Combine(ResolveDefaultDirectory(localApplicationData, temporaryPath), normalizedFileName);
+        return ChatStatePaths.GetDefaultPath(fileName);
     }
 
     internal static string ResolveDefaultDirectory() {
-        return ResolveDefaultDirectory(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            Path.GetTempPath());
-    }
-
-    internal static string ResolveDefaultDirectory(string? localApplicationData, string temporaryPath) {
-        var root = string.IsNullOrWhiteSpace(localApplicationData)
-            ? temporaryPath
-            : localApplicationData;
-        if (string.IsNullOrWhiteSpace(root)) {
-            throw new ArgumentException("A temporary state directory is required when local application data is unavailable.", nameof(temporaryPath));
-        }
-
-        return Path.Combine(root, "IntelligenceX.Chat");
+        return ChatStatePaths.GetDefaultDirectory();
     }
 
     /// <summary>
@@ -86,7 +62,7 @@ internal static class ChatServiceJsonFileStore {
 
             var json = File.ReadAllText(path, Encoding.UTF8);
             if (string.IsNullOrWhiteSpace(json)) {
-                return ChatServiceJsonFileReadResult<T>.Empty();
+                return ChatServiceJsonFileReadResult<T>.Invalid();
             }
 
             var value = deserialize(json);
@@ -122,7 +98,7 @@ internal static class ChatServiceJsonFileStore {
     }
 
     /// <summary>
-    /// Atomically replaces a JSON snapshot and applies best-effort per-user ACL hardening.
+    /// Atomically replaces a JSON snapshot and applies best-effort owner-only permissions.
     /// </summary>
     internal static void Write<T>(
         string path,
@@ -142,6 +118,10 @@ internal static class ChatServiceJsonFileStore {
                 Directory.CreateDirectory(directory);
             }
 
+            if (!string.IsNullOrWhiteSpace(directory)) {
+                TryHardenDirectoryNoThrow(directory, storeName);
+            }
+
             var json = serialize(value);
             var fileName = Path.GetFileName(path);
             var temporaryName = $"{fileName}.{Guid.NewGuid():N}.tmp";
@@ -150,7 +130,7 @@ internal static class ChatServiceJsonFileStore {
                 : Path.Combine(directory, temporaryName);
 
             using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
-                TryHardenAclNoThrow(temporaryPath, storeName);
+                TryHardenFileNoThrow(temporaryPath, storeName);
                 using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                 writer.Write(json);
                 writer.Flush();
@@ -164,7 +144,7 @@ internal static class ChatServiceJsonFileStore {
             }
 
             temporaryPath = null;
-            TryHardenAclNoThrow(path, storeName);
+            TryHardenFileNoThrow(path, storeName);
         } catch (Exception ex) {
             Trace.TraceWarning($"{NormalizeStoreName(storeName)} write failed: {ex.GetType().Name}: {ex.Message}");
         } finally {
@@ -191,13 +171,36 @@ internal static class ChatServiceJsonFileStore {
         }
     }
 
-    private static void TryHardenAclNoThrow(string path, string storeName) {
-        if (string.IsNullOrWhiteSpace(path) || !OperatingSystem.IsWindows()) {
+    private static void TryHardenDirectoryNoThrow(string path, string storeName) {
+        if (string.IsNullOrWhiteSpace(path) || OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        try {
+            if (!Directory.Exists(path)) {
+                return;
+            }
+
+            File.SetUnixFileMode(
+                path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        } catch (Exception ex) {
+            Trace.TraceWarning($"{NormalizeStoreName(storeName)} directory permission hardening failed: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static void TryHardenFileNoThrow(string path, string storeName) {
+        if (string.IsNullOrWhiteSpace(path)) {
             return;
         }
 
         try {
             if (!File.Exists(path)) {
+                return;
+            }
+
+            if (!OperatingSystem.IsWindows()) {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                 return;
             }
 

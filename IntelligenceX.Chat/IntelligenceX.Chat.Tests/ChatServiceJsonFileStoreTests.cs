@@ -1,4 +1,6 @@
 using System.Text.Json;
+using IntelligenceX.Chat.Abstractions.Storage;
+using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Service.Persistence;
 using Xunit;
 
@@ -6,15 +8,33 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed class ChatServiceJsonFileStoreTests {
     [Fact]
-    public void ResolveDefaultPath_UsesTemporaryDirectoryWhenLocalApplicationDataIsUnavailable() {
-        var temporaryRoot = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
+    public void ResolveDefaultPath_UsesDurableUserProfileWhenPlatformDataRootsAreUnavailable() {
+        var userProfile = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
 
-        var path = ChatServiceJsonFileStore.ResolveDefaultPath(
+        var path = ChatStatePaths.ResolveDefaultPath(
             "state.json",
             localApplicationData: " ",
-            temporaryPath: temporaryRoot);
+            xdgDataHome: " ",
+            userProfile: userProfile);
 
-        Assert.Equal(Path.Combine(temporaryRoot, "IntelligenceX.Chat", "state.json"), path);
+        Assert.Equal(Path.Combine(userProfile, ".local", "share", "IntelligenceX.Chat", "state.json"), path);
+    }
+
+    [Fact]
+    public void ResolveDefaultPath_RejectsMissingPerUserRoots() {
+        Assert.Throws<InvalidOperationException>(() => ChatStatePaths.ResolveDefaultPath(
+            "state.json",
+            localApplicationData: " ",
+            xdgDataHome: "relative/path",
+            userProfile: " "));
+    }
+
+    [Fact]
+    public void ServiceDefaults_UseTheSharedStatePathOwner() {
+        Assert.Equal(ChatStatePaths.GetDefaultPath("state.db"), ServiceOptions.GetDefaultStateDbPath());
+        Assert.Equal(
+            ChatStatePaths.GetDefaultPath("tooling-bootstrap-cache-v1.json"),
+            ServiceOptions.GetDefaultToolingBootstrapCachePath());
     }
 
     [Fact]
@@ -53,6 +73,33 @@ public sealed class ChatServiceJsonFileStoreTests {
     }
 
     [Fact]
+    public void Write_HardensUnixDirectoryAndFilePermissions() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        var root = CreateRoot();
+        try {
+            var path = Path.Combine(root, "state.json");
+
+            ChatServiceJsonFileStore.Write(
+                path,
+                new TestStore { Version = 2, Value = "private" },
+                static value => JsonSerializer.Serialize(value),
+                "Test store");
+
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                File.GetUnixFileMode(root));
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(path));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Read_RejectsSnapshotsAboveTheDomainLimit() {
         var root = CreateRoot();
         try {
@@ -85,6 +132,21 @@ public sealed class ChatServiceJsonFileStoreTests {
 
             Assert.Equal(ChatServiceJsonFileReadState.Empty, missing.State);
             Assert.Equal(ChatServiceJsonFileReadState.Invalid, invalid.State);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Read_TreatsWhitespaceOnlySnapshotAsInvalid() {
+        var root = CreateRoot();
+        try {
+            var path = Path.Combine(root, "state.json");
+            File.WriteAllText(path, "   \r\n\t");
+
+            var result = Read(path);
+
+            Assert.Equal(ChatServiceJsonFileReadState.Invalid, result.State);
         } finally {
             Directory.Delete(root, recursive: true);
         }
