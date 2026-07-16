@@ -15,6 +15,7 @@ internal sealed partial class ChatServiceSession {
     private const string BackgroundSchedulerRuntimeStoreLoadStateInvalid = "invalid";
     private const string BackgroundSchedulerRuntimeStoreLoadStateDeferred = "deferred";
     private const int BackgroundSchedulerRuntimeStoreVersion = 1;
+    internal const int BackgroundSchedulerRuntimeStoreMaximumBytes = 512 * 1024;
     private static readonly JsonSerializerOptions BackgroundSchedulerRuntimeStoreReadJsonOptions = new() {
         PropertyNameCaseInsensitive = true,
         WriteIndented = false
@@ -573,7 +574,7 @@ internal sealed partial class ChatServiceSession {
     private static BackgroundSchedulerRuntimeStoreReadResult ReadBackgroundSchedulerRuntimeStoreNoThrow(string path) {
         var result = ChatServiceJsonFileStore.Read(
             path,
-            maximumBytes: 512 * 1024,
+            maximumBytes: BackgroundSchedulerRuntimeStoreMaximumBytes,
             static json => JsonSerializer.Deserialize<BackgroundSchedulerRuntimeStoreDto>(
                 json,
                 BackgroundSchedulerRuntimeStoreReadJsonOptions),

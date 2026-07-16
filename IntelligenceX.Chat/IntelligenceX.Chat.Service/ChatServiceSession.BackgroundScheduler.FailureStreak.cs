@@ -9,7 +9,7 @@ internal sealed partial class ChatServiceSession {
     // The runtime store is capped at 512 KiB. This retains far more events than the
     // maximum configured auto-pause threshold while keeping malformed or abandoned
     // stores bounded.
-    private const int MaxBackgroundSchedulerFailureStreakEvents = 4096;
+    internal const int MaxBackgroundSchedulerFailureStreakEvents = 4096;
     private const int MaxBackgroundSchedulerFailureEventIdLength = 40;
 
     private void RememberBackgroundSchedulerFailureEventNoLock(long recordedUtcTicks) {
@@ -41,53 +41,27 @@ internal sealed partial class ChatServiceSession {
             merged.LastSuccessUtcTicks);
 
         merged.FailureStreakEvents = mergedEvents;
-        if (BackgroundSchedulerFailureEventsAreComplete(persisted)
-            && BackgroundSchedulerFailureEventsAreComplete(baseline)
-            && BackgroundSchedulerFailureEventsAreComplete(desired)) {
+        var successResetChanged = desired.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks
+            || persisted.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks;
+        if (successResetChanged
+            || (BackgroundSchedulerFailureEventsAreComplete(persisted)
+                && BackgroundSchedulerFailureEventsAreComplete(baseline)
+                && BackgroundSchedulerFailureEventsAreComplete(desired))) {
+            // An overflowed scalar has no event ordering. Once either writer records
+            // a success, only the bounded events after that success are safe to keep.
             merged.ConsecutiveFailureCount = mergedEvents.Length;
             return;
         }
 
-        MergeOverflowedBackgroundSchedulerConsecutiveFailureState(
-            merged,
-            persisted,
-            baseline,
-            desired);
+        merged.ConsecutiveFailureCount = AddBackgroundSchedulerCounterDelta(
+            persisted.ConsecutiveFailureCount,
+            baseline.ConsecutiveFailureCount,
+            desired.ConsecutiveFailureCount);
     }
 
     private static bool BackgroundSchedulerFailureEventsAreComplete(BackgroundSchedulerRuntimeStoreDto store) =>
         Math.Max(0, store.ConsecutiveFailureCount) <= MaxBackgroundSchedulerFailureStreakEvents
         && Math.Max(0, store.ConsecutiveFailureCount) == store.FailureStreakEvents.Length;
-
-    private static void MergeOverflowedBackgroundSchedulerConsecutiveFailureState(
-        BackgroundSchedulerRuntimeStoreDto merged,
-        BackgroundSchedulerRuntimeStoreDto persisted,
-        BackgroundSchedulerRuntimeStoreDto baseline,
-        BackgroundSchedulerRuntimeStoreDto desired) {
-        var localSuccessChanged = desired.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks;
-        var persistedSuccessChanged = persisted.LastSuccessUtcTicks > baseline.LastSuccessUtcTicks;
-        if (!localSuccessChanged && !persistedSuccessChanged) {
-            merged.ConsecutiveFailureCount = AddBackgroundSchedulerCounterDelta(
-                persisted.ConsecutiveFailureCount,
-                baseline.ConsecutiveFailureCount,
-                desired.ConsecutiveFailureCount);
-            return;
-        }
-
-        var latestSuccessIsLocal = localSuccessChanged
-            && (!persistedSuccessChanged || desired.LastSuccessUtcTicks >= persisted.LastSuccessUtcTicks);
-        var resetWriter = latestSuccessIsLocal ? desired : persisted;
-        var otherWriter = latestSuccessIsLocal ? persisted : desired;
-        var postResetCount = Math.Max(0, resetWriter.ConsecutiveFailureCount);
-        if (otherWriter.LastFailureUtcTicks > resetWriter.LastSuccessUtcTicks) {
-            postResetCount = AddBackgroundSchedulerCounterDelta(
-                postResetCount,
-                0,
-                Math.Max(0, otherWriter.ConsecutiveFailureCount - baseline.ConsecutiveFailureCount));
-        }
-
-        merged.ConsecutiveFailureCount = Math.Max(postResetCount, merged.FailureStreakEvents.Length);
-    }
 
     private static BackgroundSchedulerFailureEventDto[] NormalizeBackgroundSchedulerFailureEvents(
         IEnumerable<BackgroundSchedulerFailureEventDto>? failureEvents,
@@ -156,8 +130,16 @@ internal sealed partial class ChatServiceSession {
 
     private static string NormalizeBackgroundSchedulerFailureEventId(string? eventId) {
         var normalized = eventId?.Trim() ?? string.Empty;
-        return normalized.Length <= MaxBackgroundSchedulerFailureEventIdLength
+        if (normalized.Length == 0 || normalized.Length > MaxBackgroundSchedulerFailureEventIdLength) {
+            return string.Empty;
+        }
+
+        return normalized.All(static character =>
+            character is >= 'a' and <= 'z'
+            or >= 'A' and <= 'Z'
+            or >= '0' and <= '9'
+            or '-' or '_' or '.' or ':')
             ? normalized
-            : normalized[..MaxBackgroundSchedulerFailureEventIdLength];
+            : string.Empty;
     }
 }
