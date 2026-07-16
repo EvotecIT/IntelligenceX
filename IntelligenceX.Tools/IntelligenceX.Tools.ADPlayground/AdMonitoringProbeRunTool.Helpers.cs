@@ -52,17 +52,18 @@ public sealed partial class AdMonitoringProbeRunTool {
         string? forestName,
         bool includeTrusts,
         DirectoryDiscoveryFallback discoveryFallback) {
+        var chainTargets = ResolveChainTargets(resolvedTargets, result);
         var activeFollowUpProfileIds = ResolveActiveFollowUpProfileIds(
             normalizedKind: normalizedKind,
             directoryProbeKind: directoryProbeKind,
             arguments: arguments,
-            resolvedTargets: resolvedTargets,
+            resolvedTargets: chainTargets,
             domainName: domainName,
             forestName: forestName);
         var nextActions = BuildNextActions(
             normalizedKind: normalizedKind,
             directoryProbeKind: directoryProbeKind,
-            resolvedTargets: resolvedTargets,
+            resolvedTargets: chainTargets,
             domainName: domainName,
             forestName: forestName,
             includeTrusts: includeTrusts,
@@ -85,12 +86,12 @@ public sealed partial class AdMonitoringProbeRunTool {
                 ("probe_kind", normalizedKind),
                 ("directory_probe_kind", directoryProbeKind ?? string.Empty),
                 ("status", result.Status.ToString()),
-                ("target", resolvedTargets.FirstOrDefault() ?? string.Empty)),
+                ("target", chainTargets.FirstOrDefault() ?? string.Empty)),
             resumeToken: ToolChainingHints.BuildToken(
                 "ad_monitoring_probe_run.resume",
                 ("probe_kind", normalizedKind),
                 ("fallback", fallbackName),
-                ("target_count", resolvedTargets.Count.ToString())),
+                ("target_count", chainTargets.Count.ToString())),
             flowId: ToolChainingHints.BuildToken(
                 "ad_monitoring_probe_follow_up",
                 ("probe_kind", normalizedKind),
@@ -106,17 +107,45 @@ public sealed partial class AdMonitoringProbeRunTool {
                 ("forest_name", forestName ?? string.Empty),
                 ("domain_name", domainName ?? string.Empty),
                 ("discovery_fallback", fallbackName),
-                ("targets_preview", string.Join(";", resolvedTargets.Take(10))),
+                ("targets_preview", string.Join(";", chainTargets.Take(10))),
                 ("active_follow_up_profiles", string.Join(";", activeFollowUpProfileIds))),
             checkpoint: ToolChainingHints.Map(
                 ("current_tool", "ad_monitoring_probe_run"),
                 ("probe_kind", normalizedKind),
                 ("directory_probe_kind", directoryProbeKind ?? string.Empty),
                 ("status", result.Status.ToString()),
-                ("row_targets", resolvedTargets.Count),
+                ("row_targets", chainTargets.Count),
                 ("include_trusts", includeTrusts),
                 ("active_follow_up_profiles", string.Join(";", activeFollowUpProfileIds))),
             confidence: confidence);
+    }
+
+    private static IReadOnlyList<string> ResolveChainTargets(
+        IReadOnlyList<string> resolvedTargets,
+        ProbeResult result) {
+        if (resolvedTargets.Count > 0) {
+            return resolvedTargets;
+        }
+
+        var targets = new List<string>();
+        var seenTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (result.Children is { Count: > 0 }) {
+            for (var i = 0; i < result.Children.Count; i++) {
+                var target = (result.Children[i]?.Target ?? string.Empty).Trim();
+                if (target.Length > 0 && seenTargets.Add(target)) {
+                    targets.Add(target);
+                }
+            }
+        }
+
+        var rootTarget = (result.Target ?? string.Empty).Trim();
+        if (targets.Count == 0
+            && rootTarget.Length > 0
+            && !rootTarget.EndsWith(" targets", StringComparison.OrdinalIgnoreCase)) {
+            targets.Add(rootTarget);
+        }
+
+        return targets;
     }
 
     internal static string[] ResolveActiveFollowUpProfileIds(
@@ -288,6 +317,36 @@ public sealed partial class AdMonitoringProbeRunTool {
                     ("system_windows_update_client_status", "Inspect same-host WSUS and Windows Update client state."),
                     ("system_windows_update_telemetry", "Inspect same-host update freshness, reboot pressure, and telemetry."),
                     ("system_patch_compliance", "Correlate same-host installed updates with missing security coverage."));
+                break;
+            case AdfsProbeKind:
+                AddSingleHostSystemActions(
+                    nextActions,
+                    primaryTarget,
+                    ("system_service_list", "Inspect AD FS and Web Application Proxy service state on the same target."),
+                    ("system_tls_posture", "Inspect same-host TLS posture after federation endpoint failures."),
+                    ("system_certificate_posture", "Inspect same-host certificate stores after AD FS certificate findings."));
+                break;
+            case EntraConnectProbeKind:
+                AddSingleHostSystemActions(
+                    nextActions,
+                    primaryTarget,
+                    ("system_service_list", "Inspect the Entra Connect Sync service on the same target."),
+                    ("system_metrics_summary", "Inspect same-host runtime pressure after sync-service failures."));
+                break;
+            case SqlServerProbeKind:
+                AddSingleHostSystemActions(
+                    nextActions,
+                    primaryTarget,
+                    ("system_service_list", "Inspect SQL Server and SQL Agent services on the same target."),
+                    ("system_ports_list", "Inspect same-host SQL listeners after connectivity failures."),
+                    ("system_metrics_summary", "Inspect same-host runtime pressure after SQL health findings."));
+                break;
+            case WindowsBackupProbeKind:
+                AddSingleHostSystemActions(
+                    nextActions,
+                    primaryTarget,
+                    ("system_backup_posture", "Inspect same-host backup configuration and freshness posture."),
+                    ("system_service_list", "Inspect same-host backup-related services after telemetry failures."));
                 break;
             case "directory":
                 AddDirectoryFollowUpActions(nextActions, directoryProbeKind, primaryTarget);
@@ -515,6 +574,9 @@ public sealed partial class AdMonitoringProbeRunTool {
 
         return normalized switch {
             "dnsservice" => "dns_service",
+            "entraconnect" => EntraConnectProbeKind,
+            "sqlserver" => SqlServerProbeKind,
+            "windowsbackup" => WindowsBackupProbeKind,
             "windowsupdate" => "windows_update",
             _ => normalized
         };

@@ -844,7 +844,8 @@ public class ToolDefinitionContractTests {
             monitoringProbeRunHandoff.OutboundRoutes,
             static route => string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
                             && string.Equals(route.TargetToolName, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase)
-                            && route.Bindings.Count == 4
+                            && route.Bindings.Count == 5
+                            && string.Equals(route.Bindings[0].SourceField, "effective_targets/0", StringComparison.OrdinalIgnoreCase)
                             && route.Conditions.Count == 1
                             && route.Conditions.Any(static condition =>
                                 string.Equals(condition.SourceField, "probe_kind", StringComparison.OrdinalIgnoreCase)
