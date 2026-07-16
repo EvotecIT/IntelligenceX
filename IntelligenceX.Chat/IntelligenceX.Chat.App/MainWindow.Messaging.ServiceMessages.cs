@@ -30,122 +30,22 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow : Window {
 
     private void OnServiceMessage(ChatServiceMessage msg) {
-        _ = _dispatcher.TryEnqueue(() => {
-            var requestConversation = ResolveRequestConversation();
-            switch (msg) {
-                case ChatDeltaMessage delta:
-                    if (!ShouldProcessLiveRequestMessage(delta.RequestId)) {
-                        break;
-                    }
-                    if (!IsActiveTurnRequest(delta.RequestId)) {
-                        // Kickoff/background deltas must not overwrite an existing assistant bubble.
-                        break;
-                    }
-                    if (ShouldUseProvisionalEventsForActiveTurn(requestConversation)) {
-                        // Once at least one provisional fragment has been observed for this turn,
-                        // prefer provisional events to avoid double-appending duplicate content.
-                        break;
-                    }
+        // Active turns are consumed by ChatServiceTurnRunner. Keep this listener for
+        // connection, login, kickoff, and other session-scoped protocol messages.
+        if (IsActiveTurnRequest(msg.RequestId) && ChatTurnUpdate.IsTurnMessage(msg)) {
+            return;
+        }
 
-                    MarkTurnDeltaStage(delta);
-                    ApplyAssistantStreamingFragment(
-                        requestConversation,
-                        delta.Text,
-                        preferProvisionalEvents: false,
-                        renderReason: "chat_delta");
-                    break;
-                case ChatAssistantProvisionalMessage provisional:
-                    if (!ShouldProcessLiveRequestMessage(provisional.RequestId)) {
-                        break;
-                    }
-                    if (!IsActiveTurnRequest(provisional.RequestId)) {
-                        break;
-                    }
+        _ = _dispatcher.TryEnqueue(() => ProcessServiceMessage(msg));
+    }
 
-                    MarkTurnDeltaStage(new ChatDeltaMessage {
-                        Kind = provisional.Kind,
-                        RequestId = provisional.RequestId,
-                        ThreadId = provisional.ThreadId,
-                        Text = provisional.Text
-                    });
-                    ApplyAssistantStreamingFragment(
-                        requestConversation,
-                        provisional.Text,
-                        preferProvisionalEvents: true,
-                        renderReason: "assistant_provisional");
-                    break;
-                case ChatInterimResultMessage interim:
-                    if (!ShouldProcessLiveRequestMessage(interim.RequestId)) {
-                        break;
-                    }
-                    if (!IsActiveTurnRequest(interim.RequestId)) {
-                        break;
-                    }
+    private void ProcessServiceMessage(ChatServiceMessage msg) {
+        var requestConversation = ResolveRequestConversation();
+        if (TryProcessChatTurnMessage(msg, requestConversation)) {
+            return;
+        }
 
-                    ApplyInterimAssistantResult(requestConversation, interim.Text);
-                    break;
-                case ChatStatusMessage status:
-                    if (!ShouldProcessLiveRequestMessage(status.RequestId)) {
-                        break;
-                    }
-
-                    MarkTurnStatusStage(status);
-                    var assistantStatusSignalChanged = ApplyActiveTurnStatusSignal(requestConversation, status.Status);
-                    var routingInsightUpdated = ApplyToolRoutingInsight(status);
-                    var routingPromptExposureUpdated = ApplyRoutingMetaPromptExposure(status);
-                    var activityText = IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status);
-                    var timelineChanged = AppendActivityTimeline(status, activityText ?? string.Empty);
-                    var normalizedActivityText = activityText ?? string.Empty;
-                    var activityChanged = !string.Equals(_latestServiceActivityText, normalizedActivityText, StringComparison.Ordinal);
-                    _latestServiceActivityText = normalizedActivityText;
-                    var timelineLabelSource = activityText ?? FormatActivityText(status);
-                    var assistantTimelineChanged = AppendActiveTurnAssistantTimelineLabel(
-                        requestConversation,
-                        BuildActivityTimelineLabel(status, timelineLabelSource));
-                    if (activityChanged || timelineChanged) {
-                        _ = SetActivityAsync(activityText, SnapshotActivityTimeline());
-                    }
-                    if (timelineChanged) {
-                        RequestServiceDrivenSessionPublish();
-                    }
-                    if (routingPromptExposureUpdated) {
-                        RequestServiceDrivenSessionPublish();
-                    }
-                    if ((assistantTimelineChanged || assistantStatusSignalChanged)
-                        && string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-                        QueueTranscriptRender("chat_status_timeline");
-                    }
-                    if (routingInsightUpdated || routingPromptExposureUpdated) {
-                        _ = PublishOptionsStateSafeAsync();
-                    }
-                    if (VerboseServiceLogs || _debugMode) {
-                        AppendSystem(FormatStatusTrace(status));
-                    }
-                    break;
-                case ChatMetricsMessage metrics:
-                    if (!ShouldProcessLiveRequestMessage(metrics.RequestId) && !IsLatestTurnRequest(metrics.RequestId)) {
-                        break;
-                    }
-
-                    ApplyTurnMetrics(metrics);
-                    StartupLog.Write(
-                        "TurnMetrics request_id="
-                        + (metrics.RequestId ?? string.Empty).Trim()
-                        + " duration_ms="
-                        + metrics.DurationMs.ToString(CultureInfo.InvariantCulture)
-                        + " ttft_ms="
-                        + (metrics.TtftMs?.ToString(CultureInfo.InvariantCulture) ?? "null")
-                        + " outcome="
-                        + ((metrics.Outcome ?? string.Empty).Trim().Length == 0 ? "unknown" : metrics.Outcome!.Trim())
-                        + " tool_calls="
-                        + metrics.ToolCallsCount.ToString(CultureInfo.InvariantCulture)
-                        + " tool_rounds="
-                        + metrics.ToolRounds.ToString(CultureInfo.InvariantCulture));
-                    RequestServiceDrivenSessionPublish();
-                    if (VerboseServiceLogs || _debugMode) {
-                        AppendSystem(FormatMetricsTrace(metrics));
-                    }
-                    break;
+        switch (msg) {
                 case ChatGptLoginUrlMessage url:
                     _loginInProgress = true;
                     Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
@@ -214,100 +114,7 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(SystemNotice.ServiceError(err.Error, err.Code));
                     }
                     break;
-            }
-        });
-    }
-
-    private void ApplyAssistantStreamingFragment(ConversationRuntime conversation, string? fragment, bool preferProvisionalEvents, string renderReason) {
-        var delta = fragment ?? string.Empty;
-        if (delta.Length == 0) {
-            return;
         }
-        if (!TryAcceptActiveTurnDraftMutation(conversation)) {
-            return;
-        }
-
-        var normalizedPreview = _assistantStreamingState.AppendDeltaAndNormalizePreview(
-            delta,
-            fromProvisionalEvent: preferProvisionalEvents);
-        ReplaceLastAssistantText(
-            conversation,
-            normalizedPreview);
-        conversation.UpdatedUtc = DateTime.UtcNow;
-        BindActiveTurnAssistantMessage(conversation);
-        SetActiveTurnAssistantChannel(conversation, AssistantBubbleChannelKind.DraftThinking);
-        SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents);
-        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-            QueueTranscriptRender(renderReason);
-        }
-    }
-
-    private void ApplyInterimAssistantResult(ConversationRuntime conversation, string? text) {
-        var interimText = (text ?? string.Empty).Trim();
-        if (interimText.Length == 0 || !TryAcceptActiveTurnDraftMutation(conversation) || !TryMarkActiveTurnInterimResult(interimText)) {
-            return;
-        }
-
-        _ = TryGetLastAssistantText(conversation, out var latestAssistantText);
-        var appendInterimBubble = ShouldAppendInterimAssistantResult(
-            activeTurnReceivedDelta: _assistantStreamingState.HasReceivedDelta(),
-            activeTurnBoundToConversation: IsActiveTurnBoundToConversation(conversation),
-            interimAssistantText: interimText,
-            latestAssistantText: latestAssistantText);
-        if (appendInterimBubble) {
-            AppendAssistantText(conversation, interimText);
-        } else {
-            ReplaceLastAssistantText(conversation, interimText);
-        }
-        conversation.UpdatedUtc = DateTime.UtcNow;
-        BindActiveTurnAssistantMessage(conversation);
-        SetActiveTurnAssistantChannel(conversation, AssistantBubbleChannelKind.DraftThinking);
-        // Interim snapshots are draft-by-definition and should stay visually distinct
-        // from the finalized assistant response.
-        SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents: false);
-        if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
-            QueueTranscriptRender("assistant_interim_result");
-        }
-    }
-
-    internal static bool ShouldAppendInterimAssistantResult(bool activeTurnReceivedDelta, bool activeTurnBoundToConversation) {
-        // Interim snapshots should replace the active provisional draft when this turn has already streamed
-        // assistant content; appending in that case creates duplicate assistant bubbles.
-        if (activeTurnReceivedDelta && activeTurnBoundToConversation) {
-            return false;
-        }
-
-        return true;
-    }
-
-    internal static bool ShouldAppendInterimAssistantResult(
-        bool activeTurnReceivedDelta,
-        bool activeTurnBoundToConversation,
-        string? interimAssistantText,
-        string? latestAssistantText) {
-        if (!ShouldAppendInterimAssistantResult(activeTurnReceivedDelta, activeTurnBoundToConversation)) {
-            return false;
-        }
-
-        var interimText = NormalizeAssistantSnapshotForAppendDecision(interimAssistantText);
-        if (interimText.Length == 0) {
-            return false;
-        }
-
-        var latestText = NormalizeAssistantSnapshotForAppendDecision(latestAssistantText);
-        if (latestText.Length == 0) {
-            return true;
-        }
-
-        if (string.Equals(interimText, latestText, StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-
-        if (AreNearDuplicateAssistantSnapshots(interimText, latestText)) {
-            return false;
-        }
-
-        return true;
     }
 
     private void QueuePostLoginCompletion() {

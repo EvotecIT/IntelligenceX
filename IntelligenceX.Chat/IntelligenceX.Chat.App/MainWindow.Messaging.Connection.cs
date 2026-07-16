@@ -771,6 +771,7 @@ public sealed partial class MainWindow : Window {
             }
 
             _client = client;
+            _turnRunner = new ChatServiceTurnRunner(client);
             _isConnected = true;
             ResetStartupMetadataFailureRecoveryDiagnostics();
             BeginStartupMetadataSyncTracking("preparing runtime metadata sync");

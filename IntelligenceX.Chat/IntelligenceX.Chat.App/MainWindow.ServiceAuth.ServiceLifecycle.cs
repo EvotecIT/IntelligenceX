@@ -313,6 +313,7 @@ public sealed partial class MainWindow {
     private async Task DisposeClientAsync() {
         var client = _client;
         _client = null;
+        _turnRunner = null;
         _isConnected = false;
         _activeKickoffRequestId = null;
         lock (_aliveProbeSync) {

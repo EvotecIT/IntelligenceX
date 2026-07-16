@@ -277,8 +277,19 @@ public sealed partial class MainWindow : Window {
             Options = BuildChatRequestOptions(turn.Conversation)
         };
 
-        var result = await client.RequestAsync<ChatResultMessage>(req, cancellationToken).ConfigureAwait(false);
-        await ApplyChatResultAsync(turn, result).ConfigureAwait(false);
+        var runner = ResolveTurnRunner(client);
+        var result = await runner
+            .RunAsync(req, ApplyChatTurnUpdateAsync, cancellationToken)
+            .ConfigureAwait(false);
+        await ApplyChatResultAsync(turn, result.Response).ConfigureAwait(false);
+    }
+
+    private ChatServiceTurnRunner ResolveTurnRunner(ChatServiceClient client) {
+        if (!ReferenceEquals(client, _client)) {
+            return new ChatServiceTurnRunner(client);
+        }
+
+        return _turnRunner ??= new ChatServiceTurnRunner(client);
     }
 
     private async Task ApplyChatResultAsync(ChatTurnContext turn, ChatResultMessage result) {
