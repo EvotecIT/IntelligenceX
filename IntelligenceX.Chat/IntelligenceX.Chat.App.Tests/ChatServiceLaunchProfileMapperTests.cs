@@ -12,6 +12,27 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class ChatServiceLaunchProfileMapperTests {
     /// <summary>
+    /// Keeps detached ownership sticky when a later probe observes the already-running owned service.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, true, true)]
+    [InlineData(false, true, true, true)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, false, true, false)]
+    public void NativeRuntime_ResolveDetachedServiceOwnership_DoesNotLoseExistingOwnership(
+        bool currentlyOwned,
+        bool launched,
+        bool detachedServiceMode,
+        bool expected) {
+        Assert.Equal(
+            expected,
+            NativeChatServiceRuntime.ResolveDetachedServiceOwnership(
+                currentlyOwned,
+                launched,
+                detachedServiceMode));
+    }
+
+    /// <summary>
     /// Ensures persisted provider settings map identically for every desktop shell.
     /// </summary>
     [Fact]

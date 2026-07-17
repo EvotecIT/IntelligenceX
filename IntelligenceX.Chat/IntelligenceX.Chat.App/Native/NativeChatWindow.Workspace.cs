@@ -40,6 +40,8 @@ internal sealed partial class NativeChatWindow {
             UIElement.PointerWheelChangedEvent,
             new PointerEventHandler(OnTranscriptPointerWheelChanged),
             handledEventsToo: true);
+        _transcriptScroll.ViewChanged += OnTranscriptViewChanged;
+        _transcriptItems.LayoutUpdated += OnTranscriptLayoutUpdated;
         _emptyTranscriptHost = new Grid {
             Padding = new Thickness(24, 18, 24, 18)
         };
@@ -267,6 +269,7 @@ internal sealed partial class NativeChatWindow {
             return;
         }
 
+        _isTranscriptFollowingEnd = true;
         _ = DispatcherQueue.TryEnqueue(() => {
             var index = _viewModel.Transcript.Count - 1;
             var element = _transcriptItems.TryGetElement(index) ?? _transcriptItems.GetOrCreateElement(index);
@@ -278,6 +281,7 @@ internal sealed partial class NativeChatWindow {
     }
 
     private void ScrollTranscriptToStart() {
+        _isTranscriptFollowingEnd = false;
         _ = DispatcherQueue.TryEnqueue(() => {
             if (_viewModel.Transcript.Count > 0) {
                 var element = _transcriptItems.TryGetElement(0) ?? _transcriptItems.GetOrCreateElement(0);
@@ -303,7 +307,33 @@ internal sealed partial class NativeChatWindow {
             return;
         }
 
+        _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
+            target,
+            _transcriptScroll.ScrollableHeight);
         args.Handled = _transcriptScroll.ChangeView(
+            horizontalOffset: null,
+            verticalOffset: target,
+            zoomFactor: null,
+            disableAnimation: true);
+    }
+
+    private void OnTranscriptViewChanged(object? sender, ScrollViewerViewChangedEventArgs args) {
+        _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
+            _transcriptScroll.VerticalOffset,
+            _transcriptScroll.ScrollableHeight);
+    }
+
+    private void OnTranscriptLayoutUpdated(object? sender, object args) {
+        if (!_isTranscriptFollowingEnd || _viewModel.Transcript.Count == 0) {
+            return;
+        }
+
+        var target = _transcriptScroll.ScrollableHeight;
+        if (Math.Abs(target - _transcriptScroll.VerticalOffset) < 0.5) {
+            return;
+        }
+
+        _ = _transcriptScroll.ChangeView(
             horizontalOffset: null,
             verticalOffset: target,
             zoomFactor: null,

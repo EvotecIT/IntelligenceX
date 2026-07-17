@@ -258,7 +258,10 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         var result = await _processHost.EnsureRunningAsync(startOptions, cancellationToken)
             .ConfigureAwait(false);
         if (result.IsRunning) {
-            _detachOwnedServiceOnDispose = result.Launched && startOptions.DetachedServiceMode;
+            _detachOwnedServiceOnDispose = ResolveDetachedServiceOwnership(
+                _detachOwnedServiceOnDispose,
+                result.Launched,
+                startOptions.DetachedServiceMode);
             return;
         }
 
@@ -272,6 +275,12 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         await status(message).ConfigureAwait(false);
         throw new InvalidOperationException(message, result.Exception);
     }
+
+    internal static bool ResolveDetachedServiceOwnership(
+        bool currentlyOwned,
+        bool launched,
+        bool detachedServiceMode) =>
+        currentlyOwned || launched && detachedServiceMode;
 
     private async Task SynchronizeSelectedProfileAsync(
         ChatServiceClient client,

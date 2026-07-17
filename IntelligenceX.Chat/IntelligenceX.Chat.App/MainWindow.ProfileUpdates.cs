@@ -30,9 +30,6 @@ public sealed partial class MainWindow : Window {
     private const int AutonomyMaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
     private const int AutonomyMaxCandidateToolsLimit = ChatRequestOptionLimits.MaxCandidateTools;
     private const string ParallelToolModeAuto = ChatRequestOptionsFactory.ParallelToolModeAuto;
-    private static readonly StringComparer MemoryTokenComparer = StringComparer.OrdinalIgnoreCase;
-    private static readonly Regex MemoryTokenSplitRegex = new(@"[^\p{L}\p{Nd}_]+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
-
     private void ClearToolCatalogCache(bool clearCatalogMetadata) {
         if (clearCatalogMetadata) {
             _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();

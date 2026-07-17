@@ -25,4 +25,16 @@ public sealed class NativeTranscriptScrollBehaviorTests {
 
         Assert.Equal(expected, target);
     }
+
+    /// <summary>
+    /// Keeps streamed output following only while the viewport remains near the transcript end.
+    /// </summary>
+    [Theory]
+    [InlineData(1000, 1000, true)]
+    [InlineData(976, 1000, true)]
+    [InlineData(975, 1000, false)]
+    [InlineData(100, -10, true)]
+    public void IsAtEnd_UsesBoundedFollowTolerance(double current, double scrollableHeight, bool expected) {
+        Assert.Equal(expected, NativeTranscriptScrollBehavior.IsAtEnd(current, scrollableHeight));
+    }
 }

@@ -14,7 +14,6 @@ internal sealed record DesktopChatTurnPromptContext {
     public string? EffectiveAssistantPersona { get; init; }
     public bool IncludeOnboardingContext { get; init; }
     public IReadOnlyList<string> MissingOnboardingFields { get; init; } = Array.Empty<string>();
-    public bool IncludeLiveProfileUpdates { get; init; }
     public IReadOnlyList<string> LocalContextLines { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> ConversationStyleLines { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string>? CapabilityAnswerStyleLines { get; init; }
@@ -50,7 +49,8 @@ internal static class DesktopChatTurnProtocol {
     public static string BuildRequestText(DesktopChatTurnPromptContext context) {
         ArgumentNullException.ThrowIfNull(context);
         var userText = (context.UserText ?? string.Empty).Trim();
-        if (ShouldUseThinRequestEnvelope(context.IncludeOnboardingContext, context.IncludeLiveProfileUpdates)) {
+        var includeStructuredProfileUpdates = ShouldIncludeStructuredProfileUpdates(context.RuntimeSelfReportAnalysis);
+        if (ShouldUseThinRequestEnvelope(context.IncludeOnboardingContext, includeStructuredProfileUpdates)) {
             var runtimeSelfReportDirectiveLines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(
                 context.RuntimeSelfReportAnalysis);
             return PromptMarkdownBuilder.BuildThinServiceRequest(
@@ -69,7 +69,7 @@ internal static class DesktopChatTurnProtocol {
             effectivePersona: context.EffectiveAssistantPersona,
             onboardingInProgress: context.IncludeOnboardingContext,
             missingOnboardingFields: context.MissingOnboardingFields,
-            includeLiveProfileUpdates: context.IncludeLiveProfileUpdates,
+            includeLiveProfileUpdates: includeStructuredProfileUpdates,
             executionBehaviorPrompt: PromptAssets.GetExecutionBehaviorPrompt(),
             localContextLines: context.LocalContextLines,
             conversationStyleLines: context.ConversationStyleLines,
@@ -125,6 +125,14 @@ internal static class DesktopChatTurnProtocol {
 
     public static bool ShouldUseThinRequestEnvelope(bool includeOnboardingContext, bool includeLiveProfileUpdates) =>
         !includeOnboardingContext && !includeLiveProfileUpdates;
+
+    /// <summary>
+    /// Keeps profile-update protocol routing language-neutral and identical across desktop shells.
+    /// Runtime self-report turns are the only structural exception because they suppress profile context.
+    /// </summary>
+    public static bool ShouldIncludeStructuredProfileUpdates(
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis) =>
+        !runtimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion;
 
     public static bool ShouldIncludeAmbientOnboardingContext(
         string? userText,

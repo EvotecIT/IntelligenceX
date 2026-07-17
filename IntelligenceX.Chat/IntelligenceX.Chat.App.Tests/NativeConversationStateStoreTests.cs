@@ -675,6 +675,165 @@ public sealed class NativeConversationStateStoreTests {
     }
 
     /// <summary>
+    /// Ensures native chat uses the shared question-aware memory selector rather than a shell-specific top-weight list.
+    /// </summary>
+    [Fact]
+    public async Task BuildRequestText_SelectsMemoryForCurrentQuestion() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        PersistentMemoryEnabled = true,
+                        MemoryFacts = new List<ChatMemoryFactState> {
+                            new() { Fact = "The UI uses a cobalt theme", Weight = 5 },
+                            new() {
+                                Fact = "The AD replication lab is ad.evotec.xyz",
+                                Weight = 3,
+                                Tags = ["directory", "replication"]
+                            }
+                        },
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-memory", Title = "Memory" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var store = new NativeConversationStateStore(path);
+            var conversation = Assert.Single((await store.LoadAsync(CancellationToken.None)).Conversations);
+
+            var request = store.BuildRequestText(conversation, "Check AD replication health");
+
+            Assert.Contains("The AD replication lab is ad.evotec.xyz", request, StringComparison.Ordinal);
+            Assert.DoesNotContain("The UI uses a cobalt theme", request, StringComparison.Ordinal);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures a profile-scoped update replaces an earlier temporary override during the same native session.
+    /// </summary>
+    [Fact]
+    public async Task NormalizeAssistantTurn_ProfileUpdateClearsMatchingSessionOverride() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        AssistantPersona = "baseline analyst",
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-profile", Title = "Profile" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var store = new NativeConversationStateStore(path);
+            var workspace = await store.LoadAsync(CancellationToken.None);
+            var conversation = Assert.Single(workspace.Conversations);
+
+            await store.NormalizeAssistantTurnAsync(
+                conversation,
+                """
+                ```ix_profile
+                {"assistantPersona":"temporary responder","scope":"session"}
+                ```
+                """,
+                CancellationToken.None);
+            var temporaryRequest = store.BuildRequestText(conversation, "Continue");
+            Assert.Contains("temporary responder", temporaryRequest, StringComparison.OrdinalIgnoreCase);
+
+            await store.NormalizeAssistantTurnAsync(
+                conversation,
+                """
+                ```ix_profile
+                {"assistantPersona":"persistent responder","scope":"profile"}
+                ```
+                """,
+                CancellationToken.None);
+            var persistentRequest = store.BuildRequestText(conversation, "Continue");
+            Assert.Contains("persistent responder", persistentRequest, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("temporary responder", persistentRequest, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures a native message save does not resurrect an action concurrently consumed by another shell.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_PreservesConcurrentPendingActionConsumption() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            var baselineTime = DateTime.UtcNow.AddMinutes(-2);
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        ActiveConversationId = "chat-action",
+                        Conversations = new List<ChatConversationState> {
+                            new() {
+                                Id = "chat-action",
+                                Title = "Action",
+                                UpdatedUtc = baselineTime,
+                                PendingAssistantQuestionHint = "Run it?",
+                                PendingActions = new List<ChatPendingActionState> {
+                                    new() {
+                                        Id = "act_run",
+                                        Title = "Run",
+                                        Request = "Run the check",
+                                        Reply = "/act act_run"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            var nativeConversation = Assert.Single(workspace.Conversations);
+            var nativeTime = DateTime.UtcNow.AddSeconds(-2);
+            nativeConversation.Messages.Add(new NativeChatTranscriptItem(
+                "user",
+                "Keep investigating",
+                new DateTimeOffset(nativeTime, TimeSpan.Zero)));
+            nativeConversation.UpdatedUtc = nativeTime;
+
+            using (var concurrentStore = new ChatAppStateStore(path)) {
+                var current = await concurrentStore.GetAsync("default", CancellationToken.None);
+                Assert.NotNull(current);
+                var consumed = Assert.Single(current!.Conversations);
+                consumed.PendingActions.Clear();
+                consumed.PendingAssistantQuestionHint = null;
+                consumed.UpdatedUtc = DateTime.UtcNow.AddSeconds(-1);
+                await concurrentStore.UpsertAsync("default", current, CancellationToken.None);
+            }
+
+            await nativeStore.SaveAsync(workspace, CancellationToken.None);
+
+            using var verifier = new ChatAppStateStore(path);
+            var saved = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(saved);
+            var merged = Assert.Single(saved!.Conversations);
+            Assert.Empty(merged.PendingActions);
+            Assert.Null(merged.PendingAssistantQuestionHint);
+            Assert.Equal("Keep investigating", Assert.Single(merged.Messages).Text);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Ensures two native store instances retain both turns when their saves overlap.
     /// </summary>
     [Fact]

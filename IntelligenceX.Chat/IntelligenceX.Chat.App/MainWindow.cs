@@ -160,18 +160,6 @@ public sealed partial class MainWindow : Window {
         TimeSpan.FromSeconds(10),
         TimeSpan.FromSeconds(14)
     };
-    private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex ThemeIntentRegex = new(
-        $@"\b(?:theme)\s*(?:is|to|=|:)?\s*(?<value>{ThemeContract.ThemeValueRegexAlternation})\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex ThemeUseIntentRegex = new(
-        $@"\b(?:use|switch to|set)\s+(?<value>{ThemeContract.ThemeValueRegexAlternation})\s+theme\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex MemoryRememberIntentRegex = new(@"\b(?:remember(?:\s+this|\s+that)?|save\s+this|store\s+this)\b[\s,:-]*(?<value>[^\r\n]{6,240})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex MemoryFutureIntentRegex = new(@"\bfor\s+next\s+time\b[\s,:-]*(?<value>[^\r\n]{6,220})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-
     [DllImport("user32.dll")]
     private static extern bool ReleaseCapture();
 
@@ -387,8 +375,7 @@ public sealed partial class MainWindow : Window {
     private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _startupUnavailablePackSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _startupBootstrapSummarySignatures = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, MemorySemanticVectorCacheEntry> _memorySemanticVectorCache = new(StringComparer.OrdinalIgnoreCase);
-    // Guards memory semantic cache + memory diagnostics snapshot/history across UI/async paths.
+    // Guards memory diagnostics snapshot/history across UI/async paths.
     private readonly object _memoryDiagnosticsSync = new();
     private MemoryDebugSnapshot? _lastMemoryDebugSnapshot;
     private readonly List<MemoryDebugSnapshot> _memoryDebugHistory = new();
@@ -660,21 +647,6 @@ public sealed partial class MainWindow : Window {
         int TotalToolCount,
         bool PromptExposureReordered,
         string[] PromptExposureTopToolNames);
-
-    private sealed class UserProfileIntent {
-        public string? UserName { get; set; }
-        public bool HasUserName { get; set; }
-        public string? AssistantPersona { get; set; }
-        public bool HasAssistantPersona { get; set; }
-        public string? ThemePreset { get; set; }
-        public bool HasThemePreset { get; set; }
-        public ProfileUpdateScope Scope { get; set; }
-    }
-
-    private sealed class MemorySemanticVectorCacheEntry {
-        public required string Signature { get; init; }
-        public required Dictionary<int, double> Vector { get; init; }
-    }
 
     private sealed class MemoryDebugSnapshot {
         public DateTime UpdatedUtc { get; init; }

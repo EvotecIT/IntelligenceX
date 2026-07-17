@@ -13,11 +13,6 @@ public sealed partial class MainWindow {
         var activeConversation = GetActiveConversation();
         var effectivePersona = GetEffectiveAssistantPersona();
         var effectiveName = GetEffectiveUserName();
-        var profileIntent = ParseUserProfileIntent(userText);
-        var includeLiveProfileUpdates = ShouldIncludeLiveProfileUpdates(
-            profileIntent.HasUserName,
-            profileIntent.HasAssistantPersona,
-            profileIntent.HasThemePreset);
         var onboardingInProgress = !_appState.OnboardingCompleted;
         var runtimeSelfReportAnalysis = ConversationTurnShapeClassifier.AnalyzeAssistantRuntimeIntrospectionQuestion(userText);
         var assistantCapabilityQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(userText);
@@ -73,7 +68,6 @@ public sealed partial class MainWindow {
             EffectiveAssistantPersona = effectivePersona,
             IncludeOnboardingContext = includeOnboardingContext,
             MissingOnboardingFields = missingFields,
-            IncludeLiveProfileUpdates = includeLiveProfileUpdates,
             LocalContextLines = localContextLines,
             ConversationStyleLines = conversationStyleLines,
             CapabilityAnswerStyleLines = capabilityAnswerStyleLines,
@@ -194,13 +188,6 @@ public sealed partial class MainWindow {
         }
 
         return runtimeSelfReportDetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback;
-    }
-
-    internal static bool ShouldIncludeLiveProfileUpdates(
-        bool hasUserNameUpdate,
-        bool hasAssistantPersonaUpdate,
-        bool hasThemePresetUpdate) {
-        return hasUserNameUpdate || hasAssistantPersonaUpdate || hasThemePresetUpdate;
     }
 
     internal static bool ShouldUseThinServiceRequestEnvelope(

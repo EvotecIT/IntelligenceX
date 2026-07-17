@@ -316,12 +316,44 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             conversation.Messages,
             baseline.Messages ?? new List<ChatMessageState>(),
             existing.Messages ?? new List<ChatMessageState>());
-        existing.PendingActions = conversation.PendingActions.Select(MapPendingAction).ToList();
-        existing.PendingAssistantQuestionHint = conversation.PendingAssistantQuestionHint;
+        existing.PendingActions = ResolveConcurrentPendingActions(
+            conversation.PendingActions.Select(MapPendingAction).ToList(),
+            baseline.PendingActions ?? new List<ChatPendingActionState>(),
+            existing.PendingActions ?? new List<ChatPendingActionState>(),
+            conversation.UpdatedUtc,
+            existing.UpdatedUtc);
+        existing.PendingAssistantQuestionHint = ResolveConcurrentValue(
+            conversation.PendingAssistantQuestionHint,
+            baseline.PendingAssistantQuestionHint,
+            existing.PendingAssistantQuestionHint,
+            conversation.UpdatedUtc,
+            existing.UpdatedUtc);
         existing.UpdatedUtc = EnsureUtc(existing.UpdatedUtc) >= EnsureUtc(conversation.UpdatedUtc)
             ? EnsureUtc(existing.UpdatedUtc)
             : EnsureUtc(conversation.UpdatedUtc);
         return existing;
+    }
+
+    private static List<ChatPendingActionState> ResolveConcurrentPendingActions(
+        IReadOnlyList<ChatPendingActionState> nativeActions,
+        IReadOnlyList<ChatPendingActionState> baselineActions,
+        IReadOnlyList<ChatPendingActionState> persistedActions,
+        DateTime nativeUpdatedUtc,
+        DateTime persistedUpdatedUtc) {
+        var nativeChanged = !PendingActionsMatch(nativeActions, baselineActions);
+        var persistedChanged = !PendingActionsMatch(persistedActions, baselineActions);
+        if (!nativeChanged) {
+            return persistedActions.Select(ClonePendingAction).ToList();
+        }
+
+        if (!persistedChanged || PendingActionsMatch(nativeActions, persistedActions)) {
+            return nativeActions.Select(ClonePendingAction).ToList();
+        }
+
+        var selected = EnsureUtc(persistedUpdatedUtc) > EnsureUtc(nativeUpdatedUtc)
+            ? persistedActions
+            : nativeActions;
+        return selected.Select(ClonePendingAction).ToList();
     }
 
     private static void ApplyPersistedMetadata(
@@ -441,6 +473,33 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             Reply = action.Reply
         };
 
+    private static ChatPendingActionState ClonePendingAction(ChatPendingActionState action) =>
+        new() {
+            Id = action.Id,
+            Title = action.Title,
+            Request = action.Request,
+            Reply = action.Reply
+        };
+
+    private static bool PendingActionsMatch(
+        IReadOnlyList<ChatPendingActionState> left,
+        IReadOnlyList<ChatPendingActionState> right) {
+        if (left.Count != right.Count) {
+            return false;
+        }
+
+        for (var i = 0; i < left.Count; i++) {
+            if (!string.Equals(left[i].Id, right[i].Id, StringComparison.Ordinal)
+                || !string.Equals(left[i].Title, right[i].Title, StringComparison.Ordinal)
+                || !string.Equals(left[i].Request, right[i].Request, StringComparison.Ordinal)
+                || !string.Equals(left[i].Reply, right[i].Reply, StringComparison.Ordinal)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static ChatConversationState CloneConversation(ChatConversationState conversation) =>
         new() {
             Id = conversation.Id,
@@ -452,12 +511,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             PendingAssistantQuestionHint = conversation.PendingAssistantQuestionHint,
             Messages = (conversation.Messages ?? new List<ChatMessageState>()).Select(CloneMessage).ToList(),
             PendingActions = (conversation.PendingActions ?? new List<ChatPendingActionState>())
-                .Select(static action => new ChatPendingActionState {
-                    Id = action.Id,
-                    Title = action.Title,
-                    Request = action.Request,
-                    Reply = action.Reply
-                })
+                .Select(ClonePendingAction)
                 .ToList(),
             UpdatedUtc = conversation.UpdatedUtc
         };

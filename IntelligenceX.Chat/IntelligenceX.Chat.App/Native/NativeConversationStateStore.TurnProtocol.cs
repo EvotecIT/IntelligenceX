@@ -58,8 +58,6 @@ internal sealed partial class NativeConversationStateStore {
             EffectiveAssistantPersona = effectivePersona,
             IncludeOnboardingContext = includeOnboardingContext,
             MissingOnboardingFields = missingFields,
-            // Keep the structured profile protocol available in native chat without duplicating lexical intent rules.
-            IncludeLiveProfileUpdates = true,
             LocalContextLines = DesktopChatTurnProtocol.BuildLocalContextFallbackLines(
                 conversation.ThreadId,
                 messages,
@@ -75,7 +73,7 @@ internal sealed partial class NativeConversationStateStore {
                 conversation.PendingAssistantQuestionHint),
             RecentAssistantAnswerWasSubstantive = ConversationStyleGuidanceBuilder.HasRecentSubstantiveAssistantAnswer(messages),
             RecentAssistantAskedQuestion = recentAssistantAskedQuestion,
-            PersistentMemoryLines = BuildNativeMemoryContextLines(_state),
+            PersistentMemoryLines = BuildNativeMemoryContextLines(_state, userText),
             PersistentMemoryEnabled = _state.PersistentMemoryEnabled,
             CapabilitySelfKnowledgeLines = capabilitySelfKnowledgeLines,
             ProactiveExecutionEnabled = DesktopChatTurnProtocol.ResolveProactiveExecutionGuidanceMode(
@@ -98,7 +96,7 @@ internal sealed partial class NativeConversationStateStore {
         ArgumentNullException.ThrowIfNull(conversation);
         var result = DesktopChatTurnProtocol.NormalizeAssistantResponse(assistantText);
         var persistentProfileUpdate = result.ProfileUpdate is not null
-                                      && ResolveProfileScope(result.ProfileUpdate) == ProfileUpdateScope.Profile;
+                                      && MainWindow.ResolveEffectiveProfileUpdateScope(result.ProfileUpdate) == ProfileUpdateScope.Profile;
         var hasPersistentUpdate = persistentProfileUpdate || result.MemoryUpdate is not null;
         var stateChanged = false;
 
@@ -122,6 +120,9 @@ internal sealed partial class NativeConversationStateStore {
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (persistentProfileUpdate) {
+                stateChanged |= ClearSessionProfileOverrides(result.ProfileUpdate!);
+            }
         }
 
         conversation.PendingActions.Clear();
@@ -136,31 +137,14 @@ internal sealed partial class NativeConversationStateStore {
             : result;
     }
 
-    private static IReadOnlyList<string> BuildNativeMemoryContextLines(ChatAppState state) {
-        if (!state.PersistentMemoryEnabled || state.MemoryFacts is not { Count: > 0 }) {
+    private static IReadOnlyList<string> BuildNativeMemoryContextLines(ChatAppState state, string userText) {
+        if (!state.PersistentMemoryEnabled) {
             return Array.Empty<string>();
         }
 
-        return state.MemoryFacts
-            .Where(static fact => !string.IsNullOrWhiteSpace(fact.Fact))
-            .OrderByDescending(static fact => fact.Weight)
-            .ThenByDescending(static fact => fact.UpdatedUtc)
-            .Select(static fact => fact.Fact.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(10)
-            .ToArray();
-    }
-
-    private static ProfileUpdateScope ResolveProfileScope(OnboardingProfileUpdate update) {
-        if (update.Scope != ProfileUpdateScope.Unspecified) {
-            return update.Scope;
-        }
-
-        return update.HasOnboardingCompleted
-               && update.OnboardingCompleted
-               && (update.HasUserName || update.HasAssistantPersona || update.HasThemePreset)
-            ? ProfileUpdateScope.Profile
-            : ProfileUpdateScope.Session;
+        var selection = DesktopChatMemorySelector.Select(state.MemoryFacts, userText);
+        state.MemoryFacts = selection.NormalizedFacts;
+        return selection.Lines;
     }
 
     private void ApplySessionProfileUpdate(OnboardingProfileUpdate update) {
@@ -173,6 +157,25 @@ internal sealed partial class NativeConversationStateStore {
         if (update.HasThemePreset) {
             _sessionThemePreset = ThemeContract.Normalize(update.ThemePreset);
         }
+    }
+
+    private bool ClearSessionProfileOverrides(OnboardingProfileUpdate update) {
+        var changed = false;
+        if (update.HasUserName && _sessionUserName is not null) {
+            _sessionUserName = null;
+            changed = true;
+        }
+        if (update.HasAssistantPersona && _sessionAssistantPersona is not null) {
+            _sessionAssistantPersona = null;
+            changed = true;
+        }
+        if (update.HasThemePreset
+            && ThemeContract.Normalize(update.ThemePreset) is not null
+            && _sessionThemePreset is not null) {
+            _sessionThemePreset = null;
+            changed = true;
+        }
+        return changed;
     }
 
     private static bool ApplyPersistentProfileUpdate(ChatAppState state, OnboardingProfileUpdate update) {

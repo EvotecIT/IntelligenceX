@@ -291,7 +291,12 @@ internal static class ActionModelProtocol {
     }
 
     public static string MergeVisibleTextWithPendingActions(string cleanedText, IReadOnlyList<AssistantPendingAction> actions) {
-        return (cleanedText ?? string.Empty).Trim();
+        var visibleText = (cleanedText ?? string.Empty).Trim();
+        if (visibleText.Length > 0 || actions.Count == 0) {
+            return visibleText;
+        }
+
+        return BuildPendingActionSummary(actions);
     }
 
     private static string BuildPendingActionSummary(IReadOnlyList<AssistantPendingAction> actions) {

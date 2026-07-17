@@ -37,13 +37,9 @@ internal sealed partial class NativeChatWindow {
                 markdown,
                 outputPath)).ConfigureAwait(true);
 
-        _viewModel.Transcript.Add(new NativeChatTranscriptItem(
-            "system",
-            result.Succeeded
-                ? "Exported transcript: " + result.OutputPath
-                : "Transcript export failed: " + (result.Failure?.Message ?? "Unknown error."),
-            DateTimeOffset.Now,
-            result.Succeeded ? "Complete" : "Error"));
+        _viewModel.SetHostStatus(result.Succeeded
+            ? "Transcript exported."
+            : "Transcript export failed: " + (result.Failure?.Message ?? "Unknown error."));
     }
 
     private async Task<string?> ShowNativeTranscriptSavePickerAsync(string title) {
