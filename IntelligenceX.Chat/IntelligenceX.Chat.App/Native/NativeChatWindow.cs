@@ -31,7 +31,7 @@ internal sealed partial class NativeChatWindow : Window {
     private ListView _sidebarItemsPanel = null!;
     private TextBox _sidebarSearchBox = null!;
     private TextBlock _selectedContextText = null!;
-    private ListView _transcriptList = null!;
+    private ItemsRepeater _transcriptItems = null!;
     private Grid _emptyTranscriptHost = null!;
 
     public NativeChatWindow() {
@@ -61,6 +61,7 @@ internal sealed partial class NativeChatWindow : Window {
             _ = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
 
             UpdateCommandState();
+            _composer.Focus(FocusState.Programmatic);
         };
 
         _viewModel.PropertyChanged += (_, args) => {

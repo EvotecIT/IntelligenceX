@@ -67,6 +67,7 @@ internal sealed partial class NativeChatWindow {
         addButton.Click += async (_, _) => {
             _ = await _viewModel.CreateConversationAsync().ConfigureAwait(true);
             RefreshConversationChrome();
+            _composer.Focus(FocusState.Programmatic);
         };
         Grid.SetColumn(addButton, 1);
         grid.Children.Add(addButton);
@@ -173,6 +174,7 @@ internal sealed partial class NativeChatWindow {
         button.Click += async (_, _) => {
             _ = await _viewModel.SelectConversationAsync(conversation.Id).ConfigureAwait(true);
             RefreshConversationChrome();
+            _composer.Focus(FocusState.Programmatic);
         };
         return button;
     }

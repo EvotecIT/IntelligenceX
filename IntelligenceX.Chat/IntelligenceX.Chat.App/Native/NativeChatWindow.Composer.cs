@@ -2,6 +2,7 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Windows.System;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -27,7 +28,7 @@ internal sealed partial class NativeChatWindow {
         shell.Child = grid;
 
         var label = new TextBlock {
-            Text = "Message",
+            Text = "Message  ·  Enter to send  ·  Shift+Enter for a new line",
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = NativeControlBrushes.TextSecondary
@@ -56,7 +57,12 @@ internal sealed partial class NativeChatWindow {
                 _viewModel.Draft = _composer.Text;
             }
         };
-        _composer.KeyDown += OnComposerKeyDown;
+        var sendAccelerator = new KeyboardAccelerator {
+            Key = VirtualKey.Enter,
+            Modifiers = VirtualKeyModifiers.None
+        };
+        sendAccelerator.Invoked += OnComposerSendInvoked;
+        _composer.KeyboardAccelerators.Add(sendAccelerator);
         Grid.SetColumn(_composer, 0);
         Grid.SetRow(_composer, 1);
         grid.Children.Add(_composer);
@@ -99,18 +105,8 @@ internal sealed partial class NativeChatWindow {
         _composer.Focus(FocusState.Programmatic);
     }
 
-    private async void OnComposerKeyDown(object sender, KeyRoutedEventArgs e) {
-        if (e.Key != Windows.System.VirtualKey.Enter) {
-            return;
-        }
-
-        var shiftDown = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
-            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-        if (shiftDown) {
-            return;
-        }
-
-        e.Handled = true;
+    private async void OnComposerSendInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) {
+        args.Handled = true;
         await SendAsync().ConfigureAwait(true);
     }
 

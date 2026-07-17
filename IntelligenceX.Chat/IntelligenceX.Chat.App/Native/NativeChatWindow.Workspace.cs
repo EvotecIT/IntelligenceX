@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -18,24 +17,29 @@ internal sealed partial class NativeChatWindow {
         Grid.SetRow(header, 0);
         workspace.Children.Add(header);
 
-        _transcriptList = new ListView {
-            Name = "TranscriptList",
+        _transcriptItems = new ItemsRepeater {
+            Name = "TranscriptItems",
             ItemsSource = _viewModel.Transcript,
-            ItemContainerStyle = BuildTranscriptItemContainerStyle(),
-            SelectionMode = ListViewSelectionMode.None,
-            IsItemClickEnabled = false,
-            Padding = new Thickness(24, 18, 24, 18),
+            ItemTemplate = new NativeTranscriptElementFactory(),
+            Layout = new StackLayout { Spacing = 0 },
             VerticalAlignment = VerticalAlignment.Stretch,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent)
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        _transcriptList.ContainerContentChanging += OnTranscriptContainerContentChanging;
+        var transcriptScroll = new ScrollViewer {
+            Name = "TranscriptScroll",
+            Content = _transcriptItems,
+            Padding = new Thickness(24, 18, 24, 18),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Enabled,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled
+        };
         _emptyTranscriptHost = new Grid {
             Padding = new Thickness(24, 18, 24, 18)
         };
         var transcriptHost = new Grid {
             Children = {
-                _transcriptList,
+                transcriptScroll,
                 _emptyTranscriptHost
             }
         };
@@ -55,38 +59,6 @@ internal sealed partial class NativeChatWindow {
         RenderTranscript();
 
         return workspace;
-    }
-
-    private static Style BuildTranscriptItemContainerStyle() {
-        var style = new Style(typeof(ListViewItem));
-        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
-        style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0)));
-        style.Setters.Add(new Setter(ListViewItem.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
-        return style;
-    }
-
-    private static void OnTranscriptContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args) {
-        if (args.ItemContainer is not ListViewItem container) {
-            return;
-        }
-
-        if (args.InRecycleQueue) {
-            container.Content = null;
-            args.Handled = true;
-            return;
-        }
-
-        if (args.Item is not NativeChatTranscriptItem item) {
-            return;
-        }
-
-        if (container.Content is not NativeTranscriptMessageControl control) {
-            control = new NativeTranscriptMessageControl();
-            container.Content = control;
-        }
-
-        control.DataContext = item;
-        args.Handled = true;
     }
 
     private FrameworkElement BuildWorkspaceHeader() {
@@ -144,13 +116,13 @@ internal sealed partial class NativeChatWindow {
             _emptyTranscriptHost.Children.Clear();
             _emptyTranscriptHost.Children.Add(BuildEmptyTranscriptState());
             _emptyTranscriptHost.Visibility = Visibility.Visible;
-            _transcriptList.Visibility = Visibility.Collapsed;
+            _transcriptItems.Visibility = Visibility.Collapsed;
             return;
         }
 
         _emptyTranscriptHost.Children.Clear();
         _emptyTranscriptHost.Visibility = Visibility.Collapsed;
-        _transcriptList.Visibility = Visibility.Visible;
+        _transcriptItems.Visibility = Visibility.Visible;
     }
 
     private FrameworkElement BuildEmptyTranscriptState() {
@@ -290,15 +262,23 @@ internal sealed partial class NativeChatWindow {
         }
 
         _ = DispatcherQueue.TryEnqueue(() => {
-            var last = _viewModel.Transcript[^1];
-            _transcriptList.ScrollIntoView(last, ScrollIntoViewAlignment.Leading);
+            var index = _viewModel.Transcript.Count - 1;
+            var element = _transcriptItems.TryGetElement(index) ?? _transcriptItems.GetOrCreateElement(index);
+            element.StartBringIntoView(new BringIntoViewOptions {
+                AnimationDesired = false,
+                VerticalAlignmentRatio = 1
+            });
         });
     }
 
     private void ScrollTranscriptToStart() {
         _ = DispatcherQueue.TryEnqueue(() => {
             if (_viewModel.Transcript.Count > 0) {
-                _transcriptList.ScrollIntoView(_viewModel.Transcript[0], ScrollIntoViewAlignment.Leading);
+                var element = _transcriptItems.TryGetElement(0) ?? _transcriptItems.GetOrCreateElement(0);
+                element.StartBringIntoView(new BringIntoViewOptions {
+                    AnimationDesired = false,
+                    VerticalAlignmentRatio = 0
+                });
             }
         });
     }
