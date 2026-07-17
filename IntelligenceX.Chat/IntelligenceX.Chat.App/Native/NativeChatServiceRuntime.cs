@@ -34,6 +34,8 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
 
     internal SessionPolicyDto? SessionPolicy { get; private set; }
 
+    internal string PipeName => _pipeName;
+
     public NativeChatServiceRuntime(
         string? pipeName = null,
         Func<ChatServiceLaunchProfileOptions?>? profileOptionsProvider = null) {
@@ -62,6 +64,15 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         if (runner is not null) {
             await runner.CancelAsync(requestId.Trim(), cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    internal async Task RefreshSessionPolicyAsync(CancellationToken cancellationToken) {
+        var client = await EnsureConnectedAsync(_ => Task.CompletedTask, cancellationToken).ConfigureAwait(false);
+        var hello = await client.RequestAsync<HelloMessage>(
+                new HelloRequest { RequestId = "native-hello-refresh-" + Guid.NewGuid().ToString("N") },
+                cancellationToken)
+            .ConfigureAwait(false);
+        SessionPolicy = hello.Policy;
     }
 
     public async Task<NativeLoginResult> EnsureLoginAsync(

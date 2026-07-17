@@ -252,7 +252,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         return true;
     }
 
-    public async Task<NativeLoginResult> CheckSignInAsync() {
+    public async Task<NativeLoginResult> CheckSignInAsync(CancellationToken cancellationToken = default) {
         if (IsTurnBusy) {
             return new NativeLoginResult(false, null, "Sign-in cannot be checked while a chat turn is running or starting.");
         }
@@ -263,10 +263,13 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
 
         RunOnUi(() => IsCheckingSignIn = true);
         try {
-            using var timeout = new CancellationTokenSource(SignInCheckTimeout);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(SignInCheckTimeout);
             var result = await _runtime.EnsureLoginAsync(SetRuntimeStatusAsync, timeout.Token).ConfigureAwait(false);
             ApplyLoginResult(result);
             return result;
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
         } catch (OperationCanceledException) {
             var result = new NativeLoginResult(false, null, "Sign-in check timed out.");
             ApplyLoginResult(result);
@@ -490,6 +493,14 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     public void SetHostSignInText(string message) =>
         SignInText = string.IsNullOrWhiteSpace(message) ? "Sign-in status unknown" : message.Trim();
 
+    internal bool HasActiveTurn => IsTurnBusy;
+
+    internal void InvalidateAuthenticationState() => RunOnUi(() => {
+        SignInText = "Sign-in status unknown";
+        AuthenticationState = NativeAuthenticationState.Unknown;
+        StatusText = "Runtime settings are being updated...";
+    });
+
     private Task SetRuntimeStatusAsync(string message) {
         RunOnUi(() => StatusText = string.IsNullOrWhiteSpace(message) ? ResolveReadyStatus() : message.Trim());
         return Task.CompletedTask;
@@ -674,9 +685,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         OnPropertyChanged(nameof(CanStartSignIn));
     }
 
-    private bool CanUseRuntime => AuthenticationState is not NativeAuthenticationState.Checking
-        and not NativeAuthenticationState.Required
-        and not NativeAuthenticationState.Failed;
+    private bool CanUseRuntime => AuthenticationState == NativeAuthenticationState.SignedIn;
 
     private static string FormatStatus(ChatStatusMessage status) {
         if (!string.IsNullOrWhiteSpace(status.Message)) {

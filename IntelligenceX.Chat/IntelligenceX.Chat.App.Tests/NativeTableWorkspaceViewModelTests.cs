@@ -327,6 +327,24 @@ public sealed class NativeTableWorkspaceViewModelTests {
     }
 
     /// <summary>
+    /// Ensures hiding a filtered column cannot leave an invisible predicate active.
+    /// </summary>
+    [Fact]
+    public void SetColumnVisible_ClearsFilterForHiddenColumn() {
+        var model = new NativeTableWorkspaceViewModel(CreateTable());
+        model.SetColumnFilter(1, "offline");
+        Assert.Single(model.VisibleRows);
+
+        model.SetColumnVisible(1, visible: false);
+
+        Assert.False(model.IsColumnVisible(1));
+        Assert.Equal(string.Empty, model.GetColumnFilter(1));
+        Assert.Equal(0, model.ActiveColumnFilterCount);
+        Assert.Equal(3, model.VisibleRows.Count);
+        Assert.Equal(0, model.WindowStartIndex);
+    }
+
+    /// <summary>
     /// Ensures the model keeps at least one column visible for rendering and export.
     /// </summary>
     [Fact]

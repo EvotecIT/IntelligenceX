@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.App.Launch;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -32,6 +34,8 @@ internal sealed partial class NativeChatWindow : Window {
     private TextBox _sidebarSearchBox = null!;
     private TextBlock _selectedContextText = null!;
     private MainWindow? _settingsWindow;
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private Task _settingsReloadTask = Task.CompletedTask;
     private ItemsRepeater _transcriptItems = null!;
     private ScrollViewer _transcriptScroll = null!;
     private Grid _emptyTranscriptHost = null!;
@@ -108,8 +112,16 @@ internal sealed partial class NativeChatWindow : Window {
         UpdateCommandState();
 
         Closed += async (_, _) => {
+            _lifetimeCts.Cancel();
+            _settingsWindow?.Close();
+            try {
+                await _settingsReloadTask.ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Native shutdown cancels any pending post-settings refresh.
+            }
             await _runtime.DisposeAsync().ConfigureAwait(false);
             await _conversationStore.DisposeAsync().ConfigureAwait(false);
+            _lifetimeCts.Dispose();
         };
     }
 

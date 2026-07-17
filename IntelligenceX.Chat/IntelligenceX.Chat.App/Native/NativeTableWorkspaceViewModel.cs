@@ -128,6 +128,9 @@ internal sealed class NativeTableWorkspaceViewModel {
         }
 
         _hiddenColumnIndexes.Add(columnIndex);
+        if (_columnFilters.Remove(columnIndex)) {
+            Refresh(resetWindow: true);
+        }
     }
 
     public void ResetColumnVisibility() =>

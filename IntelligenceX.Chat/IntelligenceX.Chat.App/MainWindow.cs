@@ -260,7 +260,10 @@ public sealed partial class MainWindow : Window {
     private static readonly bool DetachedServiceMode = ResolveDetachedServiceMode();
     private static readonly GlobalWheelHookMode WheelHookMode = ResolveGlobalWheelHookMode(Environment.GetEnvironmentVariable("IXCHAT_WHEEL_HOOK_MODE"));
 
-    private readonly string _pipeName = "intelligencex.chat";
+    private readonly string _pipeName;
+    private readonly TaskCompletionSource _closeCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly SettingsMutationDrain _settingsMutationDrain = new();
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly object _ensureConnectedSync = new();
     private Task<bool>? _ensureConnectedInFlightTask;
@@ -712,13 +715,19 @@ public sealed partial class MainWindow : Window {
     /// <summary>
     /// Initializes the desktop chat window.
     /// </summary>
-    public MainWindow() : this(openOptionsOnLaunch: false) { }
+    public MainWindow() : this(openOptionsOnLaunch: false, pipeName: null) { }
 
     /// <summary>
     /// Initializes the shared desktop workspace and optionally opens its configuration panel after navigation.
     /// </summary>
-    internal MainWindow(bool openOptionsOnLaunch) {
+    internal MainWindow(bool openOptionsOnLaunch) : this(openOptionsOnLaunch, pipeName: null) { }
+
+    /// <summary>
+    /// Initializes the shared desktop workspace on the requested service pipe.
+    /// </summary>
+    internal MainWindow(bool openOptionsOnLaunch, string? pipeName) {
         StartupLog.Write("MainWindow.ctor enter");
+        _pipeName = string.IsNullOrWhiteSpace(pipeName) ? "intelligencex.chat" : pipeName.Trim();
         _optionsPanelOpenRequested = openOptionsOnLaunch ? 1 : 0;
         _markdownOptions = MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell();
         StartupLogRendererDiagnostics();
@@ -751,24 +760,33 @@ public sealed partial class MainWindow : Window {
         };
 
         Closed += async (_, _) => {
-            StopAutoReconnectLoop();
-            await CancelQueuedPersistAppStateAsync().ConfigureAwait(false);
-            await PersistAppStateAsync(allowDuringShutdown: true).ConfigureAwait(false);
-            CancelQueuedUiPublishesForShutdown();
-            await DisposeClientAsync().ConfigureAwait(false);
-            StopServiceIfOwned();
-            _serviceProcessHost.Dispose();
-            DetachNativeTitleBarEventSubscriptions();
-            LogInputReliabilityTelemetry("shutdown");
-            UninstallGlobalWheelHook();
-            UninstallWindowMessageHook();
             try {
-                CleanupStaleVisualPopoutFiles(GetVisualPopoutDirectoryPath());
-            } catch {
-                // Ignore visual popout cleanup failures during shutdown.
+                await _settingsMutationDrain.DrainAsync().ConfigureAwait(false);
+                StopAutoReconnectLoop();
+                await CancelQueuedPersistAppStateAsync().ConfigureAwait(false);
+                await PersistAppStateAsync(allowDuringShutdown: true).ConfigureAwait(false);
+                CancelQueuedUiPublishesForShutdown();
+                await DisposeClientAsync().ConfigureAwait(false);
+                StopServiceIfOwned();
+                _serviceProcessHost.Dispose();
+                DetachNativeTitleBarEventSubscriptions();
+                LogInputReliabilityTelemetry("shutdown");
+                UninstallGlobalWheelHook();
+                UninstallWindowMessageHook();
+                try {
+                    CleanupStaleVisualPopoutFiles(GetVisualPopoutDirectoryPath());
+                } catch {
+                    // Ignore visual popout cleanup failures during shutdown.
+                }
+                _stateStore.Dispose();
+            } finally {
+                _closeCompletion.TrySetResult();
             }
-            _stateStore.Dispose();
         };
     }
+
+    internal Task CloseCompletion => _closeCompletion.Task;
+
+    internal string ActiveProfileName => _appProfileName;
 
 }

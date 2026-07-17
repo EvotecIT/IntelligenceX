@@ -188,7 +188,9 @@ public sealed partial class MainWindow : Window {
                 case "auto_detect_local_runtime":
                     {
                         var forceRefresh = TryGetBoolean(root, "forceRefresh");
-                        await AutoDetectAndApplyLocalRuntimeAsync(forceRefresh ?? true).ConfigureAwait(true);
+                        await _settingsMutationDrain
+                            .RunAsync(() => AutoDetectAndApplyLocalRuntimeAsync(forceRefresh ?? true))
+                            .ConfigureAwait(true);
                         break;
                     }
                 case "refresh_models":
@@ -403,7 +405,7 @@ public sealed partial class MainWindow : Window {
                     {
                         var profileName = (TryGetString(root, "name") ?? string.Empty).Trim();
                         if (!string.IsNullOrWhiteSpace(profileName)) {
-                            await SwitchProfileAsync(profileName).ConfigureAwait(true);
+                            await _settingsMutationDrain.RunAsync(() => SwitchProfileAsync(profileName)).ConfigureAwait(true);
                         }
                         break;
                     }
@@ -437,7 +439,7 @@ public sealed partial class MainWindow : Window {
                         var clearApiKey = TryGetBoolean(root, "clearApiKey");
                         var forceRefresh = TryGetBoolean(root, "forceRefresh");
                         var requestId = TryGetInt64(root, "requestId");
-                        await ApplyLocalProviderAsync(
+                        await _settingsMutationDrain.RunAsync(() => ApplyLocalProviderAsync(
                                 transport,
                                 baseUrl,
                                 model,
@@ -464,7 +466,7 @@ public sealed partial class MainWindow : Window {
                                 clearBasicAuth ?? false,
                                 clearApiKey ?? false,
                                 forceRefresh ?? true,
-                                requestId)
+                                requestId))
                             .ConfigureAwait(true);
                         break;
                     }

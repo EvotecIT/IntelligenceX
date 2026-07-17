@@ -29,6 +29,7 @@ public sealed class NativeChatViewModelTests {
         var model = new NativeChatViewModel(runtime) {
             Draft = "  say hello  "
         };
+        await AuthenticateAsync(model);
 
         var sent = await model.SendDraftAsync();
 
@@ -61,6 +62,7 @@ public sealed class NativeChatViewModelTests {
         var model = new NativeChatViewModel(
             runtime,
             requestOptionsProvider: _ => options);
+        await AuthenticateAsync(model);
 
         var sent = await model.SendAsync("use my profile");
 
@@ -87,6 +89,7 @@ public sealed class NativeChatViewModelTests {
             requestTextProvider: (_, text, _) => "shared-envelope\n" + text,
             assistantTurnNormalizer: (_, text, _) => Task.FromResult(
                 DesktopChatTurnProtocol.NormalizeAssistantResponse(text)));
+        await AuthenticateAsync(model);
 
         var sent = await model.SendAsync("hello");
 
@@ -121,6 +124,7 @@ public sealed class NativeChatViewModelTests {
         var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
         var store = new BlockingConversationStore();
         var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await AuthenticateAsync(model);
 
         var firstSend = model.SendAsync("first");
         await store.SaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -172,6 +176,7 @@ public sealed class NativeChatViewModelTests {
     [Fact]
     public async Task SendAsync_ReportsRunnerFailureInAssistantItem() {
         var model = new NativeChatViewModel(new ScriptedRuntime(_ => throw new InvalidOperationException("pipe unavailable")));
+        await AuthenticateAsync(model);
 
         var sent = await model.SendAsync("hello");
 
@@ -198,6 +203,7 @@ public sealed class NativeChatViewModelTests {
         var model = new NativeChatViewModel(
             runtime,
             assistantTurnNormalizer: (_, _, _) => throw new InvalidOperationException("profile write failed"));
+        await AuthenticateAsync(model);
         model.ActiveConversation.PendingActions.Add(new AssistantPendingAction(
             "stale-action",
             "Stale action",
@@ -236,6 +242,7 @@ public sealed class NativeChatViewModelTests {
         var model = new NativeChatViewModel(
             runtime,
             assistantTurnNormalizer: (_, _, _) => throw new InvalidOperationException("profile write failed"));
+        await AuthenticateAsync(model);
 
         var sent = await model.SendAsync("hello");
 
@@ -257,6 +264,7 @@ public sealed class NativeChatViewModelTests {
             return CreateTurnResult(string.Empty, "thread-1");
         });
         var model = new NativeChatViewModel(runtime);
+        await AuthenticateAsync(model);
 
         var sent = await model.SendAsync("hello");
 
@@ -275,6 +283,7 @@ public sealed class NativeChatViewModelTests {
             return CreateTurnResult(string.Empty, "thread-1");
         });
         var model = new NativeChatViewModel(runtime);
+        await AuthenticateAsync(model);
 
         var sent = await model.SendAsync("hello");
 
@@ -289,6 +298,7 @@ public sealed class NativeChatViewModelTests {
     public async Task CancelActiveTurn_ForwardsCancelRequestToRunner() {
         var runtime = new CancelableRuntime();
         var model = new NativeChatViewModel(runtime);
+        await AuthenticateAsync(model);
 
         var sendTask = model.SendAsync("long task");
         await runtime.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -308,6 +318,7 @@ public sealed class NativeChatViewModelTests {
     public async Task ActiveTurn_DisablesSignInCommands() {
         var runtime = new CancelableRuntime();
         var model = new NativeChatViewModel(runtime);
+        await AuthenticateAsync(model);
 
         var sendTask = model.SendAsync("long task");
         await runtime.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -339,6 +350,28 @@ public sealed class NativeChatViewModelTests {
         Assert.Equal(NativeAuthenticationState.SignedIn, model.AuthenticationState);
         Assert.False(model.CanStartSignIn);
         Assert.Equal("Ready", model.StatusText);
+    }
+
+    /// <summary>
+    /// Ensures a draft cannot start a turn before the initial authentication probe establishes runtime readiness.
+    /// </summary>
+    [Fact]
+    public async Task UnknownAuthentication_BlocksSendUntilSignInStateIsKnown() {
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        var model = new NativeChatViewModel(runtime) { Draft = "wait for auth" };
+
+        Assert.Equal(NativeAuthenticationState.Unknown, model.AuthenticationState);
+        Assert.False(model.CanSend);
+        Assert.False(await model.SendDraftAsync());
+        Assert.Empty(runtime.Requests);
+        Assert.Equal("wait for auth", model.Draft);
+
+        await AuthenticateAsync(model);
+
+        Assert.True(model.CanSend);
+        model.InvalidateAuthenticationState();
+        Assert.Equal(NativeAuthenticationState.Unknown, model.AuthenticationState);
+        Assert.False(model.CanSend);
     }
 
     /// <summary>
@@ -432,6 +465,7 @@ public sealed class NativeChatViewModelTests {
         var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("Answer", "thread-first-next")));
         var model = new NativeChatViewModel(runtime, conversationStore: store);
         await model.InitializeConversationsAsync();
+        await AuthenticateAsync(model);
 
         var selected = await model.SelectConversationAsync(first.Id);
         var sent = await model.SendAsync("Follow up");
@@ -604,6 +638,12 @@ public sealed class NativeChatViewModelTests {
                 Model = effectiveModel
             });
 
+    private static async Task AuthenticateAsync(NativeChatViewModel model) {
+        var result = await model.CheckSignInAsync();
+        Assert.True(result.IsAuthenticated, result.Error ?? "Expected authenticated test runtime.");
+        Assert.Equal(NativeAuthenticationState.SignedIn, model.AuthenticationState);
+    }
+
     private sealed class ScriptedRuntime : INativeChatRuntime {
         private readonly Func<TestTurnUpdates, Task<ChatTurnRunResult>> _handler;
 
@@ -614,7 +654,7 @@ public sealed class NativeChatViewModelTests {
         public List<ChatRequest> Requests { get; } = new();
 
         public Func<Func<string, Task>, Task<NativeLoginResult>> EnsureLoginHandler { get; init; } =
-            _ => Task.FromResult(new NativeLoginResult(false, null));
+            _ => Task.FromResult(new NativeLoginResult(true, null));
 
         public Func<NativeLoginCallbacks, Task<NativeLoginResult>> StartLoginHandler { get; init; } =
             _ => Task.FromResult(new NativeLoginResult(false, null));
@@ -738,7 +778,7 @@ public sealed class NativeChatViewModelTests {
         public Task<NativeLoginResult> EnsureLoginAsync(
             Func<string, Task> status,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new NativeLoginResult(false, null));
+            Task.FromResult(new NativeLoginResult(true, null));
 
         public Task<NativeLoginResult> StartLoginAsync(
             NativeLoginCallbacks callbacks,

@@ -411,6 +411,105 @@ public sealed class NativeConversationStateStoreTests {
     }
 
     /// <summary>
+    /// Ensures settings written by the shared workspace replace the native shell's cached per-turn profile state.
+    /// </summary>
+    [Fact]
+    public async Task ReloadProfileStateAsync_UsesLatestSharedSettingsWithoutReplacingWorkspace() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        ThemePreset = "default",
+                        LocalProviderRuntimeOverrideActive = true,
+                        LocalProviderModel = "before-settings",
+                        LocalProviderReasoningEffort = "low",
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-settings", Title = "Settings" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            var conversation = Assert.Single(workspace.Conversations);
+            Assert.Equal("before-settings", nativeStore.CreateChatRequestOptions(conversation).Model);
+
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                var state = await sharedStore.GetAsync("default", CancellationToken.None);
+                Assert.NotNull(state);
+                state!.ThemePreset = "graphite";
+                state.LocalProviderModel = "after-settings";
+                state.LocalProviderReasoningEffort = "high";
+                state.DisabledTools = ["ad_user_disable"];
+                await sharedStore.UpsertAsync("default", state, CancellationToken.None);
+            }
+
+            string? publishedTheme = null;
+            nativeStore.EffectiveThemeChanged += theme => publishedTheme = theme;
+            await nativeStore.ReloadProfileStateAsync(CancellationToken.None);
+            var options = nativeStore.CreateChatRequestOptions(conversation);
+
+            Assert.Equal("after-settings", options.Model);
+            Assert.Equal("high", options.ReasoningEffort);
+            Assert.NotNull(options.DisabledTools);
+            Assert.Equal(["ad_user_disable"], options.DisabledTools!);
+            Assert.Equal("graphite", nativeStore.EffectiveThemePreset);
+            Assert.Equal("graphite", publishedTheme);
+            Assert.Same(conversation, Assert.Single(workspace.Conversations));
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures a profile selected in the shared Settings workspace becomes the native request and history owner.
+    /// </summary>
+    [Fact]
+    public async Task SelectProfile_LoadsSelectedProfileRequestStateAndWorkspace() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        LocalProviderRuntimeOverrideActive = true,
+                        LocalProviderModel = "default-model",
+                        Conversations = [new ChatConversationState { Id = "chat-default", Title = "Default" }]
+                    },
+                    CancellationToken.None);
+                await sharedStore.UpsertAsync(
+                    "operations",
+                    new ChatAppState {
+                        LocalProviderRuntimeOverrideActive = true,
+                        LocalProviderModel = "operations-model",
+                        Conversations = [new ChatConversationState { Id = "chat-operations", Title = "Operations" }]
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var initial = await nativeStore.LoadAsync(CancellationToken.None);
+            Assert.Equal("default-model", nativeStore.CreateChatRequestOptions(Assert.Single(initial.Conversations)).Model);
+
+            Assert.True(nativeStore.SelectProfile("operations"));
+            Assert.False(nativeStore.SelectProfile("operations"));
+            var selected = await nativeStore.LoadAsync(CancellationToken.None);
+            var conversation = Assert.Single(selected.Conversations);
+
+            Assert.Equal("chat-operations", conversation.Id);
+            Assert.Equal("operations-model", nativeStore.CreateChatRequestOptions(conversation).Model);
+            Assert.Equal("operations", nativeStore.CreateServiceLaunchProfileOptions().LoadProfileName);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Ensures the native shell resolves stale cloud defaults through the cached local runtime catalog.
     /// </summary>
     [Fact]

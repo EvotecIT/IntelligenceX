@@ -22,7 +22,7 @@ internal interface INativeConversationStore : IAsyncDisposable {
 /// </summary>
 internal sealed partial class NativeConversationStateStore : INativeConversationStore {
     private readonly ChatAppStateStore _stateStore;
-    private readonly string _profileName;
+    private string _profileName;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private readonly Dictionary<string, ChatConversationState> _baselineConversations =
         new(StringComparer.OrdinalIgnoreCase);
@@ -48,6 +48,16 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         _profileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
         _stateStore = new ChatAppStateStore(
             string.IsNullOrWhiteSpace(databasePath) ? ChatAppStateStore.GetDefaultDbPath() : databasePath);
+    }
+
+    internal bool SelectProfile(string? profileName) {
+        var normalized = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
+        if (string.Equals(_profileName, normalized, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        _profileName = normalized;
+        return true;
     }
 
     /// <summary>
@@ -90,16 +100,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             loadWarning = "History load failed; started a fresh chat. " + ex.Message;
             loadedState = null;
         }
-        _state = loadedState ?? new ChatAppState { ProfileName = _profileName };
-        ChatServiceLaunchProfileMapper.NormalizeProviderState(_state);
-        _state.LocalProviderRuntimeOverrideActive =
-            ChatServiceLaunchProfileMapper.ResolveRuntimeOverrideActive(
-                _state,
-                loadedState is not null);
-        _state.LocalProviderImageGenerationOverrideActive =
-            ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
-                _state,
-                loadedState is not null);
+        _state = NormalizeLoadedProfileState(loadedState);
         var persistedConversationsById = (_state.Conversations ?? new List<ChatConversationState>())
             .Where(state => !IsSystemConversation(state.Id) && !string.IsNullOrWhiteSpace(state.Id))
             .GroupBy(static state => state.Id.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -157,6 +158,35 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         CaptureBaseline(workspace, persistedConversationIds);
         EffectiveThemeChanged?.Invoke(EffectiveThemePreset);
         return workspace;
+    }
+
+    /// <summary>
+    /// Reloads profile-owned runtime and presentation settings without replacing the live conversation workspace.
+    /// </summary>
+    internal async Task ReloadProfileStateAsync(CancellationToken cancellationToken) {
+        var previousTheme = EffectiveThemePreset;
+        var loadedState = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false);
+        _state = NormalizeLoadedProfileState(loadedState);
+        _sessionUserName = null;
+        _sessionAssistantPersona = null;
+        _sessionThemePreset = null;
+        if (!string.Equals(previousTheme, EffectiveThemePreset, StringComparison.OrdinalIgnoreCase)) {
+            EffectiveThemeChanged?.Invoke(EffectiveThemePreset);
+        }
+    }
+
+    private ChatAppState NormalizeLoadedProfileState(ChatAppState? loadedState) {
+        var state = loadedState ?? new ChatAppState { ProfileName = _profileName };
+        ChatServiceLaunchProfileMapper.NormalizeProviderState(state);
+        state.LocalProviderRuntimeOverrideActive =
+            ChatServiceLaunchProfileMapper.ResolveRuntimeOverrideActive(
+                state,
+                loadedState is not null);
+        state.LocalProviderImageGenerationOverrideActive =
+            ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
+                state,
+                loadedState is not null);
+        return state;
     }
 
     public async Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) {
