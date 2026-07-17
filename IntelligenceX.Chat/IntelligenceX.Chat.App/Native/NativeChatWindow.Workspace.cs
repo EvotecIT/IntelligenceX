@@ -1,5 +1,7 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -25,7 +27,7 @@ internal sealed partial class NativeChatWindow {
             VerticalAlignment = VerticalAlignment.Stretch,
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        var transcriptScroll = new ScrollViewer {
+        _transcriptScroll = new ScrollViewer {
             Name = "TranscriptScroll",
             Content = _transcriptItems,
             Padding = new Thickness(24, 18, 24, 18),
@@ -34,12 +36,16 @@ internal sealed partial class NativeChatWindow {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             HorizontalScrollMode = ScrollMode.Disabled
         };
+        _transcriptScroll.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(OnTranscriptPointerWheelChanged),
+            handledEventsToo: true);
         _emptyTranscriptHost = new Grid {
             Padding = new Thickness(24, 18, 24, 18)
         };
         var transcriptHost = new Grid {
             Children = {
-                transcriptScroll,
+                _transcriptScroll,
                 _emptyTranscriptHost
             }
         };
@@ -281,5 +287,26 @@ internal sealed partial class NativeChatWindow {
                 });
             }
         });
+    }
+
+    private void OnTranscriptPointerWheelChanged(object sender, PointerRoutedEventArgs args) {
+        var properties = args.GetCurrentPoint(_transcriptScroll).Properties;
+        if (properties.IsHorizontalMouseWheel || properties.MouseWheelDelta == 0 || _transcriptScroll.ScrollableHeight <= 0) {
+            return;
+        }
+
+        var target = NativeTranscriptScrollBehavior.CalculateTargetOffset(
+            _transcriptScroll.VerticalOffset,
+            _transcriptScroll.ScrollableHeight,
+            properties.MouseWheelDelta);
+        if (Math.Abs(target - _transcriptScroll.VerticalOffset) < 0.5) {
+            return;
+        }
+
+        args.Handled = _transcriptScroll.ChangeView(
+            horizontalOffset: null,
+            verticalOffset: target,
+            zoomFactor: null,
+            disableAnimation: true);
     }
 }

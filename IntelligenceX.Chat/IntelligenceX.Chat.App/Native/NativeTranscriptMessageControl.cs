@@ -3,7 +3,6 @@ using System.ComponentModel;
 using IntelligenceX.Chat.App.Native.Rendering;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -127,7 +126,7 @@ public sealed class NativeTranscriptMessageControl : UserControl {
         }
 
         foreach (var part in _item.Content) {
-            _contentPanel.Children.Add(CreateContentElement(part));
+            _contentPanel.Children.Add(new NativeTranscriptContentControl(part));
         }
     }
 
@@ -135,9 +134,9 @@ public sealed class NativeTranscriptMessageControl : UserControl {
         if (item.IsUser) {
             _shell.HorizontalAlignment = HorizontalAlignment.Stretch;
             _shell.MaxWidth = double.PositiveInfinity;
-            _shell.Margin = new Thickness(96, 0, 0, 10);
-            _shell.Background = NativeControlBrushes.Rgb(248, 251, 255);
-            _shell.BorderBrush = NativeControlBrushes.Rgb(202, 216, 244);
+            _shell.Margin = new Thickness(84, 0, 0, 12);
+            _shell.Background = NativeControlBrushes.UserBubble;
+            _shell.BorderBrush = NativeControlBrushes.UserBorder;
             _accentBar.Background = NativeControlBrushes.Accent;
             _roleText.Foreground = NativeControlBrushes.Accent;
             return;
@@ -145,68 +144,27 @@ public sealed class NativeTranscriptMessageControl : UserControl {
 
         _shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         _shell.MaxWidth = double.PositiveInfinity;
-        _shell.Margin = new Thickness(0, 0, 0, 10);
+        _shell.Margin = new Thickness(0, 0, 72, 12);
         _shell.Background = NativeControlBrushes.Surface;
         _shell.BorderBrush = NativeControlBrushes.Border;
         _accentBar.Background = item.IsAssistant
-            ? NativeControlBrushes.Rgb(14, 132, 115)
-            : NativeControlBrushes.Rgb(132, 77, 192);
+            ? NativeControlBrushes.AssistantAccent
+            : NativeControlBrushes.SystemAccent;
         _roleText.Foreground = item.IsAssistant
-            ? NativeControlBrushes.Rgb(14, 105, 94)
-            : NativeControlBrushes.Rgb(96, 72, 152);
+            ? NativeControlBrushes.AssistantText
+            : NativeControlBrushes.SystemText;
     }
 
     private static string FormatCreatedAt(DateTimeOffset value) =>
         value.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.CurrentCulture);
 
-    private static FrameworkElement CreateContentElement(NativeTranscriptContent content) =>
-        content.Kind switch {
-            NativeTranscriptContentKind.Code => CreateCode(content),
-            NativeTranscriptContentKind.Table => content.Table == null
-                ? CreateDiagnostic("Table artifact unavailable.")
-                : new NativeTranscriptTablePreviewControl(content.Table, content.Caption),
-            NativeTranscriptContentKind.Visual => new NativeVisualArtifactHostControl(content.Visual),
-            NativeTranscriptContentKind.Diagnostic => CreateDiagnostic(content.Text),
-            _ => CreateParagraph(content.Text)
-        };
-
     private static FrameworkElement CreateParagraph(string text) =>
         new TextBlock {
             Text = text ?? string.Empty,
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 13,
-            LineHeight = 20,
+            IsTextSelectionEnabled = true,
+            FontSize = 14,
+            LineHeight = 21,
             Foreground = NativeControlBrushes.TextPrimary
-        };
-
-    private static FrameworkElement CreateCode(NativeTranscriptContent content) =>
-        new Border {
-            Padding = new Thickness(10),
-            CornerRadius = new CornerRadius(6),
-            BorderBrush = NativeControlBrushes.Border,
-            BorderThickness = new Thickness(1),
-            Background = NativeControlBrushes.SurfaceMuted,
-            Child = new TextBlock {
-                Text = content.Text,
-                TextWrapping = TextWrapping.Wrap,
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 13,
-                Foreground = NativeControlBrushes.TextPrimary
-            }
-        };
-
-    private static FrameworkElement CreateDiagnostic(string text) =>
-        new Border {
-            Padding = new Thickness(10),
-            CornerRadius = new CornerRadius(6),
-            BorderBrush = NativeControlBrushes.Rgb(235, 198, 95),
-            BorderThickness = new Thickness(1),
-            Background = NativeControlBrushes.Rgb(255, 249, 230),
-            Child = new TextBlock {
-                Text = text ?? string.Empty,
-                TextWrapping = TextWrapping.Wrap,
-                FontSize = 12,
-                Foreground = NativeControlBrushes.Rgb(107, 75, 15)
-            }
         };
 }

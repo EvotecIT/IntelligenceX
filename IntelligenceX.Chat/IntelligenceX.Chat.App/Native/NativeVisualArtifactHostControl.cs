@@ -14,18 +14,20 @@ namespace IntelligenceX.Chat.App.Native;
 /// Native host surface for projected ChartForgeX visual artifacts.
 /// </summary>
 internal sealed class NativeVisualArtifactHostControl : UserControl {
-    public NativeVisualArtifactHostControl(NativeTranscriptVisual? visual) {
-        Content = Build(visual);
+    public NativeVisualArtifactHostControl(NativeTranscriptVisual? visual, string? caption = null) {
+        Content = Build(visual, caption);
     }
 
-    private static FrameworkElement Build(NativeTranscriptVisual? visual) {
+    private static FrameworkElement Build(NativeTranscriptVisual? visual, string? caption) {
         var artifact = visual?.Artifact;
-        var title = artifact == null
-            ? FormatVisualTitle(visual)
-            : FormatArtifactTitle(artifact, visual);
+        var title = !string.IsNullOrWhiteSpace(caption)
+            ? caption.Trim()
+            : artifact == null
+                ? FormatVisualTitle(visual)
+                : FormatArtifactTitle(artifact, visual);
         var hasPreview = visual?.Preview?.HasPng == true;
         var detail = artifact == null
-            ? "Renderer pending"
+            ? "ChartForgeX preview is not available for this artifact."
             : FormatArtifactDetail(artifact, hasPreview);
         var stack = new StackPanel {
             Spacing = 8
@@ -47,7 +49,7 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
             CornerRadius = new CornerRadius(7),
             BorderBrush = NativeControlBrushes.BorderStrong,
             BorderThickness = new Thickness(1),
-            Background = NativeControlBrushes.SurfaceMuted,
+            Background = NativeControlBrushes.Surface,
             Child = stack
         };
     }
@@ -125,7 +127,8 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
     private static FrameworkElement CreatePreviewImage(byte[] png) {
         var image = new Image {
             Stretch = Stretch.Uniform,
-            MaxHeight = 300,
+            MaxHeight = 420,
+            Margin = new Thickness(0, 4, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
         _ = LoadPreviewAsync(image, png);

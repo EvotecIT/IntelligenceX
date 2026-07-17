@@ -32,6 +32,7 @@ internal sealed partial class NativeChatWindow : Window {
     private TextBox _sidebarSearchBox = null!;
     private TextBlock _selectedContextText = null!;
     private ItemsRepeater _transcriptItems = null!;
+    private ScrollViewer _transcriptScroll = null!;
     private Grid _emptyTranscriptHost = null!;
 
     public NativeChatWindow() {

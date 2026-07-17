@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ChartForgeX.Markup;
 using ChartForgeX.VisualArtifacts;
+using OfficeIMO.Markdown;
 
 namespace IntelligenceX.Chat.App.Native.Rendering;
 
@@ -9,8 +10,14 @@ namespace IntelligenceX.Chat.App.Native.Rendering;
 /// Identifies native transcript content projected from an upstream Markdown AST.
 /// </summary>
 internal enum NativeTranscriptContentKind {
+    Heading,
     Paragraph,
+    List,
+    Quote,
+    Callout,
+    Details,
     Code,
+    Divider,
     Table,
     Visual,
     Diagnostic
@@ -27,7 +34,11 @@ internal sealed class NativeTranscriptContent {
         string? caption = null,
         NativeTranscriptTable? table = null,
         NativeTranscriptVisual? visual = null,
-        int? sourceLine = null) {
+        int? sourceLine = null,
+        IReadOnlyList<NativeTranscriptInline>? inlines = null,
+        int? headingLevel = null,
+        NativeTranscriptList? list = null,
+        NativeTranscriptContainer? container = null) {
         Kind = kind;
         Text = text ?? string.Empty;
         Language = string.IsNullOrWhiteSpace(language) ? null : language.Trim();
@@ -35,6 +46,10 @@ internal sealed class NativeTranscriptContent {
         Table = table;
         Visual = visual;
         SourceLine = sourceLine;
+        Inlines = inlines ?? Array.Empty<NativeTranscriptInline>();
+        HeadingLevel = headingLevel;
+        List = list;
+        Container = container;
     }
 
     public NativeTranscriptContentKind Kind { get; }
@@ -50,6 +65,111 @@ internal sealed class NativeTranscriptContent {
     public NativeTranscriptVisual? Visual { get; }
 
     public int? SourceLine { get; }
+
+    public IReadOnlyList<NativeTranscriptInline> Inlines { get; }
+
+    public int? HeadingLevel { get; }
+
+    public NativeTranscriptList? List { get; }
+
+    public NativeTranscriptContainer? Container { get; }
+}
+
+/// <summary>
+/// Inline formatting projection retained from the OfficeIMO native AST.
+/// </summary>
+internal sealed class NativeTranscriptInline {
+    public NativeTranscriptInline(
+        MarkdownNativeInlineKind kind,
+        string text,
+        string? target = null,
+        IReadOnlyList<NativeTranscriptInline>? children = null) {
+        Kind = kind;
+        Text = text ?? string.Empty;
+        Target = string.IsNullOrWhiteSpace(target) ? null : target.Trim();
+        Children = children ?? Array.Empty<NativeTranscriptInline>();
+    }
+
+    public MarkdownNativeInlineKind Kind { get; }
+
+    public string Text { get; }
+
+    public string? Target { get; }
+
+    public IReadOnlyList<NativeTranscriptInline> Children { get; }
+}
+
+/// <summary>
+/// Ordered, unordered, or task-list projection.
+/// </summary>
+internal sealed class NativeTranscriptList {
+    public NativeTranscriptList(bool isOrdered, int start, IReadOnlyList<NativeTranscriptListItem> items) {
+        IsOrdered = isOrdered;
+        Start = start;
+        Items = items ?? Array.Empty<NativeTranscriptListItem>();
+    }
+
+    public bool IsOrdered { get; }
+
+    public int Start { get; }
+
+    public IReadOnlyList<NativeTranscriptListItem> Items { get; }
+}
+
+/// <summary>
+/// One native list item including its lead inline content and nested blocks.
+/// </summary>
+internal sealed class NativeTranscriptListItem {
+    public NativeTranscriptListItem(
+        string text,
+        IReadOnlyList<NativeTranscriptInline>? inlines,
+        bool isTask,
+        bool isChecked,
+        IReadOnlyList<NativeTranscriptContent>? children) {
+        Text = text ?? string.Empty;
+        Inlines = inlines ?? Array.Empty<NativeTranscriptInline>();
+        IsTask = isTask;
+        IsChecked = isChecked;
+        Children = children ?? Array.Empty<NativeTranscriptContent>();
+    }
+
+    public string Text { get; }
+
+    public IReadOnlyList<NativeTranscriptInline> Inlines { get; }
+
+    public bool IsTask { get; }
+
+    public bool IsChecked { get; }
+
+    public IReadOnlyList<NativeTranscriptContent> Children { get; }
+}
+
+/// <summary>
+/// Nested native block container used for quotes and semantic callouts.
+/// </summary>
+internal sealed class NativeTranscriptContainer {
+    public NativeTranscriptContainer(
+        string kind,
+        string? title,
+        string? badge,
+        IReadOnlyList<NativeTranscriptContent>? children,
+        bool? isExpanded = null) {
+        Kind = string.IsNullOrWhiteSpace(kind) ? "note" : kind.Trim();
+        Title = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+        Badge = string.IsNullOrWhiteSpace(badge) ? null : badge.Trim();
+        Children = children ?? Array.Empty<NativeTranscriptContent>();
+        IsExpanded = isExpanded;
+    }
+
+    public string Kind { get; }
+
+    public string? Title { get; }
+
+    public string? Badge { get; }
+
+    public IReadOnlyList<NativeTranscriptContent> Children { get; }
+
+    public bool? IsExpanded { get; }
 }
 
 /// <summary>

@@ -12,7 +12,7 @@ namespace IntelligenceX.Chat.App.Native;
 /// Compact native preview for a projected Markdown table.
 /// </summary>
 internal sealed class NativeTranscriptTablePreviewControl : UserControl {
-    private const int MaxPreviewRows = 6;
+    private const int MaxPreviewRows = 8;
     private readonly NativeTranscriptTable _table;
     private readonly string _title;
     private readonly NativeTableWorkspaceViewModel _viewModel;
@@ -54,7 +54,7 @@ internal sealed class NativeTranscriptTablePreviewControl : UserControl {
             CornerRadius = new CornerRadius(7),
             BorderBrush = NativeControlBrushes.BorderStrong,
             BorderThickness = new Thickness(1),
-            Background = NativeControlBrushes.SurfaceMuted,
+            Background = NativeControlBrushes.Surface,
             Child = panel
         };
     }
@@ -86,7 +86,10 @@ internal sealed class NativeTranscriptTablePreviewControl : UserControl {
         var openButton = new Button {
             Content = "Open",
             MinWidth = 72,
-            MinHeight = 32
+            MinHeight = 32,
+            Background = NativeControlBrushes.AccentSoft,
+            BorderBrush = NativeControlBrushes.UserBorder,
+            Foreground = NativeControlBrushes.Accent
         };
         openButton.Click += async (_, _) => await ShowWorkspaceAsync(openButton, _table, _title).ConfigureAwait(true);
         Grid.SetColumn(openButton, 1);
@@ -195,7 +198,11 @@ internal sealed class NativeTranscriptTablePreviewControl : UserControl {
 
         var columnCount = Math.Max(1, _viewModel.Headers.Count);
         for (var column = 0; column < columnCount; column++) {
-            _grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _grid.ColumnDefinitions.Add(new ColumnDefinition {
+                Width = GridLength.Auto,
+                MinWidth = 128,
+                MaxWidth = 360
+            });
         }
 
         AddTableRow(_grid, _viewModel.Headers, rowIndex: 0, isHeader: true, columnCount);
@@ -218,13 +225,18 @@ internal sealed class NativeTranscriptTablePreviewControl : UserControl {
                 Padding = new Thickness(8, 6, 8, 6),
                 BorderBrush = NativeControlBrushes.Border,
                 BorderThickness = new Thickness(0, 0, column + 1 == columnCount ? 0 : 1, 1),
-                Background = isHeader ? NativeControlBrushes.Rgb(238, 243, 249) : NativeControlBrushes.Surface,
+                Background = isHeader
+                    ? NativeControlBrushes.AccentSoft
+                    : rowIndex % 2 == 0
+                        ? NativeControlBrushes.SurfaceMuted
+                        : NativeControlBrushes.Surface,
                 Child = new TextBlock {
                     Text = column < values.Count ? values[column] : string.Empty,
                     TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
                     FontSize = 12,
                     FontWeight = isHeader ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
-                    Foreground = NativeControlBrushes.TextPrimary
+                    Foreground = isHeader ? NativeControlBrushes.Accent : NativeControlBrushes.TextPrimary
                 }
             };
             Grid.SetColumn(cell, column);

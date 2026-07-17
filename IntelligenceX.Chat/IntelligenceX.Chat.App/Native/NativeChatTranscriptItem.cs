@@ -25,7 +25,7 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
         CreatedAt = createdAt;
         _status = status ?? string.Empty;
         Model = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
-        _content = ShouldProjectContent() ? NativeMarkdownProjection.Project(_text) : Array.Empty<NativeTranscriptContent>();
+        _content = ShouldProjectContent() ? NativeMarkdownProjection.Project(Role, _text) : Array.Empty<NativeTranscriptContent>();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -96,7 +96,7 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
             return;
         }
 
-        _content = NativeMarkdownProjection.Project(_text);
+        _content = NativeMarkdownProjection.Project(Role, _text);
         OnPropertyChanged(nameof(Content));
     }
 

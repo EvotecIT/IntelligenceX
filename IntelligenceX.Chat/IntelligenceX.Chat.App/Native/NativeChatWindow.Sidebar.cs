@@ -32,6 +32,10 @@ internal sealed partial class NativeChatWindow {
             IsItemClickEnabled = false,
             HorizontalContentAlignment = HorizontalAlignment.Stretch
         };
+        ScrollViewer.SetVerticalScrollMode(_sidebarItemsPanel, ScrollMode.Enabled);
+        ScrollViewer.SetVerticalScrollBarVisibility(_sidebarItemsPanel, ScrollBarVisibility.Auto);
+        ScrollViewer.SetHorizontalScrollMode(_sidebarItemsPanel, ScrollMode.Disabled);
+        ScrollViewer.SetHorizontalScrollBarVisibility(_sidebarItemsPanel, ScrollBarVisibility.Disabled);
         Grid.SetRow(_sidebarItemsPanel, 2);
         grid.Children.Add(_sidebarItemsPanel);
         RenderSidebarItems();

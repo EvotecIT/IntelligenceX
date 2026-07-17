@@ -4,6 +4,9 @@ using System.Linq;
 using ChartForgeX.Markup;
 using ChartForgeX.VisualArtifacts;
 using IntelligenceX.Chat.App.Native.Rendering;
+using IntelligenceX.Chat.App.Native;
+using Microsoft.UI.Xaml;
+using OfficeIMO.Markdown;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -155,5 +158,105 @@ public sealed class NativeRenderingProjectionTests {
 
         Assert.Null(preview);
         Assert.Contains("does not expose a supported SVG render model", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures the WinUI adapter keeps the rich OfficeIMO document structure instead of flattening it to plain paragraphs.
+    /// </summary>
+    [Fact]
+    public void Project_PreservesRichOfficeImoDocumentSemantics() {
+        const string markdown = """
+            ## Evidence summary
+
+            **Healthy** replication with *two* sites, `15m` lag, and [details](https://example.test/evidence).
+
+            - First site
+            - [x] Second site checked
+
+            > Quoted operator context
+
+            ---
+            """;
+
+        var content = NativeMarkdownProjection.Project(markdown);
+
+        var heading = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Heading);
+        Assert.Equal(2, heading.HeadingLevel);
+        var paragraph = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Paragraph);
+        Assert.Contains(paragraph.Inlines, inline => inline.Kind == MarkdownNativeInlineKind.Strong);
+        Assert.Contains(paragraph.Inlines, inline => inline.Kind == MarkdownNativeInlineKind.Emphasis);
+        Assert.Contains(paragraph.Inlines, inline => inline.Kind == MarkdownNativeInlineKind.Code);
+        Assert.Contains(paragraph.Inlines, inline => inline.Kind == MarkdownNativeInlineKind.Link
+            && inline.Target == "https://example.test/evidence");
+        var list = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.List).List;
+        Assert.NotNull(list);
+        Assert.Equal(2, list.Items.Count);
+        Assert.True(list.Items[1].IsTask);
+        Assert.True(list.Items[1].IsChecked);
+        Assert.Contains(content, item => item.Kind == NativeTranscriptContentKind.Quote);
+        Assert.Contains(content, item => item.Kind == NativeTranscriptContentKind.Divider);
+    }
+
+    /// <summary>
+    /// Ensures OfficeIMO callouts remain semantic warning cards for the native shell.
+    /// </summary>
+    [Fact]
+    public void Project_PreservesOfficeImoWarningCallout() {
+        const string markdown = """
+            > [!WARNING] Replication lag
+            > Site B is more than **15 minutes** behind.
+            """;
+
+        var content = NativeMarkdownProjection.Project(markdown);
+
+        var callout = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Callout).Container;
+        Assert.NotNull(callout);
+        Assert.Equal("warning", callout.Kind, ignoreCase: true);
+        Assert.Equal("Replication lag", callout.Title);
+        Assert.NotEmpty(callout.Children);
+    }
+
+    /// <summary>
+    /// Ensures legacy transcript outcome markers use the same semantic parser as the HTML shell.
+    /// </summary>
+    [Fact]
+    public void Project_ConvertsOutcomeMarkerToNativeCallout() {
+        var content = NativeMarkdownProjection.Project(
+            "System",
+            "[warning] Tool health checks need attention\n\n- LDAP probe failed\n- Graph probe is delayed");
+
+        var callout = Assert.Single(content).Container;
+        Assert.NotNull(callout);
+        Assert.Equal("warning", callout.Kind);
+        Assert.Equal("Tool health checks need attention", callout.Title);
+        Assert.Equal("Warning", callout.Badge);
+        Assert.Contains(callout.Children, item => item.Kind == NativeTranscriptContentKind.List);
+    }
+
+    /// <summary>
+    /// Ensures HTML details preserve their initial disclosure state for the native Expander.
+    /// </summary>
+    [Theory]
+    [InlineData("<details>\n<summary>More evidence</summary>\n\nHidden\n\n</details>", false)]
+    [InlineData("<details open>\n<summary>More evidence</summary>\n\nVisible\n\n</details>", true)]
+    public void Project_PreservesDetailsDisclosureState(string markdown, bool expectedExpanded) {
+        var content = NativeMarkdownProjection.Project(markdown);
+
+        var details = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Details).Container;
+        Assert.NotNull(details);
+        Assert.Equal("More evidence", details.Title);
+        Assert.Equal("Details", details.Badge);
+        Assert.Equal(expectedExpanded, details.IsExpanded);
+        Assert.NotEmpty(details.Children);
+    }
+
+    /// <summary>
+    /// Ensures the WinUI text builder maps raised and lowered Markdown runs to distinct typography variants.
+    /// </summary>
+    [Fact]
+    public void RichTextBuilder_MapsSuperscriptAndSubscriptToDistinctFontVariants() {
+        Assert.Equal(FontVariants.Superscript, NativeTranscriptRichTextBuilder.ResolveFontVariant(MarkdownNativeInlineKind.Superscript));
+        Assert.Equal(FontVariants.Subscript, NativeTranscriptRichTextBuilder.ResolveFontVariant(MarkdownNativeInlineKind.Subscript));
+        Assert.Equal(FontVariants.Superscript, NativeTranscriptRichTextBuilder.ResolveFontVariant(MarkdownNativeInlineKind.FootnoteRef));
     }
 }
