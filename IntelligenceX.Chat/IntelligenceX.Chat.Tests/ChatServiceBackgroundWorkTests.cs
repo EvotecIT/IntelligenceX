@@ -3039,7 +3039,8 @@ public sealed class ChatServiceBackgroundWorkTests {
         var (options, _, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
 
         var writerState = new ChatServiceBackgroundSchedulerControlState(options);
-        var paused = writerState.SetManualPause(paused: true, pauseSeconds: 300, pauseReason: "maintenance-window");
+        Assert.True(writerState.SetManualPause(paused: true, pauseSeconds: 300, pauseReason: "maintenance-window"));
+        var paused = writerState.GetSnapshot(DateTime.UtcNow.Ticks);
         var storePath = writerState.ResolveStorePathForTesting();
 
         Assert.True(paused.ManualPauseActive);
@@ -3061,6 +3062,77 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Equal(0, resumed.PausedUntilUtcTicks);
         Assert.Equal(string.Empty, resumed.PauseReason);
         Assert.False(File.Exists(storePath));
+    }
+
+    [Fact]
+    public void BackgroundSchedulerControlState_ReportsDurableWriteFailure_WithoutChangingLiveState() {
+        var (options, _, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var storePath = Path.Combine(persistenceDirectory, "background-scheduler-control.json");
+        Directory.CreateDirectory(storePath);
+
+        try {
+            var state = new ChatServiceBackgroundSchedulerControlState(options);
+
+            Assert.False(state.SetManualPause(paused: true, pauseSeconds: 300, pauseReason: "must-persist"));
+            Assert.False(state.GetSnapshot(DateTime.UtcNow.Ticks).ManualPauseActive);
+        } finally {
+            if (Directory.Exists(persistenceDirectory)) {
+                Directory.Delete(persistenceDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BackgroundSchedulerControlState_MergesIndependentUpdatesFromStaleInstances() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var packWriter = new ChatServiceBackgroundSchedulerControlState(options);
+        var threadWriter = new ChatServiceBackgroundSchedulerControlState(options);
+
+        Assert.True(packWriter.UpdateBlockedPacks("replace", new[] { "system" }));
+        Assert.True(threadWriter.UpdateBlockedThreads("replace", new[] { "thread-muted" }));
+
+        var reader = new ChatServiceBackgroundSchedulerControlState(options);
+        Assert.Equal(new[] { "system" }, reader.GetBlockedPackIds(DateTime.UtcNow.Ticks));
+        Assert.Equal(new[] { "thread-muted" }, reader.GetBlockedThreadIds(DateTime.UtcNow.Ticks));
+    }
+
+    [Fact]
+    public void BackgroundSchedulerControlState_ExpiredPauseCleanupPreservesOtherPersistedOverrides() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedState = new ChatServiceBackgroundSchedulerControlState(options);
+        var storePath = seedState.ResolveStorePathForTesting();
+        var expiredPauseTicks = DateTime.UtcNow.AddMinutes(-5).Ticks;
+        File.WriteAllText(
+            storePath,
+            $$"""
+            {
+              "Version": 4,
+              "ManualPauseActive": true,
+              "PausedUntilUtcTicks": {{expiredPauseTicks}},
+              "PauseReason": "manual_pause:60s:expired",
+              "BlockedPackIdsCustomized": true,
+              "BlockedPackIds": ["system"],
+              "TemporaryBlockedPacks": [],
+              "BlockedThreadIdsCustomized": false,
+              "BlockedThreadIds": [],
+              "TemporaryBlockedThreads": [],
+              "MaintenanceWindowsCustomized": false,
+              "MaintenanceWindowSpecs": []
+            }
+            """);
+
+        var firstRestart = new ChatServiceBackgroundSchedulerControlState(options);
+        var firstSnapshot = firstRestart.GetSnapshot(DateTime.UtcNow.Ticks);
+
+        Assert.False(firstSnapshot.ManualPauseActive);
+        Assert.Equal(new[] { "system" }, firstRestart.GetBlockedPackIds(DateTime.UtcNow.Ticks));
+        Assert.True(File.Exists(storePath));
+
+        var secondRestart = new ChatServiceBackgroundSchedulerControlState(options);
+        var secondSnapshot = secondRestart.GetSnapshot(DateTime.UtcNow.Ticks);
+
+        Assert.False(secondSnapshot.ManualPauseActive);
+        Assert.Equal(new[] { "system" }, secondRestart.GetBlockedPackIds(DateTime.UtcNow.Ticks));
     }
 
     [Fact]
@@ -3759,6 +3831,410 @@ public sealed class ChatServiceBackgroundWorkTests {
         }
 
         Assert.False(File.Exists(runtimeStorePath));
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_RetriesSnapshotAfterDurableWriteFailure() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var session = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = session.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        Directory.CreateDirectory(runtimeStorePath);
+
+        try {
+            session.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+                TimeSpan.FromSeconds(45),
+                "policy=write_retry");
+
+            var deferred = session.BuildBackgroundSchedulerSummaryForTesting();
+            Assert.True(deferred.RuntimeStoreRehydratePending);
+            Assert.Equal("deferred", deferred.RuntimeStoreLoadState);
+            Assert.True(deferred.AdaptiveIdleActive);
+            Assert.Equal(45, deferred.LastAdaptiveIdleDelaySeconds);
+
+            Directory.Delete(runtimeStorePath);
+
+            var recovered = session.BuildBackgroundSchedulerSummaryForTesting();
+            Assert.False(recovered.RuntimeStoreRehydratePending);
+            Assert.Equal("loaded", recovered.RuntimeStoreLoadState);
+            Assert.True(recovered.AdaptiveIdleActive);
+            Assert.Equal(45, recovered.LastAdaptiveIdleDelaySeconds);
+            Assert.Contains("policy=write_retry", recovered.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+            Assert.True(File.Exists(runtimeStorePath));
+
+            var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+            Assert.False(restarted.RuntimeStoreRehydratePending);
+            Assert.Equal("loaded", restarted.RuntimeStoreLoadState);
+            Assert.True(restarted.AdaptiveIdleActive);
+            Assert.Equal(45, restarted.LastAdaptiveIdleDelaySeconds);
+            Assert.Contains("policy=write_retry", restarted.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(runtimeStorePath)) {
+                Directory.Delete(runtimeStorePath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_DoesNotDoubleCountAbsoluteSnapshotDuringRetry() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var recordedTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"completed","lastOutcomeUtcTicks":{{recordedTicks}},"lastSuccessUtcTicks":{{recordedTicks}},"completedExecutionCount":10,"recentActivity":[]}
+            """);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        Assert.Equal(10, session.BuildBackgroundSchedulerSummaryForTesting().CompletedExecutionCount);
+
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            session.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+                TimeSpan.FromSeconds(45),
+                "policy=absolute_retry");
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        var recovered = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.False(recovered.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", recovered.RuntimeStoreLoadState);
+        Assert.Equal(10, recovered.CompletedExecutionCount);
+        Assert.True(recovered.AdaptiveIdleActive);
+        Assert.Contains("policy=absolute_retry", recovered.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+
+        var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(10, restarted.CompletedExecutionCount);
+        Assert.True(restarted.AdaptiveIdleActive);
+        Assert.Contains("policy=absolute_retry", restarted.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_PreservesConcurrentPersistedUpdatesDuringRetry() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var initialTicks = DateTime.UtcNow.AddMinutes(-3).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"completed","lastOutcomeUtcTicks":{{initialTicks}},"lastSuccessUtcTicks":{{initialTicks}},"completedExecutionCount":10,"recentActivity":[]}
+            """);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        Assert.Equal(10, session.BuildBackgroundSchedulerSummaryForTesting().CompletedExecutionCount);
+
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            session.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+                TimeSpan.FromSeconds(45),
+                "policy=concurrent_retry");
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        var concurrentTicks = DateTime.UtcNow.AddMinutes(-1).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"completed","lastOutcomeUtcTicks":{{concurrentTicks}},"lastSuccessUtcTicks":{{concurrentTicks}},"completedExecutionCount":12,"recentActivity":[{"recordedUtcTicks":{{concurrentTicks}},"outcome":"completed","threadId":"thread-concurrent","itemId":"item-concurrent","toolName":"system_info","reason":"concurrent_writer","outputCount":1,"failureDetail":""}]}
+            """);
+
+        var recovered = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.False(recovered.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", recovered.RuntimeStoreLoadState);
+        Assert.Equal(12, recovered.CompletedExecutionCount);
+        Assert.True(recovered.AdaptiveIdleActive);
+        Assert.Contains("policy=concurrent_retry", recovered.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(recovered.RecentActivity, activity => string.Equals(activity.Reason, "concurrent_writer", StringComparison.Ordinal));
+
+        var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(12, restarted.CompletedExecutionCount);
+        Assert.True(restarted.AdaptiveIdleActive);
+        Assert.Contains("policy=concurrent_retry", restarted.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(restarted.RecentActivity, activity => string.Equals(activity.Reason, "concurrent_writer", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_PreservesConcurrentFailureStreakIncrementsDuringRetry() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var initialTicks = DateTime.UtcNow.AddMinutes(-3).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"requeued_after_tool_failure","lastOutcomeUtcTicks":{{initialTicks}},"lastFailureUtcTicks":{{initialTicks}},"requeuedExecutionCount":3,"consecutiveFailureCount":3,"recentActivity":[]}
+            """);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        var initial = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(3, initial.RequeuedExecutionCount);
+        Assert.Equal(3, initial.ConsecutiveFailureCount);
+
+        var localFailureTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            session.RememberBackgroundSchedulerIterationResultForTesting(
+                new ChatServiceSession.BackgroundSchedulerIterationResult(
+                    ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure,
+                    "thread-local-failure",
+                    "item-local-failure",
+                    "system_info",
+                    "local_failure",
+                    0,
+                    "local_probe_failed"),
+                localFailureTicks);
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        var concurrentFailureTicks = DateTime.UtcNow.AddMinutes(-1).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"requeued_after_tool_failure","lastOutcomeUtcTicks":{{concurrentFailureTicks}},"lastFailureUtcTicks":{{concurrentFailureTicks}},"requeuedExecutionCount":4,"consecutiveFailureCount":4,"recentActivity":[{"recordedUtcTicks":{{concurrentFailureTicks}},"outcome":"requeued_after_tool_failure","threadId":"thread-concurrent-failure","itemId":"item-concurrent-failure","toolName":"system_info","reason":"concurrent_failure","outputCount":0,"failureDetail":"concurrent_probe_failed"}]}
+            """);
+
+        var recovered = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.False(recovered.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", recovered.RuntimeStoreLoadState);
+        Assert.Equal(5, recovered.RequeuedExecutionCount);
+        Assert.Equal(5, recovered.ConsecutiveFailureCount);
+        Assert.Contains(recovered.RecentActivity, activity => string.Equals(activity.Reason, "local_failure", StringComparison.Ordinal));
+        Assert.Contains(recovered.RecentActivity, activity => string.Equals(activity.Reason, "concurrent_failure", StringComparison.Ordinal));
+
+        var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(5, restarted.RequeuedExecutionCount);
+        Assert.Equal(5, restarted.ConsecutiveFailureCount);
+        Assert.Contains(restarted.RecentActivity, activity => string.Equals(activity.Reason, "local_failure", StringComparison.Ordinal));
+        Assert.Contains(restarted.RecentActivity, activity => string.Equals(activity.Reason, "concurrent_failure", StringComparison.Ordinal));
+        using var migratedStore = JsonDocument.Parse(File.ReadAllText(runtimeStorePath));
+        Assert.Equal(5, migratedStore.RootElement.GetProperty("failureStreakEvents").GetArrayLength());
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_ResetsOnlyFailuresBeforeConcurrentSuccess() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var localSession = new ChatServiceSession(options, Stream.Null);
+        var concurrentSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = localSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var firstSuccessTicks = DateTime.UtcNow.AddMinutes(-4).Ticks;
+        var firstFailureTicks = DateTime.UtcNow.AddMinutes(-3).Ticks;
+        var resetSuccessTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        var secondFailureTicks = DateTime.UtcNow.AddMinutes(-1).Ticks;
+
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            localSession.RememberBackgroundSchedulerIterationResultForTesting(
+                new ChatServiceSession.BackgroundSchedulerIterationResult(
+                    ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.Completed,
+                    "thread-local-success",
+                    "item-local-success",
+                    "system_info",
+                    "local_success",
+                    1,
+                    string.Empty),
+                resetSuccessTicks);
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        concurrentSession.RememberBackgroundSchedulerIterationResultForTesting(
+            new ChatServiceSession.BackgroundSchedulerIterationResult(
+                ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.Completed,
+                "thread-concurrent-success",
+                "item-concurrent-success",
+                "system_info",
+                "concurrent_success",
+                1,
+                string.Empty),
+            firstSuccessTicks);
+        concurrentSession.RememberBackgroundSchedulerIterationResultForTesting(
+            new ChatServiceSession.BackgroundSchedulerIterationResult(
+                ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure,
+                "thread-concurrent-first-failure",
+                "item-concurrent-first-failure",
+                "system_info",
+                "concurrent_failure_before_reset",
+                0,
+                "first_probe_failed"),
+            firstFailureTicks);
+        concurrentSession.RememberBackgroundSchedulerIterationResultForTesting(
+            new ChatServiceSession.BackgroundSchedulerIterationResult(
+                ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure,
+                "thread-concurrent-second-failure",
+                "item-concurrent-second-failure",
+                "system_info",
+                "concurrent_failure_after_reset",
+                0,
+                "second_probe_failed"),
+            secondFailureTicks);
+
+        var recovered = localSession.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.False(recovered.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", recovered.RuntimeStoreLoadState);
+        Assert.Equal(2, recovered.CompletedExecutionCount);
+        Assert.Equal(2, recovered.RequeuedExecutionCount);
+        Assert.Equal(1, recovered.ConsecutiveFailureCount);
+        Assert.Contains(recovered.RecentActivity, activity => string.Equals(activity.Reason, "local_success", StringComparison.Ordinal));
+        Assert.Contains(recovered.RecentActivity, activity => string.Equals(activity.Reason, "concurrent_failure_before_reset", StringComparison.Ordinal));
+        Assert.Contains(recovered.RecentActivity, activity => string.Equals(activity.Reason, "concurrent_failure_after_reset", StringComparison.Ordinal));
+
+        var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(2, restarted.CompletedExecutionCount);
+        Assert.Equal(2, restarted.RequeuedExecutionCount);
+        Assert.Equal(1, restarted.ConsecutiveFailureCount);
+        using var persistedStore = JsonDocument.Parse(File.ReadAllText(runtimeStorePath));
+        Assert.Equal(1, persistedStore.RootElement.GetProperty("failureStreakEvents").GetArrayLength());
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_ResetsOverflowedFailuresBeforeConcurrentSuccess() {
+        const int initialConsecutiveFailureCount = 5000;
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var initialFailureTicks = DateTime.UtcNow.AddMinutes(-5).Ticks;
+        WriteBackgroundSchedulerFailureStreakStore(
+            runtimeStorePath,
+            initialConsecutiveFailureCount,
+            initialFailureTicks);
+
+        var localSession = new ChatServiceSession(options, Stream.Null);
+        var concurrentSession = new ChatServiceSession(options, Stream.Null);
+        Assert.Equal(
+            ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents,
+            localSession.BuildBackgroundSchedulerSummaryForTesting().ConsecutiveFailureCount);
+        var firstFailureTicks = DateTime.UtcNow.AddMinutes(-3).Ticks;
+        var resetSuccessTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        var secondFailureTicks = DateTime.UtcNow.AddMinutes(-1).Ticks;
+
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            localSession.RememberBackgroundSchedulerIterationResultForTesting(
+                new ChatServiceSession.BackgroundSchedulerIterationResult(
+                    ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.Completed,
+                    "thread-overflow-reset",
+                    "item-overflow-reset",
+                    "system_info",
+                    "overflow_reset",
+                    1,
+                    string.Empty),
+                resetSuccessTicks);
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        concurrentSession.RememberBackgroundSchedulerIterationResultForTesting(
+            new ChatServiceSession.BackgroundSchedulerIterationResult(
+                ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure,
+                "thread-overflow-first-failure",
+                "item-overflow-first-failure",
+                "system_info",
+                "overflow_failure_before_reset",
+                0,
+                "first_overflow_probe_failed"),
+            firstFailureTicks);
+        concurrentSession.RememberBackgroundSchedulerIterationResultForTesting(
+            new ChatServiceSession.BackgroundSchedulerIterationResult(
+                ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure,
+                "thread-overflow-second-failure",
+                "item-overflow-second-failure",
+                "system_info",
+                "overflow_failure_after_reset",
+                0,
+                "second_overflow_probe_failed"),
+            secondFailureTicks);
+
+        var recovered = localSession.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(initialConsecutiveFailureCount + 2, recovered.RequeuedExecutionCount);
+        Assert.Equal(1, recovered.ConsecutiveFailureCount);
+        var restarted = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(1, restarted.ConsecutiveFailureCount);
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_AutoPausesAfterSaturatedFailure() {
+        const int initialConsecutiveFailureCount = 5000;
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        options.EnableBackgroundSchedulerDaemon = true;
+        options.BackgroundSchedulerFailureThreshold = 5;
+        options.BackgroundSchedulerFailurePauseSeconds = 120;
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var initialFailureTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        WriteBackgroundSchedulerFailureStreakStore(
+            runtimeStorePath,
+            initialConsecutiveFailureCount,
+            initialFailureTicks);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        Assert.Equal(
+            ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents,
+            session.BuildBackgroundSchedulerSummaryForTesting().ConsecutiveFailureCount);
+        session.RememberBackgroundSchedulerIterationResultForTesting(
+            new ChatServiceSession.BackgroundSchedulerIterationResult(
+                ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure,
+                "thread-saturated-failure",
+                "item-saturated-failure",
+                "system_info",
+                "saturated_failure",
+                0,
+                "saturated_probe_failed"),
+            DateTime.UtcNow.AddMinutes(-1).Ticks);
+
+        var summary = session.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.Equal(initialConsecutiveFailureCount + 1, summary.RequeuedExecutionCount);
+        Assert.Equal(ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents, summary.ConsecutiveFailureCount);
+        Assert.True(summary.Paused);
+        Assert.Contains("consecutive_failure_threshold_reached", summary.PauseReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_RewritesUnsafeFailureEventIds() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var failureTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"requeued_after_tool_failure","lastOutcomeUtcTicks":{{failureTicks}},"lastFailureUtcTicks":{{failureTicks}},"requeuedExecutionCount":1,"consecutiveFailureCount":1,"failureStreakEvents":[{"eventId":"\\\\\\\\\\\\\\\\","recordedUtcTicks":{{failureTicks}}}],"recentActivity":[]}
+            """);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        Assert.Equal(1, session.BuildBackgroundSchedulerSummaryForTesting().ConsecutiveFailureCount);
+        session.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(45),
+            "policy=rewrite_unsafe_failure_id");
+
+        using var persistedStore = JsonDocument.Parse(File.ReadAllText(runtimeStorePath));
+        var eventId = persistedStore.RootElement
+            .GetProperty("failureStreakEvents")[0]
+            .GetProperty("eventId")
+            .GetString();
+        Assert.Equal("legacy-0000", eventId);
+        Assert.True(new FileInfo(runtimeStorePath).Length < ChatServiceSession.BackgroundSchedulerRuntimeStoreMaximumBytes);
     }
 
     [Fact]
@@ -6897,6 +7373,37 @@ public sealed class ChatServiceBackgroundWorkTests {
             description: "test tool",
             handoff: handoff,
             writeGovernance: writeGovernance);
+    }
+
+    private static void WriteBackgroundSchedulerFailureStreakStore(
+        string runtimeStorePath,
+        int consecutiveFailureCount,
+        long recordedUtcTicks) {
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var seedStore = new BackgroundSchedulerRuntimeStoreDto {
+            LastOutcome = "requeued_after_tool_failure",
+            LastOutcomeUtcTicks = recordedUtcTicks,
+            LastFailureUtcTicks = recordedUtcTicks,
+            RequeuedExecutionCount = Math.Max(0, consecutiveFailureCount),
+            ConsecutiveFailureCount = Math.Max(0, consecutiveFailureCount),
+            FailureStreakEvents = Enumerable.Range(
+                    0,
+                    Math.Min(
+                        Math.Max(0, consecutiveFailureCount),
+                        ChatServiceSession.MaxBackgroundSchedulerFailureStreakEvents))
+                .Select(index => new BackgroundSchedulerFailureEventDto {
+                    EventId = $"seed-{index:D4}",
+                    RecordedUtcTicks = recordedUtcTicks
+                })
+                .ToArray()
+        };
+        File.WriteAllText(
+            runtimeStorePath,
+            JsonSerializer.Serialize(
+                seedStore,
+                BackgroundSchedulerRuntimeStoreJsonContext.Default.BackgroundSchedulerRuntimeStoreDto));
     }
 
     private static ChatServiceSession.ThreadBackgroundWorkItem CreateBackgroundWorkItem(

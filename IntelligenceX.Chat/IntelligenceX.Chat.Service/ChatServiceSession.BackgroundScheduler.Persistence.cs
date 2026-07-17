@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using IntelligenceX.Chat.Abstractions.Policy;
@@ -18,14 +15,18 @@ internal sealed partial class ChatServiceSession {
     private const string BackgroundSchedulerRuntimeStoreLoadStateInvalid = "invalid";
     private const string BackgroundSchedulerRuntimeStoreLoadStateDeferred = "deferred";
     private const int BackgroundSchedulerRuntimeStoreVersion = 1;
+    internal const int BackgroundSchedulerRuntimeStoreMaximumBytes = 512 * 1024;
     private static readonly JsonSerializerOptions BackgroundSchedulerRuntimeStoreReadJsonOptions = new() {
         PropertyNameCaseInsensitive = true,
         WriteIndented = false
     };
     private static Func<string, bool?>? BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting;
+    private readonly object _backgroundSchedulerRuntimeStorePersistenceLock = new();
     private int _backgroundSchedulerRuntimeStoreRehydratePending;
     private string _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateEmpty;
+    private BackgroundSchedulerRuntimeStoreDto _backgroundSchedulerRuntimeStoreLocalBaseline = new();
     private BackgroundSchedulerRuntimeStoreDto? _backgroundSchedulerRuntimeStoreDeferredPersistStore;
+    private BackgroundSchedulerRuntimeStoreDto? _backgroundSchedulerRuntimeStoreDeferredPersistBaseline;
 
     private static string ResolveDefaultBackgroundSchedulerRuntimeStorePath() =>
         ChatServiceJsonFileStore.ResolveDefaultPath("background-scheduler-runtime.json");
@@ -34,7 +35,33 @@ internal sealed partial class ChatServiceSession {
         ChatServiceJsonFileStore.ResolveSiblingPath(ResolvePendingActionsStorePath(), "background-scheduler-runtime.json");
 
     private void TryRehydrateBackgroundSchedulerRuntimeState() {
+        lock (_backgroundSchedulerRuntimeStorePersistenceLock) {
+            TryRehydrateBackgroundSchedulerRuntimeStateCore();
+        }
+    }
+
+    private void TryRehydrateBackgroundSchedulerRuntimeStateCore() {
         var path = ResolveBackgroundSchedulerRuntimeStorePath();
+        BackgroundSchedulerRuntimeStoreDto? deferredPersistStore;
+        BackgroundSchedulerRuntimeStoreDto? deferredPersistBaseline;
+        lock (_backgroundSchedulerTelemetryLock) {
+            deferredPersistStore = _backgroundSchedulerRuntimeStoreDeferredPersistStore is null
+                ? null
+                : CloneBackgroundSchedulerRuntimeStore(_backgroundSchedulerRuntimeStoreDeferredPersistStore);
+            deferredPersistBaseline = _backgroundSchedulerRuntimeStoreDeferredPersistBaseline is null
+                ? null
+                : CloneBackgroundSchedulerRuntimeStore(_backgroundSchedulerRuntimeStoreDeferredPersistBaseline);
+        }
+
+        if (deferredPersistStore is not null) {
+            TryPersistDeferredBackgroundSchedulerRuntimeState(
+                path,
+                deferredPersistBaseline ?? new BackgroundSchedulerRuntimeStoreDto(),
+                deferredPersistStore);
+            return;
+        }
+
+        var localBeforeRead = CaptureBackgroundSchedulerRuntimeStoreSnapshot();
         if (!TryWithBackgroundSchedulerRuntimeStoreLock(
                 path,
                 static runtimeStorePath => ReadBackgroundSchedulerRuntimeStoreNoThrow(runtimeStorePath),
@@ -47,30 +74,55 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        var store = readResult.Store is null
+            ? new BackgroundSchedulerRuntimeStoreDto()
+            : CloneBackgroundSchedulerRuntimeStore(readResult.Store);
+        NormalizeBackgroundSchedulerRuntimeStoreForPersistence(store, DateTime.UtcNow.Ticks);
+        if (!TryApplyBackgroundSchedulerRuntimeStoreIfUnchanged(localBeforeRead, store)) {
+            DeferBackgroundSchedulerRuntimeStoreSnapshot(
+                CaptureBackgroundSchedulerRuntimeStoreSnapshot(),
+                localBeforeRead);
+            return;
+        }
+
         Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 0);
         lock (_backgroundSchedulerTelemetryLock) {
+            _backgroundSchedulerRuntimeStoreLocalBaseline = CloneBackgroundSchedulerRuntimeStore(store);
             _backgroundSchedulerRuntimeStoreLoadState = readResult.LoadState;
         }
+    }
 
-        if (readResult.Store is null) {
+    private void TryPersistDeferredBackgroundSchedulerRuntimeState(
+        string path,
+        BackgroundSchedulerRuntimeStoreDto baseline,
+        BackgroundSchedulerRuntimeStoreDto deferredStore) {
+        if (!TryPersistBackgroundSchedulerRuntimeStoreSnapshot(path, baseline, deferredStore, out var result)) {
+            DeferBackgroundSchedulerRuntimeStoreSnapshot(
+                CaptureBackgroundSchedulerRuntimeStoreSnapshot(),
+                baseline);
             return;
         }
 
-        var nowTicks = DateTime.UtcNow.Ticks;
-        var store = readResult.Store;
-        BackgroundSchedulerRuntimeStoreDto? deferredPersistStore;
+        CompleteBackgroundSchedulerRuntimeStorePersistence(baseline, deferredStore, result);
+    }
+
+    private bool TryApplyBackgroundSchedulerRuntimeStoreIfUnchanged(
+        BackgroundSchedulerRuntimeStoreDto expectedStore,
+        BackgroundSchedulerRuntimeStoreDto store) {
         lock (_backgroundSchedulerTelemetryLock) {
-            deferredPersistStore = _backgroundSchedulerRuntimeStoreDeferredPersistStore;
-        }
+            var currentStore = CaptureBackgroundSchedulerRuntimeStoreSnapshot();
+            if (!BackgroundSchedulerRuntimeStoreEquals(currentStore, expectedStore)) {
+                return false;
+            }
 
-        if (deferredPersistStore is not null) {
-            store = MergeBackgroundSchedulerRuntimeStore(store, deferredPersistStore);
+            ApplyBackgroundSchedulerRuntimeStore(store);
+            return true;
         }
+    }
 
-        if (store is null) {
-            return;
-        }
-
+    private void ApplyBackgroundSchedulerRuntimeStore(BackgroundSchedulerRuntimeStoreDto store) {
+        ArgumentNullException.ThrowIfNull(store);
+        var nowTicks = DateTime.UtcNow.Ticks;
         (store.LastAdaptiveIdleUtcTicks, store.LastAdaptiveIdleDelaySeconds, store.LastAdaptiveIdleReason) =
             NormalizeBackgroundSchedulerAdaptiveIdleState(
                 store.LastAdaptiveIdleUtcTicks,
@@ -78,21 +130,12 @@ internal sealed partial class ChatServiceSession {
                 store.LastAdaptiveIdleReason,
                 nowTicks);
 
-        if (string.IsNullOrWhiteSpace(store.LastOutcome)
-            && store.LastOutcomeUtcTicks <= 0
-            && store.LastSuccessUtcTicks <= 0
-            && store.LastFailureUtcTicks <= 0
-            && store.CompletedExecutionCount <= 0
-            && store.RequeuedExecutionCount <= 0
-            && store.ReleasedExecutionCount <= 0
-            && store.ConsecutiveFailureCount <= 0
-            && store.PausedUntilUtcTicks <= 0
-            && store.LastAdaptiveIdleUtcTicks <= 0
-            && (store.RecentActivity?.Length ?? 0) == 0) {
-            return;
-        }
-
         var normalizedRecentActivity = NormalizeBackgroundSchedulerActivities(store.RecentActivity);
+        var normalizedFailureEvents = NormalizeBackgroundSchedulerFailureEvents(
+            store.FailureStreakEvents,
+            store.ConsecutiveFailureCount,
+            store.LastFailureUtcTicks,
+            store.LastSuccessUtcTicks);
         lock (_backgroundSchedulerTelemetryLock) {
             Interlocked.Exchange(ref _backgroundSchedulerLastTickUtcTicks, Math.Max(0, store.LastSchedulerTickUtcTicks));
             _backgroundSchedulerLastOutcome = NormalizeBackgroundSchedulerActivityText(store.LastOutcome, maxLength: 80);
@@ -102,7 +145,10 @@ internal sealed partial class ChatServiceSession {
             _backgroundSchedulerCompletedExecutionCount = Math.Max(0, store.CompletedExecutionCount);
             _backgroundSchedulerRequeuedExecutionCount = Math.Max(0, store.RequeuedExecutionCount);
             _backgroundSchedulerReleasedExecutionCount = Math.Max(0, store.ReleasedExecutionCount);
-            _backgroundSchedulerConsecutiveFailureCount = Math.Max(0, store.ConsecutiveFailureCount);
+            _backgroundSchedulerConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
+                normalizedFailureEvents.Length);
+            _backgroundSchedulerFailureStreakEvents.Clear();
+            _backgroundSchedulerFailureStreakEvents.AddRange(normalizedFailureEvents);
             _backgroundSchedulerPausedUntilUtcTicks = Math.Max(0, store.PausedUntilUtcTicks);
             _backgroundSchedulerPauseReason = NormalizeBackgroundSchedulerActivityText(store.PauseReason, maxLength: 120);
             _backgroundSchedulerLastAdaptiveIdleUtcTicks = Math.Max(0, store.LastAdaptiveIdleUtcTicks);
@@ -111,24 +157,6 @@ internal sealed partial class ChatServiceSession {
             _backgroundSchedulerRecentActivity.Clear();
             _backgroundSchedulerRecentActivity.AddRange(normalizedRecentActivity);
             NormalizeBackgroundSchedulerPauseStateNoLock(DateTime.UtcNow.Ticks);
-        }
-
-        if (deferredPersistStore is null) {
-            return;
-        }
-
-        if (TryPersistBackgroundSchedulerRuntimeStoreSnapshot(path, store)) {
-            lock (_backgroundSchedulerTelemetryLock) {
-                if (_backgroundSchedulerRuntimeStoreDeferredPersistStore is not null
-                    && BackgroundSchedulerRuntimeStoreEquals(_backgroundSchedulerRuntimeStoreDeferredPersistStore, deferredPersistStore)) {
-                    _backgroundSchedulerRuntimeStoreDeferredPersistStore = null;
-                }
-            }
-            return;
-        }
-
-        lock (_backgroundSchedulerTelemetryLock) {
-            _backgroundSchedulerRuntimeStoreDeferredPersistStore = store;
         }
     }
 
@@ -141,18 +169,86 @@ internal sealed partial class ChatServiceSession {
     }
 
     private void PersistBackgroundSchedulerRuntimeStateNoThrow() {
-        EnsureBackgroundSchedulerRuntimeStateRehydratedIfPending();
-        var store = CaptureBackgroundSchedulerRuntimeStoreSnapshot();
-        if (Volatile.Read(ref _backgroundSchedulerRuntimeStoreRehydratePending) != 0) {
+        lock (_backgroundSchedulerRuntimeStorePersistenceLock) {
+            var store = CaptureBackgroundSchedulerRuntimeStoreSnapshot();
+            if (Volatile.Read(ref _backgroundSchedulerRuntimeStoreRehydratePending) != 0) {
+                BackgroundSchedulerRuntimeStoreDto baseline;
+                lock (_backgroundSchedulerTelemetryLock) {
+                    baseline = CloneBackgroundSchedulerRuntimeStore(
+                        _backgroundSchedulerRuntimeStoreDeferredPersistBaseline
+                        ?? _backgroundSchedulerRuntimeStoreLocalBaseline);
+                    _backgroundSchedulerRuntimeStoreDeferredPersistStore = CloneBackgroundSchedulerRuntimeStore(store);
+                    _backgroundSchedulerRuntimeStoreDeferredPersistBaseline ??= CloneBackgroundSchedulerRuntimeStore(baseline);
+                }
+                TryRehydrateBackgroundSchedulerRuntimeStateCore();
+                return;
+            }
+
+            BackgroundSchedulerRuntimeStoreDto localBaseline;
             lock (_backgroundSchedulerTelemetryLock) {
-                _backgroundSchedulerRuntimeStoreDeferredPersistStore = store;
+                localBaseline = CloneBackgroundSchedulerRuntimeStore(_backgroundSchedulerRuntimeStoreLocalBaseline);
+            }
+
+            if (!TryPersistBackgroundSchedulerRuntimeStoreSnapshot(
+                    ResolveBackgroundSchedulerRuntimeStorePath(),
+                    localBaseline,
+                    store,
+                    out var result)) {
+                DeferBackgroundSchedulerRuntimeStoreSnapshot(
+                    CaptureBackgroundSchedulerRuntimeStoreSnapshot(),
+                    localBaseline);
+                return;
+            }
+
+            CompleteBackgroundSchedulerRuntimeStorePersistence(localBaseline, store, result);
+        }
+    }
+
+    private void CompleteBackgroundSchedulerRuntimeStorePersistence(
+        BackgroundSchedulerRuntimeStoreDto baseline,
+        BackgroundSchedulerRuntimeStoreDto attemptedStore,
+        BackgroundSchedulerRuntimeStorePersistResult result) {
+        var appliedMergedStore = TryApplyBackgroundSchedulerRuntimeStoreIfUnchanged(
+            attemptedStore,
+            result.MergedStore);
+        if (result.Persisted && appliedMergedStore) {
+            Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 0);
+            lock (_backgroundSchedulerTelemetryLock) {
+                _backgroundSchedulerRuntimeStoreLocalBaseline = CloneBackgroundSchedulerRuntimeStore(result.MergedStore);
+                _backgroundSchedulerRuntimeStoreDeferredPersistStore = null;
+                _backgroundSchedulerRuntimeStoreDeferredPersistBaseline = null;
+                _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateLoaded;
             }
             return;
         }
 
-        _ = TryPersistBackgroundSchedulerRuntimeStoreSnapshot(
-            ResolveBackgroundSchedulerRuntimeStorePath(),
-            store);
+        if (result.Persisted) {
+            DeferBackgroundSchedulerRuntimeStoreSnapshot(
+                CaptureBackgroundSchedulerRuntimeStoreSnapshot(),
+                attemptedStore);
+            return;
+        }
+
+        if (appliedMergedStore) {
+            DeferBackgroundSchedulerRuntimeStoreSnapshot(result.MergedStore, result.PersistedStore);
+            return;
+        }
+
+        DeferBackgroundSchedulerRuntimeStoreSnapshot(
+            CaptureBackgroundSchedulerRuntimeStoreSnapshot(),
+            baseline);
+    }
+
+    private void DeferBackgroundSchedulerRuntimeStoreSnapshot(
+        BackgroundSchedulerRuntimeStoreDto store,
+        BackgroundSchedulerRuntimeStoreDto baseline) {
+        Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 1);
+        lock (_backgroundSchedulerTelemetryLock) {
+            _backgroundSchedulerRuntimeStoreLocalBaseline = CloneBackgroundSchedulerRuntimeStore(baseline);
+            _backgroundSchedulerRuntimeStoreDeferredPersistStore = CloneBackgroundSchedulerRuntimeStore(store);
+            _backgroundSchedulerRuntimeStoreDeferredPersistBaseline = CloneBackgroundSchedulerRuntimeStore(baseline);
+            _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateDeferred;
+        }
     }
 
     private BackgroundSchedulerRuntimeStoreDto CaptureBackgroundSchedulerRuntimeStoreSnapshot() {
@@ -169,7 +265,8 @@ internal sealed partial class ChatServiceSession {
                 CompletedExecutionCount = Math.Max(0, _backgroundSchedulerCompletedExecutionCount),
                 RequeuedExecutionCount = Math.Max(0, _backgroundSchedulerRequeuedExecutionCount),
                 ReleasedExecutionCount = Math.Max(0, _backgroundSchedulerReleasedExecutionCount),
-                ConsecutiveFailureCount = Math.Max(0, _backgroundSchedulerConsecutiveFailureCount),
+                ConsecutiveFailureCount = _backgroundSchedulerFailureStreakEvents.Count,
+                FailureStreakEvents = CloneBackgroundSchedulerFailureEvents(_backgroundSchedulerFailureStreakEvents),
                 PausedUntilUtcTicks = Math.Max(0, _backgroundSchedulerPausedUntilUtcTicks),
                 PauseReason = NormalizeBackgroundSchedulerActivityText(_backgroundSchedulerPauseReason, maxLength: 120),
                 LastAdaptiveIdleUtcTicks = Math.Max(0, _backgroundSchedulerLastAdaptiveIdleUtcTicks),
@@ -187,73 +284,171 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private static bool TryPersistBackgroundSchedulerRuntimeStoreSnapshot(string path, BackgroundSchedulerRuntimeStoreDto store) {
+    private static bool TryPersistBackgroundSchedulerRuntimeStoreSnapshot(
+        string path,
+        BackgroundSchedulerRuntimeStoreDto baseline,
+        BackgroundSchedulerRuntimeStoreDto store,
+        out BackgroundSchedulerRuntimeStorePersistResult result) {
         return TryWithBackgroundSchedulerRuntimeStoreLock(
             path,
             static state => {
-                WriteBackgroundSchedulerRuntimeStoreNoThrow(state.Path, state.Store);
-                return true;
+                var readResult = ReadBackgroundSchedulerRuntimeStoreNoThrow(state.Path);
+                var persistedStore = readResult.Store is null
+                    ? new BackgroundSchedulerRuntimeStoreDto()
+                    : CloneBackgroundSchedulerRuntimeStore(readResult.Store);
+                var mergedStore = MergeBackgroundSchedulerRuntimeStore(
+                    persistedStore,
+                    state.Baseline,
+                    state.Store);
+                NormalizeBackgroundSchedulerRuntimeStoreForPersistence(mergedStore, DateTime.UtcNow.Ticks);
+                var persisted = WriteBackgroundSchedulerRuntimeStoreNoThrow(state.Path, mergedStore);
+                if (!persisted) {
+                    var verification = ReadBackgroundSchedulerRuntimeStoreNoThrow(state.Path);
+                    persisted = verification.Store is not null
+                        && BackgroundSchedulerRuntimeStoreEquals(verification.Store, mergedStore);
+                }
+                return new BackgroundSchedulerRuntimeStorePersistResult(
+                    persisted,
+                    persistedStore,
+                    mergedStore);
             },
-            (Path: path, Store: store),
-            out _);
+            (Path: path, Baseline: baseline, Store: store),
+            out result);
     }
 
     private static BackgroundSchedulerRuntimeStoreDto MergeBackgroundSchedulerRuntimeStore(
         BackgroundSchedulerRuntimeStoreDto? persistedStore,
-        BackgroundSchedulerRuntimeStoreDto deferredStore) {
-        ArgumentNullException.ThrowIfNull(deferredStore);
+        BackgroundSchedulerRuntimeStoreDto? baselineStore,
+        BackgroundSchedulerRuntimeStoreDto desiredStore) {
+        ArgumentNullException.ThrowIfNull(desiredStore);
 
-        if (persistedStore is null) {
-            return CloneBackgroundSchedulerRuntimeStore(deferredStore);
+        var persisted = persistedStore is null
+            ? new BackgroundSchedulerRuntimeStoreDto()
+            : CloneBackgroundSchedulerRuntimeStore(persistedStore);
+        var baseline = baselineStore is null
+            ? new BackgroundSchedulerRuntimeStoreDto()
+            : CloneBackgroundSchedulerRuntimeStore(baselineStore);
+        var desired = CloneBackgroundSchedulerRuntimeStore(desiredStore);
+        var merged = CloneBackgroundSchedulerRuntimeStore(persisted);
+
+        if (desired.LastSchedulerTickUtcTicks != baseline.LastSchedulerTickUtcTicks) {
+            merged.LastSchedulerTickUtcTicks = Math.Max(merged.LastSchedulerTickUtcTicks, desired.LastSchedulerTickUtcTicks);
         }
 
-        var merged = CloneBackgroundSchedulerRuntimeStore(persistedStore);
-        merged.LastSchedulerTickUtcTicks = Math.Max(merged.LastSchedulerTickUtcTicks, deferredStore.LastSchedulerTickUtcTicks);
-        if (deferredStore.LastOutcomeUtcTicks >= merged.LastOutcomeUtcTicks && deferredStore.LastOutcomeUtcTicks > 0) {
-            merged.LastOutcomeUtcTicks = deferredStore.LastOutcomeUtcTicks;
-            merged.LastOutcome = NormalizeBackgroundSchedulerActivityText(deferredStore.LastOutcome, maxLength: 80);
+        if (BackgroundSchedulerOutcomeStateChanged(baseline, desired)
+            && (BackgroundSchedulerOutcomeStateEquals(persisted, baseline)
+                || desired.LastOutcomeUtcTicks >= persisted.LastOutcomeUtcTicks)) {
+            merged.LastOutcomeUtcTicks = Math.Max(0, desired.LastOutcomeUtcTicks);
+            merged.LastOutcome = NormalizeBackgroundSchedulerActivityText(desired.LastOutcome, maxLength: 80);
         }
 
-        merged.LastSuccessUtcTicks = Math.Max(merged.LastSuccessUtcTicks, deferredStore.LastSuccessUtcTicks);
-        merged.LastFailureUtcTicks = Math.Max(merged.LastFailureUtcTicks, deferredStore.LastFailureUtcTicks);
-        merged.CompletedExecutionCount = Math.Max(0, merged.CompletedExecutionCount) + Math.Max(0, deferredStore.CompletedExecutionCount);
-        merged.RequeuedExecutionCount = Math.Max(0, merged.RequeuedExecutionCount) + Math.Max(0, deferredStore.RequeuedExecutionCount);
-        merged.ReleasedExecutionCount = Math.Max(0, merged.ReleasedExecutionCount) + Math.Max(0, deferredStore.ReleasedExecutionCount);
-
-        if (deferredStore.LastSuccessUtcTicks > persistedStore.LastSuccessUtcTicks) {
-            merged.ConsecutiveFailureCount = Math.Max(0, deferredStore.ConsecutiveFailureCount);
-        } else if (deferredStore.LastFailureUtcTicks > persistedStore.LastFailureUtcTicks
-            && deferredStore.ConsecutiveFailureCount > 0) {
-            merged.ConsecutiveFailureCount = Math.Max(0, merged.ConsecutiveFailureCount) + Math.Max(0, deferredStore.ConsecutiveFailureCount);
+        if (desired.LastSuccessUtcTicks != baseline.LastSuccessUtcTicks) {
+            merged.LastSuccessUtcTicks = Math.Max(merged.LastSuccessUtcTicks, desired.LastSuccessUtcTicks);
+        }
+        if (desired.LastFailureUtcTicks != baseline.LastFailureUtcTicks) {
+            merged.LastFailureUtcTicks = Math.Max(merged.LastFailureUtcTicks, desired.LastFailureUtcTicks);
         }
 
-        if (deferredStore.LastOutcomeUtcTicks > 0
-            && deferredStore.PausedUntilUtcTicks <= 0
-            && string.IsNullOrWhiteSpace(deferredStore.PauseReason)) {
-            merged.PausedUntilUtcTicks = 0;
-            merged.PauseReason = string.Empty;
-        } else if (deferredStore.PausedUntilUtcTicks > 0 || !string.IsNullOrWhiteSpace(deferredStore.PauseReason)) {
-            merged.PausedUntilUtcTicks = Math.Max(0, deferredStore.PausedUntilUtcTicks);
-            merged.PauseReason = NormalizeBackgroundSchedulerActivityText(deferredStore.PauseReason, maxLength: 120);
+        merged.CompletedExecutionCount = AddBackgroundSchedulerCounterDelta(
+            persisted.CompletedExecutionCount,
+            baseline.CompletedExecutionCount,
+            desired.CompletedExecutionCount);
+        merged.RequeuedExecutionCount = AddBackgroundSchedulerCounterDelta(
+            persisted.RequeuedExecutionCount,
+            baseline.RequeuedExecutionCount,
+            desired.RequeuedExecutionCount);
+        merged.ReleasedExecutionCount = AddBackgroundSchedulerCounterDelta(
+            persisted.ReleasedExecutionCount,
+            baseline.ReleasedExecutionCount,
+            desired.ReleasedExecutionCount);
+
+        MergeBackgroundSchedulerConsecutiveFailureState(merged, persisted, baseline, desired);
+
+        if (BackgroundSchedulerPauseStateChanged(baseline, desired)
+            && (BackgroundSchedulerPauseStateEquals(persisted, baseline)
+                || desired.LastOutcomeUtcTicks >= persisted.LastOutcomeUtcTicks)) {
+            merged.PausedUntilUtcTicks = Math.Max(0, desired.PausedUntilUtcTicks);
+            merged.PauseReason = NormalizeBackgroundSchedulerActivityText(desired.PauseReason, maxLength: 120);
         }
 
-        if (deferredStore.LastOutcomeUtcTicks > 0
-            && deferredStore.LastAdaptiveIdleUtcTicks <= 0
-            && deferredStore.LastAdaptiveIdleDelaySeconds <= 0
-            && string.IsNullOrWhiteSpace(deferredStore.LastAdaptiveIdleReason)) {
-            merged.LastAdaptiveIdleUtcTicks = 0;
-            merged.LastAdaptiveIdleDelaySeconds = 0;
-            merged.LastAdaptiveIdleReason = string.Empty;
-        } else if (deferredStore.LastAdaptiveIdleUtcTicks > 0
-            || deferredStore.LastAdaptiveIdleDelaySeconds > 0
-            || !string.IsNullOrWhiteSpace(deferredStore.LastAdaptiveIdleReason)) {
-            merged.LastAdaptiveIdleUtcTicks = Math.Max(0, deferredStore.LastAdaptiveIdleUtcTicks);
-            merged.LastAdaptiveIdleDelaySeconds = Math.Max(0, deferredStore.LastAdaptiveIdleDelaySeconds);
-            merged.LastAdaptiveIdleReason = NormalizeBackgroundSchedulerActivityText(deferredStore.LastAdaptiveIdleReason, maxLength: 160);
+        if (BackgroundSchedulerAdaptiveIdleStateChanged(baseline, desired)
+            && (BackgroundSchedulerAdaptiveIdleStateEquals(persisted, baseline)
+                || desired.LastAdaptiveIdleUtcTicks >= persisted.LastAdaptiveIdleUtcTicks)) {
+            merged.LastAdaptiveIdleUtcTicks = Math.Max(0, desired.LastAdaptiveIdleUtcTicks);
+            merged.LastAdaptiveIdleDelaySeconds = Math.Max(0, desired.LastAdaptiveIdleDelaySeconds);
+            merged.LastAdaptiveIdleReason = NormalizeBackgroundSchedulerActivityText(desired.LastAdaptiveIdleReason, maxLength: 160);
         }
 
-        merged.RecentActivity = MergeBackgroundSchedulerActivities(merged.RecentActivity, deferredStore.RecentActivity);
+        merged.RecentActivity = MergeBackgroundSchedulerActivities(
+            persisted.RecentActivity,
+            GetBackgroundSchedulerActivityDelta(baseline.RecentActivity, desired.RecentActivity));
         return merged;
+    }
+
+    private static int AddBackgroundSchedulerCounterDelta(int persisted, int baseline, int desired) {
+        var delta = Math.Max(0L, (long)Math.Max(0, desired) - Math.Max(0, baseline));
+        return (int)Math.Min(int.MaxValue, Math.Max(0L, persisted) + delta);
+    }
+
+    private static bool BackgroundSchedulerOutcomeStateChanged(
+        BackgroundSchedulerRuntimeStoreDto baseline,
+        BackgroundSchedulerRuntimeStoreDto desired) =>
+        !BackgroundSchedulerOutcomeStateEquals(baseline, desired);
+
+    private static bool BackgroundSchedulerOutcomeStateEquals(
+        BackgroundSchedulerRuntimeStoreDto left,
+        BackgroundSchedulerRuntimeStoreDto right) =>
+        left.LastOutcomeUtcTicks == right.LastOutcomeUtcTicks
+        && string.Equals(left.LastOutcome, right.LastOutcome, StringComparison.Ordinal);
+
+    private static bool BackgroundSchedulerPauseStateChanged(
+        BackgroundSchedulerRuntimeStoreDto baseline,
+        BackgroundSchedulerRuntimeStoreDto desired) =>
+        !BackgroundSchedulerPauseStateEquals(baseline, desired);
+
+    private static bool BackgroundSchedulerPauseStateEquals(
+        BackgroundSchedulerRuntimeStoreDto left,
+        BackgroundSchedulerRuntimeStoreDto right) =>
+        left.PausedUntilUtcTicks == right.PausedUntilUtcTicks
+        && string.Equals(left.PauseReason, right.PauseReason, StringComparison.Ordinal);
+
+    private static bool BackgroundSchedulerAdaptiveIdleStateChanged(
+        BackgroundSchedulerRuntimeStoreDto baseline,
+        BackgroundSchedulerRuntimeStoreDto desired) =>
+        !BackgroundSchedulerAdaptiveIdleStateEquals(baseline, desired);
+
+    private static bool BackgroundSchedulerAdaptiveIdleStateEquals(
+        BackgroundSchedulerRuntimeStoreDto left,
+        BackgroundSchedulerRuntimeStoreDto right) =>
+        left.LastAdaptiveIdleUtcTicks == right.LastAdaptiveIdleUtcTicks
+        && left.LastAdaptiveIdleDelaySeconds == right.LastAdaptiveIdleDelaySeconds
+        && string.Equals(left.LastAdaptiveIdleReason, right.LastAdaptiveIdleReason, StringComparison.Ordinal);
+
+    private static SessionCapabilityBackgroundSchedulerActivityDto[] GetBackgroundSchedulerActivityDelta(
+        IReadOnlyList<SessionCapabilityBackgroundSchedulerActivityDto>? baselineActivities,
+        IReadOnlyList<SessionCapabilityBackgroundSchedulerActivityDto>? desiredActivities) {
+        var baselineKeys = (baselineActivities ?? Array.Empty<SessionCapabilityBackgroundSchedulerActivityDto>())
+            .Select(static activity => (
+                activity.RecordedUtcTicks,
+                activity.Outcome,
+                activity.ThreadId,
+                activity.ItemId,
+                activity.ToolName,
+                activity.Reason,
+                activity.OutputCount,
+                activity.FailureDetail))
+            .ToHashSet();
+        return NormalizeBackgroundSchedulerActivities(
+            (desiredActivities ?? Array.Empty<SessionCapabilityBackgroundSchedulerActivityDto>())
+            .Where(activity => !baselineKeys.Contains((
+                activity.RecordedUtcTicks,
+                activity.Outcome,
+                activity.ThreadId,
+                activity.ItemId,
+                activity.ToolName,
+                activity.Reason,
+                activity.OutputCount,
+                activity.FailureDetail))));
     }
 
     private static SessionCapabilityBackgroundSchedulerActivityDto[] MergeBackgroundSchedulerActivities(
@@ -272,11 +467,42 @@ internal sealed partial class ChatServiceSession {
                     activity.Reason,
                     activity.OutputCount,
                     activity.FailureDetail))
-            .Select(static group => group.First()));
+            .Select(static group => group.First())
+            .OrderByDescending(static activity => activity.RecordedUtcTicks));
+    }
+
+    private static void NormalizeBackgroundSchedulerRuntimeStoreForPersistence(
+        BackgroundSchedulerRuntimeStoreDto store,
+        long nowTicks) {
+        ArgumentNullException.ThrowIfNull(store);
+        if (store.PausedUntilUtcTicks > 0 && nowTicks > 0 && store.PausedUntilUtcTicks <= nowTicks) {
+            store.PausedUntilUtcTicks = 0;
+            store.PauseReason = string.Empty;
+        }
+
+        (store.LastAdaptiveIdleUtcTicks, store.LastAdaptiveIdleDelaySeconds, store.LastAdaptiveIdleReason) =
+            NormalizeBackgroundSchedulerAdaptiveIdleState(
+                store.LastAdaptiveIdleUtcTicks,
+                store.LastAdaptiveIdleDelaySeconds,
+                store.LastAdaptiveIdleReason,
+                nowTicks);
+        store.FailureStreakEvents = NormalizeBackgroundSchedulerFailureEvents(
+            store.FailureStreakEvents,
+            store.ConsecutiveFailureCount,
+            store.LastFailureUtcTicks,
+            store.LastSuccessUtcTicks);
+        store.ConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
+            store.FailureStreakEvents.Length);
+        store.RecentActivity = NormalizeBackgroundSchedulerActivities(store.RecentActivity);
     }
 
     private static BackgroundSchedulerRuntimeStoreDto CloneBackgroundSchedulerRuntimeStore(BackgroundSchedulerRuntimeStoreDto source) {
         ArgumentNullException.ThrowIfNull(source);
+        var failureEvents = NormalizeBackgroundSchedulerFailureEvents(
+            source.FailureStreakEvents,
+            source.ConsecutiveFailureCount,
+            source.LastFailureUtcTicks,
+            source.LastSuccessUtcTicks);
         return new BackgroundSchedulerRuntimeStoreDto {
             Version = BackgroundSchedulerRuntimeStoreVersion,
             LastSchedulerTickUtcTicks = Math.Max(0, source.LastSchedulerTickUtcTicks),
@@ -287,7 +513,9 @@ internal sealed partial class ChatServiceSession {
             CompletedExecutionCount = Math.Max(0, source.CompletedExecutionCount),
             RequeuedExecutionCount = Math.Max(0, source.RequeuedExecutionCount),
             ReleasedExecutionCount = Math.Max(0, source.ReleasedExecutionCount),
-            ConsecutiveFailureCount = Math.Max(0, source.ConsecutiveFailureCount),
+            ConsecutiveFailureCount = ResolveBackgroundSchedulerConsecutiveFailureCount(
+                failureEvents.Length),
+            FailureStreakEvents = failureEvents,
             PausedUntilUtcTicks = Math.Max(0, source.PausedUntilUtcTicks),
             PauseReason = NormalizeBackgroundSchedulerActivityText(source.PauseReason, maxLength: 120),
             LastAdaptiveIdleUtcTicks = Math.Max(0, source.LastAdaptiveIdleUtcTicks),
@@ -343,7 +571,7 @@ internal sealed partial class ChatServiceSession {
     private static BackgroundSchedulerRuntimeStoreReadResult ReadBackgroundSchedulerRuntimeStoreNoThrow(string path) {
         var result = ChatServiceJsonFileStore.Read(
             path,
-            maximumBytes: 512 * 1024,
+            maximumBytes: BackgroundSchedulerRuntimeStoreMaximumBytes,
             static json => JsonSerializer.Deserialize<BackgroundSchedulerRuntimeStoreDto>(
                 json,
                 BackgroundSchedulerRuntimeStoreReadJsonOptions),
@@ -359,8 +587,8 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
-    private static void WriteBackgroundSchedulerRuntimeStoreNoThrow(string path, BackgroundSchedulerRuntimeStoreDto store) {
-        ChatServiceJsonFileStore.Write(
+    private static bool WriteBackgroundSchedulerRuntimeStoreNoThrow(string path, BackgroundSchedulerRuntimeStoreDto store) {
+        return ChatServiceJsonFileStore.Write(
             path,
             store,
             static value => JsonSerializer.Serialize(
@@ -374,75 +602,13 @@ internal sealed partial class ChatServiceSession {
         Func<TState, TStateResult> action,
         TState state,
         out TStateResult result) {
-        ArgumentNullException.ThrowIfNull(action);
-        result = default!;
-
-        var mutexName = BuildBackgroundSchedulerRuntimeStoreMutexName(path);
-        var acquisitionOverride = BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting;
-        if (acquisitionOverride is not null) {
-            var overrideResult = acquisitionOverride(path);
-            if (overrideResult.HasValue) {
-                if (!overrideResult.Value) {
-                    Trace.TraceWarning($"Background scheduler runtime store lock timeout for '{mutexName}'.");
-                    return false;
-                }
-
-                result = action(state);
-                return true;
-            }
-        }
-
-        Mutex? mutex = null;
-        var acquired = false;
-        try {
-            mutex = new Mutex(initiallyOwned: false, mutexName);
-            try {
-                acquired = mutex.WaitOne(TimeSpan.FromSeconds(15));
-            } catch (AbandonedMutexException) {
-                acquired = true;
-            }
-
-            if (!acquired) {
-                Trace.TraceWarning($"Background scheduler runtime store lock timeout for '{mutexName}'.");
-                return false;
-            }
-
-            result = action(state);
-            return true;
-        } catch (Exception ex) {
-            Trace.TraceWarning($"Background scheduler runtime store lock failed: {ex.GetType().Name}: {ex.Message}");
-            return false;
-        } finally {
-            if (acquired && mutex is not null) {
-                try {
-                    mutex.ReleaseMutex();
-                } catch {
-                    // Best effort only.
-                }
-            }
-
-            mutex?.Dispose();
-        }
-    }
-
-    private static string BuildBackgroundSchedulerRuntimeStoreMutexName(string path) {
-        var normalizedPath = NormalizeBackgroundSchedulerRuntimeStoreMutexPath(path);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath));
-        return $"IntelligenceX.Chat.BackgroundSchedulerRuntimeStore.{Convert.ToHexString(hash)}";
-    }
-
-    private static string NormalizeBackgroundSchedulerRuntimeStoreMutexPath(string path) {
-        var candidate = string.IsNullOrWhiteSpace(path)
-            ? ResolveDefaultBackgroundSchedulerRuntimeStorePath()
-            : path.Trim();
-
-        try {
-            candidate = Path.GetFullPath(candidate);
-        } catch {
-            // Keep the original candidate when full path resolution fails.
-        }
-
-        return OperatingSystem.IsWindows() ? candidate.ToUpperInvariant() : candidate;
+        return ChatServiceJsonFileStore.TryWithExclusiveAccess(
+            path,
+            action,
+            state,
+            out result,
+            "Background scheduler runtime store",
+            BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting);
     }
 
     private static (long LastAdaptiveIdleUtcTicks, int LastAdaptiveIdleDelaySeconds, string LastAdaptiveIdleReason) NormalizeBackgroundSchedulerAdaptiveIdleState(
@@ -475,4 +641,9 @@ internal sealed partial class ChatServiceSession {
             return new(BackgroundSchedulerRuntimeStoreLoadStateLoaded, store);
         }
     }
+
+    private readonly record struct BackgroundSchedulerRuntimeStorePersistResult(
+        bool Persisted,
+        BackgroundSchedulerRuntimeStoreDto PersistedStore,
+        BackgroundSchedulerRuntimeStoreDto MergedStore);
 }

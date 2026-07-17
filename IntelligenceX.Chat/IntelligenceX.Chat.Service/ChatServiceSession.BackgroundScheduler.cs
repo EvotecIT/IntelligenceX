@@ -625,19 +625,20 @@ internal sealed partial class ChatServiceSession {
                     _backgroundSchedulerLastSuccessUtcTicks = recordedTicks;
                     _backgroundSchedulerCompletedExecutionCount++;
                     _backgroundSchedulerConsecutiveFailureCount = 0;
+                    _backgroundSchedulerFailureStreakEvents.Clear();
                     _backgroundSchedulerPausedUntilUtcTicks = 0;
                     _backgroundSchedulerPauseReason = string.Empty;
                     break;
                 case BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure:
                     _backgroundSchedulerLastFailureUtcTicks = recordedTicks;
                     _backgroundSchedulerRequeuedExecutionCount++;
-                    _backgroundSchedulerConsecutiveFailureCount++;
+                    RememberBackgroundSchedulerFailureEventNoLock(recordedTicks);
                     break;
                 case BackgroundSchedulerIterationOutcomeKind.ReleasedAfterEmptyOutput:
                 case BackgroundSchedulerIterationOutcomeKind.ReleasedAfterException:
                     _backgroundSchedulerLastFailureUtcTicks = recordedTicks;
                     _backgroundSchedulerReleasedExecutionCount++;
-                    _backgroundSchedulerConsecutiveFailureCount++;
+                    RememberBackgroundSchedulerFailureEventNoLock(recordedTicks);
                     break;
             }
 
@@ -797,13 +798,11 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private SessionCapabilityBackgroundSchedulerDto SetBackgroundSchedulerManualPause(bool paused, int? pauseSeconds, string? reason) {
-        _backgroundSchedulerControlState.SetManualPause(
+    private bool SetBackgroundSchedulerManualPause(bool paused, int? pauseSeconds, string? reason) {
+        return _backgroundSchedulerControlState.SetManualPause(
             paused,
             pauseSeconds,
             reason ?? string.Empty);
-
-        return BuildBackgroundSchedulerSummary();
     }
 
     private static string NormalizeBackgroundSchedulerOutcome(BackgroundSchedulerIterationOutcomeKind outcome) {
@@ -831,7 +830,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         var threshold = Math.Max(1, _options.BackgroundSchedulerFailureThreshold);
-        if (_backgroundSchedulerConsecutiveFailureCount <= 0 || _backgroundSchedulerConsecutiveFailureCount % threshold != 0) {
+        var saturatedFailureStreak = _backgroundSchedulerConsecutiveFailureCount
+            >= MaxBackgroundSchedulerFailureStreakEvents;
+        if (_backgroundSchedulerConsecutiveFailureCount <= 0
+            || (!saturatedFailureStreak && _backgroundSchedulerConsecutiveFailureCount % threshold != 0)) {
             return;
         }
 

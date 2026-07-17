@@ -930,25 +930,30 @@ internal sealed partial class ChatServiceSession {
             routingCatalogDiagnostics,
             toolOrchestrationCatalog);
 
-        _toolingBootstrapCache?.StoreSnapshot(
-            bootstrapCacheKey,
-            new ChatServiceToolingBootstrapSnapshot {
-                Registry = registry,
-                ToolDefinitions = toolDefinitions,
-                PackSummaries = BuildPackPolicyList(packAvailability, toolOrchestrationCatalog),
-                Packs = packs,
-                PackAvailability = packAvailability,
-                PluginAvailability = bootstrapResult.PluginAvailability.ToArray(),
-                PluginCatalog = bootstrapResult.PluginCatalog.ToArray(),
-                StartupWarnings = warnings,
-                StartupBootstrap = startupBootstrap,
-                PluginSearchPaths = pluginSearchPaths,
-                RuntimePolicyDiagnostics = runtimePolicyDiagnostics,
-                RoutingCatalogDiagnostics = routingCatalogDiagnostics,
-                CapabilitySnapshot = BuildRuntimeCapabilitySnapshot(),
-                ToolOrchestrationCatalog = toolOrchestrationCatalog
-            },
-            previewDiscoveryFingerprint: previewDiscoveryFingerprint);
+        if (_toolingBootstrapCache is not null) {
+            var persisted = _toolingBootstrapCache.StoreSnapshot(
+                bootstrapCacheKey,
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = registry,
+                    ToolDefinitions = toolDefinitions,
+                    PackSummaries = BuildPackPolicyList(packAvailability, toolOrchestrationCatalog),
+                    Packs = packs,
+                    PackAvailability = packAvailability,
+                    PluginAvailability = bootstrapResult.PluginAvailability.ToArray(),
+                    PluginCatalog = bootstrapResult.PluginCatalog.ToArray(),
+                    StartupWarnings = warnings,
+                    StartupBootstrap = startupBootstrap,
+                    PluginSearchPaths = pluginSearchPaths,
+                    RuntimePolicyDiagnostics = runtimePolicyDiagnostics,
+                    RoutingCatalogDiagnostics = routingCatalogDiagnostics,
+                    CapabilitySnapshot = BuildRuntimeCapabilitySnapshot(),
+                    ToolOrchestrationCatalog = toolOrchestrationCatalog
+                },
+                previewDiscoveryFingerprint: previewDiscoveryFingerprint);
+            if (!persisted && _toolingBootstrapCache.TryGetPersistedSnapshotWarning(out var persistenceWarning)) {
+                RecordStartupWarning(persistenceWarning);
+            }
+        }
 
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();

@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Storage;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
@@ -516,11 +517,7 @@ internal static partial class Program {
         }
 
         internal static string GetDefaultStateDbPath() {
-            var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (string.IsNullOrWhiteSpace(root)) {
-                root = ".";
-            }
-            return Path.Combine(root, "IntelligenceX.Chat", "state.db");
+            return ChatStatePaths.GetDefaultPath("state.db");
         }
 
         private static void PreScanProfileFlags(string[] args, ReplOptions options, out string? error) {

@@ -654,6 +654,12 @@ internal sealed partial class ChatServiceSession {
         RememberBackgroundSchedulerAdaptiveIdleDecision(delay, reason, utcTicks);
     }
 
+    internal void RememberBackgroundSchedulerIterationResultForTesting(
+        BackgroundSchedulerIterationResult result,
+        long? utcTicks = null) {
+        RememberBackgroundSchedulerIterationResult(result, utcTicks);
+    }
+
     internal bool TryReleaseScheduledBackgroundWorkReplayCandidateForTesting(string threadId, string itemId) {
         ArgumentNullException.ThrowIfNull(threadId);
         ArgumentNullException.ThrowIfNull(itemId);

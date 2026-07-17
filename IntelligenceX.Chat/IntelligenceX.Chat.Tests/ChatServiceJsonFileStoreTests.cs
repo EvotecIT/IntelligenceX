@@ -1,10 +1,84 @@
 using System.Text.Json;
+using IntelligenceX.Chat.Abstractions.Storage;
+using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Service.Persistence;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
 
 public sealed class ChatServiceJsonFileStoreTests {
+    [Fact]
+    public void ResolveDefaultPath_UsesDurableUserProfileWhenPlatformDataRootsAreUnavailable() {
+        var userProfile = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
+
+        var path = ChatStatePaths.ResolveDefaultPath(
+            "state.json",
+            localApplicationData: " ",
+            xdgDataHome: " ",
+            userProfile: userProfile);
+
+        Assert.Equal(Path.Combine(userProfile, ".local", "share", "IntelligenceX.Chat", "state.json"), path);
+    }
+
+    [Fact]
+    public void ResolveDefaultPath_RejectsMissingPerUserRoots() {
+        Assert.Throws<InvalidOperationException>(() => ChatStatePaths.ResolveDefaultPath(
+            "state.json",
+            localApplicationData: " ",
+            xdgDataHome: "relative/path",
+            userProfile: " "));
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    [InlineData("nested/..")]
+    public void ResolveDefaultPath_RejectsDotSegments(string fileName) {
+        var userProfile = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
+
+        Assert.Throws<ArgumentException>(() => ChatStatePaths.ResolveDefaultPath(
+            fileName,
+            localApplicationData: " ",
+            xdgDataHome: " ",
+            userProfile: userProfile));
+    }
+
+    [Fact]
+    public void ResolveDefaultPath_RejectsSharedStateDirectoryReparsePoint() {
+        var root = CreateRoot();
+        var outside = CreateRoot();
+        var sharedDirectory = Path.Combine(root, "IntelligenceX.Chat");
+        try {
+            try {
+                Directory.CreateSymbolicLink(sharedDirectory, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            Assert.Throws<InvalidOperationException>(() => ChatStatePaths.ResolveDefaultPath(
+                "state.json",
+                localApplicationData: root,
+                xdgDataHome: " ",
+                userProfile: " "));
+        } finally {
+            DeleteDirectoryLink(sharedDirectory);
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+            if (Directory.Exists(outside)) {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ServiceDefaults_UseTheSharedStatePathOwner() {
+        Assert.Equal(ChatStatePaths.GetDefaultPath("state.db"), ServiceOptions.GetDefaultStateDbPath());
+        Assert.Equal(
+            ChatStatePaths.GetDefaultPath("tooling-bootstrap-cache-v1.json"),
+            ServiceOptions.GetDefaultToolingBootstrapCachePath());
+    }
+
     [Fact]
     public void WriteAndRead_RoundTripsThroughAtomicSnapshot() {
         var root = CreateRoot();
@@ -35,6 +109,91 @@ public sealed class ChatServiceJsonFileStoreTests {
             Assert.NotNull(result.Value);
             Assert.Equal("updated", result.Value.Value);
             Assert.Empty(Directory.GetFiles(root, "*.tmp"));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Write_DoesNotChangeArbitraryUnixDirectoryPermissions() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        var root = CreateRoot();
+        try {
+            var path = Path.Combine(root, "state.json");
+            var originalMode = UnixFileMode.UserRead
+                               | UnixFileMode.UserWrite
+                               | UnixFileMode.UserExecute
+                               | UnixFileMode.GroupRead
+                               | UnixFileMode.GroupExecute
+                               | UnixFileMode.OtherRead
+                               | UnixFileMode.OtherExecute;
+            File.SetUnixFileMode(root, originalMode);
+
+            ChatServiceJsonFileStore.Write(
+                path,
+                new TestStore { Version = 2, Value = "private" },
+                static value => JsonSerializer.Serialize(value),
+                "Test store");
+
+            Assert.Equal(originalMode, File.GetUnixFileMode(root));
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(path));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Write_HardensExplicitDedicatedUnixDirectory() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        var root = CreateRoot();
+        try {
+            var path = Path.Combine(root, "state.json");
+            File.SetUnixFileMode(
+                root,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
+            ChatJsonFileStore.Write(path, "{}", hardenExistingDirectory: true);
+
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                File.GetUnixFileMode(root));
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(path));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Write_CreatesPrivateUnixDirectoryAtomically() {
+        if (OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        var root = CreateRoot();
+        try {
+            var stateDirectory = Path.Combine(root, "private-state");
+            var path = Path.Combine(stateDirectory, "state.json");
+
+            ChatJsonFileStore.Write(path, "{}");
+
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                File.GetUnixFileMode(stateDirectory));
+            Assert.Equal(
+                UnixFileMode.UserRead | UnixFileMode.UserWrite,
+                File.GetUnixFileMode(path));
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -79,6 +238,21 @@ public sealed class ChatServiceJsonFileStoreTests {
     }
 
     [Fact]
+    public void Read_TreatsWhitespaceOnlySnapshotAsInvalid() {
+        var root = CreateRoot();
+        try {
+            var path = Path.Combine(root, "state.json");
+            File.WriteAllText(path, "   \r\n\t");
+
+            var result = Read(path);
+
+            Assert.Equal(ChatServiceJsonFileReadState.Invalid, result.State);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ReadOrCreate_RejectsUnsupportedVersions() {
         var root = CreateRoot();
         try {
@@ -116,6 +290,180 @@ public sealed class ChatServiceJsonFileStoreTests {
         }
     }
 
+    [Theory]
+    [InlineData("../escape.json")]
+    [InlineData("nested/escape.json")]
+    [InlineData(".")]
+    [InlineData("..")]
+    public void ResolvePathOverrideWithinDefaultDirectory_RejectsUnsafeRelativePaths(string candidate) {
+        var expected = ChatStatePaths.GetDefaultPath("pending-actions.json");
+
+        var actual = ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(
+            candidate,
+            "pending-actions.json");
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void ResolvePathOverrideWithinDefaultDirectory_AllowsAbsoluteDescendant() {
+        var expected = Path.Combine(ChatStatePaths.GetDefaultDirectory(), "tests", "pending-actions.json");
+
+        var actual = ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(
+            expected,
+            "pending-actions.json");
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void ResolvePathOverrideWithinDefaultDirectory_RejectsRelativeFileReparsePoint() {
+        var directory = ChatStatePaths.GetDefaultDirectory();
+        var outside = Path.Combine(CreateRoot(), "outside.json");
+        var fileName = "reparse-" + Guid.NewGuid().ToString("N") + ".json";
+        var link = Path.Combine(directory, fileName);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(outside, "{}");
+
+        try {
+            try {
+                File.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            Assert.Equal(
+                ChatStatePaths.GetDefaultPath("pending-actions.json"),
+                ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(fileName, "pending-actions.json"));
+        } finally {
+            if (File.Exists(link)) {
+                File.Delete(link);
+            }
+            var outsideDirectory = Path.GetDirectoryName(outside);
+            if (!string.IsNullOrWhiteSpace(outsideDirectory) && Directory.Exists(outsideDirectory)) {
+                Directory.Delete(outsideDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolveSiblingPath_RejectsExistingFileReparsePoint() {
+        var root = CreateRoot();
+        var outside = Path.Combine(CreateRoot(), "outside.json");
+        var anchor = Path.Combine(root, "anchor.json");
+        var link = Path.Combine(root, "sibling.json");
+        File.WriteAllText(outside, "{}");
+
+        try {
+            try {
+                File.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            Assert.Equal(string.Empty, ChatServiceJsonFileStore.ResolveSiblingPath(anchor, "sibling.json"));
+        } finally {
+            if (File.Exists(link)) {
+                File.Delete(link);
+            }
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+            var outsideDirectory = Path.GetDirectoryName(outside);
+            if (!string.IsNullOrWhiteSpace(outsideDirectory) && Directory.Exists(outsideDirectory)) {
+                Directory.Delete(outsideDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ReadAndWrite_RejectExistingFileReparsePoint() {
+        var root = CreateRoot();
+        var outsideDirectory = CreateRoot();
+        var outside = Path.Combine(outsideDirectory, "outside.json");
+        var link = Path.Combine(root, "state.json");
+        File.WriteAllText(outside, "{\"Version\":2,\"Value\":\"outside\"}");
+
+        try {
+            try {
+                File.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            Assert.Equal(ChatServiceJsonFileReadState.Invalid, Read(link).State);
+            Assert.False(ChatServiceJsonFileStore.Write(
+                link,
+                new TestStore { Version = 2, Value = "overwritten" },
+                static value => JsonSerializer.Serialize(value),
+                "Test store"));
+            Assert.Contains("outside", File.ReadAllText(outside), StringComparison.Ordinal);
+        } finally {
+            if (File.Exists(link)) {
+                File.Delete(link);
+            }
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+            if (Directory.Exists(outsideDirectory)) {
+                Directory.Delete(outsideDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ResolvePathOverrideWithinDefaultDirectory_RejectsReparsePointEscape() {
+        var root = Path.Combine(
+            ChatStatePaths.GetDefaultDirectory(),
+            "tests",
+            "reparse-" + Guid.NewGuid().ToString("N"));
+        var outside = CreateRoot();
+        var link = Path.Combine(root, "redirect");
+        Directory.CreateDirectory(root);
+
+        try {
+            try {
+                Directory.CreateSymbolicLink(link, outside);
+            } catch (Exception ex) when (ex is UnauthorizedAccessException or PlatformNotSupportedException or IOException) {
+                return;
+            }
+
+            var candidate = Path.Combine(link, "pending-actions.json");
+            var expected = ChatStatePaths.GetDefaultPath("pending-actions.json");
+
+            Assert.False(ChatStatePaths.IsPathInDefaultDirectory(candidate));
+            Assert.Equal(
+                expected,
+                ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(candidate, "pending-actions.json"));
+        } finally {
+            try {
+                if (Directory.Exists(link)) {
+                    Directory.Delete(link);
+                }
+            } catch {
+                // Best-effort cleanup for platforms with unusual link deletion semantics.
+            }
+
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+            if (Directory.Exists(outside)) {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void IsPathWithinDirectory_UsesPlatformCaseRules() {
+        var parent = Path.Combine(Path.GetTempPath(), "ix-path-case-" + Guid.NewGuid().ToString("N"));
+        var caseChangedParent = parent.ToUpperInvariant();
+        var candidate = Path.Combine(caseChangedParent, "state.json");
+
+        Assert.Equal(
+            OperatingSystem.IsWindows(),
+            ChatStatePaths.IsPathWithinDirectory(parent, candidate));
+    }
+
     private static ChatServiceJsonFileReadResult<TestStore> Read(string path) {
         return ChatServiceJsonFileStore.Read(
             path,
@@ -130,6 +478,16 @@ public sealed class ChatServiceJsonFileStoreTests {
         var root = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static void DeleteDirectoryLink(string path) {
+        try {
+            if (Directory.Exists(path)) {
+                Directory.Delete(path);
+            }
+        } catch {
+            // Best-effort cleanup for platforms with unusual link deletion semantics.
+        }
     }
 
     private sealed class TestStore {

@@ -127,10 +127,15 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        if (!SetBackgroundSchedulerManualPause(request.Paused, normalizedPauseSeconds, request.Reason)) {
+            await WriteAsync(writer, BuildBackgroundSchedulerPersistenceError(request.RequestId), cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
             Kind = ChatServiceMessageKind.Response,
             RequestId = request.RequestId,
-            Scheduler = SetBackgroundSchedulerManualPause(request.Paused, normalizedPauseSeconds, request.Reason)
+            Scheduler = BuildBackgroundSchedulerSummary()
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -148,7 +153,10 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        _backgroundSchedulerControlState.UpdateMaintenanceWindows(normalizedOperation, normalizedWindows);
+        if (!_backgroundSchedulerControlState.UpdateMaintenanceWindows(normalizedOperation, normalizedWindows)) {
+            await WriteAsync(writer, BuildBackgroundSchedulerPersistenceError(request.RequestId), cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
             Kind = ChatServiceMessageKind.Response,
@@ -205,7 +213,10 @@ internal sealed partial class ChatServiceSession {
             durationSeconds = resolvedDurationSeconds;
         }
 
-        _backgroundSchedulerControlState.UpdateBlockedPacks(normalizedOperation, normalizedPackIds, durationSeconds);
+        if (!_backgroundSchedulerControlState.UpdateBlockedPacks(normalizedOperation, normalizedPackIds, durationSeconds)) {
+            await WriteAsync(writer, BuildBackgroundSchedulerPersistenceError(request.RequestId), cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
             Kind = ChatServiceMessageKind.Response,
@@ -262,13 +273,25 @@ internal sealed partial class ChatServiceSession {
             durationSeconds = resolvedDurationSeconds;
         }
 
-        _backgroundSchedulerControlState.UpdateBlockedThreads(normalizedOperation, normalizedThreadIds, durationSeconds);
+        if (!_backgroundSchedulerControlState.UpdateBlockedThreads(normalizedOperation, normalizedThreadIds, durationSeconds)) {
+            await WriteAsync(writer, BuildBackgroundSchedulerPersistenceError(request.RequestId), cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
             Kind = ChatServiceMessageKind.Response,
             RequestId = request.RequestId,
             Scheduler = BuildBackgroundSchedulerSummary()
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static ErrorMessage BuildBackgroundSchedulerPersistenceError(string requestId) {
+        return new ErrorMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = requestId,
+            Error = "The background scheduler state was not changed because it could not be persisted. Retry after restoring access to the state directory.",
+            Code = "persistence_failed"
+        };
     }
 
     internal static bool ShouldUseCachedToolCatalogFallbackForListTools(bool startupToolingBootstrapInProgress) {

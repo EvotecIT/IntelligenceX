@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DBAClientX;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Storage;
 using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Chat.App;
@@ -46,12 +47,7 @@ internal sealed class ChatAppStateStore : IDisposable {
     }
 
     public static string GetDefaultDbPath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-
-        return Path.Combine(root, "IntelligenceX.Chat", "app-state.db");
+        return ChatStatePaths.GetDefaultPath("app-state.db");
     }
 
     internal string DatabasePath => _dbPath;

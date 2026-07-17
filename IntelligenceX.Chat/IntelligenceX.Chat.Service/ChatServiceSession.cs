@@ -120,6 +120,7 @@ internal sealed partial class ChatServiceSession {
     private int _backgroundSchedulerRequeuedExecutionCount;
     private int _backgroundSchedulerReleasedExecutionCount;
     private int _backgroundSchedulerConsecutiveFailureCount;
+    private readonly List<BackgroundSchedulerFailureEventDto> _backgroundSchedulerFailureStreakEvents = new();
     private long _backgroundSchedulerPausedUntilUtcTicks;
     private string _backgroundSchedulerPauseReason = string.Empty;
     private long _backgroundSchedulerLastAdaptiveIdleUtcTicks;
@@ -183,8 +184,8 @@ internal sealed partial class ChatServiceSession {
         TryApplyPersistedToolingBootstrapPreview();
         if (_startupWarnings.Length == 0
             && _toolingBootstrapCache is not null
-            && _toolingBootstrapCache.TryGetPersistedSnapshotLoadWarning(out var persistedSnapshotLoadWarning)) {
-            _startupWarnings = NormalizeDistinctStrings(new[] { persistedSnapshotLoadWarning }, maxItems: 64);
+            && _toolingBootstrapCache.TryGetPersistedSnapshotWarning(out var persistedSnapshotWarning)) {
+            _startupWarnings = NormalizeDistinctStrings(new[] { persistedSnapshotWarning }, maxItems: 64);
         }
 
         _json = new JsonSerializerOptions {

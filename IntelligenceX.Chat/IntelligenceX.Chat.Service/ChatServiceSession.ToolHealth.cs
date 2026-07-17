@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Service.Persistence;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 
@@ -15,7 +16,10 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int StartupToolHealthBackoffMaxExponent = 6;
+    private const int MaximumStartupToolHealthCacheBytes = 1024 * 1024;
+    private const int MaximumStartupToolHealthObservationCount = 4096;
     private const string StartupToolHealthCacheFileName = "startup-tool-health-cache-v1.json";
+    private const string StartupToolHealthCacheStoreName = "Startup tool health cache";
     private static readonly JsonSerializerOptions StartupToolHealthCacheJson = new() {
         PropertyNameCaseInsensitive = true,
         WriteIndented = false
@@ -94,7 +98,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var cache = LoadStartupToolHealthCache();
-        var cacheUpdated = false;
+        var mutations = new List<StartupToolHealthCacheMutation>();
 
         try {
             foreach (var entry in probeCatalog) {
@@ -129,12 +133,13 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (probe.Ok) {
-                    if (cache.Remove(cacheKey)) {
-                        cacheUpdated = true;
-                    }
+                    var observedUtc = DateTime.UtcNow;
+                    cache.Remove(cacheKey);
+                    mutations.Add(new StartupToolHealthCacheMutation(cacheKey, Entry: null, ObservedUtc: observedUtc));
                     continue;
                 }
 
+                var failedUtc = DateTime.UtcNow;
                 var sourceLabel = ToSourceLabel(entry.SourceKind);
                 var packLabel = entry.PackId.Length == 0 ? "unknown" : entry.PackId;
                 var prefix = ShouldDowngradeStartupToolHealthFailure(entry.SourceKind, probe.ErrorCode)
@@ -146,24 +151,32 @@ internal sealed partial class ChatServiceSession {
                 var errorCode = NormalizeHealthErrorCode(probe.ErrorCode);
                 var nextFailureCount = ResolveNextFailureCount(cachedFailure, errorCode);
                 var nextProbeUtc = ComputeNextStartupToolHealthProbeUtc(
-                    nowUtc,
+                    failedUtc,
                     entry.SourceKind,
                     entry.PackId,
                     errorCode,
                     nextFailureCount);
-                cache[cacheKey] = new StartupToolHealthCacheEntry(
+                var cacheEntry = new StartupToolHealthCacheEntry(
                     ErrorCode: errorCode,
                     Error: NormalizeHealthError(probe.Error),
-                    LastFailedUtc: nowUtc,
+                    LastFailedUtc: failedUtc,
                     NextProbeUtc: nextProbeUtc,
                     ConsecutiveFailures: nextFailureCount);
-                cacheUpdated = true;
+                cache[cacheKey] = cacheEntry;
+                mutations.Add(new StartupToolHealthCacheMutation(cacheKey, cacheEntry, failedUtc));
             }
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             // Startup priming is best-effort and bounded by the startup budget.
         } finally {
-            if (cacheUpdated) {
-                SaveStartupToolHealthCache(cache);
+            if (mutations.Count > 0) {
+                try {
+                    if (!ApplyStartupToolHealthCacheMutations(ResolveStartupToolHealthCachePath(), mutations)) {
+                        RecordStartupWarning("[tool health] Startup tool-health cache updates could not be persisted.");
+                    }
+                } catch (Exception ex) {
+                    RecordStartupWarning("[tool health] Startup tool-health cache updates could not be persisted.");
+                    Trace.TraceWarning($"{StartupToolHealthCacheStoreName} update failed: {ex.GetType().Name}: {ex.Message}");
+                }
             }
         }
 
@@ -361,89 +374,213 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static Dictionary<string, StartupToolHealthCacheEntry> LoadStartupToolHealthCache() {
-        var path = ResolveStartupToolHealthCachePath();
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-            return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
-        }
+        return LoadStartupToolHealthCache(ResolveStartupToolHealthCachePath());
+    }
 
-        try {
-            var json = File.ReadAllText(path);
-            var payload = JsonSerializer.Deserialize<StartupToolHealthCachePayload>(json, StartupToolHealthCacheJson);
-            if (payload?.Entries is null || payload.Entries.Count == 0) {
-                return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
-            }
+    internal static Dictionary<string, StartupToolHealthCacheEntry> LoadStartupToolHealthCache(string path) {
+        return LoadStartupToolHealthCacheState(path).Entries;
+    }
 
-            var map = new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < payload.Entries.Count; i++) {
-                var entry = payload.Entries[i];
-                if (string.IsNullOrWhiteSpace(entry.Key)) {
+    private static StartupToolHealthCacheState LoadStartupToolHealthCacheState(string path) {
+        var result = ChatServiceJsonFileStore.Read<StartupToolHealthCacheState>(
+            path,
+            MaximumStartupToolHealthCacheBytes,
+            DeserializeStartupToolHealthCacheState,
+            static _ => true,
+            normalize: null,
+            StartupToolHealthCacheStoreName);
+        return result.State == ChatServiceJsonFileReadState.Loaded && result.Value is not null
+            ? result.Value
+            : StartupToolHealthCacheState.Empty();
+    }
+
+    internal static Dictionary<string, StartupToolHealthCacheEntry> DeserializeStartupToolHealthCache(string json) {
+        return DeserializeStartupToolHealthCacheState(json).Entries;
+    }
+
+    private static StartupToolHealthCacheState DeserializeStartupToolHealthCacheState(string json) {
+        var payload = JsonSerializer.Deserialize<StartupToolHealthCachePayload>(json, StartupToolHealthCacheJson);
+        var entries = payload?.Entries;
+
+        var state = StartupToolHealthCacheState.Empty();
+        if (entries is not null) {
+            for (var i = 0; i < entries.Count; i++) {
+                var entry = entries[i];
+                var key = (entry?.Key ?? string.Empty).Trim();
+                if (key.Length == 0) {
                     continue;
                 }
 
-                map[entry.Key] = new StartupToolHealthCacheEntry(
-                    ErrorCode: NormalizeHealthErrorCode(entry.ErrorCode),
+                var cacheEntry = new StartupToolHealthCacheEntry(
+                    ErrorCode: NormalizeHealthErrorCode(entry!.ErrorCode),
                     Error: NormalizeHealthError(entry.Error),
                     LastFailedUtc: entry.LastFailedUtc,
                     NextProbeUtc: entry.NextProbeUtc,
                     ConsecutiveFailures: Math.Clamp(entry.ConsecutiveFailures, 1, 64));
+                state.Entries[key] = cacheEntry;
+                RememberLatestStartupToolHealthObservation(
+                    state.LatestObservations,
+                    key,
+                    new StartupToolHealthObservation(
+                        NormalizeStartupToolHealthObservationUtc(cacheEntry.LastFailedUtc),
+                        Successful: false));
             }
-
-            return map;
-        } catch {
-            return new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase);
         }
+
+        var observations = payload?.LatestObservations;
+        if (observations is not null) {
+            for (var i = 0; i < observations.Count; i++) {
+                var observation = observations[i];
+                var key = (observation?.Key ?? string.Empty).Trim();
+                if (key.Length == 0) {
+                    continue;
+                }
+
+                RememberLatestStartupToolHealthObservation(
+                    state.LatestObservations,
+                    key,
+                    new StartupToolHealthObservation(
+                        NormalizeStartupToolHealthObservationUtc(observation!.ObservedUtc),
+                        observation.Successful));
+            }
+        }
+
+        return state;
     }
 
-    private static void SaveStartupToolHealthCache(Dictionary<string, StartupToolHealthCacheEntry> cache) {
-        var path = ResolveStartupToolHealthCachePath();
-        if (string.IsNullOrWhiteSpace(path)) {
-            return;
+    internal static bool ApplyStartupToolHealthCacheMutations(
+        string path,
+        IReadOnlyList<StartupToolHealthCacheMutation> mutations) {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(mutations);
+        if (mutations.Count == 0) {
+            return true;
         }
 
-        try {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
-                Directory.CreateDirectory(directory);
+        var normalizedPath = Path.GetFullPath(path);
+        var lockAcquired = ChatServiceJsonFileStore.TryWithExclusiveAccess(
+            normalizedPath,
+            static state => ApplyStartupToolHealthCacheMutationsNoLock(state.Path, state.Mutations),
+            (Path: normalizedPath, Mutations: mutations),
+            out var applied,
+            StartupToolHealthCacheStoreName);
+        return lockAcquired && applied;
+    }
+
+    private static bool ApplyStartupToolHealthCacheMutationsNoLock(
+        string path,
+        IReadOnlyList<StartupToolHealthCacheMutation> mutations) {
+        var state = LoadStartupToolHealthCacheState(path);
+        var changed = false;
+        foreach (var mutation in mutations) {
+            var key = (mutation.Key ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
             }
 
-            var payload = new StartupToolHealthCachePayload {
-                Entries = cache
-                    .Select(static pair => new StartupToolHealthCachePayloadEntry {
-                        Key = pair.Key,
-                        ErrorCode = pair.Value.ErrorCode,
-                        Error = pair.Value.Error,
-                        LastFailedUtc = pair.Value.LastFailedUtc,
-                        NextProbeUtc = pair.Value.NextProbeUtc,
-                        ConsecutiveFailures = pair.Value.ConsecutiveFailures
-                    })
-                    .ToList()
-            };
+            var nextObservation = new StartupToolHealthObservation(
+                NormalizeStartupToolHealthObservationUtc(mutation.ObservedUtc),
+                Successful: mutation.Entry is null);
+            if (state.LatestObservations.TryGetValue(key, out var latestObservation)
+                && (nextObservation.ObservedUtc < latestObservation.ObservedUtc
+                    || (nextObservation.ObservedUtc == latestObservation.ObservedUtc
+                        && latestObservation.Successful
+                        && !nextObservation.Successful))) {
+                continue;
+            }
 
-            var json = JsonSerializer.Serialize(payload, StartupToolHealthCacheJson);
-            File.WriteAllText(path, json);
-        } catch {
-            // Ignore cache write failures.
+            if (!state.LatestObservations.TryGetValue(key, out latestObservation)
+                || latestObservation != nextObservation) {
+                state.LatestObservations[key] = nextObservation;
+                changed = true;
+            }
+
+            if (mutation.Entry is null) {
+                changed |= state.Entries.Remove(key);
+                continue;
+            }
+
+            if (!state.Entries.TryGetValue(key, out var existing) || existing != mutation.Entry) {
+                state.Entries[key] = mutation.Entry;
+                changed = true;
+            }
+        }
+
+        return !changed || SaveStartupToolHealthCache(path, state);
+    }
+
+    private static DateTime NormalizeStartupToolHealthObservationUtc(DateTime value) {
+        return value.Kind switch {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
+    }
+
+    private static bool SaveStartupToolHealthCache(
+        string path,
+        StartupToolHealthCacheState state) {
+        var payload = new StartupToolHealthCachePayload {
+            Entries = state.Entries
+                .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(static pair => new StartupToolHealthCachePayloadEntry {
+                    Key = pair.Key,
+                    ErrorCode = pair.Value.ErrorCode,
+                    Error = pair.Value.Error,
+                    LastFailedUtc = pair.Value.LastFailedUtc,
+                    NextProbeUtc = pair.Value.NextProbeUtc,
+                    ConsecutiveFailures = pair.Value.ConsecutiveFailures
+                })
+                .ToList(),
+            LatestObservations = state.LatestObservations
+                .OrderByDescending(static pair => pair.Value.ObservedUtc)
+                .Take(MaximumStartupToolHealthObservationCount)
+                .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(static pair => new StartupToolHealthCachePayloadObservation {
+                    Key = pair.Key,
+                    ObservedUtc = pair.Value.ObservedUtc,
+                    Successful = pair.Value.Successful
+                })
+                .ToList()
+        };
+
+        return ChatServiceJsonFileStore.Write(
+            path,
+            payload,
+            static value => JsonSerializer.Serialize(value, StartupToolHealthCacheJson),
+            StartupToolHealthCacheStoreName);
+    }
+
+    private static void RememberLatestStartupToolHealthObservation(
+        Dictionary<string, StartupToolHealthObservation> observations,
+        string key,
+        StartupToolHealthObservation candidate) {
+        if (!observations.TryGetValue(key, out var current)
+            || candidate.ObservedUtc > current.ObservedUtc
+            || (candidate.ObservedUtc == current.ObservedUtc && candidate.Successful && !current.Successful)) {
+            observations[key] = candidate;
         }
     }
 
     private static string ResolveStartupToolHealthCachePath() {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localAppData)) {
-            return Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", StartupToolHealthCacheFileName);
-        }
-
-        return Path.Combine(localAppData, "IntelligenceX.Chat", StartupToolHealthCacheFileName);
+        return ChatServiceJsonFileStore.ResolveDefaultPath(StartupToolHealthCacheFileName);
     }
 
-    private sealed record StartupToolHealthCacheEntry(
+    internal sealed record StartupToolHealthCacheEntry(
         string ErrorCode,
         string Error,
         DateTime LastFailedUtc,
         DateTime NextProbeUtc,
         int ConsecutiveFailures);
 
+    internal sealed record StartupToolHealthCacheMutation(
+        string Key,
+        StartupToolHealthCacheEntry? Entry,
+        DateTime ObservedUtc);
+
     private sealed class StartupToolHealthCachePayload {
         public List<StartupToolHealthCachePayloadEntry> Entries { get; set; } = new();
+        public List<StartupToolHealthCachePayloadObservation> LatestObservations { get; set; } = new();
     }
 
     private sealed class StartupToolHealthCachePayloadEntry {
@@ -454,6 +591,22 @@ internal sealed partial class ChatServiceSession {
         public DateTime NextProbeUtc { get; set; }
         public int ConsecutiveFailures { get; set; } = 1;
     }
+
+    private sealed class StartupToolHealthCachePayloadObservation {
+        public string Key { get; set; } = string.Empty;
+        public DateTime ObservedUtc { get; set; }
+        public bool Successful { get; set; }
+    }
+
+    private sealed record StartupToolHealthCacheState(
+        Dictionary<string, StartupToolHealthCacheEntry> Entries,
+        Dictionary<string, StartupToolHealthObservation> LatestObservations) {
+        internal static StartupToolHealthCacheState Empty() => new(
+            new Dictionary<string, StartupToolHealthCacheEntry>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, StartupToolHealthObservation>(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private readonly record struct StartupToolHealthObservation(DateTime ObservedUtc, bool Successful);
 
     private void RecordStartupWarning(string? warning) {
         var normalized = (warning ?? string.Empty).Trim();

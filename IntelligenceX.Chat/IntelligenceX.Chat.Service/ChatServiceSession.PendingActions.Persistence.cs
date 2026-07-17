@@ -50,51 +50,10 @@ internal sealed partial class ChatServiceSession {
         public bool? Mutating { get; set; }
     }
 
-    private static string ResolveDefaultPendingActionsStorePath() =>
-        ChatServiceJsonFileStore.ResolveDefaultPath("pending-actions.json");
-
-    private string ResolvePendingActionsStorePath() {
-        var candidate = (_options.PendingActionsStorePath ?? string.Empty).Trim();
-        if (candidate.Length == 0) {
-            return ResolveDefaultPendingActionsStorePath();
-        }
-
-        // Treat overrides as trusted *file names* under LocalAppData by default to avoid arbitrary-path writes.
-        // If a fully-qualified path is provided, only honor it when it still resolves under LocalAppData\IntelligenceX.Chat.
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-
-        var baseDir = Path.Combine(root, "IntelligenceX.Chat");
-        var defaultPath = ResolveDefaultPendingActionsStorePath();
-
-        try {
-            if (candidate.StartsWith(@"\\", StringComparison.Ordinal)) {
-                return defaultPath;
-            }
-
-            if (!Path.IsPathFullyQualified(candidate)) {
-                // Only allow simple file names (no traversal / no separators) for overrides.
-                if (candidate.Contains("..", StringComparison.Ordinal) ||
-                    candidate.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) >= 0) {
-                    return defaultPath;
-                }
-                return Path.Combine(baseDir, candidate);
-            }
-
-            var fullCandidate = Path.GetFullPath(candidate);
-            var fullBaseDir = Path.GetFullPath(baseDir)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                + Path.DirectorySeparatorChar;
-
-            return fullCandidate.StartsWith(fullBaseDir, StringComparison.OrdinalIgnoreCase)
-                ? fullCandidate
-                : defaultPath;
-        } catch {
-            return defaultPath;
-        }
-    }
+    private string ResolvePendingActionsStorePath() =>
+        ChatServiceJsonFileStore.ResolvePathOverrideWithinDefaultDirectory(
+            _options.PendingActionsStorePath,
+            "pending-actions.json");
 
     private void PersistPendingActionsSnapshot(string threadId, long seenUtcTicks, PendingAction[] actions, string[] callToActionTokens) {
         if (string.IsNullOrWhiteSpace(threadId) || actions is null || actions.Length == 0 || seenUtcTicks <= 0) {

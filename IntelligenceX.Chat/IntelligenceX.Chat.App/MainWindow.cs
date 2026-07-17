@@ -142,6 +142,7 @@ public sealed partial class MainWindow : Window {
     private const long FirstTurnLatencySystemNoticeThresholdMs = 1200;
     private const long SlowTurnSystemNoticeThresholdMs = 4500;
     private const string StartupWebViewBudgetCacheFileName = "startup-webview-budget-cache-v1.json";
+    private const int StartupWebViewBudgetCacheMaximumBytes = 64 * 1024;
     private const string StartupWebViewBudgetReasonCooldownConservative = "cooldown_conservative";
     private const string StartupWebViewBudgetReasonExhaustionConservative = "exhaustion_conservative";
     private const string StartupWebViewBudgetReasonInsufficientStability = "insufficient_stability";

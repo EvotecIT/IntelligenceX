@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Storage;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
@@ -999,11 +1000,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     }
 
     internal static string GetDefaultStateDbPath() {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-        return Path.Combine(root, "IntelligenceX.Chat", "state.db");
+        return ChatStatePaths.GetDefaultPath("state.db");
     }
 
     internal static string GetDefaultToolingBootstrapCachePath(string? stateDbPath = null) {
@@ -1020,12 +1017,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             }
         }
 
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(root)) {
-            root = ".";
-        }
-
-        return Path.Combine(root, "IntelligenceX.Chat", "tooling-bootstrap-cache-v1.json");
+        return ChatStatePaths.GetDefaultPath("tooling-bootstrap-cache-v1.json");
     }
 
     internal static bool TryApplyPackEnablement(
