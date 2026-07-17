@@ -385,6 +385,7 @@ public sealed partial class MainWindow : Window {
     private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
     private readonly SemaphoreSlim _onboardingGate = new(1, 1);
     private ChatAppState _appState = new();
+    private ChatAppState? _persistedAppStateBaseline;
     private readonly HashSet<string> _knownProfiles = new(StringComparer.OrdinalIgnoreCase);
     private bool _appStateLoaded;
     private bool _isSending;

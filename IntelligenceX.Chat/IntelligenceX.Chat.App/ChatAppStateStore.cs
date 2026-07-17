@@ -65,6 +65,13 @@ internal sealed class ChatAppStateStore : IDisposable {
 
     internal string DatabasePath => _dbPath;
 
+    internal ChatAppState CloneState(ChatAppState state) {
+        ArgumentNullException.ThrowIfNull(state);
+        var json = JsonSerializer.Serialize(state, _json);
+        return JsonSerializer.Deserialize<ChatAppState>(json, _json)
+               ?? throw new InvalidOperationException("Failed to clone app state.");
+    }
+
     public Task<ChatAppState?> GetAsync(string profileName, CancellationToken cancellationToken) =>
         Task.FromResult(GetCore(profileName, cancellationToken));
 

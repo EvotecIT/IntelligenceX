@@ -766,6 +766,47 @@ public sealed class NativeConversationStateStoreTests {
     }
 
     /// <summary>
+    /// Ensures a structured theme update publishes the new effective native theme immediately.
+    /// </summary>
+    [Fact]
+    public async Task NormalizeAssistantTurn_PublishesEffectiveThemeChange() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        ThemePreset = "default",
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-theme", Title = "Theme" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var store = new NativeConversationStateStore(path);
+            var conversation = Assert.Single((await store.LoadAsync(CancellationToken.None)).Conversations);
+            string? publishedTheme = null;
+            store.EffectiveThemeChanged += theme => publishedTheme = theme;
+
+            await store.NormalizeAssistantTurnAsync(
+                conversation,
+                """
+                ```ix_profile
+                {"themePreset":"cobalt","scope":"session"}
+                ```
+                """,
+                CancellationToken.None);
+
+            Assert.Equal("cobalt", store.EffectiveThemePreset);
+            Assert.Equal("cobalt", publishedTheme);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Ensures a native message save does not resurrect an action concurrently consumed by another shell.
     /// </summary>
     [Fact]

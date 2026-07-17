@@ -57,108 +57,8 @@ public sealed partial class MainWindow : Window {
             protocolResult.PendingAssistantQuestionHint);
     }
 
-    private static string? NormalizeProfileValue(string? value) {
-        var normalized = (value ?? string.Empty).Trim();
-        return normalized.Length == 0 ? null : normalized;
-    }
-
-    private string? NormalizeAssistantPersonaValue(string? value) {
-        var normalized = NormalizeProfileValue(value);
-        if (string.IsNullOrWhiteSpace(normalized)) {
-            return null;
-        }
-
-        var persona = normalized!;
-        if (IsPersonaSkipValue(persona)) {
-            return null;
-        }
-
-        if (persona.StartsWith("assistant persona:", StringComparison.OrdinalIgnoreCase)) {
-            persona = persona["assistant persona:".Length..].Trim();
-        } else if (persona.StartsWith("persona:", StringComparison.OrdinalIgnoreCase)) {
-            persona = persona["persona:".Length..].Trim();
-        }
-
-        persona = persona.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        persona = TrimProfilePunctuation(persona);
-        if (persona.Length == 0) {
-            return null;
-        }
-
-        if (IsGenericPersonaValue(persona)) {
-            var expanded = ExpandGenericPersonaFromHint(persona, FindRecentPersonaHintText());
-            if (!string.IsNullOrWhiteSpace(expanded)) {
-                persona = expanded;
-            } else if (!string.IsNullOrWhiteSpace(_appState.AssistantPersona) && !IsGenericPersonaValue(_appState.AssistantPersona!)) {
-                // Prevent downgrading a rich persona to a single generic token.
-                persona = _appState.AssistantPersona!;
-            } else {
-                // Enforce descriptive persona values during onboarding.
-                return null;
-            }
-        }
-
-        if (persona.Length > 180) {
-            persona = persona[..180].TrimEnd();
-        }
-
-        return persona.Length == 0 ? null : persona;
-    }
-
-    private string? FindRecentPersonaHintText() {
-        var conversation = ResolveRequestConversation();
-        for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
-            var message = conversation.Messages[i];
-            if (!string.Equals(message.Role, "User", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var text = NormalizeProfileValue(message.Text);
-            if (string.IsNullOrWhiteSpace(text)) {
-                continue;
-            }
-
-            if (LooksLikePersonaPreferenceText(text!)) {
-                return text;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool LooksLikePersonaPreferenceText(string text) {
-        if (text.Contains("persona", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("style", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("mode", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("tone", StringComparison.OrdinalIgnoreCase)) {
-            return true;
-        }
-
-        return text.Contains("optimistic", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("helpful", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("friendly", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("funny", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("humor", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("concise", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("explan", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("pragmatic", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("analyst", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("engineer", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? ExpandGenericPersonaFromHint(string genericPersona, string? hintText) {
-        if (string.IsNullOrWhiteSpace(hintText)) {
-            return null;
-        }
-
-        var role = NormalizePersonaRole(genericPersona, hintText!);
-        var traits = CollectPersonaTraits(hintText!);
-        if (traits.Count == 0) {
-            return null;
-        }
-
-        return role + " with " + JoinTraits(traits) + ".";
-    }
+    private static string? NormalizeAssistantPersonaValue(string? value) =>
+        DesktopChatProfileNormalizer.NormalizeAssistantPersona(value);
 
     private static List<string> CollectPersonaTraits(string hintText) {
         var traits = new List<string>();
@@ -232,64 +132,8 @@ public sealed partial class MainWindow : Window {
         };
     }
 
-    private static bool IsGenericPersonaValue(string value) {
-        var v = value.Trim().ToLowerInvariant();
-        return v is "analyst"
-            or "analyst mode"
-            or "engineer"
-            or "admin"
-            or "administrator"
-            or "operator"
-            or "security"
-            or "security analyst"
-            or "support"
-            or "helper"
-            or "default";
-    }
-
-    private static bool IsPersonaSkipValue(string value) {
-        var v = value.Trim();
-        return v.Equals("skip", StringComparison.OrdinalIgnoreCase)
-               || v.Equals("default", StringComparison.OrdinalIgnoreCase)
-               || v.Equals("defaults", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string TrimProfilePunctuation(string value) {
-        var trimmed = value.Trim().Trim('.', '!', '?', ',', ';', ':', '"', '\'');
-        return trimmed.Length == 0 ? value.Trim() : trimmed;
-    }
-
-    private static string? NormalizeUserNameValue(string? value) {
-        var normalized = NormalizeProfileValue(value);
-        if (string.IsNullOrWhiteSpace(normalized)) {
-            return null;
-        }
-
-        var v = normalized!;
-        if (v.Equals("skip", StringComparison.OrdinalIgnoreCase)
-            || v.Equals("default", StringComparison.OrdinalIgnoreCase)
-            || v.Equals("defaults", StringComparison.OrdinalIgnoreCase)) {
-            return null;
-        }
-
-        var marker = v.IndexOf("call me", StringComparison.OrdinalIgnoreCase);
-        if (marker >= 0) {
-            var start = marker + "call me".Length;
-            v = v[start..].Trim();
-        }
-
-        var trimmedPunctuation = v.Trim().Trim('.', '!', '?', ',', ';', ':', '"', '\'');
-        if (trimmedPunctuation.Length > 0) {
-            v = trimmedPunctuation;
-        }
-
-        // Keep profile names compact for consistent prompt-shaping and UI display.
-        if (v.Length > 48) {
-            v = v[..48].TrimEnd();
-        }
-
-        return v.Length == 0 ? null : v;
-    }
+    private static string? NormalizeUserNameValue(string? value) =>
+        DesktopChatProfileNormalizer.NormalizeUserName(value);
 
     private async Task SaveProfileAsync(string userName, string persona, string theme) {
         var update = new OnboardingProfileUpdate {

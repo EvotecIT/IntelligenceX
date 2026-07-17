@@ -270,6 +270,7 @@ internal sealed partial class NativeChatWindow {
         }
 
         _isTranscriptFollowingEnd = true;
+        _pendingTranscriptWheelOffset = null;
         _ = DispatcherQueue.TryEnqueue(() => {
             var index = _viewModel.Transcript.Count - 1;
             var element = _transcriptItems.TryGetElement(index) ?? _transcriptItems.GetOrCreateElement(index);
@@ -282,6 +283,7 @@ internal sealed partial class NativeChatWindow {
 
     private void ScrollTranscriptToStart() {
         _isTranscriptFollowingEnd = false;
+        _pendingTranscriptWheelOffset = null;
         _ = DispatcherQueue.TryEnqueue(() => {
             if (_viewModel.Transcript.Count > 0) {
                 var element = _transcriptItems.TryGetElement(0) ?? _transcriptItems.GetOrCreateElement(0);
@@ -299,32 +301,46 @@ internal sealed partial class NativeChatWindow {
             return;
         }
 
+        var current = _pendingTranscriptWheelOffset ?? _transcriptScroll.VerticalOffset;
         var target = NativeTranscriptScrollBehavior.CalculateTargetOffset(
-            _transcriptScroll.VerticalOffset,
+            current,
             _transcriptScroll.ScrollableHeight,
             properties.MouseWheelDelta);
-        if (Math.Abs(target - _transcriptScroll.VerticalOffset) < 0.5) {
+        if (Math.Abs(target - current) < 0.5) {
             return;
         }
 
+        _pendingTranscriptWheelOffset = target;
         _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
             target,
             _transcriptScroll.ScrollableHeight);
-        args.Handled = _transcriptScroll.ChangeView(
+        args.Handled = true;
+        if (!_transcriptScroll.ChangeView(
             horizontalOffset: null,
             verticalOffset: target,
             zoomFactor: null,
-            disableAnimation: true);
+            disableAnimation: true)) {
+            _ = DispatcherQueue.TryEnqueue(() => _transcriptScroll.ChangeView(
+                horizontalOffset: null,
+                verticalOffset: _pendingTranscriptWheelOffset,
+                zoomFactor: null,
+                disableAnimation: true));
+        }
     }
 
     private void OnTranscriptViewChanged(object? sender, ScrollViewerViewChangedEventArgs args) {
         _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
             _transcriptScroll.VerticalOffset,
             _transcriptScroll.ScrollableHeight);
+        if (!args.IsIntermediate
+            && _pendingTranscriptWheelOffset.HasValue
+            && Math.Abs(_pendingTranscriptWheelOffset.Value - _transcriptScroll.VerticalOffset) < 1) {
+            _pendingTranscriptWheelOffset = null;
+        }
     }
 
     private void OnTranscriptLayoutUpdated(object? sender, object args) {
-        if (!_isTranscriptFollowingEnd || _viewModel.Transcript.Count == 0) {
+        if (!_isTranscriptFollowingEnd || _viewModel.Transcript.Count == 0 || _transcriptFollowUpdateQueued) {
             return;
         }
 
@@ -333,10 +349,22 @@ internal sealed partial class NativeChatWindow {
             return;
         }
 
-        _ = _transcriptScroll.ChangeView(
-            horizontalOffset: null,
-            verticalOffset: target,
-            zoomFactor: null,
-            disableAnimation: true);
+        _transcriptFollowUpdateQueued = true;
+        if (!DispatcherQueue.TryEnqueue(() => {
+                try {
+                    if (!_isTranscriptFollowingEnd || _viewModel.Transcript.Count == 0) return;
+                    var queuedTarget = _transcriptScroll.ScrollableHeight;
+                    if (Math.Abs(queuedTarget - _transcriptScroll.VerticalOffset) < 0.5) return;
+                    _ = _transcriptScroll.ChangeView(
+                        horizontalOffset: null,
+                        verticalOffset: queuedTarget,
+                        zoomFactor: null,
+                        disableAnimation: true);
+                } finally {
+                    _transcriptFollowUpdateQueued = false;
+                }
+            })) {
+            _transcriptFollowUpdateQueued = false;
+        }
     }
 }

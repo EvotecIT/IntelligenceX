@@ -228,8 +228,8 @@ internal sealed class NativeTableWorkspaceViewModel {
         if (SortColumnIndex.HasValue) {
             var column = SortColumnIndex.Value;
             rows = SortDescending
-                ? rows.OrderByDescending(row => GetSortKey(row, column), StringComparer.OrdinalIgnoreCase).ThenBy(row => row.SourceIndex)
-                : rows.OrderBy(row => GetSortKey(row, column), StringComparer.OrdinalIgnoreCase).ThenBy(row => row.SourceIndex);
+                ? rows.OrderByDescending(row => GetSortKey(row, column), NativeTableValueComparer.Instance).ThenBy(row => row.SourceIndex)
+                : rows.OrderBy(row => GetSortKey(row, column), NativeTableValueComparer.Instance).ThenBy(row => row.SourceIndex);
         }
 
         VisibleRows = rows.ToArray();

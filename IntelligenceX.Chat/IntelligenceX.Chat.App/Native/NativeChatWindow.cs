@@ -34,7 +34,10 @@ internal sealed partial class NativeChatWindow : Window {
     private ItemsRepeater _transcriptItems = null!;
     private ScrollViewer _transcriptScroll = null!;
     private Grid _emptyTranscriptHost = null!;
+    private Grid _root = null!;
     private bool _isTranscriptFollowingEnd = true;
+    private double? _pendingTranscriptWheelOffset;
+    private bool _transcriptFollowUpdateQueued;
 
     public NativeChatWindow() {
         Title = "IntelligenceX Chat";
@@ -56,9 +59,10 @@ internal sealed partial class NativeChatWindow : Window {
             PromptForLoginInputAsync = PromptForLoginInputAsync
         };
 
-        var root = BuildShell();
-        Content = root;
-        root.Loaded += async (_, _) => {
+        _conversationStore.EffectiveThemeChanged += ApplyNativeTheme;
+        _root = BuildShell();
+        Content = _root;
+        _root.Loaded += async (_, _) => {
             StartupLog.Write("NativeChatWindow root loaded");
             ConfigureWindowPlacement();
             await _viewModel.InitializeConversationsAsync().ConfigureAwait(true);
@@ -110,7 +114,7 @@ internal sealed partial class NativeChatWindow : Window {
         var root = new Grid {
             Background = NativeControlBrushes.AppBackground,
             DataContext = _viewModel,
-            RequestedTheme = ElementTheme.Light
+            RequestedTheme = NativeControlBrushes.RequestedTheme
         };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -124,6 +128,17 @@ internal sealed partial class NativeChatWindow : Window {
         root.Children.Add(body);
 
         return root;
+    }
+
+    private void ApplyNativeTheme(string presetName) {
+        DispatchToUiThread(() => {
+            NativeControlBrushes.ApplyTheme(presetName);
+            _root.RequestedTheme = NativeControlBrushes.RequestedTheme;
+            _root.Background = NativeControlBrushes.AppBackground;
+            NativeArtifactWindow.ApplyCurrentTheme();
+            RenderSidebarItems();
+            RenderTranscript();
+        });
     }
 
     private FrameworkElement BuildBody() {

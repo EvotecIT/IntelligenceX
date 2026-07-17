@@ -5,8 +5,6 @@ using IntelligenceX.Chat.App.Native.Rendering;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.Storage.Streams;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -14,39 +12,44 @@ namespace IntelligenceX.Chat.App.Native;
 /// Native host surface for projected ChartForgeX visual artifacts.
 /// </summary>
 internal sealed class NativeVisualArtifactHostControl : UserControl {
+    private readonly NativeTranscriptVisual? _visual;
+    private readonly string _title;
+
     public NativeVisualArtifactHostControl(NativeTranscriptVisual? visual, string? caption = null) {
-        Content = Build(visual, caption);
+        _visual = visual;
+        var artifact = visual?.Artifact;
+        _title = !string.IsNullOrWhiteSpace(caption)
+            ? caption.Trim()
+            : artifact == null ? FormatVisualTitle(visual) : FormatArtifactTitle(artifact, visual);
+        Content = Build();
     }
 
-    private static FrameworkElement Build(NativeTranscriptVisual? visual, string? caption) {
-        var artifact = visual?.Artifact;
-        var title = !string.IsNullOrWhiteSpace(caption)
-            ? caption.Trim()
-            : artifact == null
-                ? FormatVisualTitle(visual)
-                : FormatArtifactTitle(artifact, visual);
-        var hasPreview = visual?.Preview?.HasPng == true;
+    private FrameworkElement Build() {
+        var artifact = _visual?.Artifact;
+        var hasPreview = _visual?.Preview is { } preview && (preview.Svg != null || preview.HasPng);
         var detail = artifact == null
             ? "ChartForgeX preview is not available for this artifact."
             : FormatArtifactDetail(artifact, hasPreview);
-        var stack = new StackPanel {
-            Spacing = 8
-        };
-        stack.Children.Add(BuildHeader(title, visual));
+        var stack = new StackPanel { Spacing = 8 };
+        stack.Children.Add(BuildHeader(hasPreview));
         stack.Children.Add(new TextBlock {
             Text = detail,
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12,
             Foreground = NativeControlBrushes.TextSecondary
         });
-
-        if (visual?.Preview?.Png is { Length: > 0 } png) {
-            stack.Children.Add(CreatePreviewImage(png));
+        if (_visual?.Preview is { } visualPreview && (visualPreview.Svg != null || visualPreview.HasPng)) {
+            stack.Children.Add(CreatePreviewImage(visualPreview, artifact));
+            stack.Children.Add(new TextBlock {
+                Text = "Open the interactive view to resize, fit, zoom, and pan.",
+                FontSize = 11,
+                Foreground = NativeControlBrushes.TextMuted
+            });
         }
 
         return new Border {
             Padding = new Thickness(14),
-            CornerRadius = new CornerRadius(7),
+            CornerRadius = new CornerRadius(8),
             BorderBrush = NativeControlBrushes.BorderStrong,
             BorderThickness = new Thickness(1),
             Background = NativeControlBrushes.Surface,
@@ -54,29 +57,31 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
         };
     }
 
-    private static FrameworkElement BuildHeader(string title, NativeTranscriptVisual? visual) {
-        var grid = new Grid {
-            ColumnSpacing = 8
-        };
+    private FrameworkElement BuildHeader(bool hasPreview) {
+        var grid = new Grid { ColumnSpacing = 8 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var titleText = new TextBlock {
-            Text = title,
+        grid.Children.Add(new TextBlock {
+            Text = _title,
             FontSize = 13,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = NativeControlBrushes.TextPrimary
-        };
-        Grid.SetColumn(titleText, 0);
-        grid.Children.Add(titleText);
-
-        if (visual?.Preview?.Png is { Length: > 0 } png) {
+        });
+        if (hasPreview && _visual != null) {
+            var visual = _visual;
             var open = new Button {
-                Content = "Open",
-                MinWidth = 72,
-                MinHeight = 32
+                Content = "Open interactive",
+                MinWidth = 124,
+                MinHeight = 32,
+                Background = NativeControlBrushes.AccentSoft,
+                BorderBrush = NativeControlBrushes.UserBorder,
+                Foreground = NativeControlBrushes.Accent
             };
-            open.Click += async (_, _) => await ShowPreviewAsync(open, title, png).ConfigureAwait(true);
+            open.Click += (_, _) => NativeArtifactWindow.Show(
+                _title,
+                () => new NativeVisualWorkspaceControl(visual),
+                width: 1280,
+                height: 820);
             Grid.SetColumn(open, 1);
             grid.Children.Add(open);
         }
@@ -84,88 +89,46 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
         return grid;
     }
 
-    private static string FormatVisualTitle(NativeTranscriptVisual? visual) {
-        if (visual == null) {
-            return "Visual artifact";
-        }
-
-        return visual.Kind + ": " + visual.FenceName;
+    private static FrameworkElement CreatePreviewImage(NativeVisualPreview preview, VisualArtifact? artifact) {
+        var image = new Image {
+            Stretch = Stretch.Uniform,
+            MaxHeight = 380,
+            MinHeight = 180,
+            Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var natural = artifact?.NaturalSize;
+        _ = NativeVisualImageLoader.LoadAsync(
+            image,
+            preview,
+            rasterWidth: (natural?.Width ?? 1200) * 1.5,
+            rasterHeight: (natural?.Height ?? 700) * 1.5);
+        return new Border {
+            Padding = new Thickness(8),
+            CornerRadius = new CornerRadius(6),
+            BorderBrush = NativeControlBrushes.Border,
+            BorderThickness = new Thickness(1),
+            Background = NativeControlBrushes.SurfaceMuted,
+            Child = image
+        };
     }
 
+    private static string FormatVisualTitle(NativeTranscriptVisual? visual) =>
+        visual == null ? "Visual artifact" : visual.Kind + ": " + visual.FenceName;
+
     private static string FormatArtifactTitle(VisualArtifact artifact, NativeTranscriptVisual? visual) {
-        if (!string.IsNullOrWhiteSpace(artifact.Title)) {
-            return artifact.Title;
-        }
-
-        if (!string.IsNullOrWhiteSpace(artifact.Id)) {
-            return artifact.Id;
-        }
-
+        if (!string.IsNullOrWhiteSpace(artifact.Title)) return artifact.Title;
+        if (!string.IsNullOrWhiteSpace(artifact.Id)) return artifact.Id;
         return FormatVisualTitle(visual);
     }
 
     private static string FormatArtifactDetail(VisualArtifact artifact, bool hasPreview) {
-        var parts = new List<string>();
-
-        parts.Add(artifact.Kind.ToString());
-        parts.Add(artifact.SourceLanguage.ToString());
-        if (artifact.ExportFormats != VisualArtifactExportFormat.None) {
-            parts.Add(artifact.ExportFormats.ToString());
-        }
-
+        var parts = new List<string> { artifact.Kind.ToString(), artifact.SourceLanguage.ToString() };
+        if (artifact.ExportFormats != VisualArtifactExportFormat.None) parts.Add(artifact.ExportFormats.ToString());
         if (artifact.Metadata.Count > 0) {
             parts.Add(artifact.Metadata.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " metadata");
         }
-
-        if (hasPreview) {
-            parts.Add("static preview");
-        }
-
-        return parts.Count == 0 ? "Artifact ready" : string.Join(" | ", parts);
-    }
-
-    private static FrameworkElement CreatePreviewImage(byte[] png) {
-        var image = new Image {
-            Stretch = Stretch.Uniform,
-            MaxHeight = 420,
-            Margin = new Thickness(0, 4, 0, 0),
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        _ = LoadPreviewAsync(image, png);
-        return image;
-    }
-
-    private static async Task ShowPreviewAsync(FrameworkElement owner, string title, byte[] png) {
-        var image = new Image {
-            Stretch = Stretch.Uniform,
-            MaxWidth = 900,
-            MaxHeight = 640,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        await LoadPreviewAsync(image, png).ConfigureAwait(true);
-        var dialog = new ContentDialog {
-            XamlRoot = owner.XamlRoot,
-            Title = title,
-            Content = image,
-            CloseButtonText = "Close",
-            DefaultButton = ContentDialogButton.Close
-        };
-
-        _ = await dialog.ShowAsync();
-    }
-
-    private static async Task LoadPreviewAsync(Image image, byte[] png) {
-        using var stream = new InMemoryRandomAccessStream();
-        using (var writer = new DataWriter(stream)) {
-            writer.WriteBytes(png);
-            await writer.StoreAsync();
-            await writer.FlushAsync();
-            writer.DetachStream();
-        }
-
-        stream.Seek(0);
-        var bitmap = new BitmapImage();
-        await bitmap.SetSourceAsync(stream);
-        image.Source = bitmap;
+        if (hasPreview) parts.Add("interactive preview");
+        return string.Join(" · ", parts);
     }
 }

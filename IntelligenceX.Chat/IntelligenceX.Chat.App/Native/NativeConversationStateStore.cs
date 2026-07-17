@@ -7,6 +7,7 @@ using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Launch;
+using IntelligenceX.Chat.App.Theming;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -35,6 +36,13 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
     private string? _sessionThemePreset;
     private string? _baselineActiveConversationId;
     private bool _hasBaseline;
+
+    internal event Action<string>? EffectiveThemeChanged;
+
+    internal string EffectiveThemePreset =>
+        _sessionThemePreset
+        ?? _state?.ThemePreset
+        ?? ThemeContract.DefaultPreset;
 
     public NativeConversationStateStore(string? databasePath = null, string profileName = "default") {
         _profileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
@@ -143,6 +151,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             : conversations[0].Id;
         var workspace = new NativeConversationWorkspace(conversations, activeId, loadWarning);
         CaptureBaseline(workspace, persistedConversationIds);
+        EffectiveThemeChanged?.Invoke(EffectiveThemePreset);
         return workspace;
     }
 

@@ -68,7 +68,18 @@ public sealed partial class MainWindow : Window {
             lock (_turnDiagnosticsSync) {
                 SyncAccountUsageToAppStateLocked();
             }
-            await _stateStore.UpsertAsync(_appProfileName, _appState, CancellationToken.None).ConfigureAwait(false);
+            var localSnapshot = _stateStore.CloneState(_appState);
+            var localBeforeMerge = _stateStore.CloneState(localSnapshot);
+            var baseline = _persistedAppStateBaseline;
+            var mergedSnapshot = await _stateStore.UpdateAsync(
+                    _appProfileName,
+                    latest => DesktopChatStateMerger.MergeLegacySnapshot(localSnapshot, baseline, latest),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            var sharedStateChanged = !DesktopChatStateMerger.SharedStateEquals(localBeforeMerge, mergedSnapshot);
+            if (!sharedStateChanged || await TryReconcileMergedSharedStateAsync(mergedSnapshot).ConfigureAwait(false)) {
+                _persistedAppStateBaseline = _stateStore.CloneState(mergedSnapshot);
+            }
             _knownProfiles.Add(_appProfileName);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
@@ -77,6 +88,41 @@ public sealed partial class MainWindow : Window {
         } finally {
             _stateWriteGate.Release();
         }
+    }
+
+    private Task<bool> TryReconcileMergedSharedStateAsync(ChatAppState mergedSnapshot) {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Reconcile() {
+            try {
+                if (IsTurnDispatchInProgress()) {
+                    completion.TrySetResult(false);
+                    return;
+                }
+
+                _appState = _stateStore.CloneState(mergedSnapshot);
+                _themePreset = NormalizeTheme(_appState.ThemePreset) ?? ThemeContract.DefaultPreset;
+                _appState.ThemePreset = _themePreset;
+                _persistentMemoryEnabled = _appState.PersistentMemoryEnabled;
+                _ = LoadConversationsFromState(_appState);
+                ActivateConversation(ResolveInitialConversationId(_appState));
+                _modelKickoffAttempted = _messages.Count > 0;
+                _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
+                _ = RenderTranscriptAsync();
+                _ = PublishOptionsStateAsync();
+                _ = ApplyThemeFromStateAsync();
+                completion.TrySetResult(true);
+            } catch (Exception ex) {
+                completion.TrySetException(ex);
+            }
+        }
+
+        if (DispatcherQueue.HasThreadAccess) {
+            Reconcile();
+        } else if (!DispatcherQueue.TryEnqueue(Reconcile)) {
+            completion.TrySetResult(false);
+        }
+
+        return completion.Task;
     }
 
     private void QueuePersistAppState() {

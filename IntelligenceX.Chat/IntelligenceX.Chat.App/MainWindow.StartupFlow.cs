@@ -1153,6 +1153,7 @@ public sealed partial class MainWindow : Window {
         } catch (Exception ex) {
             AppendSystem(SystemNotice.StateLoadFailed(ex.Message));
             _appState = new ChatAppState { ProfileName = _appProfileName };
+            _persistedAppStateBaseline = _stateStore.CloneState(_appState);
         }
     }
 
@@ -1164,6 +1165,7 @@ public sealed partial class MainWindow : Window {
         _appProfileName = normalized;
         _knownProfiles.Add(normalized);
         _appState = loaded ?? new ChatAppState { ProfileName = normalized };
+        _persistedAppStateBaseline = _stateStore.CloneState(_appState);
         _sessionUserNameOverride = null;
         _sessionAssistantPersonaOverride = null;
         _sessionThemeOverride = null;

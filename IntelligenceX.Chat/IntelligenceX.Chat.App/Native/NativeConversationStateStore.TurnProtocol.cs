@@ -94,6 +94,7 @@ internal sealed partial class NativeConversationStateStore {
         string? assistantText,
         CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(conversation);
+        var previousTheme = EffectiveThemePreset;
         var result = DesktopChatTurnProtocol.NormalizeAssistantResponse(assistantText);
         var persistentProfileUpdate = result.ProfileUpdate is not null
                                       && MainWindow.ResolveEffectiveProfileUpdateScope(result.ProfileUpdate) == ProfileUpdateScope.Profile;
@@ -132,6 +133,10 @@ internal sealed partial class NativeConversationStateStore {
             conversation.UpdatedUtc = DateTime.UtcNow;
         }
 
+        if (!string.Equals(previousTheme, EffectiveThemePreset, StringComparison.OrdinalIgnoreCase)) {
+            EffectiveThemeChanged?.Invoke(EffectiveThemePreset);
+        }
+
         return string.IsNullOrWhiteSpace(result.VisibleText) && stateChanged
             ? result with { VisibleText = "Got it." }
             : result;
@@ -149,10 +154,10 @@ internal sealed partial class NativeConversationStateStore {
 
     private void ApplySessionProfileUpdate(OnboardingProfileUpdate update) {
         if (update.HasUserName) {
-            _sessionUserName = NormalizeOptionalProfileValue(update.UserName);
+            _sessionUserName = DesktopChatProfileNormalizer.NormalizeUserName(update.UserName);
         }
         if (update.HasAssistantPersona) {
-            _sessionAssistantPersona = NormalizeOptionalProfileValue(update.AssistantPersona);
+            _sessionAssistantPersona = DesktopChatProfileNormalizer.NormalizeAssistantPersona(update.AssistantPersona);
         }
         if (update.HasThemePreset) {
             _sessionThemePreset = ThemeContract.Normalize(update.ThemePreset);
@@ -181,14 +186,14 @@ internal sealed partial class NativeConversationStateStore {
     private static bool ApplyPersistentProfileUpdate(ChatAppState state, OnboardingProfileUpdate update) {
         var changed = false;
         if (update.HasUserName) {
-            var next = NormalizeOptionalProfileValue(update.UserName);
+            var next = DesktopChatProfileNormalizer.NormalizeUserName(update.UserName);
             if (!string.Equals(state.UserName, next, StringComparison.Ordinal)) {
                 state.UserName = next;
                 changed = true;
             }
         }
         if (update.HasAssistantPersona) {
-            var next = NormalizeOptionalProfileValue(update.AssistantPersona);
+            var next = DesktopChatProfileNormalizer.NormalizeAssistantPersona(update.AssistantPersona);
             if (!string.Equals(state.AssistantPersona, next, StringComparison.Ordinal)) {
                 state.AssistantPersona = next;
                 changed = true;
@@ -271,11 +276,4 @@ internal sealed partial class NativeConversationStateStore {
         return changed;
     }
 
-    private static string? NormalizeOptionalProfileValue(string? value) {
-        var normalized = (value ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ').Trim();
-        if (normalized.Length > 180) {
-            normalized = normalized[..180].TrimEnd();
-        }
-        return normalized.Length == 0 ? null : normalized;
-    }
 }

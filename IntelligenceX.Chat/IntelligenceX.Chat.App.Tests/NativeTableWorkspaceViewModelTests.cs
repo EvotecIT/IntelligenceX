@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using IntelligenceX.Chat.App.Native;
 using IntelligenceX.Chat.App.Native.Rendering;
 using Xunit;
@@ -45,6 +46,24 @@ public sealed class NativeTableWorkspaceViewModelTests {
             row => Assert.Equal("Server3", row.Cells[0]),
             row => Assert.Equal("Server2", row.Cells[0]),
             row => Assert.Equal("Server1", row.Cells[0]));
+    }
+
+    /// <summary>
+    /// Ensures table sorting treats numeric and natural suffix values as users expect.
+    /// </summary>
+    [Fact]
+    public void SortByColumn_UsesNumericAndNaturalOrdering() {
+        var numeric = new NativeTableWorkspaceViewModel(new NativeTranscriptTable(
+            new[] { "Count" },
+            new IReadOnlyList<string>[] { new[] { "100" }, new[] { "2" }, new[] { "10" } }));
+        numeric.SortByColumn(0);
+        Assert.Equal(new[] { "2", "10", "100" }, numeric.VisibleRows.Select(row => row.Cells[0]));
+
+        var natural = new NativeTableWorkspaceViewModel(new NativeTranscriptTable(
+            new[] { "Server" },
+            new IReadOnlyList<string>[] { new[] { "DC10" }, new[] { "DC2" }, new[] { "DC1" } }));
+        natural.SortByColumn(0);
+        Assert.Equal(new[] { "DC1", "DC2", "DC10" }, natural.VisibleRows.Select(row => row.Cells[0]));
     }
 
     /// <summary>
