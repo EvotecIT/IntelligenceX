@@ -511,7 +511,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             }
 
             var deltaContent = ExtractDeltaContentText(delta);
-            if (!string.IsNullOrEmpty(deltaContent)) {
+            if (StreamingTextDelta.HasContent(deltaContent)) {
                 content.Append(deltaContent);
                 DeltaReceived?.Invoke(this, deltaContent!);
             }

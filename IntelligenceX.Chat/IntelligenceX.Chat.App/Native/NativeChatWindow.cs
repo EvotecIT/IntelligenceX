@@ -36,8 +36,10 @@ internal sealed partial class NativeChatWindow : Window {
     private Grid _emptyTranscriptHost = null!;
     private Grid _root = null!;
     private bool _isTranscriptFollowingEnd = true;
-    private double? _pendingTranscriptWheelOffset;
     private bool _transcriptFollowUpdateQueued;
+    private bool _transcriptFollowChangeInProgress;
+    private bool _transcriptManualScrollInProgress;
+    private double _lastTranscriptScrollableHeight;
 
     public NativeChatWindow() {
         Title = "IntelligenceX Chat";

@@ -36,12 +36,12 @@ internal sealed partial class NativeChatWindow {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             HorizontalScrollMode = ScrollMode.Disabled
         };
+        _transcriptScroll.ViewChanged += OnTranscriptViewChanged;
         _transcriptScroll.AddHandler(
             UIElement.PointerWheelChangedEvent,
             new PointerEventHandler(OnTranscriptPointerWheelChanged),
             handledEventsToo: true);
-        _transcriptScroll.ViewChanged += OnTranscriptViewChanged;
-        _transcriptItems.LayoutUpdated += OnTranscriptLayoutUpdated;
+        _transcriptItems.SizeChanged += OnTranscriptItemsSizeChanged;
         _emptyTranscriptHost = new Grid {
             Padding = new Thickness(24, 18, 24, 18)
         };
@@ -270,101 +270,131 @@ internal sealed partial class NativeChatWindow {
         }
 
         _isTranscriptFollowingEnd = true;
-        _pendingTranscriptWheelOffset = null;
-        _ = DispatcherQueue.TryEnqueue(() => {
-            var index = _viewModel.Transcript.Count - 1;
-            var element = _transcriptItems.TryGetElement(index) ?? _transcriptItems.GetOrCreateElement(index);
-            element.StartBringIntoView(new BringIntoViewOptions {
-                AnimationDesired = false,
-                VerticalAlignmentRatio = 1
-            });
-        });
+        QueueTranscriptFollowToEnd();
     }
 
-    private void ScrollTranscriptToStart() {
-        _isTranscriptFollowingEnd = false;
-        _pendingTranscriptWheelOffset = null;
-        _ = DispatcherQueue.TryEnqueue(() => {
-            if (_viewModel.Transcript.Count > 0) {
-                var element = _transcriptItems.TryGetElement(0) ?? _transcriptItems.GetOrCreateElement(0);
-                element.StartBringIntoView(new BringIntoViewOptions {
-                    AnimationDesired = false,
-                    VerticalAlignmentRatio = 0
-                });
+    private void OnTranscriptViewChanged(object? sender, ScrollViewerViewChangedEventArgs args) {
+        var scrollableHeight = _transcriptScroll.ScrollableHeight;
+        var extentGrew = scrollableHeight > _lastTranscriptScrollableHeight + 0.5;
+        _lastTranscriptScrollableHeight = scrollableHeight;
+
+        if (_transcriptManualScrollInProgress) {
+            if (!args.IsIntermediate) {
+                _transcriptManualScrollInProgress = false;
+                _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
+                    _transcriptScroll.VerticalOffset,
+                    scrollableHeight);
             }
-        });
+
+            return;
+        }
+
+        if (_transcriptFollowChangeInProgress) {
+            if (!args.IsIntermediate) {
+                CompleteTranscriptFollowChange();
+            }
+
+            return;
+        }
+
+        if (_isTranscriptFollowingEnd && extentGrew) {
+            QueueTranscriptFollowToEnd();
+            return;
+        }
+
+        _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
+            _transcriptScroll.VerticalOffset,
+            scrollableHeight);
+    }
+
+    private void OnTranscriptItemsSizeChanged(object sender, SizeChangedEventArgs args) {
+        if (args.NewSize.Height <= args.PreviousSize.Height + 0.5) {
+            return;
+        }
+
+        QueueTranscriptFollowToEnd();
     }
 
     private void OnTranscriptPointerWheelChanged(object sender, PointerRoutedEventArgs args) {
         var properties = args.GetCurrentPoint(_transcriptScroll).Properties;
-        if (properties.IsHorizontalMouseWheel || properties.MouseWheelDelta == 0 || _transcriptScroll.ScrollableHeight <= 0) {
+        if (!NativeTranscriptScrollBehavior.ShouldHandleWheel(
+                properties.IsHorizontalMouseWheel,
+                properties.MouseWheelDelta)) {
             return;
         }
 
-        var current = _pendingTranscriptWheelOffset ?? _transcriptScroll.VerticalOffset;
-        var target = NativeTranscriptScrollBehavior.CalculateTargetOffset(
-            current,
-            _transcriptScroll.ScrollableHeight,
-            properties.MouseWheelDelta);
-        if (Math.Abs(target - current) < 0.5) {
-            return;
+        args.Handled = HandleTranscriptWheelDelta(properties.MouseWheelDelta);
+    }
+
+    private bool HandleTranscriptWheelDelta(int wheelDelta) {
+        var currentOffset = _transcriptScroll.VerticalOffset;
+        var scrollableHeight = _transcriptScroll.ScrollableHeight;
+        var target = NativeTranscriptScrollBehavior.CalculateWheelTarget(
+            currentOffset,
+            scrollableHeight,
+            wheelDelta);
+        if (Math.Abs(target - currentOffset) < 0.5) {
+            return false;
         }
 
-        _pendingTranscriptWheelOffset = target;
         _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
             target,
             _transcriptScroll.ScrollableHeight);
-        args.Handled = true;
-        if (!_transcriptScroll.ChangeView(
+        _transcriptManualScrollInProgress = true;
+        var viewChangeAccepted = _transcriptScroll.ChangeView(
             horizontalOffset: null,
             verticalOffset: target,
             zoomFactor: null,
-            disableAnimation: true)) {
-            _ = DispatcherQueue.TryEnqueue(() => _transcriptScroll.ChangeView(
-                horizontalOffset: null,
-                verticalOffset: _pendingTranscriptWheelOffset,
-                zoomFactor: null,
-                disableAnimation: true));
+            disableAnimation: true);
+        if (!viewChangeAccepted) {
+            _transcriptManualScrollInProgress = false;
         }
+
+        return viewChangeAccepted;
     }
 
-    private void OnTranscriptViewChanged(object? sender, ScrollViewerViewChangedEventArgs args) {
-        _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
-            _transcriptScroll.VerticalOffset,
-            _transcriptScroll.ScrollableHeight);
-        if (!args.IsIntermediate
-            && _pendingTranscriptWheelOffset.HasValue
-            && Math.Abs(_pendingTranscriptWheelOffset.Value - _transcriptScroll.VerticalOffset) < 1) {
-            _pendingTranscriptWheelOffset = null;
-        }
-    }
-
-    private void OnTranscriptLayoutUpdated(object? sender, object args) {
-        if (!_isTranscriptFollowingEnd || _viewModel.Transcript.Count == 0 || _transcriptFollowUpdateQueued) {
-            return;
-        }
-
-        var target = _transcriptScroll.ScrollableHeight;
-        if (Math.Abs(target - _transcriptScroll.VerticalOffset) < 0.5) {
+    private void QueueTranscriptFollowToEnd() {
+        if (!_isTranscriptFollowingEnd
+            || _viewModel.Transcript.Count == 0
+            || _transcriptFollowUpdateQueued
+            || _transcriptFollowChangeInProgress
+            || !NativeTranscriptScrollBehavior.RequiresFollowUpdate(
+                _transcriptScroll.VerticalOffset,
+                _transcriptScroll.ScrollableHeight)) {
             return;
         }
 
         _transcriptFollowUpdateQueued = true;
         if (!DispatcherQueue.TryEnqueue(() => {
-                try {
-                    if (!_isTranscriptFollowingEnd || _viewModel.Transcript.Count == 0) return;
-                    var queuedTarget = _transcriptScroll.ScrollableHeight;
-                    if (Math.Abs(queuedTarget - _transcriptScroll.VerticalOffset) < 0.5) return;
-                    _ = _transcriptScroll.ChangeView(
+                _transcriptFollowUpdateQueued = false;
+                if (!_isTranscriptFollowingEnd
+                    || _viewModel.Transcript.Count == 0
+                    || !NativeTranscriptScrollBehavior.RequiresFollowUpdate(
+                        _transcriptScroll.VerticalOffset,
+                        _transcriptScroll.ScrollableHeight)) {
+                    return;
+                }
+
+                _transcriptFollowChangeInProgress = true;
+                if (!_transcriptScroll.ChangeView(
                         horizontalOffset: null,
-                        verticalOffset: queuedTarget,
+                        verticalOffset: _transcriptScroll.ScrollableHeight,
                         zoomFactor: null,
-                        disableAnimation: true);
-                } finally {
-                    _transcriptFollowUpdateQueued = false;
+                        disableAnimation: true)) {
+                    CompleteTranscriptFollowChange();
                 }
             })) {
             _transcriptFollowUpdateQueued = false;
         }
     }
+
+    private void CompleteTranscriptFollowChange() {
+        if (!_transcriptFollowChangeInProgress) {
+            return;
+        }
+
+        _transcriptFollowChangeInProgress = false;
+        QueueTranscriptFollowToEnd();
+    }
+
 }

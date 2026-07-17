@@ -16,6 +16,7 @@ public sealed class NativeTranscriptMessageControl : UserControl {
     private readonly TextBlock _roleText;
     private readonly TextBlock _statusText;
     private NativeChatTranscriptItem? _item;
+    private TextBlock? _streamingText;
 
     /// <summary>
     /// Initializes the native transcript message control.
@@ -98,36 +99,86 @@ public sealed class NativeTranscriptMessageControl : UserControl {
     }
 
     private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs args) {
+        if (_item == null) {
+            return;
+        }
+
+        if (args.PropertyName is nameof(NativeChatTranscriptItem.Status)) {
+            RenderHeaderAndChrome();
+            return;
+        }
+
+        if (args.PropertyName is nameof(NativeChatTranscriptItem.Content)) {
+            RenderBody();
+            return;
+        }
+
         if (args.PropertyName is nameof(NativeChatTranscriptItem.Text)
-            or nameof(NativeChatTranscriptItem.Status)
-            or nameof(NativeChatTranscriptItem.Content)) {
-            Render();
+            && _item.Content.Count == 0) {
+            UpdateStreamingText();
         }
     }
 
     private void Render() {
-        _contentPanel.Children.Clear();
         if (_item == null) {
             _roleText.Text = string.Empty;
             _statusText.Text = string.Empty;
+            _contentPanel.Children.Clear();
+            _streamingText = null;
+            return;
+        }
+
+        RenderHeaderAndChrome();
+        RenderBody();
+    }
+
+    private void RenderHeaderAndChrome() {
+        if (_item == null) {
             return;
         }
 
         _roleText.Text = _item.IsUser ? "OPERATOR" : _item.Role.ToUpperInvariant();
         _statusText.Text = string.IsNullOrWhiteSpace(_item.Status) ? FormatCreatedAt(_item.CreatedAt) : _item.Status;
         ApplyMessageChrome(_item);
+    }
+
+    private void RenderBody() {
+        if (_item == null) {
+            _contentPanel.Children.Clear();
+            _streamingText = null;
+            return;
+        }
 
         if (_item.Content.Count == 0) {
-            if (!string.IsNullOrWhiteSpace(_item.Text)) {
-                _contentPanel.Children.Add(CreateParagraph(_item.Text));
+            UpdateStreamingText();
+            return;
+        }
+
+        _contentPanel.Children.Clear();
+        _streamingText = null;
+        foreach (var part in _item.Content) {
+            _contentPanel.Children.Add(new NativeTranscriptContentControl(part));
+        }
+    }
+
+    private void UpdateStreamingText() {
+        if (_item == null || string.IsNullOrWhiteSpace(_item.Text)) {
+            if (_streamingText != null) {
+                _contentPanel.Children.Clear();
+                _streamingText = null;
             }
 
             return;
         }
 
-        foreach (var part in _item.Content) {
-            _contentPanel.Children.Add(new NativeTranscriptContentControl(part));
+        if (_streamingText == null) {
+            _contentPanel.Children.Clear();
+            _streamingText = CreateParagraph(_item.Text);
+            _contentPanel.Children.Add(_streamingText);
+            return;
         }
+
+        _streamingText.Text = _item.Text;
     }
 
     private void ApplyMessageChrome(NativeChatTranscriptItem item) {
@@ -158,7 +209,7 @@ public sealed class NativeTranscriptMessageControl : UserControl {
     private static string FormatCreatedAt(DateTimeOffset value) =>
         value.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.CurrentCulture);
 
-    private static FrameworkElement CreateParagraph(string text) =>
+    private static TextBlock CreateParagraph(string text) =>
         new TextBlock {
             Text = text ?? string.Empty,
             TextWrapping = TextWrapping.Wrap,

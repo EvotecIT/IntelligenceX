@@ -1,8 +1,10 @@
 using System;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
+using Windows.UI.Core;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -57,13 +59,9 @@ internal sealed partial class NativeChatWindow {
                 _viewModel.Draft = _composer.Text;
             }
         };
-        var sendAccelerator = new KeyboardAccelerator {
-            Key = VirtualKey.Enter,
-            Modifiers = VirtualKeyModifiers.None,
-            ScopeOwner = _composer
-        };
-        sendAccelerator.Invoked += OnComposerSendInvoked;
-        _composer.KeyboardAccelerators.Add(sendAccelerator);
+        // TextBox handles Enter internally when AcceptsReturn is enabled. Observe the
+        // preview route so plain Enter can submit before the control inserts a newline.
+        _composer.PreviewKeyDown += OnComposerKeyDown;
         Grid.SetColumn(_composer, 0);
         Grid.SetRow(_composer, 1);
         grid.Children.Add(_composer);
@@ -106,10 +104,18 @@ internal sealed partial class NativeChatWindow {
         _composer.Focus(FocusState.Programmatic);
     }
 
-    private async void OnComposerSendInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) {
+    private async void OnComposerKeyDown(object sender, KeyRoutedEventArgs args) {
+        var shiftState = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
+        if (!ShouldSendComposerKey(args.Key, shiftState)) {
+            return;
+        }
+
         args.Handled = true;
         await SendAsync().ConfigureAwait(true);
     }
+
+    internal static bool ShouldSendComposerKey(VirtualKey key, CoreVirtualKeyStates shiftState) =>
+        key == VirtualKey.Enter && (shiftState & CoreVirtualKeyStates.Down) == 0;
 
     private void UpdateCommandState() {
         _sendButton.IsEnabled = _viewModel.CanSend;

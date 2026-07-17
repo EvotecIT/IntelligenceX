@@ -291,7 +291,7 @@ internal sealed class CopilotCliTransport : IOpenAITransport {
         }
 
         using var streamSubscription = state.Session.OnEvent(evt => {
-            if (!string.IsNullOrWhiteSpace(evt.DeltaContent)) {
+            if (StreamingTextDelta.HasContent(evt.DeltaContent)) {
                 DeltaReceived?.Invoke(this, evt.DeltaContent!);
             }
         });

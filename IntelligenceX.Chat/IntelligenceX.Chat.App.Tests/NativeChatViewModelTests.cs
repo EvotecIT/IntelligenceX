@@ -470,6 +470,27 @@ public sealed class NativeChatViewModelTests {
     }
 
     /// <summary>
+    /// Ensures streaming text does not emit redundant content changes that rebuild the native message body.
+    /// </summary>
+    [Fact]
+    public void NativeChatTranscriptItem_StreamingTextOnlyNotifiesTextUntilCompletion() {
+        var item = new NativeChatTranscriptItem("assistant", string.Empty, DateTimeOffset.Now, "Thinking...");
+        var propertyChanges = new List<string?>();
+        item.PropertyChanged += (_, args) => propertyChanges.Add(args.PropertyName);
+
+        item.Text = "First";
+        item.Text = "First response";
+
+        Assert.Equal(2, propertyChanges.Count(name => name == nameof(NativeChatTranscriptItem.Text)));
+        Assert.DoesNotContain(nameof(NativeChatTranscriptItem.Content), propertyChanges);
+
+        item.Status = "Complete";
+
+        Assert.Single(propertyChanges, name => name == nameof(NativeChatTranscriptItem.Content));
+        Assert.Single(propertyChanges, name => name == nameof(NativeChatTranscriptItem.Status));
+    }
+
+    /// <summary>
     /// Ensures native transcript export preserves the original Markdown body for OfficeIMO export.
     /// </summary>
     [Fact]

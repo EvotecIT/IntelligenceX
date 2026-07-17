@@ -408,7 +408,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                     ? conversation.ThreadId
                     : result.Response.ThreadId;
                 conversation.UpdatedUtc = DateTime.UtcNow;
-                StatusText = "Ready";
+                StatusText = ResolveReadyStatus();
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
             await TryPersistConversationsAsync().ConfigureAwait(false);
@@ -458,13 +458,13 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public void SetHostStatus(string message) =>
-        StatusText = string.IsNullOrWhiteSpace(message) ? "Ready" : message.Trim();
+        StatusText = string.IsNullOrWhiteSpace(message) ? ResolveReadyStatus() : message.Trim();
 
     public void SetHostSignInText(string message) =>
         SignInText = string.IsNullOrWhiteSpace(message) ? "Sign-in status unknown" : message.Trim();
 
     private Task SetRuntimeStatusAsync(string message) {
-        RunOnUi(() => StatusText = string.IsNullOrWhiteSpace(message) ? "Ready" : message.Trim());
+        RunOnUi(() => StatusText = string.IsNullOrWhiteSpace(message) ? ResolveReadyStatus() : message.Trim());
         return Task.CompletedTask;
     }
 
@@ -610,7 +610,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                     ? "Signed in"
                     : "Signed in: " + result.AccountId!.Trim();
                 AuthenticationState = NativeAuthenticationState.SignedIn;
-                StatusText = "Ready";
+                StatusText = ResolveReadyStatus();
                 return;
             }
 
@@ -635,6 +635,9 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     private void RunOnUi(Action action) => _dispatch(action);
+
+    private string ResolveReadyStatus() =>
+        NativeRuntimeStatusFormatter.FormatReady(_sessionPolicyProvider?.Invoke());
 
     private bool IsTurnBusy => IsSending || Volatile.Read(ref _sendStarting) != 0;
 

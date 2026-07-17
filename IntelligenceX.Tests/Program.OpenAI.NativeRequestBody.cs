@@ -5,12 +5,61 @@ using System.Reflection;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
+    private static void TestNativeStreamingPreservesWhitespaceTextDeltas() {
+        using var transport = new OpenAINativeTransport(new OpenAINativeOptions());
+        var accumulated = new System.Text.StringBuilder();
+        var observed = new System.Text.StringBuilder();
+        string? status = null;
+        JsonObject? completedResponse = null;
+        string? streamError = null;
+
+        transport.DeltaReceived += (_, piece) => observed.Append(piece);
+
+        var pieces = new[] {
+            "## Replication health",
+            "\n\n",
+            "| DC | Status |",
+            "\n",
+            "| --- | --- |",
+            "\n",
+            "| AD0 | Healthy |",
+            " ",
+            "✅"
+        };
+        foreach (var piece in pieces) {
+            transport.HandleStreamEvent(
+                new JsonObject()
+                    .Add("type", "response.output_text.delta")
+                    .Add("delta", piece),
+                accumulated,
+                ref status,
+                ref completedResponse,
+                ref streamError);
+        }
+
+        var expected = string.Concat(pieces);
+        AssertEqual(expected, accumulated.ToString(), "native accumulated text keeps whitespace-only deltas");
+        AssertEqual(expected, observed.ToString(), "native streaming event keeps whitespace-only deltas");
+
+        transport.HandleStreamEvent(
+            new JsonObject()
+                .Add("type", "response.refusal.delta")
+                .Add("delta", "\n"),
+            accumulated,
+            ref status,
+            ref completedResponse,
+            ref streamError);
+        AssertEqual(expected + "\n", accumulated.ToString(), "refusal streaming keeps whitespace-only deltas");
+        AssertEqual(expected + "\n", observed.ToString(), "refusal streaming event keeps whitespace-only deltas");
+    }
+
     private static void TestNativeRequestBodyOmitsPreviousResponseId() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;

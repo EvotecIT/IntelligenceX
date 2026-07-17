@@ -91,8 +91,11 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
 
     private void RefreshContentIfReady() {
         if (!ShouldProjectContent()) {
-            _content = Array.Empty<NativeTranscriptContent>();
-            OnPropertyChanged(nameof(Content));
+            if (_content.Count > 0) {
+                _content = Array.Empty<NativeTranscriptContent>();
+                OnPropertyChanged(nameof(Content));
+            }
+
             return;
         }
 
