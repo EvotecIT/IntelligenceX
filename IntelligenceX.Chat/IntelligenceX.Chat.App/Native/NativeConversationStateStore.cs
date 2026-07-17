@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Launch;
@@ -18,7 +19,7 @@ internal interface INativeConversationStore : IAsyncDisposable {
 /// <summary>
 /// Native conversation adapter over the shared desktop application state store.
 /// </summary>
-internal sealed class NativeConversationStateStore : INativeConversationStore {
+internal sealed partial class NativeConversationStateStore : INativeConversationStore {
     private readonly ChatAppStateStore _stateStore;
     private readonly string _profileName;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
@@ -29,6 +30,9 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
     private readonly Dictionary<string, ChatConversationState> _discardedConversationBaselines =
         new(StringComparer.OrdinalIgnoreCase);
     private ChatAppState? _state;
+    private string? _sessionUserName;
+    private string? _sessionAssistantPersona;
+    private string? _sessionThemePreset;
     private string? _baselineActiveConversationId;
     private bool _hasBaseline;
 
@@ -52,7 +56,9 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
     /// <summary>
     /// Creates the per-turn request options shared with the legacy desktop shell.
     /// </summary>
-    internal ChatRequestOptions CreateChatRequestOptions(NativeConversation conversation) {
+    internal ChatRequestOptions CreateChatRequestOptions(
+        NativeConversation conversation,
+        SessionPolicyDto? sessionPolicy = null) {
         ArgumentNullException.ThrowIfNull(conversation);
         if (_state is null) {
             throw new InvalidOperationException("Native profile state must be loaded before chat requests are created.");
@@ -61,12 +67,23 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         var modelOverride = (_state.Conversations ?? new List<ChatConversationState>())
             .FirstOrDefault(state => string.Equals(state.Id, conversation.Id, StringComparison.OrdinalIgnoreCase))
             ?.ModelOverride;
-        return ChatRequestOptionsFactory.CreateFromState(_state, modelOverride);
+        return ChatRequestOptionsFactory.CreateFromState(_state, modelOverride, sessionPolicy);
     }
 
     public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
-        var loadedState = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false);
+        ChatAppState? loadedState;
+        string? loadWarning = null;
+        try {
+            loadedState = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (Exception ex) {
+            StartupLog.Write("Native profile state could not be loaded; using fresh state: " + ex.Message);
+            loadWarning = "History load failed; started a fresh chat. " + ex.Message;
+            loadedState = null;
+        }
         _state = loadedState ?? new ChatAppState { ProfileName = _profileName };
+        ChatServiceLaunchProfileMapper.NormalizeProviderState(_state);
         _state.LocalProviderImageGenerationOverrideActive =
             ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
                 _state,
@@ -124,7 +141,7 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         var activeId = conversations.Any(item => string.Equals(item.Id, _state.ActiveConversationId, StringComparison.OrdinalIgnoreCase))
             ? _state.ActiveConversationId!
             : conversations[0].Id;
-        var workspace = new NativeConversationWorkspace(conversations, activeId);
+        var workspace = new NativeConversationWorkspace(conversations, activeId, loadWarning);
         CaptureBaseline(workspace, persistedConversationIds);
         return workspace;
     }
@@ -134,93 +151,10 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
 
         await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            var latestState = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false);
-            _state = latestState ?? _state ?? new ChatAppState { ProfileName = _profileName };
-            var existingConversations = _state.Conversations ?? new List<ChatConversationState>();
-            var existingById = existingConversations
-                .Where(static state => !string.IsNullOrWhiteSpace(state.Id))
-                .GroupBy(static state => state.Id.Trim(), StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
-            var systemConversations = existingConversations
-                .Where(state => IsSystemConversation(state.Id))
-                .ToList();
-            var workspaceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var persisted = new List<ChatConversationState>(workspace.Conversations.Count + existingConversations.Count);
-            foreach (var conversation in workspace.Conversations) {
-                workspaceIds.Add(conversation.Id);
-                existingById.TryGetValue(conversation.Id, out var existing);
-                _baselineConversations.TryGetValue(conversation.Id, out var baseline);
-                var unchangedSinceLoad = _hasBaseline
-                                         && baseline is not null
-                                         && ConversationMatches(conversation, baseline);
-                if (unchangedSinceLoad) {
-                    if (existing is not null) {
-                        ApplyPersistedMetadata(conversation, existing);
-                        persisted.Add(existing);
-                        _discardedConversationIds.Remove(conversation.Id);
-                        _discardedConversationBaselines.Remove(conversation.Id);
-                    } else if (!_baselinePersistedConversationIds.Contains(conversation.Id)
-                               && !_discardedConversationIds.Contains(conversation.Id)) {
-                        persisted.Add(MapConversation(conversation, existing: null));
-                    } else {
-                        _discardedConversationIds.Add(conversation.Id);
-                    }
-
-                    continue;
-                }
-
-                _discardedConversationIds.Remove(conversation.Id);
-                _discardedConversationBaselines.Remove(conversation.Id);
-                var merged = MergeConversation(conversation, existing, baseline);
-                ApplyPersistedMetadata(conversation, merged);
-                persisted.Add(merged);
-            }
-
-            foreach (var existing in existingConversations) {
-                if (IsSystemConversation(existing.Id) || workspaceIds.Contains(existing.Id)) {
-                    continue;
-                }
-
-                if (_discardedConversationIds.Contains(existing.Id)) {
-                    if (_discardedConversationBaselines.TryGetValue(existing.Id, out var discardedBaseline)
-                        && ConversationStateMatches(existing, discardedBaseline)) {
-                        continue;
-                    }
-
-                    _discardedConversationIds.Remove(existing.Id);
-                    _discardedConversationBaselines.Remove(existing.Id);
-                }
-
-                persisted.Add(existing);
-            }
-
-            persisted.Sort(static (left, right) => right.UpdatedUtc.CompareTo(left.UpdatedUtc));
-            persisted.AddRange(systemConversations);
-            _state.Conversations = persisted;
-            var nativeActiveChanged = !_hasBaseline
-                                      || !string.Equals(
-                                          workspace.ActiveConversationId,
-                                          _baselineActiveConversationId,
-                                          StringComparison.OrdinalIgnoreCase);
-            var activeId = nativeActiveChanged
-                ? workspace.ActiveConversationId
-                : _state.ActiveConversationId;
-            var active = persisted.FirstOrDefault(item =>
-                string.Equals(item.Id, activeId, StringComparison.OrdinalIgnoreCase));
-            if (active is null) {
-                active = persisted.FirstOrDefault(item => !IsSystemConversation(item.Id));
-                activeId = active?.Id;
-            }
-
-            _state.ActiveConversationId = activeId;
-            if (active is not null) {
-                _state.ThreadId = active.ThreadId;
-                _state.Messages = (active.Messages ?? new List<ChatMessageState>())
-                    .Select(CloneMessage)
-                    .ToList();
-            }
-
-            await _stateStore.UpsertAsync(_profileName, _state, cancellationToken).ConfigureAwait(false);
+            _state = await _stateStore.UpdateAsync(
+                _profileName,
+                latestState => MergeWorkspaceIntoState(workspace, latestState),
+                cancellationToken).ConfigureAwait(false);
             var savedConversationIds = new HashSet<string>(
                 (_state.Conversations ?? new List<ChatConversationState>())
                 .Where(state => !IsSystemConversation(state.Id))
@@ -238,6 +172,95 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         }
     }
 
+    private ChatAppState MergeWorkspaceIntoState(
+        NativeConversationWorkspace workspace,
+        ChatAppState? latestState) {
+        var mergedState = latestState ?? _state ?? new ChatAppState { ProfileName = _profileName };
+        var existingConversations = mergedState.Conversations ?? new List<ChatConversationState>();
+        var existingById = existingConversations
+            .Where(static state => !string.IsNullOrWhiteSpace(state.Id))
+            .GroupBy(static state => state.Id.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var systemConversations = existingConversations
+            .Where(state => IsSystemConversation(state.Id))
+            .ToList();
+        var workspaceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var persisted = new List<ChatConversationState>(workspace.Conversations.Count + existingConversations.Count);
+        foreach (var conversation in workspace.Conversations) {
+            workspaceIds.Add(conversation.Id);
+            existingById.TryGetValue(conversation.Id, out var existing);
+            _baselineConversations.TryGetValue(conversation.Id, out var baseline);
+            var unchangedSinceLoad = _hasBaseline
+                                     && baseline is not null
+                                     && ConversationMatches(conversation, baseline);
+            if (unchangedSinceLoad) {
+                if (existing is not null) {
+                    ApplyPersistedMetadata(conversation, existing);
+                    persisted.Add(existing);
+                    _discardedConversationIds.Remove(conversation.Id);
+                    _discardedConversationBaselines.Remove(conversation.Id);
+                } else if (!_baselinePersistedConversationIds.Contains(conversation.Id)
+                           && !_discardedConversationIds.Contains(conversation.Id)) {
+                    persisted.Add(MapConversation(conversation, existing: null));
+                } else {
+                    _discardedConversationIds.Add(conversation.Id);
+                }
+
+                continue;
+            }
+
+            _discardedConversationIds.Remove(conversation.Id);
+            _discardedConversationBaselines.Remove(conversation.Id);
+            var merged = MergeConversation(conversation, existing, baseline);
+            ApplyPersistedMetadata(conversation, merged);
+            persisted.Add(merged);
+        }
+
+        foreach (var existing in existingConversations) {
+            if (IsSystemConversation(existing.Id) || workspaceIds.Contains(existing.Id)) {
+                continue;
+            }
+
+            if (_discardedConversationIds.Contains(existing.Id)) {
+                if (_discardedConversationBaselines.TryGetValue(existing.Id, out var discardedBaseline)
+                    && ConversationStateMatches(existing, discardedBaseline)) {
+                    continue;
+                }
+
+                _discardedConversationIds.Remove(existing.Id);
+                _discardedConversationBaselines.Remove(existing.Id);
+            }
+
+            persisted.Add(existing);
+        }
+
+        persisted.Sort(static (left, right) => right.UpdatedUtc.CompareTo(left.UpdatedUtc));
+        persisted.AddRange(systemConversations);
+        mergedState.Conversations = persisted;
+        var nativeActiveChanged = !_hasBaseline
+                                  || !string.Equals(
+                                      workspace.ActiveConversationId,
+                                      _baselineActiveConversationId,
+                                      StringComparison.OrdinalIgnoreCase);
+        var activeId = nativeActiveChanged ? workspace.ActiveConversationId : mergedState.ActiveConversationId;
+        var active = persisted.FirstOrDefault(item =>
+            string.Equals(item.Id, activeId, StringComparison.OrdinalIgnoreCase));
+        if (active is null) {
+            active = persisted.FirstOrDefault(item => !IsSystemConversation(item.Id));
+            activeId = active?.Id;
+        }
+
+        mergedState.ActiveConversationId = activeId;
+        if (active is not null) {
+            mergedState.ThreadId = active.ThreadId;
+            mergedState.Messages = (active.Messages ?? new List<ChatMessageState>())
+                .Select(CloneMessage)
+                .ToList();
+        }
+
+        return mergedState;
+    }
+
     public ValueTask DisposeAsync() {
         _saveGate.Dispose();
         _stateStore.Dispose();
@@ -250,7 +273,9 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             state.Title,
             state.ThreadId,
             state.UpdatedUtc,
-            (state.Messages ?? new List<ChatMessageState>()).Select(MapMessage));
+            (state.Messages ?? new List<ChatMessageState>()).Select(MapMessage),
+            (state.PendingActions ?? new List<ChatPendingActionState>()).Select(MapPendingAction),
+            state.PendingAssistantQuestionHint);
 
     private static ChatConversationState MapConversation(
         NativeConversation conversation,
@@ -260,6 +285,8 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         state.Title = conversation.Title;
         state.ThreadId = conversation.ThreadId;
         state.Messages = conversation.Messages.Select(MapMessage).ToList();
+        state.PendingActions = conversation.PendingActions.Select(MapPendingAction).ToList();
+        state.PendingAssistantQuestionHint = conversation.PendingAssistantQuestionHint;
         state.UpdatedUtc = conversation.UpdatedUtc;
         return state;
     }
@@ -289,6 +316,8 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             conversation.Messages,
             baseline.Messages ?? new List<ChatMessageState>(),
             existing.Messages ?? new List<ChatMessageState>());
+        existing.PendingActions = conversation.PendingActions.Select(MapPendingAction).ToList();
+        existing.PendingAssistantQuestionHint = conversation.PendingAssistantQuestionHint;
         existing.UpdatedUtc = EnsureUtc(existing.UpdatedUtc) >= EnsureUtc(conversation.UpdatedUtc)
             ? EnsureUtc(existing.UpdatedUtc)
             : EnsureUtc(conversation.UpdatedUtc);
@@ -303,6 +332,10 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             ? null
             : persisted.ThreadId.Trim();
         conversation.UpdatedUtc = EnsureUtc(persisted.UpdatedUtc);
+        conversation.PendingActions.Clear();
+        conversation.PendingActions.AddRange(
+            (persisted.PendingActions ?? new List<ChatPendingActionState>()).Select(MapPendingAction));
+        conversation.PendingAssistantQuestionHint = persisted.PendingAssistantQuestionHint;
     }
 
     private static string? ResolveConcurrentValue(
@@ -368,7 +401,9 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
 
     private static NativeChatTranscriptItem MapMessage(ChatMessageState state) {
         var role = string.IsNullOrWhiteSpace(state.Role) ? "system" : state.Role.Trim().ToLowerInvariant();
-        var status = string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase) ? "Complete" : string.Empty;
+        var status = string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
+            ? string.IsNullOrWhiteSpace(state.Status) ? "Complete" : state.Status.Trim()
+            : string.Empty;
         return new NativeChatTranscriptItem(
             role,
             state.Text ?? string.Empty,
@@ -382,7 +417,8 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             Role = message.Role,
             Text = message.Text,
             TimeUtc = message.CreatedAt.UtcDateTime,
-            Model = message.Model
+            Model = message.Model,
+            Status = message.Status
         };
 
     private static ChatMessageState CloneMessage(ChatMessageState message) =>
@@ -390,7 +426,19 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             Role = message.Role,
             Text = message.Text,
             TimeUtc = message.TimeUtc,
-            Model = message.Model
+            Model = message.Model,
+            Status = message.Status
+        };
+
+    private static AssistantPendingAction MapPendingAction(ChatPendingActionState action) =>
+        new(action.Id, action.Title, action.Request, action.Reply);
+
+    private static ChatPendingActionState MapPendingAction(AssistantPendingAction action) =>
+        new() {
+            Id = action.Id,
+            Title = action.Title,
+            Request = action.Request,
+            Reply = action.Reply
         };
 
     private static ChatConversationState CloneConversation(ChatConversationState conversation) =>
@@ -460,7 +508,11 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
         && string.Equals(left.Text, right.Text, StringComparison.Ordinal)
         && EnsureUtc(left.TimeUtc) == EnsureUtc(right.TimeUtc)
-        && string.Equals(left.Model, right.Model, StringComparison.Ordinal);
+        && string.Equals(left.Model, right.Model, StringComparison.Ordinal)
+        && string.Equals(
+            NormalizeMessageStatus(left.Role, left.Status),
+            NormalizeMessageStatus(right.Role, right.Status),
+            StringComparison.Ordinal);
 
     private void CaptureBaseline(
         NativeConversationWorkspace workspace,
@@ -499,12 +551,44 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             if (!string.Equals(current.Role, original.Role, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(current.Text, original.Text, StringComparison.Ordinal)
                 || current.CreatedAt.UtcDateTime != EnsureUtc(original.TimeUtc)
-                || !string.Equals(current.Model, original.Model, StringComparison.Ordinal)) {
+                || !string.Equals(current.Model, original.Model, StringComparison.Ordinal)
+                || !string.Equals(
+                    NormalizeMessageStatus(current.Role, current.Status),
+                    NormalizeMessageStatus(original.Role, original.Status),
+                    StringComparison.Ordinal)) {
+                return false;
+            }
+        }
+
+        var baselineActions = baseline.PendingActions ?? new List<ChatPendingActionState>();
+        if (conversation.PendingActions.Count != baselineActions.Count
+            || !string.Equals(
+                conversation.PendingAssistantQuestionHint,
+                baseline.PendingAssistantQuestionHint,
+                StringComparison.Ordinal)) {
+            return false;
+        }
+        for (var i = 0; i < conversation.PendingActions.Count; i++) {
+            var current = conversation.PendingActions[i];
+            var original = baselineActions[i];
+            if (!string.Equals(current.Id, original.Id, StringComparison.Ordinal)
+                || !string.Equals(current.Title, original.Title, StringComparison.Ordinal)
+                || !string.Equals(current.Request, original.Request, StringComparison.Ordinal)
+                || !string.Equals(current.Reply, original.Reply, StringComparison.Ordinal)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private static string NormalizeMessageStatus(string? role, string? status) {
+        if (!string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)) {
+            return string.Empty;
+        }
+
+        var normalized = (status ?? string.Empty).Trim();
+        return normalized.Length == 0 ? "Complete" : normalized;
     }
 
     private static bool IsSystemConversation(string? id) =>

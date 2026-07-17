@@ -60,8 +60,8 @@ public sealed partial class MainWindow : Window {
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
     private const string TransportCopilotCli = "copilot-cli";
-    private const string DefaultOllamaBaseUrl = "http://127.0.0.1:11434";
-    private const string DefaultLmStudioBaseUrl = "http://127.0.0.1:1234/v1";
+    private const string DefaultOllamaBaseUrl = ChatServiceLaunchProfileMapper.DefaultOllamaBaseUrl;
+    private const string DefaultLmStudioBaseUrl = ChatServiceLaunchProfileMapper.DefaultLmStudioBaseUrl;
     private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan PersistDebounceInterval = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan UiPublishCoalesceInterval = TimeSpan.FromMilliseconds(24);

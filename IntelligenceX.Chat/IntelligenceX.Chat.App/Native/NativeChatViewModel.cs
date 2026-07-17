@@ -4,7 +4,9 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.Client;
 
@@ -20,6 +22,10 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     private readonly INativeChatRuntime _runtime;
     private readonly INativeConversationStore? _conversationStore;
     private readonly Func<NativeConversation, ChatRequestOptions?>? _requestOptionsProvider;
+    private readonly Func<SessionPolicyDto?>? _sessionPolicyProvider;
+    private readonly Func<NativeConversation, string, SessionPolicyDto?, string>? _requestTextProvider;
+    private readonly Func<NativeConversation, string?, CancellationToken, Task<DesktopAssistantTurnProtocolResult>>?
+        _assistantTurnNormalizer;
     private readonly Action<Action> _dispatch;
     private NativeConversationWorkspace _workspace;
     private NativeConversation _activeConversation;
@@ -37,11 +43,18 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         INativeChatRuntime runtime,
         Action<Action>? dispatch = null,
         INativeConversationStore? conversationStore = null,
-        Func<NativeConversation, ChatRequestOptions?>? requestOptionsProvider = null) {
+        Func<NativeConversation, ChatRequestOptions?>? requestOptionsProvider = null,
+        Func<SessionPolicyDto?>? sessionPolicyProvider = null,
+        Func<NativeConversation, string, SessionPolicyDto?, string>? requestTextProvider = null,
+        Func<NativeConversation, string?, CancellationToken, Task<DesktopAssistantTurnProtocolResult>>?
+            assistantTurnNormalizer = null) {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _dispatch = dispatch ?? (action => action());
         _conversationStore = conversationStore;
         _requestOptionsProvider = requestOptionsProvider;
+        _sessionPolicyProvider = sessionPolicyProvider;
+        _requestTextProvider = requestTextProvider;
+        _assistantTurnNormalizer = assistantTurnNormalizer;
         _activeConversation = NativeConversation.CreateNew();
         Conversations.Add(_activeConversation);
         _workspace = new NativeConversationWorkspace(Conversations, _activeConversation.Id);
@@ -162,7 +175,17 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             return;
         }
 
-        var loaded = await _conversationStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        NativeConversationWorkspace loaded;
+        try {
+            loaded = await _conversationStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (Exception ex) {
+            StartupLog.Write("Native conversation state load failed: " + ex);
+            var fallback = NativeConversation.CreateNew();
+            loaded = new NativeConversationWorkspace(new[] { fallback }, fallback.Id);
+            RunOnUi(() => StatusText = "History load failed; started a fresh chat. " + ex.Message);
+        }
         await RunOnUiAsync(() => {
             Conversations.Clear();
             foreach (var conversation in loaded.Conversations) {
@@ -176,6 +199,9 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             _workspace = new NativeConversationWorkspace(Conversations, loaded.ActiveConversationId);
             var active = FindConversation(loaded.ActiveConversationId) ?? Conversations[0];
             ActivateConversation(active);
+            if (!string.IsNullOrWhiteSpace(loaded.Warning)) {
+                StatusText = loaded.Warning;
+            }
             return Task.CompletedTask;
         }).ConfigureAwait(false);
     }
@@ -345,7 +371,9 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         }).ConfigureAwait(false);
 
         try {
+            var sessionPolicy = _sessionPolicyProvider?.Invoke();
             var requestOptions = _requestOptionsProvider?.Invoke(conversation);
+            var requestText = _requestTextProvider?.Invoke(conversation, text, sessionPolicy) ?? text;
             await RunOnUiAsync(() => {
                 assistantItem.SetModel(requestOptions?.Model);
                 return Task.CompletedTask;
@@ -354,16 +382,22 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                     new ChatRequest {
                         RequestId = requestId,
                         ThreadId = conversation.ThreadId,
-                        Text = text,
+                        Text = requestText,
                         Options = requestOptions
                     },
                     (update, _) => ApplyTurnUpdateAsync(update, assistantItem, accumulator),
                     cts.Token)
                 .ConfigureAwait(false);
 
+            var normalizedTurn = _assistantTurnNormalizer is null
+                ? null
+                : await _assistantTurnNormalizer(conversation, result.Response.Text, cts.Token).ConfigureAwait(false);
             await RunOnUiAsync(() => {
-                if (!string.IsNullOrWhiteSpace(result.Response.Text)) {
-                    assistantItem.Text = result.Response.Text;
+                var visibleText = normalizedTurn?.VisibleText ?? result.Response.Text;
+                if (normalizedTurn is not null) {
+                    assistantItem.Text = visibleText;
+                } else if (!string.IsNullOrWhiteSpace(visibleText)) {
+                    assistantItem.Text = visibleText;
                 }
 
                 assistantItem.SetModel(string.IsNullOrWhiteSpace(result.Metrics?.Model)

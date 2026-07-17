@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 
 namespace IntelligenceX.Chat.App.Launch;
@@ -120,7 +121,10 @@ internal static class ChatRequestOptionsFactory {
     /// <summary>
     /// Creates request settings directly from persisted desktop profile state.
     /// </summary>
-    public static ChatRequestOptions CreateFromState(ChatAppState state, string? conversationModelOverride = null) {
+    public static ChatRequestOptions CreateFromState(
+        ChatAppState state,
+        string? conversationModelOverride = null,
+        SessionPolicyDto? servicePolicy = null) {
         ArgumentNullException.ThrowIfNull(state);
         var imageOverridesActive = state.LocalProviderImageGenerationOverrideActive;
         var configuredModel = string.IsNullOrWhiteSpace(conversationModelOverride)
@@ -146,9 +150,13 @@ internal static class ChatRequestOptionsFactory {
             ImageGenerationOutputDirectory = imageOverridesActive ? state.LocalProviderImageGenerationOutputDirectory : null,
             DisabledTools = state.DisabledTools,
             MaxToolRounds = state.AutonomyMaxToolRounds,
+            ServiceMaxToolRounds = servicePolicy?.MaxToolRounds,
             ParallelTools = state.AutonomyParallelTools,
+            ServiceParallelTools = servicePolicy?.ParallelTools ?? true,
             TurnTimeoutSeconds = state.AutonomyTurnTimeoutSeconds,
+            ServiceTurnTimeoutSeconds = servicePolicy?.TurnTimeoutSeconds,
             ToolTimeoutSeconds = state.AutonomyToolTimeoutSeconds,
+            ServiceToolTimeoutSeconds = servicePolicy?.ToolTimeoutSeconds,
             WeightedToolRouting = state.AutonomyWeightedToolRouting,
             MaxCandidateTools = state.AutonomyMaxCandidateTools,
             PlanExecuteReviewLoop = state.AutonomyPlanExecuteReviewLoop,

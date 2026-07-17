@@ -30,33 +30,31 @@ public sealed partial class MainWindow : Window {
     private sealed record NormalizedAssistantTurn(string VisibleText, IReadOnlyList<AssistantPendingAction> PendingActions, string? PendingAssistantQuestionHint);
 
     private async Task<NormalizedAssistantTurn> ApplyAssistantProfileUpdateAsync(string? assistantText) {
-        var normalized = (assistantText ?? string.Empty).Trim();
-        var cleanedText = normalized;
-        IReadOnlyList<AssistantPendingAction> pendingActions = Array.Empty<AssistantPendingAction>();
+        var protocolResult = DesktopChatTurnProtocol.NormalizeAssistantResponse(assistantText);
         var profileChanged = false;
-        if (OnboardingModelProtocol.TryExtractLastProfileUpdate(cleanedText, out var profileUpdate, out var profileCleanedText)) {
-            profileChanged = await ApplyProfileUpdateAsync(profileUpdate, autoCompleteOnboardingForProfileScope: false).ConfigureAwait(false);
-            cleanedText = profileCleanedText;
+        if (protocolResult.ProfileUpdate is not null) {
+            profileChanged = await ApplyProfileUpdateAsync(
+                    protocolResult.ProfileUpdate,
+                    autoCompleteOnboardingForProfileScope: false)
+                .ConfigureAwait(false);
         }
 
         var memoryChanged = false;
-        if (MemoryModelProtocol.TryExtractLastMemoryUpdate(cleanedText, out var memoryUpdate, out var memoryCleanedText)) {
-            memoryChanged = await ApplyMemoryUpdateAsync(memoryUpdate).ConfigureAwait(false);
-            cleanedText = memoryCleanedText;
+        if (protocolResult.MemoryUpdate is not null) {
+            memoryChanged = await ApplyMemoryUpdateAsync(protocolResult.MemoryUpdate).ConfigureAwait(false);
         }
 
-        if (ActionModelProtocol.TryStripAndExtractPendingActions(cleanedText, out var extractedPendingActions, out var actionCleanedText)) {
-            pendingActions = extractedPendingActions;
-            cleanedText = ActionModelProtocol.MergeVisibleTextWithPendingActions(actionCleanedText, pendingActions);
+        if (!string.IsNullOrWhiteSpace(protocolResult.VisibleText)) {
+            return new NormalizedAssistantTurn(
+                protocolResult.VisibleText,
+                protocolResult.PendingActions,
+                protocolResult.PendingAssistantQuestionHint);
         }
 
-        var pendingAssistantQuestionHint = ConversationStyleGuidanceBuilder.BuildAssistantQuestionHint(cleanedText);
-
-        if (!string.IsNullOrWhiteSpace(cleanedText)) {
-            return new NormalizedAssistantTurn(cleanedText, pendingActions, pendingAssistantQuestionHint);
-        }
-
-        return new NormalizedAssistantTurn(profileChanged || memoryChanged ? "Got it." : normalized, pendingActions, pendingAssistantQuestionHint);
+        return new NormalizedAssistantTurn(
+            profileChanged || memoryChanged ? "Got it." : (assistantText ?? string.Empty).Trim(),
+            protocolResult.PendingActions,
+            protocolResult.PendingAssistantQuestionHint);
     }
 
     private static string? NormalizeProfileValue(string? value) {

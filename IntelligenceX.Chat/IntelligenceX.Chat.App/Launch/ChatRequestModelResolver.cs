@@ -11,7 +11,6 @@ internal static class ChatRequestModelResolver {
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
     private const string TransportCopilotCli = "copilot-cli";
-    private const string DefaultOllamaBaseUrl = "http://127.0.0.1:11434";
 
     /// <summary>
     /// Resolves a configured model against the catalog exposed by the selected runtime.
@@ -21,7 +20,7 @@ internal static class ChatRequestModelResolver {
         string? baseUrl,
         string? configuredModel,
         IReadOnlyList<ModelInfoDto>? availableModels) {
-        var normalizedTransport = NormalizeTransport(transport);
+        var normalizedTransport = ChatServiceLaunchProfileMapper.NormalizeTransport(transport);
         var normalizedConfiguredModel = (configuredModel ?? string.Empty).Trim();
         var localCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
                                      && CompatibleProviderEndpointPolicy.IsLocalRuntimePreset(
@@ -66,36 +65,17 @@ internal static class ChatRequestModelResolver {
             return null;
         }
 
-        var runtimeTransport = NormalizeTransport(state.LocalProviderTransport);
-        var cacheTransport = NormalizeTransport(state.CachedModelsTransport);
+        var runtimeTransport = ChatServiceLaunchProfileMapper.NormalizeTransport(state.LocalProviderTransport);
+        var cacheTransport = ChatServiceLaunchProfileMapper.NormalizeTransport(state.CachedModelsTransport);
         if (!string.Equals(runtimeTransport, cacheTransport, StringComparison.OrdinalIgnoreCase)) {
             return null;
         }
 
-        var runtimeBaseUrl = NormalizeBaseUrl(state.LocalProviderBaseUrl, runtimeTransport);
-        var cacheBaseUrl = NormalizeBaseUrl(state.CachedModelsBaseUrl, cacheTransport);
+        var runtimeBaseUrl = ChatServiceLaunchProfileMapper.NormalizeBaseUrl(state.LocalProviderBaseUrl, runtimeTransport);
+        var cacheBaseUrl = ChatServiceLaunchProfileMapper.NormalizeBaseUrl(state.CachedModelsBaseUrl, cacheTransport);
         return string.Equals(runtimeBaseUrl, cacheBaseUrl, StringComparison.OrdinalIgnoreCase)
             ? state.CachedModels
             : null;
-    }
-
-    private static string NormalizeTransport(string? value) {
-        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-        return normalized switch {
-            "compatible-http" or "compatiblehttp" or "http" or "local" or "ollama" or "lmstudio" or "lm-studio" =>
-                TransportCompatibleHttp,
-            "copilot" or "copilot-cli" or "github-copilot" or "githubcopilot" => TransportCopilotCli,
-            _ => TransportNative
-        };
-    }
-
-    private static string NormalizeBaseUrl(string? value, string transport) {
-        if (!string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
-            return string.Empty;
-        }
-
-        var normalized = (value ?? string.Empty).Trim();
-        return normalized.Length == 0 ? DefaultOllamaBaseUrl : normalized.TrimEnd('/');
     }
 
     private static bool IsLikelyCloudHostedModelName(string? modelName) {

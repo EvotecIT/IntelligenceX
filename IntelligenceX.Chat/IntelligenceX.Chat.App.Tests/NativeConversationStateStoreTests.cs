@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.App.Native;
 using Xunit;
 
@@ -517,6 +518,202 @@ public sealed class NativeConversationStateStoreTests {
             var preserved = Assert.Single(saved!.Conversations, conversation => conversation.Id == "chat-empty-old");
             Assert.Equal("keep me", Assert.Single(preserved.Messages).Text);
             Assert.Equal("pending-legacy", Assert.Single(preserved.PendingActions).Id);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures legacy provider aliases are repaired before the native sidecar is configured.
+    /// </summary>
+    [Theory]
+    [InlineData("ollama", "http://127.0.0.1:11434")]
+    [InlineData("lmstudio", "http://127.0.0.1:1234/v1")]
+    [InlineData("http", "http://127.0.0.1:11434")]
+    [InlineData("local", "http://127.0.0.1:11434")]
+    public async Task CreateServiceLaunchProfileOptions_NormalizesLegacyProviderAliases(
+        string alias,
+        string expectedBaseUrl) {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState { LocalProviderTransport = alias, LocalProviderBaseUrl = null },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            _ = await nativeStore.LoadAsync(CancellationToken.None);
+            var options = nativeStore.CreateServiceLaunchProfileOptions();
+
+            Assert.Equal("compatible-http", options.OpenAITransport);
+            Assert.Equal(expectedBaseUrl, options.OpenAIBaseUrl);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures failed and canceled assistant outcomes survive a native history round trip.
+    /// </summary>
+    [Theory]
+    [InlineData("Canceled")]
+    [InlineData("Error")]
+    public async Task SaveAndLoadAsync_RoundTripsAssistantOutcomeStatus(string status) {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            var conversation = new NativeConversation(
+                "chat-status",
+                "Outcome",
+                messages: new[] {
+                    new NativeChatTranscriptItem("assistant", "Outcome text", DateTimeOffset.UtcNow, status)
+                });
+            await using (var store = new NativeConversationStateStore(path)) {
+                await store.SaveAsync(
+                    new NativeConversationWorkspace(new[] { conversation }, conversation.Id),
+                    CancellationToken.None);
+            }
+
+            await using var reloaded = new NativeConversationStateStore(path);
+            var workspace = await reloaded.LoadAsync(CancellationToken.None);
+
+            Assert.Equal(status, Assert.Single(Assert.Single(workspace.Conversations).Messages).Status);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures native chat uses the shared prompt and response protocol instead of exposing private blocks.
+    /// </summary>
+    [Fact]
+    public async Task NativeTurnProtocol_BuildsRichRequestAndAppliesStructuredResponse() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        UserName = "Przemek",
+                        AssistantPersona = "friendly pragmatic engineer",
+                        ThemePreset = "cobalt",
+                        OnboardingCompleted = true,
+                        ProactiveModeEnabled = true,
+                        MemoryFacts = new List<ChatMemoryFactState> {
+                            new() { Fact = "The preferred AD lab is ad.evotec.xyz", Weight = 5 }
+                        },
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-protocol", Title = "Protocol" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var store = new NativeConversationStateStore(path);
+            var workspace = await store.LoadAsync(CancellationToken.None);
+            var conversation = Assert.Single(workspace.Conversations);
+            conversation.Messages.Add(new NativeChatTranscriptItem("user", "Investigate this", DateTimeOffset.UtcNow));
+            var requestText = store.BuildRequestText(
+                conversation,
+                "Investigate this",
+                new SessionPolicyDto {
+                    ReadOnly = true,
+                    DangerousToolsEnabled = false,
+                    MaxToolRounds = 9,
+                    ParallelTools = false,
+                    AllowMutatingParallelToolCalls = false
+                });
+
+            const string response = """
+                I can continue safely.
+
+                ```ix_profile
+                {"userName":"Operator","assistantPersona":"friendly analyst","themePreset":"graphite","scope":"profile"}
+                ```
+
+                ```ix_memory
+                {"upserts":[{"fact":"Prefer concise risk summaries","weight":4,"tags":["style"]}]}
+                ```
+
+                [Action]
+                ix:action:v1
+                id: act_continue
+                title: Continue investigation
+                request: Continue the current investigation.
+                reply: /act act_continue
+                """;
+            var normalized = await store.NormalizeAssistantTurnAsync(
+                conversation,
+                response,
+                CancellationToken.None);
+            await store.SaveAsync(workspace, CancellationToken.None);
+
+            Assert.Contains("[Execution behavior]", requestText, StringComparison.Ordinal);
+            Assert.Contains("friendly pragmatic engineer", requestText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("The preferred AD lab is ad.evotec.xyz", requestText, StringComparison.Ordinal);
+            Assert.Contains("ix_profile", requestText, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("I can continue safely.", normalized.VisibleText);
+            Assert.DoesNotContain("ix_profile", normalized.VisibleText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("ix_memory", normalized.VisibleText, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("act_continue", Assert.Single(conversation.PendingActions).Id);
+
+            using var verifier = new ChatAppStateStore(path);
+            var state = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(state);
+            Assert.Equal("Operator", state!.UserName);
+            Assert.Equal("friendly analyst", state.AssistantPersona);
+            Assert.Equal("graphite", state.ThemePreset);
+            Assert.Contains(state.MemoryFacts, fact => fact.Fact == "Prefer concise risk summaries");
+            Assert.Equal("act_continue", Assert.Single(Assert.Single(state.Conversations).PendingActions).Id);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures two native store instances retain both turns when their saves overlap.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_AtomicallyMergesOverlappingStoreWrites() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-shared", Title = "Shared" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var firstStore = new NativeConversationStateStore(path);
+            await using var secondStore = new NativeConversationStateStore(path);
+            var firstWorkspace = await firstStore.LoadAsync(CancellationToken.None);
+            var secondWorkspace = await secondStore.LoadAsync(CancellationToken.None);
+            Assert.Single(firstWorkspace.Conversations).Messages.Add(
+                new NativeChatTranscriptItem("assistant", "first", DateTimeOffset.UtcNow.AddSeconds(-1), "Complete"));
+            Assert.Single(firstWorkspace.Conversations).UpdatedUtc = DateTime.UtcNow.AddSeconds(-1);
+            Assert.Single(secondWorkspace.Conversations).Messages.Add(
+                new NativeChatTranscriptItem("assistant", "second", DateTimeOffset.UtcNow, "Complete"));
+            Assert.Single(secondWorkspace.Conversations).UpdatedUtc = DateTime.UtcNow;
+
+            await Task.WhenAll(
+                firstStore.SaveAsync(firstWorkspace, CancellationToken.None),
+                secondStore.SaveAsync(secondWorkspace, CancellationToken.None));
+
+            using var verifier = new ChatAppStateStore(path);
+            var state = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(state);
+            Assert.Equal(
+                new[] { "first", "second" },
+                Assert.Single(state!.Conversations).Messages.Select(message => message.Text));
         } finally {
             DeleteTemporaryDirectory(directory);
         }

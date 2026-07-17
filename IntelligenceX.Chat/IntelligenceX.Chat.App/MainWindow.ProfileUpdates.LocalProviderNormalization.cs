@@ -46,53 +46,15 @@ public sealed partial class MainWindow : Window {
     }
 
     internal static bool TryNormalizeLocalProviderTransport(string? value, out string transport) {
-        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-        switch (normalized) {
-            case "native":
-                transport = TransportNative;
-                return true;
-            case "compatible-http":
-            case "compatiblehttp":
-            case "http":
-            case "local":
-            case "ollama":
-            case "lmstudio":
-            case "lm-studio":
-                transport = TransportCompatibleHttp;
-                return true;
-            case "copilot":
-            case "copilot-cli":
-            case "github-copilot":
-            case "githubcopilot":
-                transport = TransportCopilotCli;
-                return true;
-            default:
-                transport = TransportNative;
-                return false;
-        }
+        return ChatServiceLaunchProfileMapper.TryNormalizeTransport(value, out transport);
     }
 
     private static string NormalizeLocalProviderTransport(string? value) {
-        return TryNormalizeLocalProviderTransport(value, out var normalized)
-            ? normalized
-            : TransportNative;
+        return ChatServiceLaunchProfileMapper.NormalizeTransport(value);
     }
 
     private static string? NormalizeLocalProviderBaseUrl(string? value, string transport, string? transportHint = null) {
-        var normalized = (value ?? string.Empty).Trim();
-        if (!string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
-            return null;
-        }
-
-        if (normalized.Length == 0) {
-            var hint = (transportHint ?? string.Empty).Trim().ToLowerInvariant();
-            if (hint is "lmstudio" or "lm-studio") {
-                return DefaultLmStudioBaseUrl;
-            }
-            return DefaultOllamaBaseUrl;
-        }
-
-        return normalized;
+        return ChatServiceLaunchProfileMapper.NormalizeBaseUrl(value, transport, transportHint);
     }
 
     private static string DetectCompatibleProviderPreset(string? baseUrl) {

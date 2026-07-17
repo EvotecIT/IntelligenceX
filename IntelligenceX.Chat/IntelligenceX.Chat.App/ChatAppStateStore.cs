@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -24,9 +27,14 @@ internal sealed class ChatAppStateStore : IDisposable {
     private const int MaxPersistedQueuedTurns = 24;
     private const int MaxPersistedPendingActionsPerConversation = 6;
 
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> WriteGates =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private readonly string _dbPath;
     private readonly JsonSerializerOptions _json;
     private readonly SQLite _db = new();
+    private readonly SemaphoreSlim _writeGate;
+    private readonly Mutex? _crossProcessWriteGate;
 
     public ChatAppStateStore(string dbPath) {
         if (string.IsNullOrWhiteSpace(dbPath)) {
@@ -34,6 +42,11 @@ internal sealed class ChatAppStateStore : IDisposable {
         }
 
         _dbPath = Path.GetFullPath(dbPath);
+        _writeGate = WriteGates.GetOrAdd(_dbPath, static _ => new SemaphoreSlim(1, 1));
+        if (OperatingSystem.IsWindows()) {
+            var pathHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_dbPath.ToUpperInvariant())));
+            _crossProcessWriteGate = new Mutex(false, "Local\\IntelligenceX.Chat.AppState." + pathHash);
+        }
         _json = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
@@ -52,10 +65,13 @@ internal sealed class ChatAppStateStore : IDisposable {
 
     internal string DatabasePath => _dbPath;
 
-    public Task<ChatAppState?> GetAsync(string profileName, CancellationToken cancellationToken) {
+    public Task<ChatAppState?> GetAsync(string profileName, CancellationToken cancellationToken) =>
+        Task.FromResult(GetCore(profileName, cancellationToken));
+
+    private ChatAppState? GetCore(string profileName, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(profileName)) {
-            return Task.FromResult<ChatAppState?>(null);
+            return null;
         }
 
         var json = _db.ExecuteScalar(
@@ -64,7 +80,7 @@ internal sealed class ChatAppStateStore : IDisposable {
             parameters: new Dictionary<string, object?> { ["@name"] = profileName.Trim() }) as string;
 
         if (string.IsNullOrWhiteSpace(json)) {
-            return Task.FromResult<ChatAppState?>(null);
+            return null;
         }
 
         try {
@@ -77,13 +93,51 @@ internal sealed class ChatAppStateStore : IDisposable {
                 state.LocalProviderImageGenerationOverrideActiveWasPresent = hasImageGenerationOverrideActive;
             }
 
-            return Task.FromResult(state);
+            return state;
         } catch (Exception ex) {
             throw new InvalidOperationException($"Failed to parse app profile '{profileName}'.", ex);
         }
     }
 
-    public Task UpsertAsync(string profileName, ChatAppState state, CancellationToken cancellationToken) {
+    public async Task UpsertAsync(string profileName, ChatAppState state, CancellationToken cancellationToken) {
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var crossProcessGateHeld = false;
+        try {
+            crossProcessGateHeld = WaitForCrossProcessWriteGate(cancellationToken);
+            UpsertCore(profileName, state, cancellationToken);
+        } finally {
+            if (crossProcessGateHeld) {
+                _crossProcessWriteGate!.ReleaseMutex();
+            }
+            _writeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Atomically reads, mutates, and writes one profile across store instances and Windows desktop processes.
+    /// </summary>
+    public async Task<ChatAppState> UpdateAsync(
+        string profileName,
+        Func<ChatAppState?, ChatAppState> update,
+        CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(update);
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var crossProcessGateHeld = false;
+        try {
+            crossProcessGateHeld = WaitForCrossProcessWriteGate(cancellationToken);
+            var current = GetCore(profileName, cancellationToken);
+            var next = update(current) ?? throw new InvalidOperationException("The app-state update returned no state.");
+            UpsertCore(profileName, next, cancellationToken);
+            return next;
+        } finally {
+            if (crossProcessGateHeld) {
+                _crossProcessWriteGate!.ReleaseMutex();
+            }
+            _writeGate.Release();
+        }
+    }
+
+    private void UpsertCore(string profileName, ChatAppState state, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(profileName)) {
             throw new ArgumentException("Profile name cannot be empty.", nameof(profileName));
@@ -178,7 +232,6 @@ internal sealed class ChatAppStateStore : IDisposable {
                 ["@updated_utc"] = payload.UpdatedUtc.ToString("O")
             });
 
-        return Task.CompletedTask;
     }
 
     public Task<IReadOnlyList<string>> ListProfileNamesAsync(CancellationToken cancellationToken) {
@@ -209,7 +262,32 @@ internal sealed class ChatAppStateStore : IDisposable {
     }
 
     public void Dispose() {
+        _crossProcessWriteGate?.Dispose();
         _db.Dispose();
+    }
+
+    private bool WaitForCrossProcessWriteGate(CancellationToken cancellationToken) {
+        if (_crossProcessWriteGate is null) {
+            return false;
+        }
+
+        int signaled;
+        try {
+            signaled = WaitHandle.WaitAny(new WaitHandle[] {
+                _crossProcessWriteGate,
+                cancellationToken.WaitHandle
+            });
+        } catch (AbandonedMutexException ex) when (ex.MutexIndex == 0) {
+            // The previous writer exited mid-write. SQLite preserved transaction integrity,
+            // and this process now owns the abandoned mutex and can safely retry the mutation.
+            return true;
+        }
+        if (signaled != 0) {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new OperationCanceledException(cancellationToken);
+        }
+
+        return true;
     }
 
     private static DataTable? QueryAsTable(object? queryResult) {
@@ -328,6 +406,7 @@ internal sealed class ChatMessageState {
     public string Text { get; set; } = string.Empty;
     public DateTime TimeUtc { get; set; } = DateTime.UtcNow;
     public string? Model { get; set; }
+    public string? Status { get; set; }
 }
 
 internal sealed class ChatMemoryFactState {

@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Native;
@@ -200,5 +201,29 @@ public sealed class ChatServiceLaunchProfileMapperTests {
         Assert.Equal(ChatRequestOptionLimits.DefaultToolRounds, options.MaxToolRounds);
         Assert.Null(options.WeightedToolRouting);
         Assert.Null(options.ModelHeartbeatSeconds);
+    }
+
+    /// <summary>
+    /// Ensures unset native autonomy values inherit the connected service policy.
+    /// </summary>
+    [Fact]
+    public void CreateFromState_UsesConnectedServicePolicyDefaults() {
+        var options = ChatRequestOptionsFactory.CreateFromState(
+            new ChatAppState(),
+            servicePolicy: new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 11,
+                ParallelTools = false,
+                AllowMutatingParallelToolCalls = false,
+                TurnTimeoutSeconds = 420,
+                ToolTimeoutSeconds = 75
+            });
+
+        Assert.Equal(11, options.MaxToolRounds);
+        Assert.False(options.ParallelTools);
+        Assert.Equal(ChatRequestOptionsFactory.ParallelToolModeAuto, options.ParallelToolMode);
+        Assert.Equal(420, options.TurnTimeoutSeconds);
+        Assert.Equal(75, options.ToolTimeoutSeconds);
     }
 }

@@ -14,12 +14,18 @@ internal sealed class NativeConversation {
         string title,
         string? threadId = null,
         DateTime updatedUtc = default,
-        IEnumerable<NativeChatTranscriptItem>? messages = null) {
+        IEnumerable<NativeChatTranscriptItem>? messages = null,
+        IEnumerable<AssistantPendingAction>? pendingActions = null,
+        string? pendingAssistantQuestionHint = null) {
         Id = string.IsNullOrWhiteSpace(id) ? CreateId() : id.Trim();
         Title = NormalizeTitle(title);
         ThreadId = string.IsNullOrWhiteSpace(threadId) ? null : threadId.Trim();
         UpdatedUtc = updatedUtc == default ? DateTime.UtcNow : EnsureUtc(updatedUtc);
         Messages = messages?.ToList() ?? new List<NativeChatTranscriptItem>();
+        PendingActions = pendingActions?.ToList() ?? new List<AssistantPendingAction>();
+        PendingAssistantQuestionHint = string.IsNullOrWhiteSpace(pendingAssistantQuestionHint)
+            ? null
+            : pendingAssistantQuestionHint.Trim();
     }
 
     public string Id { get; }
@@ -31,6 +37,10 @@ internal sealed class NativeConversation {
     public DateTime UpdatedUtc { get; set; }
 
     public List<NativeChatTranscriptItem> Messages { get; }
+
+    public List<AssistantPendingAction> PendingActions { get; }
+
+    public string? PendingAssistantQuestionHint { get; set; }
 
     public bool IsEmptyDraft => Messages.Count == 0
                                 && string.IsNullOrWhiteSpace(ThreadId)
@@ -79,12 +89,16 @@ internal sealed class NativeConversation {
 internal sealed class NativeConversationWorkspace {
     public NativeConversationWorkspace(
         IReadOnlyList<NativeConversation> conversations,
-        string activeConversationId) {
+        string activeConversationId,
+        string? warning = null) {
         Conversations = conversations ?? throw new ArgumentNullException(nameof(conversations));
         ActiveConversationId = activeConversationId ?? string.Empty;
+        Warning = string.IsNullOrWhiteSpace(warning) ? null : warning.Trim();
     }
 
     public IReadOnlyList<NativeConversation> Conversations { get; }
 
     public string ActiveConversationId { get; set; }
+
+    public string? Warning { get; }
 }

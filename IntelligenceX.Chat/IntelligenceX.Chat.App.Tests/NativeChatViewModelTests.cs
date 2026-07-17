@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Native;
 using IntelligenceX.Chat.Client;
 using Xunit;
@@ -65,6 +67,50 @@ public sealed class NativeChatViewModelTests {
         Assert.True(sent);
         Assert.Same(options, Assert.Single(runtime.Requests).Options);
         Assert.Equal("runtime-model", Assert.Single(model.Transcript, item => item.IsAssistant).Model);
+    }
+
+    /// <summary>
+    /// Ensures the native view model sends the shared envelope and renders only normalized assistant text.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_UsesSharedTurnProtocolDelegates() {
+        const string rawResponse = """
+            Visible answer.
+
+            ```ix_memory
+            {"upserts":[{"fact":"private protocol","weight":3}]}
+            ```
+            """;
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult(rawResponse, "thread-1")));
+        var model = new NativeChatViewModel(
+            runtime,
+            requestTextProvider: (_, text, _) => "shared-envelope\n" + text,
+            assistantTurnNormalizer: (_, text, _) => Task.FromResult(
+                DesktopChatTurnProtocol.NormalizeAssistantResponse(text)));
+
+        var sent = await model.SendAsync("hello");
+
+        Assert.True(sent);
+        Assert.Equal("shared-envelope\nhello", Assert.Single(runtime.Requests).Text);
+        var assistant = Assert.Single(model.Transcript, item => item.IsAssistant);
+        Assert.Equal("Visible answer.", assistant.Text);
+        Assert.DoesNotContain("ix_memory", assistant.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures a corrupt history store cannot terminate native window startup.
+    /// </summary>
+    [Fact]
+    public async Task InitializeConversationsAsync_FallsBackToFreshChatWhenLoadFails() {
+        var model = new NativeChatViewModel(
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult(string.Empty, null))),
+            conversationStore: new ThrowingConversationStore());
+
+        await model.InitializeConversationsAsync();
+
+        Assert.Single(model.Conversations);
+        Assert.True(model.ActiveConversation.IsEmptyDraft);
+        Assert.Contains("History load failed", model.StatusText, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -540,6 +586,16 @@ public sealed class NativeChatViewModelTests {
             LastSaved = workspace;
             return Task.CompletedTask;
         }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class ThrowingConversationStore : INativeConversationStore {
+        public Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) =>
+            throw new InvalidDataException("bad persisted JSON");
+
+        public Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.Client;
@@ -27,6 +30,9 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private readonly ChatServiceProcessHost _processHost = new();
     private ChatServiceClient? _client;
     private ChatServiceTurnRunner? _turnRunner;
+    private bool _detachOwnedServiceOnDispose;
+
+    internal SessionPolicyDto? SessionPolicy { get; private set; }
 
     public NativeChatServiceRuntime(
         string? pipeName = null,
@@ -180,6 +186,9 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
             await client.DisposeAsync().ConfigureAwait(false);
         }
 
+        if (_detachOwnedServiceOnDispose) {
+            _processHost.Stop(terminateProcess: false);
+        }
         _processHost.Dispose();
         _connectLock.Dispose();
     }
@@ -218,6 +227,17 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
                 await RetryConnectAsync(client, status, cancellationToken).ConfigureAwait(false);
             }
 
+            try {
+                await SynchronizeSelectedProfileAsync(client, status, cancellationToken).ConfigureAwait(false);
+                var hello = await client.RequestAsync<HelloMessage>(
+                        new HelloRequest { RequestId = "native-hello-" + Guid.NewGuid().ToString("N") },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                SessionPolicy = hello.Policy;
+            } catch {
+                await client.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
             client.Disconnected += OnClientDisconnected;
             _client = client;
             _turnRunner = new ChatServiceTurnRunner(client);
@@ -234,9 +254,11 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
 
     private async Task StartServiceAsync(Func<string, Task> status, CancellationToken cancellationToken) {
         await status("Starting local chat service...").ConfigureAwait(false);
-        var result = await _processHost.EnsureRunningAsync(CreateServiceProcessStartOptions(), cancellationToken)
+        var startOptions = CreateServiceProcessStartOptions();
+        var result = await _processHost.EnsureRunningAsync(startOptions, cancellationToken)
             .ConfigureAwait(false);
         if (result.IsRunning) {
+            _detachOwnedServiceOnDispose = result.Launched && startOptions.DetachedServiceMode;
             return;
         }
 
@@ -249,6 +271,91 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         };
         await status(message).ConfigureAwait(false);
         throw new InvalidOperationException(message, result.Exception);
+    }
+
+    private async Task SynchronizeSelectedProfileAsync(
+        ChatServiceClient client,
+        Func<string, Task> status,
+        CancellationToken cancellationToken) {
+        var options = _profileOptionsProvider?.Invoke();
+        if (options is null) {
+            return;
+        }
+
+        await status("Applying selected chat profile...").ConfigureAwait(false);
+        var desiredProfile = ChatServiceLaunchProfileMapper.NormalizeProfileName(options.LoadProfileName);
+        var profiles = await client.ListProfilesAsync(cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(profiles.ActiveProfile, desiredProfile, StringComparison.OrdinalIgnoreCase)
+            && profiles.Profiles?.Any(profile => string.Equals(profile, desiredProfile, StringComparison.OrdinalIgnoreCase)) == true) {
+            var selected = await client.SetProfileAsync(
+                    desiredProfile,
+                    newThread: false,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            EnsureAccepted(selected, "select the configured profile");
+        }
+
+        BuildPackToggleLists(options.PackToggles, out var enabledPackIds, out var disabledPackIds);
+        var applied = await client.ApplyRuntimeSettingsAsync(
+                model: options.Model,
+                openAITransport: options.OpenAITransport,
+                openAIBaseUrl: options.OpenAIBaseUrl ?? string.Empty,
+                openAIApiKey: options.OpenAIApiKey,
+                openAIAuthMode: options.OpenAIAuthMode,
+                openAIBasicUsername: options.OpenAIBasicUsername,
+                openAIBasicPassword: options.OpenAIBasicPassword,
+                openAIAccountId: options.OpenAIAccountId ?? string.Empty,
+                clearOpenAIApiKey: options.ClearOpenAIApiKey,
+                clearOpenAIBasicAuth: options.ClearOpenAIBasicAuth,
+                openAIStreaming: options.OpenAIStreaming,
+                openAIAllowInsecureHttp: options.OpenAIAllowInsecureHttp,
+                reasoningEffort: options.ReasoningEffort ?? string.Empty,
+                reasoningSummary: options.ReasoningSummary ?? string.Empty,
+                textVerbosity: options.TextVerbosity ?? string.Empty,
+                temperature: options.Temperature,
+                imageGenerationEnabled: options.ImageGenerationEnabled,
+                imageGenerationQuality: options.ClearImageGenerationQuality ? string.Empty : options.ImageGenerationQuality,
+                imageGenerationSize: options.ClearImageGenerationSize ? string.Empty : options.ImageGenerationSize,
+                imageGenerationOutputFormat: options.ClearImageGenerationOutputFormat ? string.Empty : options.ImageGenerationOutputFormat,
+                imageGenerationOutputCompression: options.ImageGenerationOutputCompression,
+                clearImageGenerationOutputCompression: options.ClearImageGenerationOutputCompression,
+                imageGenerationBackground: options.ClearImageGenerationBackground ? string.Empty : options.ImageGenerationBackground,
+                imageGenerationOutputDirectory: options.ClearImageGenerationOutputDirectory ? string.Empty : options.ImageGenerationOutputDirectory,
+                enablePackIds: enabledPackIds,
+                disablePackIds: disabledPackIds,
+                profileName: ChatServiceLaunchProfileMapper.NormalizeProfileName(options.SaveProfileName ?? desiredProfile),
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        EnsureAccepted(applied, "apply the configured runtime settings");
+    }
+
+    private static void BuildPackToggleLists(
+        IReadOnlyList<ChatServicePackToggle>? toggles,
+        out string[]? enabledPackIds,
+        out string[]? disabledPackIds) {
+        enabledPackIds = toggles?
+            .Where(static toggle => toggle.Enabled && !string.IsNullOrWhiteSpace(toggle.PackId))
+            .Select(static toggle => toggle.PackId.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        disabledPackIds = toggles?
+            .Where(static toggle => !toggle.Enabled && !string.IsNullOrWhiteSpace(toggle.PackId))
+            .Select(static toggle => toggle.PackId.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (enabledPackIds is { Length: 0 }) enabledPackIds = null;
+        if (disabledPackIds is { Length: 0 }) disabledPackIds = null;
+    }
+
+    private static void EnsureAccepted(AckMessage response, string action) {
+        if (response.Ok) {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            string.IsNullOrWhiteSpace(response.Message)
+                ? "The chat service could not " + action + "."
+                : response.Message);
     }
 
     internal ChatServiceProcessStartOptions CreateServiceProcessStartOptions() =>
@@ -292,6 +399,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         }
 
         _turnRunner = null;
+        SessionPolicy = null;
         _ = DisposeDisconnectedClientAsync(client);
     }
 

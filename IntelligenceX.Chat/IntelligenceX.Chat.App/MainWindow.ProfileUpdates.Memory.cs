@@ -30,47 +30,10 @@ public sealed partial class MainWindow : Window {
 
     private static IReadOnlyList<string> BuildLocalContextFallbackLines(ConversationRuntime conversation, string userText) {
         ArgumentNullException.ThrowIfNull(conversation);
-
-        // Prefer local-history fallback when no remote thread exists or the
-        // user asks context-dependent follow-ups ("check this", "same", etc.).
-        var needsFallback = string.IsNullOrWhiteSpace(conversation.ThreadId)
-                            || LooksLikeContextDependentFollowUp(userText);
-        if (!needsFallback) {
-            return Array.Empty<string>();
-        }
-
-        var lines = new List<string>();
-        var remaining = 6;
-        for (var i = conversation.Messages.Count - 1; i >= 0 && remaining > 0; i--) {
-            var message = conversation.Messages[i];
-            if (string.IsNullOrWhiteSpace(message.Text)) {
-                continue;
-            }
-
-            if (string.Equals(message.Role, "Tools", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(message.Role, "System", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            if (string.Equals(message.Role, "User", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(message.Text.Trim(), (userText ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var compact = CompactMessageForContext(message.Text);
-            if (compact.Length == 0) {
-                continue;
-            }
-
-            var role = string.Equals(message.Role, "Assistant", StringComparison.OrdinalIgnoreCase)
-                ? "Assistant"
-                : "User";
-            lines.Add(role + ": " + compact);
-            remaining--;
-        }
-
-        lines.Reverse();
-        return lines;
+        return Conversation.DesktopChatTurnProtocol.BuildLocalContextFallbackLines(
+            conversation.ThreadId,
+            conversation.Messages,
+            userText);
     }
 
     private IReadOnlyList<string> BuildPersistentMemoryContextLines(string userText) {
