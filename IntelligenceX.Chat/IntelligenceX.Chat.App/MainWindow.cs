@@ -48,7 +48,7 @@ public sealed partial class MainWindow : Window {
     private const int VkLButton = 0x0001;
     private const int MaxConversations = 40;
     private const int MaxMessagesPerConversation = 250;
-    private const int MaxQueuedTurns = 8;
+    private const int MaxQueuedTurns = ChatQueueContract.MaxTurns;
     private const int MaxActivityTimelineEntries = 6;
     private const int MaxActivityTimelineLabelChars = 48;
     private const int MaxRoutingPromptExposureHistoryEntries = 6;

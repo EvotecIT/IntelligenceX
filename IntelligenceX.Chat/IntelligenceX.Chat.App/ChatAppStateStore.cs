@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using DBAClientX;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Storage;
+using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Chat.App;
@@ -24,7 +25,6 @@ internal sealed class ChatAppStateStore : IDisposable {
     private const int MaxPersistedModelEntries = 250;
     private const int MaxPersistedFavoriteEntries = 100;
     private const int MaxPersistedRecentEntries = 100;
-    private const int MaxPersistedQueuedTurns = 24;
     private const int MaxPersistedPendingActionsPerConversation = 6;
 
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> WriteGates =
@@ -212,17 +212,17 @@ internal sealed class ChatAppStateStore : IDisposable {
                 .ToList();
         }
 
-        if (payload.PendingTurns is { Count: > MaxPersistedQueuedTurns }) {
+        if (payload.PendingTurns is { Count: > ChatQueueContract.MaxTurns }) {
             payload.PendingTurns = payload.PendingTurns
                 .OrderBy(turn => turn.EnqueuedUtc)
-                .TakeLast(MaxPersistedQueuedTurns)
+                .Take(ChatQueueContract.MaxTurns)
                 .ToList();
         }
 
-        if (payload.QueuedTurnsAfterLogin is { Count: > MaxPersistedQueuedTurns }) {
+        if (payload.QueuedTurnsAfterLogin is { Count: > ChatQueueContract.MaxTurns }) {
             payload.QueuedTurnsAfterLogin = payload.QueuedTurnsAfterLogin
                 .OrderBy(turn => turn.EnqueuedUtc)
-                .TakeLast(MaxPersistedQueuedTurns)
+                .Take(ChatQueueContract.MaxTurns)
                 .ToList();
         }
 

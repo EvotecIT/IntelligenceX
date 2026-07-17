@@ -52,7 +52,9 @@ internal sealed partial class NativeChatWindow {
             } else {
                 await _conversationStore.ReloadProfileStateAsync(timeout.Token).ConfigureAwait(true);
             }
-            await RefreshRuntimeReadinessAsync(force: true).WaitAsync(timeout.Token).ConfigureAwait(true);
+            await RefreshRuntimeReadinessAsync(force: true, synchronizeSelectedProfile: true)
+                .WaitAsync(timeout.Token)
+                .ConfigureAwait(true);
             _ = await _viewModel.CheckSignInAsync(timeout.Token).ConfigureAwait(true);
             StartupLog.Write("Native runtime state reloaded after shared settings closed.");
         } catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) {

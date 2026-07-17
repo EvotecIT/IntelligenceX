@@ -71,6 +71,16 @@ internal static class DesktopChatStateMerger {
                && SequenceEqual(left.DisabledTools, right.DisabledTools, StringComparer.Ordinal.Equals);
     }
 
+    /// <summary>
+    /// Compares live queue state that must not be silently adopted as a persistence baseline by another window.
+    /// </summary>
+    internal static bool LiveOperationalStateEquals(ChatAppState left, ChatAppState right) {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+        return SequenceEqual(left.PendingTurns, right.PendingTurns, QueuedTurnEquals)
+               && SequenceEqual(left.QueuedTurnsAfterLogin, right.QueuedTurnsAfterLogin, QueuedTurnEquals);
+    }
+
     internal static ChatAppState MergeLegacySnapshot(
         ChatAppState local,
         ChatAppState? baseline,
@@ -102,6 +112,11 @@ internal static class DesktopChatStateMerger {
             latest.PersistentMemoryEnabled);
         local.MemoryFacts = MergeMemoryFacts(local.MemoryFacts, baseline.MemoryFacts, latest.MemoryFacts);
         local.Conversations = MergeConversations(local.Conversations, baseline.Conversations, latest.Conversations);
+        local.PendingTurns = MergeQueuedTurns(local.PendingTurns, baseline.PendingTurns, latest.PendingTurns);
+        local.QueuedTurnsAfterLogin = MergeQueuedTurns(
+            local.QueuedTurnsAfterLogin,
+            baseline.QueuedTurnsAfterLogin,
+            latest.QueuedTurnsAfterLogin);
         local.ActiveConversationId = Resolve(
             local.ActiveConversationId,
             baseline.ActiveConversationId,
@@ -414,6 +429,67 @@ internal static class DesktopChatStateMerger {
         return resolved.ToList();
     }
 
+    private static List<ChatQueuedTurnState> MergeQueuedTurns(
+        IReadOnlyList<ChatQueuedTurnState>? local,
+        IReadOnlyList<ChatQueuedTurnState>? baseline,
+        IReadOnlyList<ChatQueuedTurnState>? latest) {
+        var localValues = local ?? Array.Empty<ChatQueuedTurnState>();
+        var baselineValues = baseline ?? Array.Empty<ChatQueuedTurnState>();
+        var latestValues = latest ?? Array.Empty<ChatQueuedTurnState>();
+        if (SequenceEqual(localValues, baselineValues, QueuedTurnEquals)) {
+            return latestValues.Select(CloneQueuedTurn).ToList();
+        }
+        if (SequenceEqual(latestValues, baselineValues, QueuedTurnEquals)) {
+            return localValues.Select(CloneQueuedTurn).ToList();
+        }
+
+        var localById = IndexQueuedTurns(localValues);
+        var baselineById = IndexQueuedTurns(baselineValues);
+        var latestById = IndexQueuedTurns(latestValues);
+        var ids = latestById.Keys
+            .Concat(localById.Keys)
+            .Concat(baselineById.Keys)
+            .Distinct(StringComparer.Ordinal);
+        var merged = new List<ChatQueuedTurnState>();
+        foreach (var id in ids) {
+            var hasLocal = localById.TryGetValue(id, out var localValue);
+            var hadBaseline = baselineById.ContainsKey(id);
+            var hasLatest = latestById.TryGetValue(id, out var latestValue);
+            if (hadBaseline) {
+                // A baseline entry missing from either side was consumed there; never resurrect it.
+                if (hasLocal && hasLatest) {
+                    merged.Add(CloneQueuedTurn(localValue!));
+                }
+                continue;
+            }
+
+            if (hasLocal || hasLatest) {
+                merged.Add(CloneQueuedTurn(hasLocal ? localValue! : latestValue!));
+            }
+        }
+
+        return merged
+            .OrderBy(static value => EnsureUtc(value.EnqueuedUtc))
+            .Take(ChatQueueContract.MaxTurns)
+            .ToList();
+    }
+
+    private static Dictionary<string, ChatQueuedTurnState> IndexQueuedTurns(
+        IReadOnlyList<ChatQueuedTurnState> turns) {
+        var indexed = new Dictionary<string, ChatQueuedTurnState>(StringComparer.Ordinal);
+        var duplicateCounters = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var turn in turns) {
+            var identity = (turn.ConversationId ?? string.Empty).Trim().ToUpperInvariant()
+                           + "|" + EnsureUtc(turn.EnqueuedUtc).Ticks
+                           + "|" + turn.SkipUserBubbleOnDispatch
+                           + "|" + (turn.Text ?? string.Empty);
+            var occurrence = duplicateCounters.TryGetValue(identity, out var count) ? count + 1 : 0;
+            duplicateCounters[identity] = occurrence;
+            indexed[identity + "|" + occurrence] = turn;
+        }
+        return indexed;
+    }
+
     private static Dictionary<string, ChatConversationState> IndexConversations(
         IReadOnlyList<ChatConversationState>? conversations) {
         return (conversations ?? Array.Empty<ChatConversationState>())
@@ -478,6 +554,12 @@ internal static class DesktopChatStateMerger {
             && string.Equals(a.Request, b.Request, StringComparison.Ordinal)
             && string.Equals(a.Reply, b.Reply, StringComparison.Ordinal));
 
+    private static bool QueuedTurnEquals(ChatQueuedTurnState left, ChatQueuedTurnState right) =>
+        string.Equals(left.Text, right.Text, StringComparison.Ordinal)
+        && string.Equals(left.ConversationId, right.ConversationId, StringComparison.OrdinalIgnoreCase)
+        && EnsureUtc(left.EnqueuedUtc) == EnsureUtc(right.EnqueuedUtc)
+        && left.SkipUserBubbleOnDispatch == right.SkipUserBubbleOnDispatch;
+
     private static bool SequenceEqual<T>(
         IReadOnlyList<T>? left,
         IReadOnlyList<T>? right,
@@ -524,6 +606,14 @@ internal static class DesktopChatStateMerger {
             Title = value.Title,
             Request = value.Request,
             Reply = value.Reply
+        };
+
+    private static ChatQueuedTurnState CloneQueuedTurn(ChatQueuedTurnState value) =>
+        new() {
+            Text = value.Text,
+            ConversationId = value.ConversationId,
+            EnqueuedUtc = value.EnqueuedUtc,
+            SkipUserBubbleOnDispatch = value.SkipUserBubbleOnDispatch
         };
 
     private static ChatMemoryFactState CloneMemoryFact(ChatMemoryFactState value) =>

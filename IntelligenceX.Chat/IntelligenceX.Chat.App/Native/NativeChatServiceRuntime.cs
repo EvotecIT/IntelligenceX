@@ -66,8 +66,21 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         }
     }
 
-    internal async Task RefreshSessionPolicyAsync(CancellationToken cancellationToken) {
-        var client = await EnsureConnectedAsync(_ => Task.CompletedTask, cancellationToken).ConfigureAwait(false);
+    internal Task RefreshSessionPolicyAsync(CancellationToken cancellationToken) =>
+        RefreshSessionPolicyCoreAsync(synchronizeSelectedProfile: false, cancellationToken);
+
+    internal Task SynchronizeSelectedProfileAndRefreshSessionPolicyAsync(CancellationToken cancellationToken) =>
+        RefreshSessionPolicyCoreAsync(synchronizeSelectedProfile: true, cancellationToken);
+
+    private async Task RefreshSessionPolicyCoreAsync(
+        bool synchronizeSelectedProfile,
+        CancellationToken cancellationToken) {
+        var connection = await EnsureConnectedAsync(_ => Task.CompletedTask, cancellationToken).ConfigureAwait(false);
+        var client = connection.Client;
+        if (synchronizeSelectedProfile && !connection.SelectedProfileSynchronized) {
+            await SynchronizeSelectedProfileAsync(connection.Client, _ => Task.CompletedTask, cancellationToken)
+                .ConfigureAwait(false);
+        }
         _ = await client.RequestAsync<ToolListMessage>(
                 new ListToolsRequest { RequestId = "native-tools-refresh-" + Guid.NewGuid().ToString("N") },
                 cancellationToken)
@@ -83,7 +96,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         Func<string, Task> status,
         CancellationToken cancellationToken) {
         status ??= _ => Task.CompletedTask;
-        var client = await EnsureConnectedAsync(status, cancellationToken).ConfigureAwait(false);
+        var client = (await EnsureConnectedAsync(status, cancellationToken).ConfigureAwait(false)).Client;
         await status("Checking sign-in status...").ConfigureAwait(false);
         var login = await client.RequestAsync<LoginStatusMessage>(
                 new EnsureLoginRequest {
@@ -105,7 +118,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         NativeLoginCallbacks callbacks,
         CancellationToken cancellationToken) {
         callbacks ??= new NativeLoginCallbacks();
-        var client = await EnsureConnectedAsync(callbacks.Status, cancellationToken).ConfigureAwait(false);
+        var client = (await EnsureConnectedAsync(callbacks.Status, cancellationToken).ConfigureAwait(false)).Client;
         var requestId = "native-login-" + Guid.NewGuid().ToString("N");
         var messages = Channel.CreateUnbounded<ChatServiceMessage>(new UnboundedChannelOptions {
             SingleReader = true,
@@ -215,18 +228,18 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         return _turnRunner ?? throw new InvalidOperationException("The chat turn runtime was not initialized.");
     }
 
-    private async Task<ChatServiceClient> EnsureConnectedAsync(
+    private async Task<NativeChatServiceConnection> EnsureConnectedAsync(
         Func<string, Task> status,
         CancellationToken cancellationToken) {
         var existing = _client;
         if (existing is not null) {
-            return existing;
+            return new NativeChatServiceConnection(existing, SelectedProfileSynchronized: false);
         }
 
         await _connectLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
             if (_client is not null) {
-                return _client;
+                return new NativeChatServiceConnection(_client, SelectedProfileSynchronized: false);
             }
 
             var client = new ChatServiceClient();
@@ -262,7 +275,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
             _client = client;
             _turnRunner = new ChatServiceTurnRunner(client);
             await status("Runtime connected.").ConfigureAwait(false);
-            return client;
+            return new NativeChatServiceConnection(client, SelectedProfileSynchronized: true);
         } catch {
             _client = null;
             _turnRunner = null;
@@ -466,4 +479,8 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private static bool IsCurrentLogin(string candidate, string? loginId) =>
         !string.IsNullOrWhiteSpace(loginId)
         && string.Equals(candidate, loginId, StringComparison.Ordinal);
+
+    private readonly record struct NativeChatServiceConnection(
+        ChatServiceClient Client,
+        bool SelectedProfileSynchronized);
 }

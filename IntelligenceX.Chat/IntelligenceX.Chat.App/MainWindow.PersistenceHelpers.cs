@@ -79,9 +79,12 @@ public sealed partial class MainWindow : Window {
             var sharedStateChanged = !DesktopChatStateMerger.SharedStateEquals(localBeforeMerge, mergedSnapshot);
             var runtimeOrPreferenceStateChanged =
                 !DesktopChatStateMerger.RuntimeAndPreferenceStateEquals(localBeforeMerge, mergedSnapshot);
-            // Do not advance the three-way baseline past runtime/preferences that this live window has not loaded.
-            // Keeping the prior baseline lets later transcript saves continue recognizing those values as external.
+            var liveOperationalStateChanged =
+                !DesktopChatStateMerger.LiveOperationalStateEquals(localBeforeMerge, mergedSnapshot);
+            // Do not advance the three-way baseline past runtime/preferences or queue state this window has not loaded.
+            // Keeping the prior baseline lets later saves continue recognizing those values as external.
             if (!runtimeOrPreferenceStateChanged
+                && !liveOperationalStateChanged
                 && (!sharedStateChanged || await TryReconcileMergedSharedStateAsync(mergedSnapshot).ConfigureAwait(false))) {
                 _persistedAppStateBaseline = _stateStore.CloneState(mergedSnapshot);
             }

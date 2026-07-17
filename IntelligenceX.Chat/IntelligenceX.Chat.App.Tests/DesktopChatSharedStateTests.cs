@@ -142,6 +142,62 @@ public sealed class DesktopChatSharedStateTests {
         Assert.Equal(7, merged.AutonomyMaxToolRounds);
     }
 
+    /// <summary>Ensures a stale window cannot erase turns queued by another window.</summary>
+    [Fact]
+    public void LegacyMerge_PreservesQueuedTurnsAddedAfterLegacyLoad() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        latest.PendingTurns.Add(BuildQueuedTurn("Run replication", "chat-one", time.AddMinutes(1)));
+        latest.QueuedTurnsAfterLogin.Add(BuildQueuedTurn("Resume after sign-in", "chat-one", time.AddMinutes(2)));
+        var localBeforeMerge = CloneForTest(local);
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        Assert.Equal("Run replication", Assert.Single(merged.PendingTurns).Text);
+        Assert.Equal("Resume after sign-in", Assert.Single(merged.QueuedTurnsAfterLogin).Text);
+        Assert.False(DesktopChatStateMerger.LiveOperationalStateEquals(localBeforeMerge, merged));
+    }
+
+    /// <summary>Ensures concurrent queue additions survive without resurrecting a consumed baseline entry.</summary>
+    [Fact]
+    public void LegacyMerge_CombinesConcurrentQueueAdditionsAndHonorsConsumption() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        baseline.PendingTurns.Add(BuildQueuedTurn("Already queued", "chat-one", time));
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        local.PendingTurns.RemoveAt(0);
+        local.PendingTurns.Add(BuildQueuedTurn("Legacy addition", "chat-one", time.AddMinutes(2)));
+        latest.PendingTurns.Add(BuildQueuedTurn("Native addition", "chat-one", time.AddMinutes(1)));
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        Assert.DoesNotContain(merged.PendingTurns, turn => turn.Text == "Already queued");
+        Assert.Equal(new[] { "Native addition", "Legacy addition" }, merged.PendingTurns.Select(turn => turn.Text));
+    }
+
+    /// <summary>Ensures a cross-window merge never persists more turns than the live queue can restore.</summary>
+    [Fact]
+    public void LegacyMerge_BoundsConcurrentQueueAdditionsToLiveCapacity() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        for (var index = 0; index < ChatQueueContract.MaxTurns; index++) {
+            local.PendingTurns.Add(BuildQueuedTurn("Local " + index, "chat-one", time.AddSeconds(index * 2)));
+            latest.PendingTurns.Add(BuildQueuedTurn("Latest " + index, "chat-one", time.AddSeconds(index * 2 + 1)));
+        }
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        Assert.Equal(ChatQueueContract.MaxTurns, merged.PendingTurns.Count);
+        Assert.Equal(
+            new[] { "Local 0", "Latest 0", "Local 1", "Latest 1", "Local 2", "Latest 2", "Local 3", "Latest 3" },
+            merged.PendingTurns.Select(turn => turn.Text));
+    }
+
     /// <summary>Ensures deserialization-only migration metadata does not look like a runtime preference change.</summary>
     [Fact]
     public void RuntimePreferenceComparison_IgnoresPropertyPresenceMetadata() {
@@ -239,6 +295,13 @@ public sealed class DesktopChatSharedStateTests {
         };
     }
 
+    private static ChatQueuedTurnState BuildQueuedTurn(string text, string conversationId, DateTime enqueuedUtc) =>
+        new() {
+            Text = text,
+            ConversationId = conversationId,
+            EnqueuedUtc = enqueuedUtc
+        };
+
     private static ChatAppState CloneForTest(ChatAppState state) {
         var conversation = Assert.Single(state.Conversations);
         var clonedConversation = new ChatConversationState {
@@ -267,6 +330,18 @@ public sealed class DesktopChatSharedStateTests {
             ActiveConversationId = state.ActiveConversationId,
             Conversations = new List<ChatConversationState> { clonedConversation },
             Messages = clonedConversation.Messages.ToList(),
+            PendingTurns = state.PendingTurns.Select(turn => new ChatQueuedTurnState {
+                Text = turn.Text,
+                ConversationId = turn.ConversationId,
+                EnqueuedUtc = turn.EnqueuedUtc,
+                SkipUserBubbleOnDispatch = turn.SkipUserBubbleOnDispatch
+            }).ToList(),
+            QueuedTurnsAfterLogin = state.QueuedTurnsAfterLogin.Select(turn => new ChatQueuedTurnState {
+                Text = turn.Text,
+                ConversationId = turn.ConversationId,
+                EnqueuedUtc = turn.EnqueuedUtc,
+                SkipUserBubbleOnDispatch = turn.SkipUserBubbleOnDispatch
+            }).ToList(),
             MemoryFacts = state.MemoryFacts.Select(fact => new ChatMemoryFactState {
                 Id = fact.Id,
                 Fact = fact.Fact,

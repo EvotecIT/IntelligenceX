@@ -153,7 +153,7 @@ internal sealed partial class NativeChatWindow {
         UpdateCommandState();
     }
 
-    private Task RefreshRuntimeReadinessAsync(bool force = false) {
+    private Task RefreshRuntimeReadinessAsync(bool force = false, bool synchronizeSelectedProfile = false) {
         if (_lifetimeCts.IsCancellationRequested) {
             return Task.CompletedTask;
         }
@@ -164,25 +164,32 @@ internal sealed partial class NativeChatWindow {
                 return activeRefresh;
             }
 
-            _runtimeReadinessTask = RefreshRuntimeReadinessAfterAsync(activeRefresh);
+            _runtimeReadinessTask = RefreshRuntimeReadinessAfterAsync(activeRefresh, synchronizeSelectedProfile);
             return _runtimeReadinessTask;
         }
 
-        _runtimeReadinessTask = RefreshRuntimeReadinessCoreAsync();
+        _runtimeReadinessTask = RefreshRuntimeReadinessCoreAsync(synchronizeSelectedProfile);
         return _runtimeReadinessTask;
     }
 
-    private async Task RefreshRuntimeReadinessAfterAsync(Task activeRefresh) {
+    private async Task RefreshRuntimeReadinessAfterAsync(
+        Task activeRefresh,
+        bool synchronizeSelectedProfile) {
         await activeRefresh.ConfigureAwait(true);
         if (!_lifetimeCts.IsCancellationRequested) {
-            await RefreshRuntimeReadinessCoreAsync().ConfigureAwait(true);
+            await RefreshRuntimeReadinessCoreAsync(synchronizeSelectedProfile).ConfigureAwait(true);
         }
     }
 
-    private async Task RefreshRuntimeReadinessCoreAsync() {
+    private async Task RefreshRuntimeReadinessCoreAsync(bool synchronizeSelectedProfile) {
         try {
             _viewModel.SetHostStatus("Loading tool packs...");
-            await _runtime.RefreshSessionPolicyAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            if (synchronizeSelectedProfile) {
+                await _runtime.SynchronizeSelectedProfileAndRefreshSessionPolicyAsync(_lifetimeCts.Token)
+                    .ConfigureAwait(true);
+            } else {
+                await _runtime.RefreshSessionPolicyAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            }
             if (_viewModel.AuthenticationState == NativeAuthenticationState.SignedIn) {
                 _viewModel.SetHostStatus(string.Empty);
             }
