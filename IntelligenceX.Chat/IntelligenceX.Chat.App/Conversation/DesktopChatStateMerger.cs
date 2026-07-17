@@ -19,7 +19,10 @@ internal static class DesktopChatStateMerger {
                && left.PersistentMemoryEnabled == right.PersistentMemoryEnabled
                && string.Equals(left.ActiveConversationId, right.ActiveConversationId, StringComparison.OrdinalIgnoreCase)
                && SequenceEqual(left.MemoryFacts, right.MemoryFacts, MemoryFactEquals)
-               && SequenceEqual(left.Conversations, right.Conversations, ConversationEquals);
+               && SequenceEqual(
+                   left.Conversations,
+                   right.Conversations,
+                   DesktopChatConversationStateMerger.ConversationEquals);
     }
 
     internal static bool RuntimeAndPreferenceStateEquals(ChatAppState left, ChatAppState right) {
@@ -111,7 +114,10 @@ internal static class DesktopChatStateMerger {
             baseline.PersistentMemoryEnabled,
             latest.PersistentMemoryEnabled);
         local.MemoryFacts = MergeMemoryFacts(local.MemoryFacts, baseline.MemoryFacts, latest.MemoryFacts);
-        local.Conversations = MergeConversations(local.Conversations, baseline.Conversations, latest.Conversations);
+        local.Conversations = DesktopChatConversationStateMerger.MergeConversations(
+            local.Conversations,
+            baseline.Conversations,
+            latest.Conversations);
         local.PendingTurns = MergeQueuedTurns(local.PendingTurns, baseline.PendingTurns, latest.PendingTurns);
         local.QueuedTurnsAfterLogin = MergeQueuedTurns(
             local.QueuedTurnsAfterLogin,
@@ -134,14 +140,19 @@ internal static class DesktopChatStateMerger {
 
         if (active is not null) {
             local.ThreadId = active.ThreadId;
-            local.Messages = active.Messages.Select(CloneMessage).ToList();
+            local.Messages = active.Messages
+                .Select(DesktopChatConversationStateMerger.CloneMessage)
+                .ToList();
         } else {
             local.ThreadId = Resolve(
                 local.ThreadId,
                 baseline.ThreadId,
                 latest.ThreadId,
                 StringComparer.Ordinal);
-            local.Messages = MergeMessages(local.Messages, baseline.Messages, latest.Messages);
+            local.Messages = DesktopChatConversationStateMerger.MergeMessages(
+                local.Messages,
+                baseline.Messages,
+                latest.Messages);
         }
 
         return local;
@@ -227,124 +238,6 @@ internal static class DesktopChatStateMerger {
         local.ShowAssistantTurnTrace = Resolve(local.ShowAssistantTurnTrace, baseline.ShowAssistantTurnTrace, latest.ShowAssistantTurnTrace);
         local.ShowAssistantDraftBubbles = Resolve(local.ShowAssistantDraftBubbles, baseline.ShowAssistantDraftBubbles, latest.ShowAssistantDraftBubbles);
         local.DisabledTools = ResolveStringList(local.DisabledTools, baseline.DisabledTools, latest.DisabledTools);
-    }
-
-    private static List<ChatConversationState> MergeConversations(
-        IReadOnlyList<ChatConversationState>? local,
-        IReadOnlyList<ChatConversationState>? baseline,
-        IReadOnlyList<ChatConversationState>? latest) {
-        var localById = IndexConversations(local);
-        var baselineById = IndexConversations(baseline);
-        var latestById = IndexConversations(latest);
-        var ids = latestById.Keys
-            .Concat(localById.Keys)
-            .Concat(baselineById.Keys)
-            .Distinct(StringComparer.OrdinalIgnoreCase);
-        var merged = new List<ChatConversationState>();
-        foreach (var id in ids) {
-            localById.TryGetValue(id, out var localValue);
-            baselineById.TryGetValue(id, out var baselineValue);
-            latestById.TryGetValue(id, out var latestValue);
-            var resolved = ResolveConversation(localValue, baselineValue, latestValue);
-            if (resolved is not null) {
-                merged.Add(resolved);
-            }
-        }
-
-        merged.Sort(static (left, right) => right.UpdatedUtc.CompareTo(left.UpdatedUtc));
-        return merged;
-    }
-
-    private static ChatConversationState? ResolveConversation(
-        ChatConversationState? local,
-        ChatConversationState? baseline,
-        ChatConversationState? latest) {
-        if (baseline is null) {
-            return local is null ? latest is null ? null : CloneConversation(latest) : CloneConversation(local);
-        }
-
-        if (local is null) {
-            return latest is null || ConversationEquals(latest, baseline)
-                ? null
-                : CloneConversation(latest);
-        }
-
-        if (latest is null) {
-            return ConversationEquals(local, baseline) ? null : CloneConversation(local);
-        }
-
-        if (ConversationEquals(local, baseline)) {
-            return CloneConversation(latest);
-        }
-
-        if (ConversationEquals(latest, baseline)) {
-            return CloneConversation(local);
-        }
-
-        var merged = CloneConversation(latest);
-        merged.Title = Resolve(local.Title, baseline.Title, latest.Title, StringComparer.Ordinal)
-                       ?? ChatConversationIdentity.DefaultTitle;
-        merged.ThreadId = Resolve(local.ThreadId, baseline.ThreadId, latest.ThreadId, StringComparer.Ordinal);
-        merged.RuntimeLabel = Resolve(local.RuntimeLabel, baseline.RuntimeLabel, latest.RuntimeLabel, StringComparer.Ordinal);
-        merged.ModelLabel = Resolve(local.ModelLabel, baseline.ModelLabel, latest.ModelLabel, StringComparer.Ordinal);
-        merged.ModelOverride = Resolve(local.ModelOverride, baseline.ModelOverride, latest.ModelOverride, StringComparer.Ordinal);
-        merged.PendingAssistantQuestionHint = Resolve(
-            local.PendingAssistantQuestionHint,
-            baseline.PendingAssistantQuestionHint,
-            latest.PendingAssistantQuestionHint,
-            StringComparer.Ordinal);
-        merged.Messages = MergeMessages(local.Messages, baseline.Messages, latest.Messages);
-        merged.PendingActions = MergePendingActions(local.PendingActions, baseline.PendingActions, latest.PendingActions);
-        merged.UpdatedUtc = EnsureUtc(local.UpdatedUtc) >= EnsureUtc(latest.UpdatedUtc)
-            ? EnsureUtc(local.UpdatedUtc)
-            : EnsureUtc(latest.UpdatedUtc);
-        return merged;
-    }
-
-    private static List<ChatMessageState> MergeMessages(
-        IReadOnlyList<ChatMessageState>? local,
-        IReadOnlyList<ChatMessageState>? baseline,
-        IReadOnlyList<ChatMessageState>? latest) {
-        var localByKey = IndexMessages(local);
-        var baselineByKey = IndexMessages(baseline);
-        var latestByKey = IndexMessages(latest);
-        var keys = latestByKey.Keys
-            .Concat(localByKey.Keys)
-            .Concat(baselineByKey.Keys)
-            .Distinct(StringComparer.Ordinal);
-        var merged = new List<ChatMessageState>();
-        foreach (var key in keys) {
-            localByKey.TryGetValue(key, out var localValue);
-            baselineByKey.TryGetValue(key, out var baselineValue);
-            latestByKey.TryGetValue(key, out var latestValue);
-            var resolved = ResolveEntity(localValue, baselineValue, latestValue, MessageEquals, CloneMessage);
-            if (resolved is not null) {
-                merged.Add(resolved);
-            }
-        }
-
-        merged.Sort(static (left, right) => EnsureUtc(left.TimeUtc).CompareTo(EnsureUtc(right.TimeUtc)));
-        return merged;
-    }
-
-    private static List<ChatPendingActionState> MergePendingActions(
-        IReadOnlyList<ChatPendingActionState>? local,
-        IReadOnlyList<ChatPendingActionState>? baseline,
-        IReadOnlyList<ChatPendingActionState>? latest) {
-        var localValues = (local ?? Array.Empty<ChatPendingActionState>()).ToList();
-        var baselineValues = (baseline ?? Array.Empty<ChatPendingActionState>()).ToList();
-        var latestValues = (latest ?? Array.Empty<ChatPendingActionState>()).ToList();
-        if (PendingActionsEqual(localValues, baselineValues)) {
-            return latestValues.Select(ClonePendingAction).ToList();
-        }
-        if (PendingActionsEqual(latestValues, baselineValues)) {
-            return localValues.Select(ClonePendingAction).ToList();
-        }
-        if (localValues.Count == 0 || latestValues.Count == 0) {
-            return new List<ChatPendingActionState>();
-        }
-
-        return localValues.Select(ClonePendingAction).ToList();
     }
 
     private static List<ChatMemoryFactState> MergeMemoryFacts(
@@ -490,27 +383,6 @@ internal static class DesktopChatStateMerger {
         return indexed;
     }
 
-    private static Dictionary<string, ChatConversationState> IndexConversations(
-        IReadOnlyList<ChatConversationState>? conversations) {
-        return (conversations ?? Array.Empty<ChatConversationState>())
-            .Where(static conversation => !string.IsNullOrWhiteSpace(conversation.Id))
-            .GroupBy(static conversation => conversation.Id.Trim(), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static Dictionary<string, ChatMessageState> IndexMessages(IReadOnlyList<ChatMessageState>? messages) {
-        var indexed = new Dictionary<string, ChatMessageState>(StringComparer.Ordinal);
-        var duplicateCounters = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var message in messages ?? Array.Empty<ChatMessageState>()) {
-            var identity = (message.Role ?? string.Empty).Trim().ToLowerInvariant()
-                           + "|" + EnsureUtc(message.TimeUtc).Ticks;
-            var occurrence = duplicateCounters.TryGetValue(identity, out var count) ? count + 1 : 0;
-            duplicateCounters[identity] = occurrence;
-            indexed[identity + "|" + occurrence] = message;
-        }
-        return indexed;
-    }
-
     private static Dictionary<string, ChatMemoryFactState> IndexMemory(IReadOnlyList<ChatMemoryFactState>? facts) {
         return (facts ?? Array.Empty<ChatMemoryFactState>())
             .Where(static fact => !string.IsNullOrWhiteSpace(fact.Fact))
@@ -520,39 +392,12 @@ internal static class DesktopChatStateMerger {
             .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
     }
 
-    private static bool ConversationEquals(ChatConversationState left, ChatConversationState right) =>
-        string.Equals(left.Id, right.Id, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(left.Title, right.Title, StringComparison.Ordinal)
-        && string.Equals(left.ThreadId, right.ThreadId, StringComparison.Ordinal)
-        && string.Equals(left.RuntimeLabel, right.RuntimeLabel, StringComparison.Ordinal)
-        && string.Equals(left.ModelLabel, right.ModelLabel, StringComparison.Ordinal)
-        && string.Equals(left.ModelOverride, right.ModelOverride, StringComparison.Ordinal)
-        && string.Equals(left.PendingAssistantQuestionHint, right.PendingAssistantQuestionHint, StringComparison.Ordinal)
-        && SequenceEqual(left.Messages, right.Messages, MessageEquals)
-        && PendingActionsEqual(left.PendingActions, right.PendingActions);
-
-    private static bool MessageEquals(ChatMessageState left, ChatMessageState right) =>
-        string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(left.Text, right.Text, StringComparison.Ordinal)
-        && EnsureUtc(left.TimeUtc) == EnsureUtc(right.TimeUtc)
-        && string.Equals(left.Model, right.Model, StringComparison.Ordinal)
-        && string.Equals(left.Status, right.Status, StringComparison.Ordinal);
-
     private static bool MemoryFactEquals(ChatMemoryFactState left, ChatMemoryFactState right) =>
         string.Equals(left.Id, right.Id, StringComparison.OrdinalIgnoreCase)
         && string.Equals(left.Fact, right.Fact, StringComparison.Ordinal)
         && left.Weight == right.Weight
         && left.Tags.SequenceEqual(right.Tags, StringComparer.OrdinalIgnoreCase)
         && EnsureUtc(left.UpdatedUtc) == EnsureUtc(right.UpdatedUtc);
-
-    private static bool PendingActionsEqual(
-        IReadOnlyList<ChatPendingActionState>? left,
-        IReadOnlyList<ChatPendingActionState>? right) =>
-        SequenceEqual(left, right, static (a, b) =>
-            string.Equals(a.Id, b.Id, StringComparison.Ordinal)
-            && string.Equals(a.Title, b.Title, StringComparison.Ordinal)
-            && string.Equals(a.Request, b.Request, StringComparison.Ordinal)
-            && string.Equals(a.Reply, b.Reply, StringComparison.Ordinal));
 
     private static bool QueuedTurnEquals(ChatQueuedTurnState left, ChatQueuedTurnState right) =>
         string.Equals(left.Text, right.Text, StringComparison.Ordinal)
@@ -576,37 +421,6 @@ internal static class DesktopChatStateMerger {
         }
         return true;
     }
-
-    private static ChatConversationState CloneConversation(ChatConversationState value) =>
-        new() {
-            Id = value.Id,
-            Title = value.Title,
-            ThreadId = value.ThreadId,
-            RuntimeLabel = value.RuntimeLabel,
-            ModelLabel = value.ModelLabel,
-            ModelOverride = value.ModelOverride,
-            PendingAssistantQuestionHint = value.PendingAssistantQuestionHint,
-            Messages = (value.Messages ?? new List<ChatMessageState>()).Select(CloneMessage).ToList(),
-            PendingActions = (value.PendingActions ?? new List<ChatPendingActionState>()).Select(ClonePendingAction).ToList(),
-            UpdatedUtc = value.UpdatedUtc
-        };
-
-    private static ChatMessageState CloneMessage(ChatMessageState value) =>
-        new() {
-            Role = value.Role,
-            Text = value.Text,
-            TimeUtc = value.TimeUtc,
-            Model = value.Model,
-            Status = value.Status
-        };
-
-    private static ChatPendingActionState ClonePendingAction(ChatPendingActionState value) =>
-        new() {
-            Id = value.Id,
-            Title = value.Title,
-            Request = value.Request,
-            Reply = value.Reply
-        };
 
     private static ChatQueuedTurnState CloneQueuedTurn(ChatQueuedTurnState value) =>
         new() {

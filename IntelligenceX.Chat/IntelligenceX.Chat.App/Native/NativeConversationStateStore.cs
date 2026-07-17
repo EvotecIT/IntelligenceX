@@ -147,7 +147,8 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         foreach (var id in persistedConversationIds) {
             if (!retainedConversationIds.Contains(id)) {
                 _discardedConversationIds.Add(id);
-                _discardedConversationBaselines[id] = CloneConversation(persistedConversationsById[id]);
+                _discardedConversationBaselines[id] =
+                    DesktopChatConversationStateMerger.CloneConversation(persistedConversationsById[id]);
             }
         }
 
@@ -244,7 +245,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
                     _discardedConversationBaselines.Remove(conversation.Id);
                 } else if (!_baselinePersistedConversationIds.Contains(conversation.Id)
                            && !_discardedConversationIds.Contains(conversation.Id)) {
-                    persisted.Add(MapConversation(conversation, existing: null));
+                    persisted.Add(MapConversation(conversation, seed: null));
                 } else {
                     _discardedConversationIds.Add(conversation.Id);
                 }
@@ -266,7 +267,9 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
 
             if (_discardedConversationIds.Contains(existing.Id)) {
                 if (_discardedConversationBaselines.TryGetValue(existing.Id, out var discardedBaseline)
-                    && ConversationStateMatches(existing, discardedBaseline)) {
+                    && DesktopChatConversationStateMerger.ConversationEqualsIncludingTimestamp(
+                        existing,
+                        discardedBaseline)) {
                     continue;
                 }
 
@@ -297,7 +300,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         if (active is not null) {
             mergedState.ThreadId = active.ThreadId;
             mergedState.Messages = (active.Messages ?? new List<ChatMessageState>())
-                .Select(CloneMessage)
+                .Select(DesktopChatConversationStateMerger.CloneMessage)
                 .ToList();
         }
 
@@ -341,8 +344,10 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
 
     private static ChatConversationState MapConversation(
         NativeConversation conversation,
-        ChatConversationState? existing) {
-        var state = existing ?? new ChatConversationState();
+        ChatConversationState? seed) {
+        var state = seed is null
+            ? new ChatConversationState()
+            : DesktopChatConversationStateMerger.CloneConversation(seed);
         state.Id = conversation.Id;
         state.Title = conversation.Title;
         state.ThreadId = conversation.ThreadId;
@@ -357,65 +362,9 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         NativeConversation conversation,
         ChatConversationState? existing,
         ChatConversationState? baseline) {
-        if (existing is null || baseline is null) {
-            return MapConversation(conversation, existing);
-        }
-
-        existing.Id = conversation.Id;
-        existing.Title = ResolveConcurrentValue(
-            conversation.Title,
-            baseline.Title,
-            existing.Title,
-            conversation.UpdatedUtc,
-            existing.UpdatedUtc) ?? ChatConversationIdentity.DefaultTitle;
-        existing.ThreadId = ResolveConcurrentValue(
-            conversation.ThreadId,
-            baseline.ThreadId,
-            existing.ThreadId,
-            conversation.UpdatedUtc,
-            existing.UpdatedUtc);
-        existing.Messages = MergeMessages(
-            conversation.Messages,
-            baseline.Messages ?? new List<ChatMessageState>(),
-            existing.Messages ?? new List<ChatMessageState>());
-        existing.PendingActions = ResolveConcurrentPendingActions(
-            conversation.PendingActions.Select(MapPendingAction).ToList(),
-            baseline.PendingActions ?? new List<ChatPendingActionState>(),
-            existing.PendingActions ?? new List<ChatPendingActionState>(),
-            conversation.UpdatedUtc,
-            existing.UpdatedUtc);
-        existing.PendingAssistantQuestionHint = ResolveConcurrentValue(
-            conversation.PendingAssistantQuestionHint,
-            baseline.PendingAssistantQuestionHint,
-            existing.PendingAssistantQuestionHint,
-            conversation.UpdatedUtc,
-            existing.UpdatedUtc);
-        existing.UpdatedUtc = EnsureUtc(existing.UpdatedUtc) >= EnsureUtc(conversation.UpdatedUtc)
-            ? EnsureUtc(existing.UpdatedUtc)
-            : EnsureUtc(conversation.UpdatedUtc);
-        return existing;
-    }
-
-    private static List<ChatPendingActionState> ResolveConcurrentPendingActions(
-        IReadOnlyList<ChatPendingActionState> nativeActions,
-        IReadOnlyList<ChatPendingActionState> baselineActions,
-        IReadOnlyList<ChatPendingActionState> persistedActions,
-        DateTime nativeUpdatedUtc,
-        DateTime persistedUpdatedUtc) {
-        var nativeChanged = !PendingActionsMatch(nativeActions, baselineActions);
-        var persistedChanged = !PendingActionsMatch(persistedActions, baselineActions);
-        if (!nativeChanged) {
-            return persistedActions.Select(ClonePendingAction).ToList();
-        }
-
-        if (!persistedChanged || PendingActionsMatch(nativeActions, persistedActions)) {
-            return nativeActions.Select(ClonePendingAction).ToList();
-        }
-
-        var selected = EnsureUtc(persistedUpdatedUtc) > EnsureUtc(nativeUpdatedUtc)
-            ? persistedActions
-            : nativeActions;
-        return selected.Select(ClonePendingAction).ToList();
+        var local = MapConversation(conversation, baseline ?? existing);
+        return DesktopChatConversationStateMerger.MergeConversation(local, baseline, existing)
+               ?? local;
     }
 
     private static void ApplyPersistedMetadata(
@@ -430,67 +379,6 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         conversation.PendingActions.AddRange(
             (persisted.PendingActions ?? new List<ChatPendingActionState>()).Select(MapPendingAction));
         conversation.PendingAssistantQuestionHint = persisted.PendingAssistantQuestionHint;
-    }
-
-    private static string? ResolveConcurrentValue(
-        string? nativeValue,
-        string? baselineValue,
-        string? persistedValue,
-        DateTime nativeUpdatedUtc,
-        DateTime persistedUpdatedUtc) {
-        var nativeChanged = !string.Equals(nativeValue, baselineValue, StringComparison.Ordinal);
-        var persistedChanged = !string.Equals(persistedValue, baselineValue, StringComparison.Ordinal);
-        if (!nativeChanged) {
-            return persistedValue;
-        }
-
-        if (!persistedChanged || string.Equals(nativeValue, persistedValue, StringComparison.Ordinal)) {
-            return nativeValue;
-        }
-
-        return EnsureUtc(persistedUpdatedUtc) > EnsureUtc(nativeUpdatedUtc)
-            ? persistedValue
-            : nativeValue;
-    }
-
-    private static List<ChatMessageState> MergeMessages(
-        IReadOnlyList<NativeChatTranscriptItem> nativeMessages,
-        IReadOnlyList<ChatMessageState> baselineMessages,
-        IReadOnlyList<ChatMessageState> persistedMessages) {
-        var baselineMatched = new bool[baselineMessages.Count];
-        var nativeAdditions = new List<ChatMessageState>();
-        for (var nativeIndex = 0; nativeIndex < nativeMessages.Count; nativeIndex++) {
-            var nativeMessage = MapMessage(nativeMessages[nativeIndex]);
-            var matchedBaselineIndex = -1;
-            for (var baselineIndex = 0; baselineIndex < baselineMessages.Count; baselineIndex++) {
-                if (!baselineMatched[baselineIndex]
-                    && MessageMatches(nativeMessage, baselineMessages[baselineIndex])) {
-                    matchedBaselineIndex = baselineIndex;
-                    break;
-                }
-            }
-
-            if (matchedBaselineIndex >= 0) {
-                baselineMatched[matchedBaselineIndex] = true;
-            } else {
-                nativeAdditions.Add(nativeMessage);
-            }
-        }
-
-        var merged = persistedMessages.Select(CloneMessage).ToList();
-        foreach (var addition in nativeAdditions) {
-            if (!merged.Any(message => MessageMatches(message, addition))) {
-                var insertionIndex = merged.FindIndex(message =>
-                    EnsureUtc(message.TimeUtc) > EnsureUtc(addition.TimeUtc));
-                if (insertionIndex < 0) {
-                    merged.Add(CloneMessage(addition));
-                } else {
-                    merged.Insert(insertionIndex, CloneMessage(addition));
-                }
-            }
-        }
-
-        return merged;
     }
 
     private static NativeChatTranscriptItem MapMessage(ChatMessageState state) {
@@ -515,15 +403,6 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             Status = message.Status
         };
 
-    private static ChatMessageState CloneMessage(ChatMessageState message) =>
-        new() {
-            Role = message.Role,
-            Text = message.Text,
-            TimeUtc = message.TimeUtc,
-            Model = message.Model,
-            Status = message.Status
-        };
-
     private static AssistantPendingAction MapPendingAction(ChatPendingActionState action) =>
         new(action.Id, action.Title, action.Request, action.Reply);
 
@@ -535,107 +414,12 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             Reply = action.Reply
         };
 
-    private static ChatPendingActionState ClonePendingAction(ChatPendingActionState action) =>
-        new() {
-            Id = action.Id,
-            Title = action.Title,
-            Request = action.Request,
-            Reply = action.Reply
-        };
-
-    private static bool PendingActionsMatch(
-        IReadOnlyList<ChatPendingActionState> left,
-        IReadOnlyList<ChatPendingActionState> right) {
-        if (left.Count != right.Count) {
-            return false;
-        }
-
-        for (var i = 0; i < left.Count; i++) {
-            if (!string.Equals(left[i].Id, right[i].Id, StringComparison.Ordinal)
-                || !string.Equals(left[i].Title, right[i].Title, StringComparison.Ordinal)
-                || !string.Equals(left[i].Request, right[i].Request, StringComparison.Ordinal)
-                || !string.Equals(left[i].Reply, right[i].Reply, StringComparison.Ordinal)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static ChatConversationState CloneConversation(ChatConversationState conversation) =>
-        new() {
-            Id = conversation.Id,
-            Title = conversation.Title,
-            ThreadId = conversation.ThreadId,
-            RuntimeLabel = conversation.RuntimeLabel,
-            ModelLabel = conversation.ModelLabel,
-            ModelOverride = conversation.ModelOverride,
-            PendingAssistantQuestionHint = conversation.PendingAssistantQuestionHint,
-            Messages = (conversation.Messages ?? new List<ChatMessageState>()).Select(CloneMessage).ToList(),
-            PendingActions = (conversation.PendingActions ?? new List<ChatPendingActionState>())
-                .Select(ClonePendingAction)
-                .ToList(),
-            UpdatedUtc = conversation.UpdatedUtc
-        };
-
-    private static bool ConversationStateMatches(ChatConversationState current, ChatConversationState baseline) {
-        if (!string.Equals(current.Id, baseline.Id, StringComparison.Ordinal)
-            || !string.Equals(current.Title, baseline.Title, StringComparison.Ordinal)
-            || !string.Equals(current.ThreadId, baseline.ThreadId, StringComparison.Ordinal)
-            || !string.Equals(current.RuntimeLabel, baseline.RuntimeLabel, StringComparison.Ordinal)
-            || !string.Equals(current.ModelLabel, baseline.ModelLabel, StringComparison.Ordinal)
-            || !string.Equals(current.ModelOverride, baseline.ModelOverride, StringComparison.Ordinal)
-            || !string.Equals(current.PendingAssistantQuestionHint, baseline.PendingAssistantQuestionHint, StringComparison.Ordinal)
-            || EnsureUtc(current.UpdatedUtc) != EnsureUtc(baseline.UpdatedUtc)) {
-            return false;
-        }
-
-        var currentMessages = current.Messages ?? new List<ChatMessageState>();
-        var baselineMessages = baseline.Messages ?? new List<ChatMessageState>();
-        if (currentMessages.Count != baselineMessages.Count) {
-            return false;
-        }
-
-        for (var i = 0; i < currentMessages.Count; i++) {
-            if (!MessageMatches(currentMessages[i], baselineMessages[i])) {
-                return false;
-            }
-        }
-
-        var currentActions = current.PendingActions ?? new List<ChatPendingActionState>();
-        var baselineActions = baseline.PendingActions ?? new List<ChatPendingActionState>();
-        if (currentActions.Count != baselineActions.Count) {
-            return false;
-        }
-
-        for (var i = 0; i < currentActions.Count; i++) {
-            if (!string.Equals(currentActions[i].Id, baselineActions[i].Id, StringComparison.Ordinal)
-                || !string.Equals(currentActions[i].Title, baselineActions[i].Title, StringComparison.Ordinal)
-                || !string.Equals(currentActions[i].Request, baselineActions[i].Request, StringComparison.Ordinal)
-                || !string.Equals(currentActions[i].Reply, baselineActions[i].Reply, StringComparison.Ordinal)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool MessageMatches(ChatMessageState left, ChatMessageState right) =>
-        string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(left.Text, right.Text, StringComparison.Ordinal)
-        && EnsureUtc(left.TimeUtc) == EnsureUtc(right.TimeUtc)
-        && string.Equals(left.Model, right.Model, StringComparison.Ordinal)
-        && string.Equals(
-            NormalizeMessageStatus(left.Role, left.Status),
-            NormalizeMessageStatus(right.Role, right.Status),
-            StringComparison.Ordinal);
-
     private void CaptureBaseline(
         NativeConversationWorkspace workspace,
         IEnumerable<string> persistedConversationIds) {
         _baselineConversations.Clear();
         foreach (var conversation in workspace.Conversations) {
-            _baselineConversations[conversation.Id] = MapConversation(conversation, existing: null);
+            _baselineConversations[conversation.Id] = MapConversation(conversation, seed: null);
         }
 
         _baselinePersistedConversationIds.Clear();
@@ -649,63 +433,10 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         _hasBaseline = true;
     }
 
-    private static bool ConversationMatches(NativeConversation conversation, ChatConversationState baseline) {
-        if (!string.Equals(conversation.Title, baseline.Title, StringComparison.Ordinal)
-            || !string.Equals(conversation.ThreadId, baseline.ThreadId, StringComparison.Ordinal)
-            || EnsureUtc(conversation.UpdatedUtc) != EnsureUtc(baseline.UpdatedUtc)) {
-            return false;
-        }
-
-        var baselineMessages = baseline.Messages ?? new List<ChatMessageState>();
-        if (conversation.Messages.Count != baselineMessages.Count) {
-            return false;
-        }
-
-        for (var i = 0; i < conversation.Messages.Count; i++) {
-            var current = conversation.Messages[i];
-            var original = baselineMessages[i];
-            if (!string.Equals(current.Role, original.Role, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(current.Text, original.Text, StringComparison.Ordinal)
-                || current.CreatedAt.UtcDateTime != EnsureUtc(original.TimeUtc)
-                || !string.Equals(current.Model, original.Model, StringComparison.Ordinal)
-                || !string.Equals(
-                    NormalizeMessageStatus(current.Role, current.Status),
-                    NormalizeMessageStatus(original.Role, original.Status),
-                    StringComparison.Ordinal)) {
-                return false;
-            }
-        }
-
-        var baselineActions = baseline.PendingActions ?? new List<ChatPendingActionState>();
-        if (conversation.PendingActions.Count != baselineActions.Count
-            || !string.Equals(
-                conversation.PendingAssistantQuestionHint,
-                baseline.PendingAssistantQuestionHint,
-                StringComparison.Ordinal)) {
-            return false;
-        }
-        for (var i = 0; i < conversation.PendingActions.Count; i++) {
-            var current = conversation.PendingActions[i];
-            var original = baselineActions[i];
-            if (!string.Equals(current.Id, original.Id, StringComparison.Ordinal)
-                || !string.Equals(current.Title, original.Title, StringComparison.Ordinal)
-                || !string.Equals(current.Request, original.Request, StringComparison.Ordinal)
-                || !string.Equals(current.Reply, original.Reply, StringComparison.Ordinal)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static string NormalizeMessageStatus(string? role, string? status) {
-        if (!string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)) {
-            return string.Empty;
-        }
-
-        var normalized = (status ?? string.Empty).Trim();
-        return normalized.Length == 0 ? "Complete" : normalized;
-    }
+    private static bool ConversationMatches(NativeConversation conversation, ChatConversationState baseline) =>
+        DesktopChatConversationStateMerger.ConversationEqualsIncludingTimestamp(
+            MapConversation(conversation, baseline),
+            baseline);
 
     private static bool IsSystemConversation(string? id) =>
         string.Equals(
