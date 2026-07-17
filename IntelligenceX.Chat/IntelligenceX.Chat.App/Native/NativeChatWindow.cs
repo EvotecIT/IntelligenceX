@@ -42,7 +42,11 @@ internal sealed partial class NativeChatWindow : Window {
         _runtime = new NativeChatServiceRuntime(
             Environment.GetEnvironmentVariable("IXCHAT_SERVICE_PIPE"),
             _conversationStore.CreateServiceLaunchProfileOptions);
-        _viewModel = new NativeChatViewModel(_runtime, DispatchToUiThread, _conversationStore) {
+        _viewModel = new NativeChatViewModel(
+            _runtime,
+            DispatchToUiThread,
+            _conversationStore,
+            _conversationStore.CreateChatRequestOptions) {
             OpenLoginUrlAsync = OpenLoginUrlAsync,
             PromptForLoginInputAsync = PromptForLoginInputAsync
         };

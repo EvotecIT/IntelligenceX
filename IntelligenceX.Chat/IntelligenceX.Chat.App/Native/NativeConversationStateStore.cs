@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Launch;
 
 namespace IntelligenceX.Chat.App.Native;
@@ -17,7 +19,6 @@ internal interface INativeConversationStore : IAsyncDisposable {
 /// Native conversation adapter over the shared desktop application state store.
 /// </summary>
 internal sealed class NativeConversationStateStore : INativeConversationStore {
-    private const string SystemConversationId = "chat-system";
     private readonly ChatAppStateStore _stateStore;
     private readonly string _profileName;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
@@ -38,6 +39,21 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         }
 
         return ChatServiceLaunchProfileMapper.Create(_state);
+    }
+
+    /// <summary>
+    /// Creates the per-turn request options shared with the legacy desktop shell.
+    /// </summary>
+    internal ChatRequestOptions CreateChatRequestOptions(NativeConversation conversation) {
+        ArgumentNullException.ThrowIfNull(conversation);
+        if (_state is null) {
+            throw new InvalidOperationException("Native profile state must be loaded before chat requests are created.");
+        }
+
+        var modelOverride = (_state.Conversations ?? new List<ChatConversationState>())
+            .FirstOrDefault(state => string.Equals(state.Id, conversation.Id, StringComparison.OrdinalIgnoreCase))
+            ?.ModelOverride;
+        return ChatRequestOptionsFactory.CreateFromState(_state, modelOverride);
     }
 
     public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
@@ -86,14 +102,31 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
 
         await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            _state ??= new ChatAppState { ProfileName = _profileName };
-            var systemConversations = _state.Conversations
+            var latestState = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false);
+            _state = latestState ?? _state ?? new ChatAppState { ProfileName = _profileName };
+            var existingConversations = _state.Conversations ?? new List<ChatConversationState>();
+            var existingById = existingConversations
+                .Where(static state => !string.IsNullOrWhiteSpace(state.Id))
+                .GroupBy(static state => state.Id.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
+            var systemConversations = existingConversations
                 .Where(state => IsSystemConversation(state.Id))
                 .ToList();
-            var persisted = workspace.Conversations
-                .Select(MapConversation)
-                .OrderByDescending(static state => state.UpdatedUtc)
-                .ToList();
+            var workspaceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var persisted = new List<ChatConversationState>(workspace.Conversations.Count + existingConversations.Count);
+            foreach (var conversation in workspace.Conversations) {
+                workspaceIds.Add(conversation.Id);
+                existingById.TryGetValue(conversation.Id, out var existing);
+                persisted.Add(MapConversation(conversation, existing));
+            }
+
+            foreach (var existing in existingConversations) {
+                if (!IsSystemConversation(existing.Id) && !workspaceIds.Contains(existing.Id)) {
+                    persisted.Add(existing);
+                }
+            }
+
+            persisted.Sort(static (left, right) => right.UpdatedUtc.CompareTo(left.UpdatedUtc));
             persisted.AddRange(systemConversations);
             _state.Conversations = persisted;
             _state.ActiveConversationId = workspace.ActiveConversationId;
@@ -125,30 +158,42 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             state.UpdatedUtc,
             (state.Messages ?? new List<ChatMessageState>()).Select(MapMessage));
 
-    private static ChatConversationState MapConversation(NativeConversation conversation) =>
-        new() {
-            Id = conversation.Id,
-            Title = conversation.Title,
-            ThreadId = conversation.ThreadId,
-            Messages = conversation.Messages.Select(MapMessage).ToList(),
-            UpdatedUtc = conversation.UpdatedUtc
-        };
+    private static ChatConversationState MapConversation(
+        NativeConversation conversation,
+        ChatConversationState? existing) {
+        var state = existing ?? new ChatConversationState();
+        state.Id = conversation.Id;
+        state.Title = conversation.Title;
+        state.ThreadId = conversation.ThreadId;
+        state.Messages = conversation.Messages.Select(MapMessage).ToList();
+        state.UpdatedUtc = conversation.UpdatedUtc;
+        return state;
+    }
 
     private static NativeChatTranscriptItem MapMessage(ChatMessageState state) {
         var role = string.IsNullOrWhiteSpace(state.Role) ? "system" : state.Role.Trim().ToLowerInvariant();
         var status = string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase) ? "Complete" : string.Empty;
-        return new NativeChatTranscriptItem(role, state.Text ?? string.Empty, new DateTimeOffset(EnsureUtc(state.TimeUtc)), status);
+        return new NativeChatTranscriptItem(
+            role,
+            state.Text ?? string.Empty,
+            new DateTimeOffset(EnsureUtc(state.TimeUtc)),
+            status,
+            state.Model);
     }
 
     private static ChatMessageState MapMessage(NativeChatTranscriptItem message) =>
         new() {
             Role = message.Role,
             Text = message.Text,
-            TimeUtc = message.CreatedAt.UtcDateTime
+            TimeUtc = message.CreatedAt.UtcDateTime,
+            Model = message.Model
         };
 
     private static bool IsSystemConversation(string? id) =>
-        string.Equals((id ?? string.Empty).Trim(), SystemConversationId, StringComparison.OrdinalIgnoreCase);
+        string.Equals(
+            (id ?? string.Empty).Trim(),
+            ChatConversationIdentity.SystemConversationId,
+            StringComparison.OrdinalIgnoreCase);
 
     private static void RemoveDuplicateEmptyDrafts(List<NativeConversation> conversations) {
         var foundEmptyDraft = false;

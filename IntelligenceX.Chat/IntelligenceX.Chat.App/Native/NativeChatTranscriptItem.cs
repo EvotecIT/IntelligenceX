@@ -14,11 +14,17 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
     private string _text;
     private string _status;
 
-    public NativeChatTranscriptItem(string role, string text, DateTimeOffset createdAt, string status = "") {
+    public NativeChatTranscriptItem(
+        string role,
+        string text,
+        DateTimeOffset createdAt,
+        string status = "",
+        string? model = null) {
         Role = string.IsNullOrWhiteSpace(role) ? "system" : role.Trim();
         _text = text ?? string.Empty;
         CreatedAt = createdAt;
         _status = status ?? string.Empty;
+        Model = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
         _content = ShouldProjectContent() ? NativeMarkdownProjection.Project(_text) : Array.Empty<NativeTranscriptContent>();
     }
 
@@ -27,6 +33,8 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
     public string Role { get; }
 
     public DateTimeOffset CreatedAt { get; }
+
+    public string? Model { get; }
 
     public IReadOnlyList<NativeTranscriptContent> Content => _content;
 

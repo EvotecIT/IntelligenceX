@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.Client;
 
 namespace IntelligenceX.Chat.App.Native;
@@ -18,6 +19,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
 
     private readonly INativeChatRuntime _runtime;
     private readonly INativeConversationStore? _conversationStore;
+    private readonly Func<NativeConversation, ChatRequestOptions?>? _requestOptionsProvider;
     private readonly Action<Action> _dispatch;
     private NativeConversationWorkspace _workspace;
     private NativeConversation _activeConversation;
@@ -27,16 +29,19 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     private NativeAuthenticationState _authenticationState = NativeAuthenticationState.Unknown;
     private bool _isSending;
     private bool _isCheckingSignIn;
+    private int _sendStarting;
     private string? _activeTurnRequestId;
     private CancellationTokenSource? _activeTurnCts;
 
     public NativeChatViewModel(
         INativeChatRuntime runtime,
         Action<Action>? dispatch = null,
-        INativeConversationStore? conversationStore = null) {
+        INativeConversationStore? conversationStore = null,
+        Func<NativeConversation, ChatRequestOptions?>? requestOptionsProvider = null) {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _dispatch = dispatch ?? (action => action());
         _conversationStore = conversationStore;
+        _requestOptionsProvider = requestOptionsProvider;
         _activeConversation = NativeConversation.CreateNew();
         Conversations.Add(_activeConversation);
         _workspace = new NativeConversationWorkspace(Conversations, _activeConversation.Id);
@@ -141,6 +146,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public bool CanSend => !IsSending
+                           && Volatile.Read(ref _sendStarting) == 0
                            && CanUseRuntime
                            && !string.IsNullOrWhiteSpace(Draft);
 
@@ -302,6 +308,20 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             return false;
         }
 
+        if (Interlocked.CompareExchange(ref _sendStarting, 1, 0) != 0) {
+            return false;
+        }
+
+        RunOnUi(() => OnPropertyChanged(nameof(CanSend)));
+        try {
+            return await SendCoreAsync(text).ConfigureAwait(false);
+        } finally {
+            Volatile.Write(ref _sendStarting, 0);
+            RunOnUi(() => OnPropertyChanged(nameof(CanSend)));
+        }
+    }
+
+    private async Task<bool> SendCoreAsync(string text) {
         var conversation = _activeConversation;
         var requestId = "native-" + Guid.NewGuid().ToString("N");
         var accumulator = new ChatTurnTextAccumulator();
@@ -332,7 +352,8 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                     new ChatRequest {
                         RequestId = requestId,
                         ThreadId = conversation.ThreadId,
-                        Text = text
+                        Text = text,
+                        Options = _requestOptionsProvider?.Invoke(conversation)
                     },
                     (update, _) => ApplyTurnUpdateAsync(update, assistantItem, accumulator),
                     cts.Token)

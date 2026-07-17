@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using IntelligenceX.Chat.App.Conversation;
 
 namespace IntelligenceX.Chat.App.Native;
 
@@ -33,7 +34,7 @@ internal sealed class NativeConversation {
 
     public bool IsEmptyDraft => Messages.Count == 0
                                 && string.IsNullOrWhiteSpace(ThreadId)
-                                && string.Equals(Title, "New Chat", StringComparison.OrdinalIgnoreCase);
+                                && string.Equals(Title, ChatConversationIdentity.DefaultTitle, StringComparison.OrdinalIgnoreCase);
 
     public string Subtitle => Messages.Count == 0
         ? "No messages yet"
@@ -49,7 +50,7 @@ internal sealed class NativeConversation {
     }
 
     public void UpdateTitleFromFirstUserMessage() {
-        if (!string.Equals(Title, "New Chat", StringComparison.OrdinalIgnoreCase)) {
+        if (!string.Equals(Title, ChatConversationIdentity.DefaultTitle, StringComparison.OrdinalIgnoreCase)) {
             return;
         }
 
@@ -58,16 +59,15 @@ internal sealed class NativeConversation {
             return;
         }
 
-        var normalized = string.Join(" ", message.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        Title = normalized.Length <= 58 ? normalized : normalized[..55].TrimEnd() + "...";
+        Title = ChatConversationIdentity.BuildTitleFromText(message.Text);
     }
 
-    public static NativeConversation CreateNew() => new(CreateId(), "New Chat");
+    public static NativeConversation CreateNew() => new(CreateId(), ChatConversationIdentity.DefaultTitle);
 
-    private static string CreateId() => "chat-" + Guid.NewGuid().ToString("N");
+    private static string CreateId() => ChatConversationIdentity.CreateId();
 
     private static string NormalizeTitle(string? title) =>
-        string.IsNullOrWhiteSpace(title) ? "New Chat" : title.Trim();
+        ChatConversationIdentity.NormalizeTitle(title);
 
     private static DateTime EnsureUtc(DateTime value) => value.Kind switch {
         DateTimeKind.Utc => value,

@@ -53,9 +53,9 @@ public sealed partial class MainWindow : Window {
     private const int MaxActivityTimelineLabelChars = 48;
     private const int MaxRoutingPromptExposureHistoryEntries = 6;
     private const int MaxAssistantTurnTimelineEntries = 8;
-    private const string SystemConversationId = "chat-system";
+    private const string SystemConversationId = ChatConversationIdentity.SystemConversationId;
     private const string SystemConversationTitle = "System";
-    private const string DefaultConversationTitle = "New Chat";
+    private const string DefaultConversationTitle = ChatConversationIdentity.DefaultTitle;
     private const string DefaultLocalModel = OpenAIModelCatalog.DefaultModel;
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";

@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Native;
 using Xunit;
@@ -113,5 +114,91 @@ public sealed class ChatServiceLaunchProfileMapperTests {
 
         current = new ChatServiceLaunchProfileOptions { LoadProfileName = "second" };
         Assert.Same(current, runtime.CreateServiceProcessStartOptions().ProfileOptions);
+    }
+
+    /// <summary>
+    /// Ensures persisted profile controls are carried into native and legacy turn requests.
+    /// </summary>
+    [Fact]
+    public void CreateFromState_MapsPerTurnProviderAndAutonomyOptions() {
+        var options = ChatRequestOptionsFactory.CreateFromState(
+            new ChatAppState {
+                LocalProviderTransport = "compatible-http",
+                LocalProviderBaseUrl = "http://127.0.0.1:1234/v1",
+                LocalProviderModel = "profile-model",
+                LocalProviderReasoningEffort = "high",
+                LocalProviderReasoningSummary = "concise",
+                LocalProviderTextVerbosity = "low",
+                LocalProviderTemperature = 0.4,
+                LocalProviderImageGenerationOverrideActive = true,
+                LocalProviderImageGenerationEnabled = true,
+                LocalProviderImageGenerationQuality = "high",
+                DisabledTools = [" z_tool ", "a_tool", "A_TOOL"],
+                AutonomyMaxToolRounds = 7,
+                AutonomyParallelTools = false,
+                AutonomyTurnTimeoutSeconds = 0,
+                AutonomyToolTimeoutSeconds = 55,
+                AutonomyWeightedToolRouting = true,
+                AutonomyMaxCandidateTools = 19,
+                AutonomyPlanExecuteReviewLoop = true,
+                AutonomyMaxReviewPasses = 2,
+                AutonomyModelHeartbeatSeconds = 3
+            },
+            conversationModelOverride: "conversation-model");
+
+        Assert.Equal("conversation-model", options.Model);
+        Assert.Equal("high", options.ReasoningEffort);
+        Assert.Equal("concise", options.ReasoningSummary);
+        Assert.Equal("low", options.TextVerbosity);
+        Assert.Equal(0.4, options.Temperature);
+        Assert.True(options.ImageGenerationEnabled);
+        Assert.Equal("high", options.ImageGenerationQuality);
+        Assert.NotNull(options.DisabledTools);
+        Assert.Equal(["a_tool", "z_tool"], options.DisabledTools!);
+        Assert.Equal(7, options.MaxToolRounds);
+        Assert.False(options.ParallelTools);
+        Assert.Equal("force_serial", options.ParallelToolMode);
+        Assert.Equal(0, options.TurnTimeoutSeconds);
+        Assert.Equal(55, options.ToolTimeoutSeconds);
+        Assert.True(options.WeightedToolRouting);
+        Assert.Equal(19, options.MaxCandidateTools);
+        Assert.True(options.PlanExecuteReviewLoop);
+        Assert.Equal(2, options.MaxReviewPasses);
+        Assert.Equal(3, options.ModelHeartbeatSeconds);
+    }
+
+    /// <summary>
+    /// Ensures local compatible runtimes retain the shared conservative defaults.
+    /// </summary>
+    [Fact]
+    public void CreateFromState_UsesConservativeLocalRuntimeDefaultsWithoutStaleImageOverrides() {
+        var options = ChatRequestOptionsFactory.CreateFromState(new ChatAppState {
+            LocalProviderTransport = "compatible-http",
+            LocalProviderBaseUrl = "http://localhost:11434/v1",
+            LocalProviderImageGenerationOverrideActive = false,
+            LocalProviderImageGenerationEnabled = true,
+            LocalProviderImageGenerationQuality = "stale"
+        });
+
+        Assert.Equal(8, options.MaxToolRounds);
+        Assert.False(options.WeightedToolRouting);
+        Assert.Equal(0, options.ModelHeartbeatSeconds);
+        Assert.Null(options.ImageGenerationEnabled);
+        Assert.Null(options.ImageGenerationQuality);
+    }
+
+    /// <summary>
+    /// Ensures local runtime defaults require an actual loopback host instead of a matching hostname fragment.
+    /// </summary>
+    [Fact]
+    public void CreateFromState_DoesNotTreatLookalikeHostAsLocalRuntime() {
+        var options = ChatRequestOptionsFactory.CreateFromState(new ChatAppState {
+            LocalProviderTransport = "compatible-http",
+            LocalProviderBaseUrl = "https://example.test/v1?upstream=127.0.0.1:1234"
+        });
+
+        Assert.Equal(ChatRequestOptionLimits.DefaultToolRounds, options.MaxToolRounds);
+        Assert.Null(options.WeightedToolRouting);
+        Assert.Null(options.ModelHeartbeatSeconds);
     }
 }

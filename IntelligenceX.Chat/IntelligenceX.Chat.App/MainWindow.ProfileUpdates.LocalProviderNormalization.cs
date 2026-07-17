@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI;
@@ -95,40 +96,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string DetectCompatibleProviderPreset(string? baseUrl) {
-        var normalized = (baseUrl ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Length == 0) {
-            return "manual";
-        }
-
-        if (normalized.Contains("127.0.0.1:1234", StringComparison.Ordinal)
-            || normalized.Contains("localhost:1234", StringComparison.Ordinal)) {
-            return "lmstudio";
-        }
-
-        if (normalized.Contains("127.0.0.1:11434", StringComparison.Ordinal)
-            || normalized.Contains("localhost:11434", StringComparison.Ordinal)) {
-            return "ollama";
-        }
-
-        if (normalized.Contains("api.openai.com", StringComparison.Ordinal)) {
-            return "openai";
-        }
-
-        if (normalized.Contains(".openai.azure.com", StringComparison.Ordinal)) {
-            return "azure-openai";
-        }
-
-        if (normalized.Contains("anthropic", StringComparison.Ordinal)
-            || normalized.Contains("claude", StringComparison.Ordinal)) {
-            return "anthropic-bridge";
-        }
-
-        if (normalized.Contains("gemini", StringComparison.Ordinal)
-            || normalized.Contains("googleapis.com", StringComparison.Ordinal)) {
-            return "gemini-bridge";
-        }
-
-        return "manual";
+        return CompatibleProviderEndpointPolicy.DetectPreset(baseUrl);
     }
 
     internal static string? ResolveChatRequestModelOverride(string? transport, string? baseUrl, string? configuredModel,
@@ -168,8 +136,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private static bool IsLocalCompatibleRuntimePreset(string preset) {
-        return string.Equals(preset, "lmstudio", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(preset, "ollama", StringComparison.OrdinalIgnoreCase);
+        return CompatibleProviderEndpointPolicy.IsLocalRuntimePreset(preset);
     }
 
     private static bool IsLikelyCloudHostedModelName(string? modelName) {
@@ -461,27 +428,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string ResolveParallelToolMode(bool? overrideParallelTools) {
-        return overrideParallelTools switch {
-            true => ParallelToolModeAllowParallel,
-            false => ParallelToolModeForceSerial,
-            _ => ParallelToolModeAuto
-        };
-    }
-
-    private static bool ResolveParallelToolsForRequest(string parallelToolMode, bool serviceDefaultParallelTools) {
-        return parallelToolMode switch {
-            ParallelToolModeAllowParallel => true,
-            ParallelToolModeForceSerial => false,
-            _ => serviceDefaultParallelTools
-        };
-    }
-
-    private static int? NormalizePositiveTimeout(int? value) {
-        if (!value.HasValue || value.Value <= 0) {
-            return null;
-        }
-
-        return value.Value;
+        return ChatRequestOptionsFactory.ResolveParallelToolMode(overrideParallelTools);
     }
 
 }

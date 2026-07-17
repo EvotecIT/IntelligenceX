@@ -76,13 +76,38 @@ public sealed class NativeConversationStateStoreTests {
         var directory = CreateTemporaryDirectory();
         try {
             var path = Path.Combine(directory, "app-state.db");
+            var persistedMessageTime = DateTime.UtcNow.AddMinutes(-1);
             using (var sharedStore = new ChatAppStateStore(path)) {
                 await sharedStore.UpsertAsync(
                     "default",
                     new ChatAppState {
                         ThemePreset = "dark",
                         Conversations = new List<ChatConversationState> {
-                            new() { Id = "chat-system", Title = "System" }
+                            new() { Id = "chat-system", Title = "System" },
+                            new() {
+                                Id = "chat-existing",
+                                Title = "Existing conversation",
+                                RuntimeLabel = "OpenAI",
+                                ModelLabel = "gpt-test",
+                                ModelOverride = "gpt-test",
+                                PendingAssistantQuestionHint = "Confirm the directory scope",
+                                Messages = new List<ChatMessageState> {
+                                    new() {
+                                        Role = "assistant",
+                                        Text = "Existing answer",
+                                        TimeUtc = persistedMessageTime,
+                                        Model = "gpt-test"
+                                    }
+                                },
+                                PendingActions = new List<ChatPendingActionState> {
+                                    new() {
+                                        Id = "pending-one",
+                                        Title = "Confirm",
+                                        Request = "Confirm the directory scope",
+                                        Reply = "Use the current forest"
+                                    }
+                                }
+                            }
                         }
                     },
                     CancellationToken.None);
@@ -90,14 +115,34 @@ public sealed class NativeConversationStateStoreTests {
 
             await using (var nativeStore = new NativeConversationStateStore(path)) {
                 var loaded = await nativeStore.LoadAsync(CancellationToken.None);
+
+                using (var concurrentStore = new ChatAppStateStore(path)) {
+                    var concurrentlyUpdated = await concurrentStore.GetAsync("default", CancellationToken.None);
+                    Assert.NotNull(concurrentlyUpdated);
+                    concurrentlyUpdated!.ThemePreset = "light";
+                    concurrentlyUpdated.Conversations.Add(new ChatConversationState {
+                        Id = "chat-external",
+                        Title = "Added after native load"
+                    });
+                    await concurrentStore.UpsertAsync("default", concurrentlyUpdated, CancellationToken.None);
+                }
+
                 await nativeStore.SaveAsync(loaded, CancellationToken.None);
             }
 
             using var verifier = new ChatAppStateStore(path);
             var state = await verifier.GetAsync("default", CancellationToken.None);
             Assert.NotNull(state);
-            Assert.Equal("dark", state!.ThemePreset);
+            Assert.Equal("light", state!.ThemePreset);
             Assert.Contains(state.Conversations, item => item.Id == "chat-system");
+            Assert.Contains(state.Conversations, item => item.Id == "chat-external");
+            var existing = Assert.Single(state.Conversations, item => item.Id == "chat-existing");
+            Assert.Equal("OpenAI", existing.RuntimeLabel);
+            Assert.Equal("gpt-test", existing.ModelLabel);
+            Assert.Equal("gpt-test", existing.ModelOverride);
+            Assert.Equal("Confirm the directory scope", existing.PendingAssistantQuestionHint);
+            Assert.Equal("gpt-test", Assert.Single(existing.Messages).Model);
+            Assert.Equal("pending-one", Assert.Single(existing.PendingActions).Id);
         } finally {
             DeleteTemporaryDirectory(directory);
         }
@@ -135,6 +180,46 @@ public sealed class NativeConversationStateStoreTests {
             Assert.Equal("operations-model", options.Model);
             Assert.Equal("high", options.ReasoningEffort);
             Assert.True(options.OpenAIAllowInsecureHttp);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures native turns use persisted profile controls and conversation-specific model selection.
+    /// </summary>
+    [Fact]
+    public async Task CreateChatRequestOptions_UsesLoadedProfileAndConversationModel() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        LocalProviderModel = "profile-model",
+                        LocalProviderReasoningEffort = "high",
+                        DisabledTools = ["ad_user_disable"],
+                        Conversations = new List<ChatConversationState> {
+                            new() {
+                                Id = "chat-one",
+                                Title = "Directory task",
+                                ModelOverride = "conversation-model"
+                            }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            var options = nativeStore.CreateChatRequestOptions(
+                Assert.Single(workspace.Conversations, item => item.Id == "chat-one"));
+
+            Assert.Equal("conversation-model", options.Model);
+            Assert.Equal("high", options.ReasoningEffort);
+            Assert.NotNull(options.DisabledTools);
+            Assert.Equal(["ad_user_disable"], options.DisabledTools!);
         } finally {
             DeleteTemporaryDirectory(directory);
         }

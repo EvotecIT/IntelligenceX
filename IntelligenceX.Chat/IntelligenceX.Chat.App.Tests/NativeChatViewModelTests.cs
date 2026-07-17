@@ -43,6 +43,49 @@ public sealed class NativeChatViewModelTests {
     }
 
     /// <summary>
+    /// Ensures the native surface forwards the shared profile request contract instead of using service defaults.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_ForwardsSharedRequestOptions() {
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        var options = new ChatRequestOptions {
+            Model = "conversation-model",
+            ReasoningEffort = "high",
+            DisabledTools = ["unsafe_tool"]
+        };
+        var model = new NativeChatViewModel(
+            runtime,
+            requestOptionsProvider: _ => options);
+
+        var sent = await model.SendAsync("use my profile");
+
+        Assert.True(sent);
+        Assert.Same(options, Assert.Single(runtime.Requests).Options);
+    }
+
+    /// <summary>
+    /// Ensures slow history persistence cannot admit two turns before IsSending becomes visible.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_RejectsConcurrentTurnWhileInitialHistorySaveIsPending() {
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        var store = new BlockingConversationStore();
+        var model = new NativeChatViewModel(runtime, conversationStore: store);
+
+        var firstSend = model.SendAsync("first");
+        await store.SaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(model.IsSending);
+
+        var secondSent = await model.SendAsync("second");
+        store.ReleaseSave.TrySetResult();
+        var firstSent = await firstSend;
+
+        Assert.True(firstSent);
+        Assert.False(secondSent);
+        Assert.Single(runtime.Requests);
+    }
+
+    /// <summary>
     /// Ensures blank prompts do not create transcript entries.
     /// </summary>
     [Fact]
@@ -464,6 +507,34 @@ public sealed class NativeChatViewModelTests {
             SaveCount++;
             LastSaved = workspace;
             return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class BlockingConversationStore : INativeConversationStore {
+        private int _saveCount;
+
+        public TaskCompletionSource SaveStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseSave { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+            var conversation = NativeConversation.CreateNew();
+            return Task.FromResult(new NativeConversationWorkspace([conversation], conversation.Id));
+        }
+
+        public async Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Interlocked.Increment(ref _saveCount) != 1) {
+                return;
+            }
+
+            SaveStarted.TrySetResult();
+            await ReleaseSave.Task.WaitAsync(cancellationToken);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
