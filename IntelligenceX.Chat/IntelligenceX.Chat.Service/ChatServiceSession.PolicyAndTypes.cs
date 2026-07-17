@@ -185,6 +185,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private sealed class ChatRun {
+        private readonly TaskCompletionSource<bool> _admissionReady =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _turnTimeoutCancellationMarked;
 
         public ChatRun(string chatRequestId, CancellationTokenSource cts, IntelligenceXClient client, StreamWriter writer, ChatRequest request) {
@@ -217,6 +219,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         public void MarkCompleted() {
+            _admissionReady.TrySetResult(true);
             IsCompleted = true;
             try {
                 Cts.Dispose();
@@ -227,6 +230,14 @@ internal sealed partial class ChatServiceSession {
 
         public void MarkStarted() {
             Started = true;
+        }
+
+        public void MarkAdmissionReady() {
+            _admissionReady.TrySetResult(true);
+        }
+
+        public Task WaitForAdmissionAsync(CancellationToken cancellationToken) {
+            return _admissionReady.Task.WaitAsync(cancellationToken);
         }
 
         public void MarkTurnTimeoutCancellation() {

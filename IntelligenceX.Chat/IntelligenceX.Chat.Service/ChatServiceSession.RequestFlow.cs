@@ -914,37 +914,43 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var acceptedThreadHint = ResolveRecoveredThreadAlias(request.ThreadId) ?? string.Empty;
-        await TryWriteStatusAsync(
-                writer,
-                requestId,
-                acceptedThreadHint,
-                status: ChatStatusCodes.Accepted,
-                message: "Request accepted.")
-            .ConfigureAwait(false);
+        try {
+            var acceptedThreadHint = ResolveRecoveredThreadAlias(request.ThreadId) ?? string.Empty;
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    acceptedThreadHint,
+                    status: ChatStatusCodes.Accepted,
+                    message: "Request accepted.")
+                .ConfigureAwait(false);
 
-        if (queuePosition > 1) {
-            var queueThreadHint = acceptedThreadHint;
-            if (string.IsNullOrWhiteSpace(queueThreadHint)) {
-                queueThreadHint = ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot()) ?? string.Empty;
+            if (queuePosition > 1) {
+                var queueThreadHint = acceptedThreadHint;
+                if (string.IsNullOrWhiteSpace(queueThreadHint)) {
+                    queueThreadHint = ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot()) ?? string.Empty;
+                }
+
+                await TryWriteStatusAsync(
+                        writer,
+                        requestId,
+                        queueThreadHint,
+                        status: ChatStatusCodes.TurnQueued,
+                        message: BuildSessionLaneQueuedStatusMessage(queuePosition))
+                    .ConfigureAwait(false);
+                StartSessionQueueWaitHeartbeat(run, cancellationToken);
+            } else {
+                await TryWriteStatusAsync(
+                        writer,
+                        requestId,
+                        string.Empty,
+                        status: ChatStatusCodes.Thinking,
+                        message: "Entering execution lane...")
+                    .ConfigureAwait(false);
             }
-
-            await TryWriteStatusAsync(
-                    writer,
-                    requestId,
-                    queueThreadHint,
-                    status: ChatStatusCodes.TurnQueued,
-                    message: BuildSessionLaneQueuedStatusMessage(queuePosition))
-                .ConfigureAwait(false);
-            StartSessionQueueWaitHeartbeat(run, cancellationToken);
-        } else {
-            await TryWriteStatusAsync(
-                    writer,
-                    requestId,
-                    string.Empty,
-                    status: ChatStatusCodes.Thinking,
-                    message: "Entering execution lane...")
-                .ConfigureAwait(false);
+        } finally {
+            // The queue pump may be scheduled immediately. Do not allow execution statuses to
+            // overtake the admission statuses on faster worker threads.
+            run.MarkAdmissionReady();
         }
     }
 
@@ -962,7 +968,7 @@ internal sealed partial class ChatServiceSession {
                 run.MarkStarted();
             }
 
-            run.Task = ExecuteQueuedChatRunAsync(run, cancellationToken);
+            run.Task = ExecuteAdmittedChatRunAsync(run, cancellationToken);
             try {
                 await run.Task.ConfigureAwait(false);
             } catch {
@@ -981,6 +987,11 @@ internal sealed partial class ChatServiceSession {
         lock (_chatRunLock) {
             _chatRunPumpTask = null;
         }
+    }
+
+    private async Task ExecuteAdmittedChatRunAsync(ChatRun run, CancellationToken sessionCancellationToken) {
+        await run.WaitForAdmissionAsync(sessionCancellationToken).ConfigureAwait(false);
+        await ExecuteQueuedChatRunAsync(run, sessionCancellationToken).ConfigureAwait(false);
     }
 
     private async Task ExecuteQueuedChatRunAsync(ChatRun run, CancellationToken sessionCancellationToken) {
