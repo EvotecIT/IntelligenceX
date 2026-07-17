@@ -21,7 +21,7 @@ public sealed class MainWindowTranscriptExportTests {
             ExportPreferencesContract.FormatDocx,
             @"C:\exports\transcript.docx");
 
-        var result = MainWindow.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, retryResult);
+        var result = LocalExportArtifactWriter.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, retryResult);
 
         Assert.True(result.Succeeded);
         Assert.Equal(TranscriptExportOutcomeKind.SucceededWithFallback, result.OutcomeKind);
@@ -86,7 +86,7 @@ public sealed class MainWindowTranscriptExportTests {
             @"C:\exports\transcript.docx",
             new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "retry write failed"));
 
-        var result = MainWindow.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, retryFailure);
+        var result = LocalExportArtifactWriter.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, retryFailure);
 
         Assert.False(result.Succeeded);
         Assert.Equal(TranscriptExportStage.DocxWriteWithoutMaterializedVisuals, result.Failure?.Stage);
@@ -111,7 +111,7 @@ public sealed class MainWindowTranscriptExportTests {
                 @"C:\exports\transcript.md",
                 new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "retry write failed")));
 
-        var result = MainWindow.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, retrySuccessWithMarkdownFallback);
+        var result = LocalExportArtifactWriter.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, retrySuccessWithMarkdownFallback);
 
         Assert.True(result.Succeeded);
         Assert.Equal(TranscriptExportFallbackKind.Markdown, result.Fallback?.Kind);
@@ -137,7 +137,7 @@ public sealed class MainWindowTranscriptExportTests {
                 @"C:\exports\transcript.md",
                 new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "retry write failed")));
 
-        var result = MainWindow.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, failedRetryWithFallback);
+        var result = LocalExportArtifactWriter.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, failedRetryWithFallback);
 
         Assert.False(result.Succeeded);
         Assert.Equal(TranscriptExportStage.MarkdownFallbackWrite, result.Failure?.Stage);

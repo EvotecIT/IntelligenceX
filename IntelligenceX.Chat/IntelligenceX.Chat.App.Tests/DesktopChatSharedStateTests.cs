@@ -91,6 +91,87 @@ public sealed class DesktopChatSharedStateTests {
         Assert.Contains(messages, message => message.Text == "Native addition");
     }
 
+    /// <summary>Ensures transcript persistence cannot overwrite newer runtime, autonomy, or tool settings.</summary>
+    [Fact]
+    public void LegacyMerge_PreservesSettingsChangedAfterLegacyLoad() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        local.Conversations[0].Messages.Add(new ChatMessageState {
+            Role = "user",
+            Text = "Legacy addition",
+            TimeUtc = time.AddMinutes(1)
+        });
+        latest.LocalProviderTransport = "compatible-http";
+        latest.LocalProviderBaseUrl = "http://127.0.0.1:1234/v1";
+        latest.LocalProviderModel = "local-model";
+        latest.AutonomyMaxToolRounds = 9;
+        latest.DisabledTools = ["unsafe_tool"];
+        var staleLocal = CloneForTest(local);
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        Assert.Equal("compatible-http", merged.LocalProviderTransport);
+        Assert.Equal("http://127.0.0.1:1234/v1", merged.LocalProviderBaseUrl);
+        Assert.Equal("local-model", merged.LocalProviderModel);
+        Assert.Equal(9, merged.AutonomyMaxToolRounds);
+        Assert.Equal(["unsafe_tool"], merged.DisabledTools);
+        Assert.Contains(Assert.Single(merged.Conversations).Messages, message => message.Text == "Legacy addition");
+        Assert.False(DesktopChatStateMerger.RuntimeAndPreferenceStateEquals(staleLocal, merged));
+
+        var afterAnotherStaleSave = DesktopChatStateMerger.MergeLegacySnapshot(staleLocal, baseline, CloneForTest(merged));
+        Assert.Equal("compatible-http", afterAnotherStaleSave.LocalProviderTransport);
+        Assert.Equal("local-model", afterAnotherStaleSave.LocalProviderModel);
+        Assert.Equal(["unsafe_tool"], afterAnotherStaleSave.DisabledTools);
+    }
+
+    /// <summary>Ensures a local preference edit still wins when the persisted value has not changed.</summary>
+    [Fact]
+    public void LegacyMerge_PreservesLocalSettingsChangedFromBaseline() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        local.TimestampMode = "none";
+        local.AutonomyMaxToolRounds = 7;
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        Assert.Equal("none", merged.TimestampMode);
+        Assert.Equal(7, merged.AutonomyMaxToolRounds);
+    }
+
+    /// <summary>Ensures deserialization-only migration metadata does not look like a runtime preference change.</summary>
+    [Fact]
+    public void RuntimePreferenceComparison_IgnoresPropertyPresenceMetadata() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var original = BuildState("Operator", "Memory", "Initial message", time);
+        var locallyChanged = CloneForTest(original);
+        locallyChanged.TimestampMode = "none";
+        var persistedState = DesktopChatStateMerger.MergeLegacySnapshot(
+            locallyChanged,
+            original,
+            CloneForTest(original));
+        persistedState.LocalProviderRuntimeOverrideActiveWasPresent = true;
+        persistedState.LocalProviderImageGenerationOverrideActiveWasPresent = true;
+
+        Assert.True(DesktopChatStateMerger.RuntimeAndPreferenceStateEquals(locallyChanged, persistedState));
+
+        var advancedBaseline = CloneForTest(persistedState);
+        var laterExternalChange = CloneForTest(persistedState);
+        laterExternalChange.TimestampMode = "milliseconds";
+        laterExternalChange.LocalProviderRuntimeOverrideActiveWasPresent = true;
+        laterExternalChange.LocalProviderImageGenerationOverrideActiveWasPresent = true;
+
+        var afterLaterSave = DesktopChatStateMerger.MergeLegacySnapshot(
+            CloneForTest(persistedState),
+            advancedBaseline,
+            laterExternalChange);
+
+        Assert.Equal("milliseconds", afterLaterSave.TimestampMode);
+    }
+
     /// <summary>Ensures advancing the baseline to the reconciled snapshot allows a later legacy deletion.</summary>
     [Fact]
     public void LegacyMerge_ReconciledBaselineDoesNotResurrectDeletedState() {
@@ -177,6 +258,12 @@ public sealed class DesktopChatSharedStateTests {
             UserName = state.UserName,
             AssistantPersona = state.AssistantPersona,
             ThemePreset = state.ThemePreset,
+            LocalProviderTransport = state.LocalProviderTransport,
+            LocalProviderBaseUrl = state.LocalProviderBaseUrl,
+            LocalProviderModel = state.LocalProviderModel,
+            TimestampMode = state.TimestampMode,
+            AutonomyMaxToolRounds = state.AutonomyMaxToolRounds,
+            DisabledTools = state.DisabledTools.ToList(),
             ActiveConversationId = state.ActiveConversationId,
             Conversations = new List<ChatConversationState> { clonedConversation },
             Messages = clonedConversation.Messages.ToList(),

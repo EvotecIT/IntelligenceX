@@ -30,12 +30,21 @@ internal sealed partial class NativeChatWindow {
             pickedPath,
             defaultPrefix: "transcript");
 
-        var result = await Task.Run(() =>
-            IntelligenceX.Chat.App.LocalExportArtifactWriter.ExportTranscript(
+        using var visualMaterialization = string.Equals(format, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)
+            ? await Task.Run(() => NativeTranscriptVisualExportMaterializer.TryMaterialize(markdown)).ConfigureAwait(true)
+            : null;
+        var result = await Task.Run(() => visualMaterialization is null
+            ? IntelligenceX.Chat.App.LocalExportArtifactWriter.ExportTranscript(
                 format,
                 title,
                 markdown,
-                outputPath)).ConfigureAwait(true);
+                outputPath)
+            : IntelligenceX.Chat.App.LocalExportArtifactWriter.ExportDocxWithMaterializedVisualFallback(
+                title,
+                markdown,
+                visualMaterialization.Markdown,
+                outputPath,
+                visualMaterialization.AllowedImageDirectories)).ConfigureAwait(true);
 
         _viewModel.SetHostStatus(result.Succeeded
             ? "Transcript exported."

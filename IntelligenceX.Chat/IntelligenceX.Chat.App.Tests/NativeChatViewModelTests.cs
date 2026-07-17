@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Native;
+using IntelligenceX.Chat.App.Native.Rendering;
 using IntelligenceX.Chat.Client;
 using Xunit;
 
@@ -98,6 +99,63 @@ public sealed class NativeChatViewModelTests {
         var assistant = Assert.Single(model.Transcript, item => item.IsAssistant);
         Assert.Equal("Visible answer.", assistant.Text);
         Assert.DoesNotContain("ix_memory", assistant.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures shared continuation routing sees the last completed assistant turn rather than the new draft placeholder.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_BuildsSharedRequestBeforeAddingAssistantPlaceholder() {
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        string? latestRoleSeenByProvider = null;
+        var model = new NativeChatViewModel(
+            runtime,
+            requestTextProvider: (conversation, text, _) => {
+                latestRoleSeenByProvider = conversation.Messages.LastOrDefault()?.Role;
+                return text;
+            });
+        await AuthenticateAsync(model);
+
+        var sent = await model.SendAsync("continue");
+
+        Assert.True(sent);
+        Assert.Equal("user", latestRoleSeenByProvider);
+    }
+
+    /// <summary>
+    /// Ensures request construction failures settle the transcript and release the active-turn lifecycle.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_RequestProviderFailureSettlesErrorAndAllowsNextTurn() {
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        var failRequestConstruction = true;
+        var model = new NativeChatViewModel(
+            runtime,
+            requestOptionsProvider: _ => {
+                if (failRequestConstruction) {
+                    failRequestConstruction = false;
+                    throw new InvalidOperationException("profile unavailable");
+                }
+
+                return null;
+            });
+        await AuthenticateAsync(model);
+
+        var firstSent = await model.SendAsync("first");
+
+        Assert.False(firstSent);
+        Assert.False(model.HasActiveTurn);
+        Assert.False(model.IsSending);
+        var failedAssistant = Assert.Single(model.Transcript, item => item.IsAssistant);
+        Assert.Equal("Error", failedAssistant.Status);
+        Assert.Contains("profile unavailable", failedAssistant.Text, StringComparison.Ordinal);
+
+        var secondSent = await model.SendAsync("second");
+
+        Assert.True(secondSent);
+        Assert.False(model.HasActiveTurn);
+        Assert.Single(runtime.Requests);
+        Assert.Equal(4, model.Transcript.Count);
     }
 
     /// <summary>
@@ -564,6 +622,24 @@ public sealed class NativeChatViewModelTests {
 
         var content = Assert.Single(item.Content);
         Assert.Contains("hello", content.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures a completed reply with a post-processing warning still projects rich Markdown content.
+    /// </summary>
+    [Fact]
+    public void NativeChatTranscriptItem_ProjectsWarningCompleteAssistantContent() {
+        var item = new NativeChatTranscriptItem(
+            "assistant",
+            """
+            | Result |
+            | --- |
+            | Healthy |
+            """,
+            DateTimeOffset.Now,
+            "Complete with warning");
+
+        Assert.Contains(item.Content, content => content.Kind == NativeTranscriptContentKind.Table);
     }
 
     /// <summary>

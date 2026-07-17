@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Chat.App.Conversation;
 
@@ -21,6 +22,55 @@ internal static class DesktopChatStateMerger {
                && SequenceEqual(left.Conversations, right.Conversations, ConversationEquals);
     }
 
+    internal static bool RuntimeAndPreferenceStateEquals(ChatAppState left, ChatAppState right) {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+        return string.Equals(left.LocalProviderTransport, right.LocalProviderTransport, StringComparison.OrdinalIgnoreCase)
+               && left.LocalProviderRuntimeOverrideActive == right.LocalProviderRuntimeOverrideActive
+               && string.Equals(left.LocalProviderBaseUrl, right.LocalProviderBaseUrl, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.LocalProviderModel, right.LocalProviderModel, StringComparison.Ordinal)
+               && string.Equals(left.LocalProviderOpenAIAuthMode, right.LocalProviderOpenAIAuthMode, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.LocalProviderOpenAIBasicUsername, right.LocalProviderOpenAIBasicUsername, StringComparison.Ordinal)
+               && string.Equals(left.LocalProviderOpenAIAccountId, right.LocalProviderOpenAIAccountId, StringComparison.Ordinal)
+               && left.ActiveNativeAccountSlot == right.ActiveNativeAccountSlot
+               && string.Equals(left.NativeAccountSlot1, right.NativeAccountSlot1, StringComparison.Ordinal)
+               && string.Equals(left.NativeAccountSlot2, right.NativeAccountSlot2, StringComparison.Ordinal)
+               && string.Equals(left.NativeAccountSlot3, right.NativeAccountSlot3, StringComparison.Ordinal)
+               && SequenceEqual(left.NativeAccountSlots, right.NativeAccountSlots, StringComparer.Ordinal.Equals)
+               && string.Equals(left.LocalProviderReasoningEffort, right.LocalProviderReasoningEffort, StringComparison.Ordinal)
+               && string.Equals(left.LocalProviderReasoningSummary, right.LocalProviderReasoningSummary, StringComparison.Ordinal)
+               && string.Equals(left.LocalProviderTextVerbosity, right.LocalProviderTextVerbosity, StringComparison.Ordinal)
+               && left.LocalProviderTemperature == right.LocalProviderTemperature
+               && left.LocalProviderImageGenerationEnabled == right.LocalProviderImageGenerationEnabled
+               && left.LocalProviderImageGenerationOverrideActive == right.LocalProviderImageGenerationOverrideActive
+               && string.Equals(left.LocalProviderImageGenerationQuality, right.LocalProviderImageGenerationQuality, StringComparison.Ordinal)
+               && string.Equals(left.LocalProviderImageGenerationSize, right.LocalProviderImageGenerationSize, StringComparison.Ordinal)
+               && string.Equals(left.LocalProviderImageGenerationOutputFormat, right.LocalProviderImageGenerationOutputFormat, StringComparison.Ordinal)
+               && left.LocalProviderImageGenerationOutputCompression == right.LocalProviderImageGenerationOutputCompression
+               && string.Equals(left.LocalProviderImageGenerationBackground, right.LocalProviderImageGenerationBackground, StringComparison.Ordinal)
+               && string.Equals(left.LocalProviderImageGenerationOutputDirectory, right.LocalProviderImageGenerationOutputDirectory, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.TimestampMode, right.TimestampMode, StringComparison.OrdinalIgnoreCase)
+               && left.AutonomyMaxToolRounds == right.AutonomyMaxToolRounds
+               && left.AutonomyParallelTools == right.AutonomyParallelTools
+               && left.AutonomyTurnTimeoutSeconds == right.AutonomyTurnTimeoutSeconds
+               && left.AutonomyToolTimeoutSeconds == right.AutonomyToolTimeoutSeconds
+               && left.AutonomyWeightedToolRouting == right.AutonomyWeightedToolRouting
+               && left.AutonomyMaxCandidateTools == right.AutonomyMaxCandidateTools
+               && left.AutonomyPlanExecuteReviewLoop == right.AutonomyPlanExecuteReviewLoop
+               && left.AutonomyMaxReviewPasses == right.AutonomyMaxReviewPasses
+               && left.AutonomyModelHeartbeatSeconds == right.AutonomyModelHeartbeatSeconds
+               && string.Equals(left.ExportSaveMode, right.ExportSaveMode, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.ExportDefaultFormat, right.ExportDefaultFormat, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.ExportVisualThemeMode, right.ExportVisualThemeMode, StringComparison.OrdinalIgnoreCase)
+               && left.ExportDocxVisualMaxWidthPx == right.ExportDocxVisualMaxWidthPx
+               && string.Equals(left.ExportLastDirectory, right.ExportLastDirectory, StringComparison.OrdinalIgnoreCase)
+               && left.QueueAutoDispatchEnabled == right.QueueAutoDispatchEnabled
+               && left.ProactiveModeEnabled == right.ProactiveModeEnabled
+               && left.ShowAssistantTurnTrace == right.ShowAssistantTurnTrace
+               && left.ShowAssistantDraftBubbles == right.ShowAssistantDraftBubbles
+               && SequenceEqual(left.DisabledTools, right.DisabledTools, StringComparer.Ordinal.Equals);
+    }
+
     internal static ChatAppState MergeLegacySnapshot(
         ChatAppState local,
         ChatAppState? baseline,
@@ -30,6 +80,7 @@ internal static class DesktopChatStateMerger {
             return local;
         }
 
+        MergeRuntimeAndPreferenceState(local, baseline, latest);
         local.UserName = Resolve(local.UserName, baseline.UserName, latest.UserName, StringComparer.Ordinal);
         local.AssistantPersona = Resolve(
             local.AssistantPersona,
@@ -79,6 +130,88 @@ internal static class DesktopChatStateMerger {
         }
 
         return local;
+    }
+
+    private static void MergeRuntimeAndPreferenceState(ChatAppState local, ChatAppState baseline, ChatAppState latest) {
+        local.LocalProviderTransport = Resolve(
+            local.LocalProviderTransport,
+            baseline.LocalProviderTransport,
+            latest.LocalProviderTransport,
+            StringComparer.OrdinalIgnoreCase) ?? "native";
+        local.LocalProviderRuntimeOverrideActive = Resolve(
+            local.LocalProviderRuntimeOverrideActive,
+            baseline.LocalProviderRuntimeOverrideActive,
+            latest.LocalProviderRuntimeOverrideActive);
+        local.LocalProviderRuntimeOverrideActiveWasPresent = Resolve(
+            local.LocalProviderRuntimeOverrideActiveWasPresent,
+            baseline.LocalProviderRuntimeOverrideActiveWasPresent,
+            latest.LocalProviderRuntimeOverrideActiveWasPresent);
+        local.LocalProviderBaseUrl = Resolve(
+            local.LocalProviderBaseUrl,
+            baseline.LocalProviderBaseUrl,
+            latest.LocalProviderBaseUrl,
+            StringComparer.OrdinalIgnoreCase);
+        local.LocalProviderModel = Resolve(
+            local.LocalProviderModel,
+            baseline.LocalProviderModel,
+            latest.LocalProviderModel,
+            StringComparer.Ordinal) ?? OpenAIModelCatalog.DefaultModel;
+        local.LocalProviderOpenAIAuthMode = Resolve(
+            local.LocalProviderOpenAIAuthMode,
+            baseline.LocalProviderOpenAIAuthMode,
+            latest.LocalProviderOpenAIAuthMode,
+            StringComparer.OrdinalIgnoreCase) ?? "bearer";
+        local.LocalProviderOpenAIBasicUsername = Resolve(
+            local.LocalProviderOpenAIBasicUsername,
+            baseline.LocalProviderOpenAIBasicUsername,
+            latest.LocalProviderOpenAIBasicUsername,
+            StringComparer.Ordinal) ?? string.Empty;
+        local.LocalProviderOpenAIAccountId = Resolve(
+            local.LocalProviderOpenAIAccountId,
+            baseline.LocalProviderOpenAIAccountId,
+            latest.LocalProviderOpenAIAccountId,
+            StringComparer.Ordinal) ?? string.Empty;
+        local.ActiveNativeAccountSlot = ResolveValue(
+            local.ActiveNativeAccountSlot,
+            baseline.ActiveNativeAccountSlot,
+            latest.ActiveNativeAccountSlot);
+        local.NativeAccountSlot1 = Resolve(local.NativeAccountSlot1, baseline.NativeAccountSlot1, latest.NativeAccountSlot1, StringComparer.Ordinal) ?? string.Empty;
+        local.NativeAccountSlot2 = Resolve(local.NativeAccountSlot2, baseline.NativeAccountSlot2, latest.NativeAccountSlot2, StringComparer.Ordinal) ?? string.Empty;
+        local.NativeAccountSlot3 = Resolve(local.NativeAccountSlot3, baseline.NativeAccountSlot3, latest.NativeAccountSlot3, StringComparer.Ordinal) ?? string.Empty;
+        local.NativeAccountSlots = ResolveStringList(local.NativeAccountSlots, baseline.NativeAccountSlots, latest.NativeAccountSlots);
+        local.LocalProviderReasoningEffort = Resolve(local.LocalProviderReasoningEffort, baseline.LocalProviderReasoningEffort, latest.LocalProviderReasoningEffort, StringComparer.Ordinal) ?? string.Empty;
+        local.LocalProviderReasoningSummary = Resolve(local.LocalProviderReasoningSummary, baseline.LocalProviderReasoningSummary, latest.LocalProviderReasoningSummary, StringComparer.Ordinal) ?? string.Empty;
+        local.LocalProviderTextVerbosity = Resolve(local.LocalProviderTextVerbosity, baseline.LocalProviderTextVerbosity, latest.LocalProviderTextVerbosity, StringComparer.Ordinal) ?? string.Empty;
+        local.LocalProviderTemperature = ResolveValue(local.LocalProviderTemperature, baseline.LocalProviderTemperature, latest.LocalProviderTemperature);
+        local.LocalProviderImageGenerationEnabled = Resolve(local.LocalProviderImageGenerationEnabled, baseline.LocalProviderImageGenerationEnabled, latest.LocalProviderImageGenerationEnabled);
+        local.LocalProviderImageGenerationOverrideActive = Resolve(local.LocalProviderImageGenerationOverrideActive, baseline.LocalProviderImageGenerationOverrideActive, latest.LocalProviderImageGenerationOverrideActive);
+        local.LocalProviderImageGenerationOverrideActiveWasPresent = Resolve(local.LocalProviderImageGenerationOverrideActiveWasPresent, baseline.LocalProviderImageGenerationOverrideActiveWasPresent, latest.LocalProviderImageGenerationOverrideActiveWasPresent);
+        local.LocalProviderImageGenerationQuality = Resolve(local.LocalProviderImageGenerationQuality, baseline.LocalProviderImageGenerationQuality, latest.LocalProviderImageGenerationQuality, StringComparer.Ordinal) ?? string.Empty;
+        local.LocalProviderImageGenerationSize = Resolve(local.LocalProviderImageGenerationSize, baseline.LocalProviderImageGenerationSize, latest.LocalProviderImageGenerationSize, StringComparer.Ordinal) ?? string.Empty;
+        local.LocalProviderImageGenerationOutputFormat = Resolve(local.LocalProviderImageGenerationOutputFormat, baseline.LocalProviderImageGenerationOutputFormat, latest.LocalProviderImageGenerationOutputFormat, StringComparer.Ordinal) ?? string.Empty;
+        local.LocalProviderImageGenerationOutputCompression = ResolveValue(local.LocalProviderImageGenerationOutputCompression, baseline.LocalProviderImageGenerationOutputCompression, latest.LocalProviderImageGenerationOutputCompression);
+        local.LocalProviderImageGenerationBackground = Resolve(local.LocalProviderImageGenerationBackground, baseline.LocalProviderImageGenerationBackground, latest.LocalProviderImageGenerationBackground, StringComparer.Ordinal) ?? string.Empty;
+        local.LocalProviderImageGenerationOutputDirectory = Resolve(local.LocalProviderImageGenerationOutputDirectory, baseline.LocalProviderImageGenerationOutputDirectory, latest.LocalProviderImageGenerationOutputDirectory, StringComparer.OrdinalIgnoreCase) ?? string.Empty;
+        local.TimestampMode = Resolve(local.TimestampMode, baseline.TimestampMode, latest.TimestampMode, StringComparer.OrdinalIgnoreCase) ?? "seconds";
+        local.AutonomyMaxToolRounds = ResolveValue(local.AutonomyMaxToolRounds, baseline.AutonomyMaxToolRounds, latest.AutonomyMaxToolRounds);
+        local.AutonomyParallelTools = ResolveValue(local.AutonomyParallelTools, baseline.AutonomyParallelTools, latest.AutonomyParallelTools);
+        local.AutonomyTurnTimeoutSeconds = ResolveValue(local.AutonomyTurnTimeoutSeconds, baseline.AutonomyTurnTimeoutSeconds, latest.AutonomyTurnTimeoutSeconds);
+        local.AutonomyToolTimeoutSeconds = ResolveValue(local.AutonomyToolTimeoutSeconds, baseline.AutonomyToolTimeoutSeconds, latest.AutonomyToolTimeoutSeconds);
+        local.AutonomyWeightedToolRouting = ResolveValue(local.AutonomyWeightedToolRouting, baseline.AutonomyWeightedToolRouting, latest.AutonomyWeightedToolRouting);
+        local.AutonomyMaxCandidateTools = ResolveValue(local.AutonomyMaxCandidateTools, baseline.AutonomyMaxCandidateTools, latest.AutonomyMaxCandidateTools);
+        local.AutonomyPlanExecuteReviewLoop = ResolveValue(local.AutonomyPlanExecuteReviewLoop, baseline.AutonomyPlanExecuteReviewLoop, latest.AutonomyPlanExecuteReviewLoop);
+        local.AutonomyMaxReviewPasses = ResolveValue(local.AutonomyMaxReviewPasses, baseline.AutonomyMaxReviewPasses, latest.AutonomyMaxReviewPasses);
+        local.AutonomyModelHeartbeatSeconds = ResolveValue(local.AutonomyModelHeartbeatSeconds, baseline.AutonomyModelHeartbeatSeconds, latest.AutonomyModelHeartbeatSeconds);
+        local.ExportSaveMode = Resolve(local.ExportSaveMode, baseline.ExportSaveMode, latest.ExportSaveMode, StringComparer.OrdinalIgnoreCase) ?? ExportPreferencesContract.DefaultSaveMode;
+        local.ExportDefaultFormat = Resolve(local.ExportDefaultFormat, baseline.ExportDefaultFormat, latest.ExportDefaultFormat, StringComparer.OrdinalIgnoreCase) ?? ExportPreferencesContract.DefaultFormat;
+        local.ExportVisualThemeMode = Resolve(local.ExportVisualThemeMode, baseline.ExportVisualThemeMode, latest.ExportVisualThemeMode, StringComparer.OrdinalIgnoreCase) ?? ExportPreferencesContract.DefaultVisualThemeMode;
+        local.ExportDocxVisualMaxWidthPx = ResolveValue(local.ExportDocxVisualMaxWidthPx, baseline.ExportDocxVisualMaxWidthPx, latest.ExportDocxVisualMaxWidthPx);
+        local.ExportLastDirectory = Resolve(local.ExportLastDirectory, baseline.ExportLastDirectory, latest.ExportLastDirectory, StringComparer.OrdinalIgnoreCase);
+        local.QueueAutoDispatchEnabled = Resolve(local.QueueAutoDispatchEnabled, baseline.QueueAutoDispatchEnabled, latest.QueueAutoDispatchEnabled);
+        local.ProactiveModeEnabled = Resolve(local.ProactiveModeEnabled, baseline.ProactiveModeEnabled, latest.ProactiveModeEnabled);
+        local.ShowAssistantTurnTrace = Resolve(local.ShowAssistantTurnTrace, baseline.ShowAssistantTurnTrace, latest.ShowAssistantTurnTrace);
+        local.ShowAssistantDraftBubbles = Resolve(local.ShowAssistantDraftBubbles, baseline.ShowAssistantDraftBubbles, latest.ShowAssistantDraftBubbles);
+        local.DisabledTools = ResolveStringList(local.DisabledTools, baseline.DisabledTools, latest.DisabledTools);
     }
 
     private static List<ChatConversationState> MergeConversations(
@@ -265,6 +398,21 @@ internal static class DesktopChatStateMerger {
 
     private static bool Resolve(bool local, bool baseline, bool latest) =>
         local == baseline ? latest : local;
+
+    private static T ResolveValue<T>(T local, T baseline, T latest) =>
+        EqualityComparer<T>.Default.Equals(local, baseline) ? latest : local;
+
+    private static List<string> ResolveStringList(
+        IReadOnlyList<string>? local,
+        IReadOnlyList<string>? baseline,
+        IReadOnlyList<string>? latest) {
+        var localValues = local ?? Array.Empty<string>();
+        var baselineValues = baseline ?? Array.Empty<string>();
+        var resolved = SequenceEqual(localValues, baselineValues, StringComparer.Ordinal.Equals)
+            ? latest ?? Array.Empty<string>()
+            : localValues;
+        return resolved.ToList();
+    }
 
     private static Dictionary<string, ChatConversationState> IndexConversations(
         IReadOnlyList<ChatConversationState>? conversations) {

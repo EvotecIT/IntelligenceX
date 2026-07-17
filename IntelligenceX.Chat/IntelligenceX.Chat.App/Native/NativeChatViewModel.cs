@@ -355,28 +355,40 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         _activeTurnCts = cts;
         _activeTurnRequestId = requestId;
         var userItem = new NativeChatTranscriptItem("user", text, DateTimeOffset.Now);
-        await RunOnUiAsync(() => {
-            conversation.Messages.Add(userItem);
-            Transcript.Add(userItem);
-            conversation.UpdateTitleFromFirstUserMessage();
-            conversation.UpdatedUtc = DateTime.UtcNow;
-            return Task.CompletedTask;
-        }).ConfigureAwait(false);
-        await TryPersistConversationsAsync().ConfigureAwait(false);
-
         var assistantItem = new NativeChatTranscriptItem("assistant", string.Empty, DateTimeOffset.Now, "Waiting for runtime...");
-        await RunOnUiAsync(() => {
-            conversation.Messages.Add(assistantItem);
-            Transcript.Add(assistantItem);
-            IsSending = true;
-            StatusText = "Sending...";
-            return Task.CompletedTask;
-        }).ConfigureAwait(false);
+
+        void EnsureAssistantItemPresent() {
+            if (!conversation.Messages.Contains(userItem)) {
+                return;
+            }
+
+            if (!conversation.Messages.Contains(assistantItem)) {
+                conversation.Messages.Add(assistantItem);
+            }
+            if (!Transcript.Contains(assistantItem)) {
+                Transcript.Add(assistantItem);
+            }
+        }
 
         try {
+            await RunOnUiAsync(() => {
+                conversation.Messages.Add(userItem);
+                Transcript.Add(userItem);
+                conversation.UpdateTitleFromFirstUserMessage();
+                conversation.UpdatedUtc = DateTime.UtcNow;
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            await TryPersistConversationsAsync().ConfigureAwait(false);
+
             var sessionPolicy = _sessionPolicyProvider?.Invoke();
             var requestOptions = _requestOptionsProvider?.Invoke(conversation);
             var requestText = _requestTextProvider?.Invoke(conversation, text, sessionPolicy) ?? text;
+            await RunOnUiAsync(() => {
+                EnsureAssistantItemPresent();
+                IsSending = true;
+                StatusText = "Sending...";
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
             await RunOnUiAsync(() => {
                 assistantItem.SetModel(requestOptions?.Model);
                 return Task.CompletedTask;
@@ -445,6 +457,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             return true;
         } catch (OperationCanceledException) {
             await RunOnUiAsync(() => {
+                EnsureAssistantItemPresent();
                 assistantItem.Status = "Canceled";
                 if (string.IsNullOrWhiteSpace(assistantItem.Text)) {
                     assistantItem.Text = "Turn canceled.";
@@ -458,6 +471,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             return false;
         } catch (Exception ex) {
             await RunOnUiAsync(() => {
+                EnsureAssistantItemPresent();
                 assistantItem.Status = "Error";
                 assistantItem.Text = "Native chat turn failed: " + ex.Message;
                 conversation.UpdatedUtc = DateTime.UtcNow;

@@ -106,6 +106,7 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
     private bool ShouldProjectContent() =>
         !IsAssistant
         || string.Equals(_status, "Complete", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(_status, "Complete with warning", StringComparison.OrdinalIgnoreCase)
         || string.Equals(_status, "Error", StringComparison.OrdinalIgnoreCase)
         || string.Equals(_status, "Canceled", StringComparison.OrdinalIgnoreCase);
 

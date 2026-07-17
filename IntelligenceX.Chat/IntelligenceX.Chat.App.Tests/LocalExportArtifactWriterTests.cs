@@ -384,6 +384,37 @@ public sealed partial class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures a failed materialized DOCX attempt retries and falls back from the original portable Markdown.
+    /// </summary>
+    [Fact]
+    public void ExportDocxWithMaterializedVisualFallback_UsesOriginalMarkdownForMarkdownFallback() {
+        const string originalMarkdown = "# Transcript\n\nOriginal visual fence.";
+        const string materializedMarkdown = "# Transcript\n\n![Visual](C:/temp/deleted-after-export.png)";
+        string? savedMarkdown = null;
+        var docxAttempts = 0;
+
+        var result = LocalExportArtifactWriter.ExportDocxWithMaterializedVisualFallback(
+            "transcript",
+            originalMarkdown,
+            materializedMarkdown,
+            @"C:\exports\transcript.docx",
+            [@"C:\temp"],
+            docxVisualMaxWidthPx: null,
+            markdownWriter: (_, text) => savedMarkdown = text,
+            docxWriter: (_, _, _, _, _) => {
+                docxAttempts++;
+                throw new InvalidOperationException("docx write boom");
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(TranscriptExportOutcomeKind.SucceededWithFallback, result.OutcomeKind);
+        Assert.Equal(TranscriptExportFallbackKind.Markdown, result.Fallback?.Kind);
+        Assert.Equal(2, docxAttempts);
+        Assert.Contains("Original visual fence.", savedMarkdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("deleted-after-export.png", savedMarkdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the typed result stays failed when DOCX export is retried later and markdown fallback is intentionally disabled.
     /// </summary>
     [Fact]
