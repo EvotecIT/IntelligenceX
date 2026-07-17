@@ -389,13 +389,40 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                     cts.Token)
                 .ConfigureAwait(false);
 
-            var normalizedTurn = _assistantTurnNormalizer is null
-                ? null
-                : await _assistantTurnNormalizer(conversation, result.Response.Text, cts.Token).ConfigureAwait(false);
+            DesktopAssistantTurnProtocolResult? normalizedTurn = null;
+            string? normalizationWarning = null;
+            if (_assistantTurnNormalizer is not null) {
+                try {
+                    normalizedTurn = await _assistantTurnNormalizer(conversation, result.Response.Text, cts.Token)
+                        .ConfigureAwait(false);
+                } catch (OperationCanceledException) when (cts.IsCancellationRequested) {
+                    throw;
+                } catch (Exception ex) {
+                    StartupLog.Write("Native assistant post-processing failed; preserving model output: " + ex);
+                    normalizedTurn = DesktopChatTurnProtocol.NormalizeAssistantResponse(result.Response.Text);
+                    normalizationWarning = "Response completed, but profile or memory post-processing failed: " + ex.Message;
+                }
+            }
             await RunOnUiAsync(() => {
-                var visibleText = normalizedTurn?.VisibleText ?? result.Response.Text;
-                if (normalizedTurn is not null) {
-                    assistantItem.Text = visibleText;
+                var effectiveNormalizedTurn = normalizedTurn;
+                if (normalizationWarning is not null
+                    && effectiveNormalizedTurn is not null
+                    && string.IsNullOrWhiteSpace(effectiveNormalizedTurn.VisibleText)
+                    && !string.IsNullOrWhiteSpace(assistantItem.Text)) {
+                    effectiveNormalizedTurn = DesktopChatTurnProtocol.NormalizeAssistantResponse(assistantItem.Text);
+                }
+
+                var visibleText = effectiveNormalizedTurn?.VisibleText ?? result.Response.Text;
+                if (effectiveNormalizedTurn is not null) {
+                    if (!string.IsNullOrWhiteSpace(visibleText)
+                        || string.IsNullOrWhiteSpace(assistantItem.Text)) {
+                        assistantItem.Text = visibleText;
+                    }
+                    if (normalizationWarning is not null) {
+                        conversation.PendingActions.Clear();
+                        conversation.PendingActions.AddRange(effectiveNormalizedTurn.PendingActions);
+                        conversation.PendingAssistantQuestionHint = effectiveNormalizedTurn.PendingAssistantQuestionHint;
+                    }
                 } else if (!string.IsNullOrWhiteSpace(visibleText)) {
                     assistantItem.Text = visibleText;
                 }
@@ -403,12 +430,12 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                 assistantItem.SetModel(string.IsNullOrWhiteSpace(result.Metrics?.Model)
                     ? requestOptions?.Model
                     : result.Metrics!.Model);
-                assistantItem.Status = "Complete";
+                assistantItem.Status = normalizationWarning is null ? "Complete" : "Complete with warning";
                 conversation.ThreadId = string.IsNullOrWhiteSpace(result.Response.ThreadId)
                     ? conversation.ThreadId
                     : result.Response.ThreadId;
                 conversation.UpdatedUtc = DateTime.UtcNow;
-                StatusText = ResolveReadyStatus();
+                StatusText = normalizationWarning ?? ResolveReadyStatus();
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
             await TryPersistConversationsAsync().ConfigureAwait(false);

@@ -195,13 +195,17 @@ internal static class NativeMarkdownProjection {
             ? (string.IsNullOrWhiteSpace(image.Title) ? "Image" : image.Title)
             : image.PlainAlt;
         result.Add(new NativeTranscriptContent(
-            NativeTranscriptContentKind.Paragraph,
+            NativeTranscriptContentKind.Image,
             label,
             caption: image.Caption,
             sourceLine: image.SourceSpan?.StartLine,
-            inlines: new[] {
-                new NativeTranscriptInline(MarkdownNativeInlineKind.Link, label, image.LinkUrl ?? image.Source)
-            }));
+            image: new NativeTranscriptImage(
+                image.Source,
+                label,
+                image.Title,
+                image.LinkUrl,
+                image.Width,
+                image.Height)));
     }
 
     private static void AddCode(ICollection<NativeTranscriptContent> result, MarkdownNativeCodeBlock code) {

@@ -183,6 +183,69 @@ public sealed class NativeChatViewModelTests {
     }
 
     /// <summary>
+    /// Ensures profile or memory post-processing cannot replace a valid model answer with an error transcript.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_PostProcessingFailurePreservesCompletedAssistantOutput() {
+        const string rawResponse = """
+            Useful model answer.
+
+            ```ix_memory
+            {"upserts":[{"fact":"private protocol","weight":3}]}
+            ```
+            """;
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult(rawResponse, "thread-1")));
+        var model = new NativeChatViewModel(
+            runtime,
+            assistantTurnNormalizer: (_, _, _) => throw new InvalidOperationException("profile write failed"));
+        model.ActiveConversation.PendingActions.Add(new AssistantPendingAction(
+            "stale-action",
+            "Stale action",
+            "Do stale work",
+            "Run it"));
+        model.ActiveConversation.PendingAssistantQuestionHint = "Stale question?";
+
+        var sent = await model.SendAsync("hello");
+
+        Assert.True(sent);
+        Assert.Equal("Useful model answer.", model.Transcript[1].Text);
+        Assert.DoesNotContain("ix_memory", model.Transcript[1].Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(model.ActiveConversation.PendingActions);
+        Assert.Null(model.ActiveConversation.PendingAssistantQuestionHint);
+        Assert.Equal("Complete with warning", model.Transcript[1].Status);
+        Assert.Contains("post-processing failed", model.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("profile write failed", model.StatusText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures a missing final provider payload cannot erase a safely normalized streamed answer when post-processing fails.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_PostProcessingFailurePreservesNormalizedStreamWhenFinalResponseIsEmpty() {
+        const string streamedResponse = """
+            Useful streamed answer.
+
+            ```ix_memory
+            {"upserts":[{"fact":"private streamed protocol","weight":3}]}
+            ```
+            """;
+        var runtime = new ScriptedRuntime(async updates => {
+            await updates.Delta(streamedResponse).ConfigureAwait(false);
+            return CreateTurnResult(string.Empty, "thread-1");
+        });
+        var model = new NativeChatViewModel(
+            runtime,
+            assistantTurnNormalizer: (_, _, _) => throw new InvalidOperationException("profile write failed"));
+
+        var sent = await model.SendAsync("hello");
+
+        Assert.True(sent);
+        Assert.Equal("Useful streamed answer.", model.Transcript[1].Text);
+        Assert.DoesNotContain("ix_memory", model.Transcript[1].Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Complete with warning", model.Transcript[1].Status);
+    }
+
+    /// <summary>
     /// Ensures provisional snapshot fragments merge with deltas instead of duplicating the current draft.
     /// </summary>
     [Fact]

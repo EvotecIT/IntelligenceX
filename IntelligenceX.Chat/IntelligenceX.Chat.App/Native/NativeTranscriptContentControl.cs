@@ -28,6 +28,9 @@ internal sealed class NativeTranscriptContentControl : UserControl {
         NativeTranscriptContentKind.Table => content.Table == null
             ? BuildDiagnostic("Table artifact unavailable.")
             : new NativeTranscriptTablePreviewControl(content.Table, content.Caption),
+        NativeTranscriptContentKind.Image => content.Image == null
+            ? BuildDiagnostic("Image artifact unavailable.")
+            : new NativeTranscriptImageControl(content.Image, content.Caption),
         NativeTranscriptContentKind.Visual => new NativeVisualArtifactHostControl(content.Visual, content.Caption),
         NativeTranscriptContentKind.Diagnostic => BuildDiagnostic(content.Text),
         _ => NativeTranscriptRichTextBuilder.Create(content.Inlines, content.Text)

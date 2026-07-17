@@ -19,6 +19,7 @@ internal enum NativeTranscriptContentKind {
     Code,
     Divider,
     Table,
+    Image,
     Visual,
     Diagnostic
 }
@@ -38,7 +39,8 @@ internal sealed class NativeTranscriptContent {
         IReadOnlyList<NativeTranscriptInline>? inlines = null,
         int? headingLevel = null,
         NativeTranscriptList? list = null,
-        NativeTranscriptContainer? container = null) {
+        NativeTranscriptContainer? container = null,
+        NativeTranscriptImage? image = null) {
         Kind = kind;
         Text = text ?? string.Empty;
         Language = string.IsNullOrWhiteSpace(language) ? null : language.Trim();
@@ -50,6 +52,7 @@ internal sealed class NativeTranscriptContent {
         HeadingLevel = headingLevel;
         List = list;
         Container = container;
+        Image = image;
     }
 
     public NativeTranscriptContentKind Kind { get; }
@@ -73,6 +76,40 @@ internal sealed class NativeTranscriptContent {
     public NativeTranscriptList? List { get; }
 
     public NativeTranscriptContainer? Container { get; }
+
+    public NativeTranscriptImage? Image { get; }
+}
+
+/// <summary>
+/// Native image projection retaining the OfficeIMO source, display metadata, and optional link target.
+/// </summary>
+internal sealed class NativeTranscriptImage {
+    public NativeTranscriptImage(
+        string source,
+        string? alternateText,
+        string? title,
+        string? linkUrl,
+        double? width,
+        double? height) {
+        Source = (source ?? string.Empty).Trim();
+        AlternateText = string.IsNullOrWhiteSpace(alternateText) ? "Image" : alternateText.Trim();
+        Title = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+        LinkUrl = string.IsNullOrWhiteSpace(linkUrl) ? null : linkUrl.Trim();
+        Width = width is > 0 ? width : null;
+        Height = height is > 0 ? height : null;
+    }
+
+    public string Source { get; }
+
+    public string AlternateText { get; }
+
+    public string? Title { get; }
+
+    public string? LinkUrl { get; }
+
+    public double? Width { get; }
+
+    public double? Height { get; }
 }
 
 /// <summary>

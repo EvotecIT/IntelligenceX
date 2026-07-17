@@ -43,6 +43,7 @@ public sealed class App : Application, IXamlMetadataProvider {
 
         _window.Activate();
         StartupLog.Write("Window activated");
+        WindowForegroundActivator.EnsureWindowForeground(_window);
     }
 
     private static Window CreateLaunchWindow(ChatAppLaunchMode launchMode) =>

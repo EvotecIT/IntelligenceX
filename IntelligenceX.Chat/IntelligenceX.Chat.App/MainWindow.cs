@@ -212,6 +212,8 @@ public sealed partial class MainWindow : Window {
     private readonly WebView2 _webView;
     private readonly MarkdownRendererOptions _markdownOptions;
     private readonly Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment?> _webViewEnvironmentTask;
+    private readonly SemaphoreSlim _optionsPanelGate = new(1, 1);
+    private int _optionsPanelOpenRequested;
     private delegate IntPtr WindowProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -710,8 +712,14 @@ public sealed partial class MainWindow : Window {
     /// <summary>
     /// Initializes the desktop chat window.
     /// </summary>
-    public MainWindow() {
+    public MainWindow() : this(openOptionsOnLaunch: false) { }
+
+    /// <summary>
+    /// Initializes the shared desktop workspace and optionally opens its configuration panel after navigation.
+    /// </summary>
+    internal MainWindow(bool openOptionsOnLaunch) {
         StartupLog.Write("MainWindow.ctor enter");
+        _optionsPanelOpenRequested = openOptionsOnLaunch ? 1 : 0;
         _markdownOptions = MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell();
         StartupLogRendererDiagnostics();
         Title = "IntelligenceX Chat";

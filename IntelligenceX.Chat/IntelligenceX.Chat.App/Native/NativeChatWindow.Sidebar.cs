@@ -9,7 +9,7 @@ internal sealed partial class NativeChatWindow {
         var shell = new Border {
             BorderThickness = new Thickness(0, 0, 1, 0),
             BorderBrush = NativeControlBrushes.Border,
-            Background = NativeControlBrushes.Rgb(249, 251, 253),
+            Background = NativeControlBrushes.SurfaceMuted,
             Padding = new Thickness(14, 16, 14, 14)
         };
         var grid = new Grid { RowSpacing = 10 };
@@ -128,7 +128,7 @@ internal sealed partial class NativeChatWindow {
             Width = 3,
             MinHeight = 34,
             CornerRadius = new CornerRadius(2),
-            Background = active ? NativeControlBrushes.Accent : NativeControlBrushes.Rgb(229, 234, 241),
+            Background = active ? NativeControlBrushes.Accent : NativeControlBrushes.BorderStrong,
             VerticalAlignment = VerticalAlignment.Stretch
         };
         grid.Children.Add(indicator);
@@ -153,7 +153,7 @@ internal sealed partial class NativeChatWindow {
         var badge = new Border {
             Padding = new Thickness(7, 3, 7, 3),
             CornerRadius = new CornerRadius(9),
-            Background = active ? NativeControlBrushes.AccentSoft : NativeControlBrushes.Rgb(238, 242, 247),
+            Background = active ? NativeControlBrushes.AccentSoft : NativeControlBrushes.NeutralSoft,
             Child = new TextBlock {
                 Text = conversation.Badge,
                 FontSize = 11,
@@ -168,8 +168,8 @@ internal sealed partial class NativeChatWindow {
             Margin = new Thickness(0, 0, 0, 7),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Background = active ? NativeControlBrushes.Surface : NativeControlBrushes.Rgb(249, 251, 253),
-            BorderBrush = active ? NativeControlBrushes.BorderStrong : NativeControlBrushes.Rgb(239, 243, 248),
+            Background = active ? NativeControlBrushes.Surface : NativeControlBrushes.SurfaceMuted,
+            BorderBrush = active ? NativeControlBrushes.BorderStrong : NativeControlBrushes.Border,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             Content = grid,

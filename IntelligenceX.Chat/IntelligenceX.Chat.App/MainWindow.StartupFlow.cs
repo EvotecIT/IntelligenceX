@@ -983,9 +983,10 @@ public sealed partial class MainWindow : Window {
                     }), true);
 
                 var navTcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-                void OnNavigationCompleted(WebView2 _, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs __) {
+                void OnNavigationCompleted(WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args) {
                     _webView.NavigationCompleted -= OnNavigationCompleted;
                     navTcs.TrySetResult(null);
+                    _ = FlushRequestedOptionsPanelAsync();
                 }
                 _webView.NavigationCompleted += OnNavigationCompleted;
                 StartupLog.Write("EnsureWebViewInitializedAsync.navigate begin");

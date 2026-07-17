@@ -77,6 +77,15 @@ internal sealed partial class NativeChatWindow {
 
         rightStack.Children.Add(BuildTopBarChip("Model router", NativeControlBrushes.AccentSoft, NativeControlBrushes.Accent));
 
+        var settingsButton = new Button {
+            Content = "Settings",
+            MinWidth = 76,
+            MinHeight = 30
+        };
+        ToolTipService.SetToolTip(settingsButton, "Open the shared profile, provider, model, endpoint, credential, and tool-pack settings workspace.");
+        settingsButton.Click += async (_, _) => await OpenSharedSettingsWorkspaceAsync().ConfigureAwait(true);
+        rightStack.Children.Add(settingsButton);
+
         _signInText = new TextBlock {
             Text = _viewModel.SignInText,
             FontSize = 12,

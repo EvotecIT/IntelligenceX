@@ -198,6 +198,52 @@ public sealed class NativeRenderingProjectionTests {
     }
 
     /// <summary>
+    /// Ensures Markdown images remain native preview artifacts rather than degrading to plain links.
+    /// </summary>
+    [Fact]
+    public void Project_PreservesMarkdownImagePreviewMetadata() {
+        const string markdown = "![Replication topology](https://example.test/topology.png \"Current topology\")";
+
+        var content = NativeMarkdownProjection.Project(markdown);
+
+        var image = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Image).Image;
+        Assert.NotNull(image);
+        Assert.Equal("https://example.test/topology.png", image.Source);
+        Assert.Equal("Replication topology", image.AlternateText);
+        Assert.Equal("Current topology", image.Title);
+    }
+
+    /// <summary>
+    /// Ensures transcript rendering never fetches model-provided remote images without an explicit operator action.
+    /// </summary>
+    [Theory]
+    [InlineData("https://example.test/evidence.png", true)]
+    [InlineData("http://127.0.0.1/private.png", true)]
+    [InlineData("ms-appx:///Assets/evidence.png", false)]
+    [InlineData("C:\\Evidence\\topology.png", false)]
+    public void RemoteImagePolicy_RequiresExplicitConsentOnlyForHttpSources(string source, bool expected) {
+        Assert.Equal(expected, NativeTranscriptImageControl.RequiresExplicitRemoteLoad(source));
+    }
+
+    /// <summary>
+    /// Ensures preview decoding preserves aspect ratio while bounding both wide and tall source images.
+    /// </summary>
+    [Theory]
+    [InlineData(3200u, 1200u, 1493, 560)]
+    [InlineData(1200u, 3200u, 210, 560)]
+    [InlineData(800u, 400u, 800, 400)]
+    public void ImageDecodePolicy_BoundsPixelsWithoutUpscaling(
+        uint sourceWidth,
+        uint sourceHeight,
+        int expectedWidth,
+        int expectedHeight) {
+        var dimensions = NativeTranscriptImageControl.CalculateDecodeDimensions(sourceWidth, sourceHeight);
+
+        Assert.Equal(expectedWidth, dimensions.Width);
+        Assert.Equal(expectedHeight, dimensions.Height);
+    }
+
+    /// <summary>
     /// Ensures OfficeIMO callouts remain semantic warning cards for the native shell.
     /// </summary>
     [Fact]
