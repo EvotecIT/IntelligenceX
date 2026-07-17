@@ -127,20 +127,23 @@ internal static class ChatRequestOptionsFactory {
         SessionPolicyDto? servicePolicy = null) {
         ArgumentNullException.ThrowIfNull(state);
         var imageOverridesActive = state.LocalProviderImageGenerationOverrideActive;
-        var configuredModel = string.IsNullOrWhiteSpace(conversationModelOverride)
-            ? state.LocalProviderModel
-            : conversationModelOverride;
-        var resolvedModel = ChatRequestModelResolver.Resolve(
-            state.LocalProviderTransport,
-            state.LocalProviderBaseUrl,
-            configuredModel,
-            ChatRequestModelResolver.ResolveCachedCatalog(state));
+        var runtimeOverridesActive = state.LocalProviderRuntimeOverrideActive;
+        var explicitConversationModel = NormalizeOptional(conversationModelOverride);
+        var resolvedModel = explicitConversationModel;
+        if (resolvedModel is null && runtimeOverridesActive) {
+            resolvedModel = ChatRequestModelResolver.Resolve(
+                state.LocalProviderTransport,
+                state.LocalProviderBaseUrl,
+                state.LocalProviderModel,
+                ChatRequestModelResolver.ResolveCachedCatalog(state));
+        }
+
         return Create(new DesktopChatRequestSettings {
             Model = resolvedModel,
-            ReasoningEffort = state.LocalProviderReasoningEffort,
-            ReasoningSummary = state.LocalProviderReasoningSummary,
-            TextVerbosity = state.LocalProviderTextVerbosity,
-            Temperature = state.LocalProviderTemperature,
+            ReasoningEffort = runtimeOverridesActive ? state.LocalProviderReasoningEffort : null,
+            ReasoningSummary = runtimeOverridesActive ? state.LocalProviderReasoningSummary : null,
+            TextVerbosity = runtimeOverridesActive ? state.LocalProviderTextVerbosity : null,
+            Temperature = runtimeOverridesActive ? state.LocalProviderTemperature : null,
             ImageGenerationEnabled = imageOverridesActive ? state.LocalProviderImageGenerationEnabled : null,
             ImageGenerationQuality = imageOverridesActive ? state.LocalProviderImageGenerationQuality : null,
             ImageGenerationSize = imageOverridesActive ? state.LocalProviderImageGenerationSize : null,

@@ -1176,6 +1176,10 @@ public sealed partial class MainWindow : Window {
         _themePreset = NormalizeTheme(_appState.ThemePreset) ?? "default";
         _appState.ThemePreset = _themePreset;
         _localProviderTransport = NormalizeLocalProviderTransport(_appState.LocalProviderTransport);
+        _appState.LocalProviderRuntimeOverrideActive =
+            ChatServiceLaunchProfileMapper.ResolveRuntimeOverrideActive(
+                _appState,
+                loaded is not null);
         _localProviderBaseUrl = NormalizeLocalProviderBaseUrl(_appState.LocalProviderBaseUrl, _localProviderTransport);
         _localProviderModel = NormalizeLocalProviderModel(_appState.LocalProviderModel, _localProviderTransport);
         _localProviderOpenAIAuthMode = NormalizeLocalProviderOpenAIAuthMode(_appState.LocalProviderOpenAIAuthMode);

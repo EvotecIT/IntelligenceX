@@ -15,6 +15,7 @@ internal sealed record ChatServicePackToggle(string PackId, bool Enabled);
 /// </summary>
 internal sealed class ChatServiceLaunchProfileOptions {
     public string? LoadProfileName { get; init; }
+    public bool ApplyRuntimeOverrides { get; init; } = true;
     public string? SaveProfileName { get; init; }
     public string? Model { get; init; }
     public string? OpenAITransport { get; init; }
@@ -89,85 +90,87 @@ internal static class ServiceLaunchArguments {
 
         if (profileOptions is not null) {
             AddKeyValueArg(args, "--profile", profileOptions.LoadProfileName);
-            AddKeyValueArg(args, "--save-profile", profileOptions.SaveProfileName);
-            AddKeyValueArg(args, "--model", profileOptions.Model);
+            if (profileOptions.ApplyRuntimeOverrides) {
+                AddKeyValueArg(args, "--save-profile", profileOptions.SaveProfileName);
+                AddKeyValueArg(args, "--model", profileOptions.Model);
 
-            var transport = NormalizeTransport(profileOptions.OpenAITransport);
-            if (transport is not null) {
-                args.Add("--openai-transport");
-                args.Add(transport);
-            }
+                var transport = NormalizeTransport(profileOptions.OpenAITransport);
+                if (transport is not null) {
+                    args.Add("--openai-transport");
+                    args.Add(transport);
+                }
 
-            AddKeyValueArg(args, "--openai-base-url", profileOptions.OpenAIBaseUrl);
-            AddKeyValueArg(args, "--openai-auth-mode", NormalizeCompatibleAuthMode(profileOptions.OpenAIAuthMode));
-            if (profileOptions.ClearOpenAIApiKey) {
-                args.Add("--openai-clear-api-key");
-            } else {
-                AddKeyValueArg(args, "--openai-api-key", profileOptions.OpenAIApiKey);
-            }
-            if (profileOptions.ClearOpenAIBasicAuth) {
-                args.Add("--openai-clear-basic-auth");
-            } else {
-                AddKeyValueArg(args, "--openai-basic-username", profileOptions.OpenAIBasicUsername);
-            }
-            AddKeyValueArg(args, "--openai-account-id", profileOptions.OpenAIAccountId);
+                AddKeyValueArg(args, "--openai-base-url", profileOptions.OpenAIBaseUrl);
+                AddKeyValueArg(args, "--openai-auth-mode", NormalizeCompatibleAuthMode(profileOptions.OpenAIAuthMode));
+                if (profileOptions.ClearOpenAIApiKey) {
+                    args.Add("--openai-clear-api-key");
+                } else {
+                    AddKeyValueArg(args, "--openai-api-key", profileOptions.OpenAIApiKey);
+                }
+                if (profileOptions.ClearOpenAIBasicAuth) {
+                    args.Add("--openai-clear-basic-auth");
+                } else {
+                    AddKeyValueArg(args, "--openai-basic-username", profileOptions.OpenAIBasicUsername);
+                }
+                AddKeyValueArg(args, "--openai-account-id", profileOptions.OpenAIAccountId);
 
-            if (profileOptions.OpenAIStreaming.HasValue) {
-                args.Add(profileOptions.OpenAIStreaming.Value ? "--openai-stream" : "--openai-no-stream");
-            }
+                if (profileOptions.OpenAIStreaming.HasValue) {
+                    args.Add(profileOptions.OpenAIStreaming.Value ? "--openai-stream" : "--openai-no-stream");
+                }
 
-            if (profileOptions.OpenAIAllowInsecureHttp == true) {
-                args.Add("--openai-allow-insecure-http");
-            }
+                if (profileOptions.OpenAIAllowInsecureHttp == true) {
+                    args.Add("--openai-allow-insecure-http");
+                }
 
-            AddKeyValueArg(args, "--reasoning-effort", profileOptions.ReasoningEffort);
-            AddKeyValueArg(args, "--reasoning-summary", profileOptions.ReasoningSummary);
-            AddKeyValueArg(args, "--text-verbosity", profileOptions.TextVerbosity);
-            if (profileOptions.Temperature.HasValue) {
-                args.Add("--temperature");
-                args.Add(profileOptions.Temperature.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            }
-            if (profileOptions.ImageGenerationEnabled.HasValue) {
-                args.Add(profileOptions.ImageGenerationEnabled.Value ? "--enable-image-generation" : "--disable-image-generation");
-            }
-            AddOptionalOverrideArg(
-                args,
-                "--image-generation-quality",
-                "--clear-image-generation-quality",
-                profileOptions.ImageGenerationQuality,
-                profileOptions.ClearImageGenerationQuality);
-            AddOptionalOverrideArg(
-                args,
-                "--image-generation-size",
-                "--clear-image-generation-size",
-                profileOptions.ImageGenerationSize,
-                profileOptions.ClearImageGenerationSize);
-            AddOptionalOverrideArg(
-                args,
-                "--image-generation-output-format",
-                "--clear-image-generation-output-format",
-                profileOptions.ImageGenerationOutputFormat,
-                profileOptions.ClearImageGenerationOutputFormat);
-            if (profileOptions.ClearImageGenerationOutputCompression) {
-                args.Add("--clear-image-generation-output-compression");
-            } else if (profileOptions.ImageGenerationOutputCompression.HasValue) {
-                args.Add("--image-generation-output-compression");
-                args.Add(profileOptions.ImageGenerationOutputCompression.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            }
-            AddOptionalOverrideArg(
-                args,
-                "--image-generation-background",
-                "--clear-image-generation-background",
-                profileOptions.ImageGenerationBackground,
-                profileOptions.ClearImageGenerationBackground);
-            AddOptionalOverrideArg(
-                args,
-                "--image-generation-output-directory",
-                "--clear-image-generation-output-directory",
-                profileOptions.ImageGenerationOutputDirectory,
-                profileOptions.ClearImageGenerationOutputDirectory);
+                AddKeyValueArg(args, "--reasoning-effort", profileOptions.ReasoningEffort);
+                AddKeyValueArg(args, "--reasoning-summary", profileOptions.ReasoningSummary);
+                AddKeyValueArg(args, "--text-verbosity", profileOptions.TextVerbosity);
+                if (profileOptions.Temperature.HasValue) {
+                    args.Add("--temperature");
+                    args.Add(profileOptions.Temperature.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+                if (profileOptions.ImageGenerationEnabled.HasValue) {
+                    args.Add(profileOptions.ImageGenerationEnabled.Value ? "--enable-image-generation" : "--disable-image-generation");
+                }
+                AddOptionalOverrideArg(
+                    args,
+                    "--image-generation-quality",
+                    "--clear-image-generation-quality",
+                    profileOptions.ImageGenerationQuality,
+                    profileOptions.ClearImageGenerationQuality);
+                AddOptionalOverrideArg(
+                    args,
+                    "--image-generation-size",
+                    "--clear-image-generation-size",
+                    profileOptions.ImageGenerationSize,
+                    profileOptions.ClearImageGenerationSize);
+                AddOptionalOverrideArg(
+                    args,
+                    "--image-generation-output-format",
+                    "--clear-image-generation-output-format",
+                    profileOptions.ImageGenerationOutputFormat,
+                    profileOptions.ClearImageGenerationOutputFormat);
+                if (profileOptions.ClearImageGenerationOutputCompression) {
+                    args.Add("--clear-image-generation-output-compression");
+                } else if (profileOptions.ImageGenerationOutputCompression.HasValue) {
+                    args.Add("--image-generation-output-compression");
+                    args.Add(profileOptions.ImageGenerationOutputCompression.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+                AddOptionalOverrideArg(
+                    args,
+                    "--image-generation-background",
+                    "--clear-image-generation-background",
+                    profileOptions.ImageGenerationBackground,
+                    profileOptions.ClearImageGenerationBackground);
+                AddOptionalOverrideArg(
+                    args,
+                    "--image-generation-output-directory",
+                    "--clear-image-generation-output-directory",
+                    profileOptions.ImageGenerationOutputDirectory,
+                    profileOptions.ClearImageGenerationOutputDirectory);
 
-            AddPackToggleArgs(args, profileOptions.PackToggles);
+                AddPackToggleArgs(args, profileOptions.PackToggles);
+            }
         }
 
         AddMultiValueArg(args, "--plugin-path", additionalPluginPaths);

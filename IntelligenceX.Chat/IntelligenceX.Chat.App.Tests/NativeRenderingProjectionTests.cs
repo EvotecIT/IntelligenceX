@@ -127,10 +127,10 @@ public sealed class NativeRenderingProjectionTests {
     }
 
     /// <summary>
-    /// Ensures the OfficeIMO to ChartForgeX path returns a native preview for supported Mermaid diagrams.
+    /// Ensures projection queues supported Mermaid diagrams without rendering them on the caller thread.
     /// </summary>
     [Fact]
-    public void Project_ProducesMermaidVisualPreview() {
+    public void Project_QueuesMermaidVisualForLazyPreview() {
         const string markdown = """
             ```mermaid
             graph TD
@@ -143,8 +143,28 @@ public sealed class NativeRenderingProjectionTests {
         var visual = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Visual);
         Assert.NotNull(visual.Visual);
         Assert.NotNull(visual.Visual.Artifact);
-        Assert.NotNull(visual.Visual.Preview);
-        Assert.True(visual.Visual.Preview.HasPng);
+        Assert.Null(visual.Visual.Preview);
+    }
+
+    /// <summary>
+    /// Ensures the deferred ChartForgeX renderer still produces preview bytes for a supported diagram.
+    /// </summary>
+    [Fact]
+    public void TryRender_ValidMermaidArtifact_ProducesPreview() {
+        const string markdown = """
+            ```mermaid
+            graph TD
+              A[Start] --> B[Done]
+            ```
+            """;
+        var projected = NativeMarkdownProjection.Project(markdown);
+        var artifact = Assert.Single(projected, item => item.Kind == NativeTranscriptContentKind.Visual).Visual!.Artifact;
+
+        var preview = NativeVisualPreviewRenderer.TryRender(artifact, out var error);
+
+        Assert.Null(error);
+        Assert.NotNull(preview);
+        Assert.True(preview.HasPng);
     }
 
     /// <summary>

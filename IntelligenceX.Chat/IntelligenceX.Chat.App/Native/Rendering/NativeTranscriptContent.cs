@@ -257,6 +257,18 @@ internal sealed class NativeTranscriptVisual {
     public VisualArtifact? Artifact { get; }
 
     public NativeVisualPreview? Preview { get; }
+
+    public NativeTranscriptVisual WithPreview(NativeVisualPreview preview) {
+        ArgumentNullException.ThrowIfNull(preview);
+        return new NativeTranscriptVisual(
+            Kind,
+            FenceName,
+            FenceInfo,
+            Payload,
+            Attributes,
+            Artifact,
+            preview);
+    }
 }
 
 /// <summary>

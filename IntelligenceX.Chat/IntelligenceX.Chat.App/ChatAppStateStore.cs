@@ -95,9 +95,13 @@ internal sealed class ChatAppStateStore : IDisposable {
             var hasImageGenerationOverrideActive =
                 document.RootElement.ValueKind == JsonValueKind.Object &&
                 document.RootElement.TryGetProperty("localProviderImageGenerationOverrideActive", out _);
+            var hasRuntimeOverrideActive =
+                document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("localProviderRuntimeOverrideActive", out _);
             var state = JsonSerializer.Deserialize<ChatAppState>(json, _json);
             if (state is not null) {
                 state.LocalProviderImageGenerationOverrideActiveWasPresent = hasImageGenerationOverrideActive;
+                state.LocalProviderRuntimeOverrideActiveWasPresent = hasRuntimeOverrideActive;
             }
 
             return state;
@@ -316,6 +320,9 @@ internal sealed class ChatAppState {
     public string? AssistantPersona { get; set; }
     public string ThemePreset { get; set; } = "default";
     public string LocalProviderTransport { get; set; } = "native";
+    public bool LocalProviderRuntimeOverrideActive { get; set; }
+    [JsonIgnore]
+    internal bool LocalProviderRuntimeOverrideActiveWasPresent { get; set; }
     public string? LocalProviderBaseUrl { get; set; }
     public string LocalProviderModel { get; set; } = OpenAIModelCatalog.DefaultModel;
     public string LocalProviderOpenAIAuthMode { get; set; } = "bearer";

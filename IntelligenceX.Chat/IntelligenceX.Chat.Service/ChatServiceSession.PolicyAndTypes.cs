@@ -89,9 +89,42 @@ internal sealed partial class ChatServiceSession {
                 RunAsProfilePath = runtimePolicy.RunAsProfilePath,
                 AuthenticationProfilePath = runtimePolicy.AuthenticationProfilePath
             },
+            RuntimeIdentity = new SessionRuntimeIdentityDto {
+                ProfileName = NormalizeRuntimeIdentityValue(options.ProfileName),
+                Transport = FormatRuntimeTransport(options.OpenAITransport),
+                Model = ResolvePolicyRuntimeModel(options)
+            },
             RoutingCatalog = MapRoutingCatalogDiagnostics(routingCatalog),
             CapabilitySnapshot = resolvedCapabilitySnapshot
         };
+    }
+
+    private static string FormatRuntimeTransport(OpenAITransportKind transport) {
+        return transport switch {
+            OpenAITransportKind.Native => "native",
+            OpenAITransportKind.AppServer => "appserver",
+            OpenAITransportKind.CompatibleHttp => "compatible-http",
+            OpenAITransportKind.CopilotCli => "copilot-cli",
+            _ => "unknown"
+        };
+    }
+
+    private static string? NormalizeRuntimeIdentityValue(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string? ResolvePolicyRuntimeModel(ServiceOptions options) {
+        var configuredModel = NormalizeRuntimeIdentityValue(options.Model);
+        if (options.OpenAITransport == OpenAITransportKind.CompatibleHttp
+            && IsLoopbackEndpoint(options.OpenAIBaseUrl)
+            && ShouldAutoResolveLocalCompatibleModel(configuredModel ?? string.Empty)) {
+            // The service resolves this fallback against the live local catalog immediately before each turn.
+            // Do not expose the configured cloud fallback as though it were the executing local model.
+            return null;
+        }
+
+        return configuredModel;
     }
 
     private static ToolPackInfoDto[] BuildPackPolicyList(

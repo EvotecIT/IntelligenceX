@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DBAClientX;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.App.Native;
 using Xunit;
@@ -64,6 +66,63 @@ public sealed class NativeConversationStateStoreTests {
             Assert.Equal("thread-one", conversation.ThreadId);
             Assert.Equal(new[] { "Review directory risk", "One risk found" }, conversation.Messages.Select(item => item.Text));
             Assert.Equal("Complete", conversation.Messages[1].Status);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures a profile written before explicit runtime ownership keeps its migrated authority on the first native save.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_LegacyRuntimeProfilePersistsMigratedOverrideAuthority() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var bootstrap = new ChatAppStateStore(path)) {
+            }
+            SeedLegacyRuntimeProfile(path);
+
+            await using var store = new NativeConversationStateStore(path);
+            var workspace = await store.LoadAsync(CancellationToken.None);
+            var conversation = Assert.Single(workspace.Conversations);
+
+            await store.SaveAsync(workspace, CancellationToken.None);
+            var options = store.CreateChatRequestOptions(conversation);
+
+            Assert.Equal("legacy-model", options.Model);
+            Assert.Equal("high", options.ReasoningEffort);
+            using var verifier = new ChatAppStateStore(path);
+            var persisted = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(persisted);
+            Assert.True(persisted!.LocalProviderRuntimeOverrideActive);
+            Assert.True(persisted.LocalProviderRuntimeOverrideActiveWasPresent);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures an atomic save promotes a legacy row discovered after this native store loaded a fresh profile.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_ConcurrentlyDiscoveredLegacyProfileKeepsMigratedAuthority() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            await using var store = new NativeConversationStateStore(path);
+            var workspace = await store.LoadAsync(CancellationToken.None);
+            SeedLegacyRuntimeProfile(path);
+
+            await store.SaveAsync(workspace, CancellationToken.None);
+
+            using var verifier = new ChatAppStateStore(path);
+            var persisted = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(persisted);
+            Assert.True(persisted!.LocalProviderRuntimeOverrideActive);
+            Assert.True(persisted.LocalProviderRuntimeOverrideActiveWasPresent);
+            Assert.True(persisted.LocalProviderImageGenerationOverrideActive);
+            Assert.True(persisted.LocalProviderImageGenerationOverrideActiveWasPresent);
         } finally {
             DeleteTemporaryDirectory(directory);
         }
@@ -285,6 +344,7 @@ public sealed class NativeConversationStateStoreTests {
                     "operations",
                     new ChatAppState {
                         ProfileName = "operations",
+                        LocalProviderRuntimeOverrideActive = true,
                         LocalProviderTransport = "compatible-http",
                         LocalProviderBaseUrl = "http://127.0.0.1:1234/v1",
                         LocalProviderModel = "operations-model",
@@ -321,6 +381,7 @@ public sealed class NativeConversationStateStoreTests {
                 await sharedStore.UpsertAsync(
                     "default",
                     new ChatAppState {
+                        LocalProviderRuntimeOverrideActive = true,
                         LocalProviderModel = "profile-model",
                         LocalProviderReasoningEffort = "high",
                         DisabledTools = ["ad_user_disable"],
@@ -361,6 +422,7 @@ public sealed class NativeConversationStateStoreTests {
                 await sharedStore.UpsertAsync(
                     "default",
                     new ChatAppState {
+                        LocalProviderRuntimeOverrideActive = true,
                         LocalProviderTransport = "compatible-http",
                         LocalProviderBaseUrl = "http://127.0.0.1:1234/v1",
                         LocalProviderModel = "gpt-5.4",
@@ -675,6 +737,75 @@ public sealed class NativeConversationStateStoreTests {
     }
 
     /// <summary>
+    /// Ensures native runtime self-reports carry the active model and live service tool policy through the thin prompt path.
+    /// </summary>
+    [Fact]
+    public async Task BuildRequestText_RuntimeSelfReportIncludesLiveRuntimeFacts() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        OnboardingCompleted = true,
+                        LocalProviderRuntimeOverrideActive = false,
+                        LocalProviderTransport = "native",
+                        LocalProviderModel = "wrong-app-model",
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-runtime", Title = "Runtime" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var store = new NativeConversationStateStore(path);
+            var conversation = Assert.Single((await store.LoadAsync(CancellationToken.None)).Conversations);
+            var userText = string.Join(
+                Environment.NewLine,
+                RuntimeSelfReportDirective.BuildLines(
+                    "Czego teraz uzywasz?",
+                    compactReply: false,
+                    detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                    modelRequested: true,
+                    toolingRequested: true));
+            var request = store.BuildRequestText(
+                conversation,
+                userText,
+                new SessionPolicyDto {
+                    ReadOnly = true,
+                    DangerousToolsEnabled = false,
+                    MaxToolRounds = 12,
+                    ParallelTools = false,
+                    AllowMutatingParallelToolCalls = false,
+                    RuntimeIdentity = new SessionRuntimeIdentityDto {
+                        ProfileName = "service-profile",
+                        Transport = "compatible-http",
+                        Model = "service-model"
+                    },
+                    Packs = [
+                        new ToolPackInfoDto {
+                            Id = "active-directory",
+                            Name = "Active Directory",
+                            Tier = CapabilityTier.ReadOnly,
+                            Enabled = true,
+                            IsDangerous = false
+                        }
+                    ]
+                });
+
+            Assert.Contains("[Runtime capability handshake]", request, StringComparison.Ordinal);
+            Assert.Contains("compatible-http", request, StringComparison.Ordinal);
+            Assert.Contains("service-model", request, StringComparison.Ordinal);
+            Assert.DoesNotContain("wrong-app-model", request, StringComparison.Ordinal);
+            Assert.Contains("enabled packs: 1", request, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Session policy: read-only", request, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Ensures native chat uses the shared question-aware memory selector rather than a shell-specific top-weight list.
     /// </summary>
     [Fact]
@@ -923,6 +1054,32 @@ public sealed class NativeConversationStateStoreTests {
         var path = Path.Combine(Path.GetTempPath(), "ix-native-conversations-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static void SeedLegacyRuntimeProfile(string path) {
+        using var database = new SQLite();
+        database.ExecuteNonQuery(
+            path,
+            """
+            INSERT INTO ix_app_profiles (profile_name, json, updated_utc)
+            VALUES (@name, @json, @updated_utc);
+            """,
+            parameters: new Dictionary<string, object?> {
+                ["@name"] = "default",
+                ["@json"] = """
+                    {
+                      "profileName": "default",
+                      "localProviderTransport": "compatible-http",
+                      "localProviderBaseUrl": "http://127.0.0.1:1234/v1",
+                      "localProviderModel": "legacy-model",
+                      "localProviderReasoningEffort": "high",
+                      "conversations": [
+                        { "id": "chat-legacy-runtime", "title": "Legacy runtime" }
+                      ]
+                    }
+                    """,
+                ["@updated_utc"] = DateTime.UtcNow.ToString("O")
+            });
     }
 
     private static void DeleteTemporaryDirectory(string path) {

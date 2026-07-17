@@ -58,6 +58,8 @@ internal static class PromptMarkdownBuilder {
         IReadOnlyList<string>? persistentMemoryLines = null,
         string? persistentMemoryPrompt = null,
         IReadOnlyList<string>? runtimeSelfReportDirectiveLines = null,
+        IReadOnlyList<string>? capabilitySelfKnowledgeLines = null,
+        IReadOnlyList<string>? runtimeCapabilityLines = null,
         RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis? runtimeSelfReportAnalysis = null) {
         var request = (userText ?? string.Empty).Trim();
         var resolvedRuntimeSelfReportAnalysis = runtimeSelfReportAnalysis ?? RuntimeSelfReportTurnClassifier.Analyze(request);
@@ -71,7 +73,30 @@ internal static class PromptMarkdownBuilder {
             : TakeBudget(persistentMemoryLines, MaxPersistentMemoryLines, ref remainingBudget);
         var hasPersistentMemoryPrompt = !suppressPersistentMemory && !string.IsNullOrWhiteSpace(persistentMemoryPrompt);
         var hasRuntimeDirective = runtimeSelfReportDirectiveLines is { Count: > 0 };
-        var hasMetadata = hasName || hasPersona || hasPersistentMemoryPrompt || (trimmedPersistentMemoryLines is { Count: > 0 }) || hasRuntimeDirective;
+        var remainingSupplementalLineBudget = MaxSupplementalContextLines;
+        var runtimeLineBudget = resolvedRuntimeSelfReportAnalysis.CompactReply
+            ? 2
+            : resolvedRuntimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback
+                ? LexicalFallbackRuntimeCapabilityLines
+                : MaxRuntimeCapabilityLines;
+        var capabilityLineBudget = resolvedRuntimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback
+            ? LexicalFallbackCapabilitySelfKnowledgeLines
+            : MaxCapabilitySelfKnowledgeLines;
+        var trimmedRuntimeCapabilityLines = TakeBudget(
+            runtimeCapabilityLines,
+            runtimeLineBudget,
+            ref remainingSupplementalLineBudget);
+        var trimmedCapabilitySelfKnowledgeLines = TakeBudget(
+            capabilitySelfKnowledgeLines,
+            capabilityLineBudget,
+            ref remainingSupplementalLineBudget);
+        var hasMetadata = hasName
+                          || hasPersona
+                          || hasPersistentMemoryPrompt
+                          || (trimmedPersistentMemoryLines is { Count: > 0 })
+                          || (trimmedCapabilitySelfKnowledgeLines is { Count: > 0 })
+                          || (trimmedRuntimeCapabilityLines is { Count: > 0 })
+                          || hasRuntimeDirective;
 
         if (!hasMetadata) {
             return request;
@@ -110,6 +135,9 @@ internal static class PromptMarkdownBuilder {
                 markdown.Bullet(trimmedPersistentMemoryLines[i]);
             }
         }
+
+        AppendCapabilitySelfKnowledge(markdown, trimmedCapabilitySelfKnowledgeLines);
+        AppendRuntimeCapabilityHandshake(markdown, trimmedRuntimeCapabilityLines);
 
         if (runtimeSelfReportDirectiveLines is { Count: > 0 }) {
             markdown.BlankLine();
@@ -414,37 +442,8 @@ internal static class PromptMarkdownBuilder {
                 .BlankLine();
         }
 
-        if (trimmedCapabilitySelfKnowledgeLines is { Count: > 0 }) {
-            markdown
-                .Paragraph(PromptEnvelopeSections.CapabilitySelfKnowledge)
-                .Bullet("Use this to answer capability questions in human terms without falling back to raw runtime telemetry.")
-                .BlankLine();
-
-            for (var i = 0; i < trimmedCapabilitySelfKnowledgeLines.Count; i++) {
-                var line = trimmedCapabilitySelfKnowledgeLines[i];
-                if (!string.IsNullOrWhiteSpace(line)) {
-                    markdown.Bullet(line.Trim());
-                }
-            }
-
-            markdown.BlankLine();
-        }
-
-        if (trimmedRuntimeCapabilityLines is { Count: > 0 }) {
-            markdown
-                .Paragraph(PromptEnvelopeSections.RuntimeCapabilityHandshake)
-                .Bullet("Treat these as the live runtime/tool limits for this turn.")
-                .BlankLine();
-
-            for (var i = 0; i < trimmedRuntimeCapabilityLines.Count; i++) {
-                var line = trimmedRuntimeCapabilityLines[i];
-                if (!string.IsNullOrWhiteSpace(line)) {
-                    markdown.Bullet(line.Trim());
-                }
-            }
-
-            markdown.BlankLine();
-        }
+        AppendCapabilitySelfKnowledge(markdown, trimmedCapabilitySelfKnowledgeLines);
+        AppendRuntimeCapabilityHandshake(markdown, trimmedRuntimeCapabilityLines);
 
         if (!string.IsNullOrWhiteSpace(effectiveExecutionBehaviorPrompt)) {
             markdown.Raw(effectiveExecutionBehaviorPrompt).BlankLine();
@@ -657,6 +656,46 @@ internal static class PromptMarkdownBuilder {
 
         remainingBudget -= result.Count;
         return result;
+    }
+
+    private static void AppendCapabilitySelfKnowledge(
+        MarkdownComposer markdown,
+        IReadOnlyList<string>? lines) {
+        if (lines is not { Count: > 0 }) {
+            return;
+        }
+
+        markdown
+            .Paragraph(PromptEnvelopeSections.CapabilitySelfKnowledge)
+            .Bullet("Use this to answer capability questions in human terms without falling back to raw runtime telemetry.")
+            .BlankLine();
+        for (var index = 0; index < lines.Count; index++) {
+            var line = lines[index];
+            if (!string.IsNullOrWhiteSpace(line)) {
+                markdown.Bullet(line.Trim());
+            }
+        }
+        markdown.BlankLine();
+    }
+
+    private static void AppendRuntimeCapabilityHandshake(
+        MarkdownComposer markdown,
+        IReadOnlyList<string>? lines) {
+        if (lines is not { Count: > 0 }) {
+            return;
+        }
+
+        markdown
+            .Paragraph(PromptEnvelopeSections.RuntimeCapabilityHandshake)
+            .Bullet("Treat these as the live runtime/tool limits for this turn.")
+            .BlankLine();
+        for (var index = 0; index < lines.Count; index++) {
+            var line = lines[index];
+            if (!string.IsNullOrWhiteSpace(line)) {
+                markdown.Bullet(line.Trim());
+            }
+        }
+        markdown.BlankLine();
     }
 
     private static bool TryExtractSingleDomainLikeToken(string text, out string domain) {

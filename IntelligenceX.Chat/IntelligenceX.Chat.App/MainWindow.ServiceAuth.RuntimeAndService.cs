@@ -295,6 +295,7 @@ public sealed partial class MainWindow : Window {
                     openAIAccountId: string.Empty,
                     cancellationToken: cts?.Token ?? CancellationToken.None)
                 .ConfigureAwait(false);
+            _ = RefreshRuntimeMetadataAfterAccountPinResetAsync(client);
             return true;
         } catch (OperationCanceledException) when (cts is not null && cts.IsCancellationRequested) {
             // Timeout while applying runtime settings should be non-fatal for auth recovery.
@@ -311,6 +312,14 @@ public sealed partial class MainWindow : Window {
             }
 
             return false;
+        }
+    }
+
+    private async Task RefreshRuntimeMetadataAfterAccountPinResetAsync(ChatServiceClient client) {
+        try {
+            await RefreshRuntimeMetadataAfterMutationAsync(client, appendWarnings: false).ConfigureAwait(false);
+        } catch (Exception ex) {
+            StartupLog.Write("Runtime account pin metadata refresh failed: " + ex.GetType().Name + ": " + ex.Message);
         }
     }
 

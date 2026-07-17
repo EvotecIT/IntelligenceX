@@ -49,6 +49,7 @@ internal static class ChatServiceLaunchProfileMapper {
 
         return new ChatServiceLaunchProfileOptions {
             LoadProfileName = profileName,
+            ApplyRuntimeOverrides = state.LocalProviderRuntimeOverrideActive,
             SaveProfileName = profileName,
             Model = model,
             OpenAITransport = transport,
@@ -94,6 +95,16 @@ internal static class ChatServiceLaunchProfileMapper {
         ArgumentNullException.ThrowIfNull(state);
         return state.LocalProviderImageGenerationOverrideActive
                || isLoadedProfile && !state.LocalProviderImageGenerationOverrideActiveWasPresent;
+    }
+
+    /// <summary>
+    /// Preserves compatibility for app profiles created before runtime override authority was explicit.
+    /// New conversation-only profiles remain load-only until the operator applies runtime settings.
+    /// </summary>
+    public static bool ResolveRuntimeOverrideActive(ChatAppState state, bool isLoadedProfile) {
+        ArgumentNullException.ThrowIfNull(state);
+        return state.LocalProviderRuntimeOverrideActive
+               || isLoadedProfile && !state.LocalProviderRuntimeOverrideActiveWasPresent;
     }
 
     /// <summary>

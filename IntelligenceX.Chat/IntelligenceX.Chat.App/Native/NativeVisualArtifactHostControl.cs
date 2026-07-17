@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using ChartForgeX.VisualArtifacts;
 using IntelligenceX.Chat.App.Native.Rendering;
 using Microsoft.UI.Xaml;
@@ -14,6 +15,10 @@ namespace IntelligenceX.Chat.App.Native;
 internal sealed class NativeVisualArtifactHostControl : UserControl {
     private readonly NativeTranscriptVisual? _visual;
     private readonly string _title;
+    private NativeVisualPreview? _preview;
+    private string? _previewError;
+    private Task? _previewLoadTask;
+    private bool _isLoaded;
 
     public NativeVisualArtifactHostControl(NativeTranscriptVisual? visual, string? caption = null) {
         _visual = visual;
@@ -21,12 +26,15 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
         _title = !string.IsNullOrWhiteSpace(caption)
             ? caption.Trim()
             : artifact == null ? FormatVisualTitle(visual) : FormatArtifactTitle(artifact, visual);
+        _preview = visual?.Preview;
         Content = Build();
+        Loaded += OnLoaded;
+        Unloaded += (_, _) => _isLoaded = false;
     }
 
     private FrameworkElement Build() {
         var artifact = _visual?.Artifact;
-        var hasPreview = _visual?.Preview is { } preview && (preview.Svg != null || preview.HasPng);
+        var hasPreview = _preview is { } preview && (preview.Svg != null || preview.HasPng);
         var detail = artifact == null
             ? "ChartForgeX preview is not available for this artifact."
             : FormatArtifactDetail(artifact, hasPreview);
@@ -38,12 +46,26 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
             FontSize = 12,
             Foreground = NativeControlBrushes.TextSecondary
         });
-        if (_visual?.Preview is { } visualPreview && (visualPreview.Svg != null || visualPreview.HasPng)) {
+        if (_preview is { } visualPreview && (visualPreview.Svg != null || visualPreview.HasPng)) {
             stack.Children.Add(CreatePreviewImage(visualPreview, artifact));
             stack.Children.Add(new TextBlock {
                 Text = "Open the interactive view to resize, fit, zoom, and pan.",
                 FontSize = 11,
                 Foreground = NativeControlBrushes.TextMuted
+            });
+        } else if (!string.IsNullOrWhiteSpace(_previewError)) {
+            stack.Children.Add(new TextBlock {
+                Text = "Visual preview unavailable: " + _previewError,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 11,
+                Foreground = NativeControlBrushes.WarningText
+            });
+        } else if (artifact is not null) {
+            stack.Children.Add(new ProgressRing {
+                IsActive = true,
+                Width = 24,
+                Height = 24,
+                HorizontalAlignment = HorizontalAlignment.Left
             });
         }
 
@@ -67,8 +89,8 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = NativeControlBrushes.TextPrimary
         });
-        if (hasPreview && _visual != null) {
-            var visual = _visual;
+        if (hasPreview && _visual != null && _preview != null) {
+            var visual = _visual.WithPreview(_preview);
             var open = new Button {
                 Content = "Open interactive",
                 MinWidth = 124,
@@ -87,6 +109,35 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
         }
 
         return grid;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e) {
+        _isLoaded = true;
+        if (_preview is not null || _previewError is not null) {
+            Content = Build();
+            return;
+        }
+
+        if (_visual?.Artifact is not null && _previewLoadTask is null) {
+            _previewLoadTask = RenderPreviewAsync(_visual.Artifact);
+        }
+    }
+
+    private async Task RenderPreviewAsync(VisualArtifact artifact) {
+        try {
+            var result = await Task.Run(() => {
+                var preview = NativeVisualPreviewRenderer.TryRender(artifact, out var error);
+                return (Preview: preview, Error: error);
+            });
+            _preview = result.Preview;
+            _previewError = result.Error;
+        } catch (Exception ex) {
+            _previewError = ex.Message;
+        }
+
+        if (_isLoaded) {
+            Content = Build();
+        }
     }
 
     private static FrameworkElement CreatePreviewImage(NativeVisualPreview preview, VisualArtifact? artifact) {

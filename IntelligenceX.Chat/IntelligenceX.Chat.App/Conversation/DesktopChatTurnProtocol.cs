@@ -60,6 +60,8 @@ internal static class DesktopChatTurnProtocol {
                 persistentMemoryLines: context.PersistentMemoryLines,
                 persistentMemoryPrompt: context.PersistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty,
                 runtimeSelfReportDirectiveLines: runtimeSelfReportDirectiveLines,
+                capabilitySelfKnowledgeLines: context.CapabilitySelfKnowledgeLines,
+                runtimeCapabilityLines: context.RuntimeCapabilityLines,
                 runtimeSelfReportAnalysis: context.RuntimeSelfReportAnalysis);
         }
 

@@ -304,6 +304,11 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
             EnsureAccepted(selected, "select the configured profile");
         }
 
+        if (!options.ApplyRuntimeOverrides) {
+            await status("Selected existing service profile without app runtime overrides.").ConfigureAwait(false);
+            return;
+        }
+
         BuildPackToggleLists(options.PackToggles, out var enabledPackIds, out var disabledPackIds);
         var applied = await client.ApplyRuntimeSettingsAsync(
                 model: options.Model,

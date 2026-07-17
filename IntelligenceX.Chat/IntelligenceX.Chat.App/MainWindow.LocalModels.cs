@@ -70,6 +70,9 @@ public sealed partial class MainWindow : Window {
 
         await RefreshServiceProfilesAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
         var profileApplied = await TryApplyServiceProfileAsync(client, setProfileNewThread, appendWarnings).ConfigureAwait(false);
+        if (profileApplied) {
+            await RefreshRuntimeMetadataAfterMutationAsync(client, appendWarnings).ConfigureAwait(false);
+        }
         await RefreshModelsAsync(client, forceModelRefresh, publishOptions: false, appendWarnings).ConfigureAwait(false);
         await RefreshBackgroundSchedulerStatusAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
@@ -94,6 +97,34 @@ public sealed partial class MainWindow : Window {
 
         if (publishOptions) {
             await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task RefreshRuntimeMetadataAfterMutationAsync(ChatServiceClient client, bool appendWarnings) {
+        await RefreshSessionPolicyFromServiceAsync(client, appendWarnings).ConfigureAwait(false);
+        await RefreshToolCatalogFromServiceAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
+    }
+
+    private async Task RefreshSessionPolicyFromServiceAsync(ChatServiceClient client, bool appendWarnings) {
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var hello = await client.RequestAsync<HelloMessage>(
+                new HelloRequest { RequestId = NextId() },
+                cts.Token).ConfigureAwait(false);
+            _sessionPolicy = hello.Policy;
+            var satisfyToolCatalogFromHelloPolicy = ShouldSatisfyStartupToolCatalogFromHelloPolicy(_sessionPolicy);
+            ApplyHelloPolicyToolCatalogPreview(
+                _sessionPolicy,
+                clearExistingToolDefinitions: satisfyToolCatalogFromHelloPolicy);
+            SeedBackgroundSchedulerSnapshot(_sessionPolicy?.CapabilitySnapshot?.BackgroundScheduler);
+            RecordStartupBootstrapCacheMode(_sessionPolicy);
+        } catch (Exception ex) {
+            _sessionPolicy = null;
+            ClearToolCatalogCache(clearCatalogMetadata: true);
+            RecordStartupBootstrapCacheMode(_sessionPolicy);
+            if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
+                AppendSystem(SystemNotice.HelloFailed(ex.Message));
+            }
         }
     }
 
@@ -403,6 +434,7 @@ public sealed partial class MainWindow : Window {
         var hasApiKeyUpdate = clearApiKeyRequested || normalizedApiKey is not null;
         var hasBasicPasswordUpdate = clearBasicAuthRequested || normalizedOpenAIBasicPassword is not null;
         var previousTransport = _localProviderTransport;
+        var previousRuntimeOverrideActive = _appState.LocalProviderRuntimeOverrideActive;
         var previousBaseUrl = _localProviderBaseUrl;
         var previousModel = _localProviderModel;
         var previousOpenAIAuthMode = _localProviderOpenAIAuthMode;
@@ -437,6 +469,7 @@ public sealed partial class MainWindow : Window {
 
         var transportChanged = !string.Equals(previousTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase);
         var changed = transportChanged
+                      || !previousRuntimeOverrideActive
                       || !string.Equals(previousBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
                       || !string.Equals(previousModel, normalizedModel, StringComparison.Ordinal)
                       || !string.Equals(previousOpenAIAuthMode, normalizedOpenAIAuthMode, StringComparison.Ordinal)
@@ -448,6 +481,7 @@ public sealed partial class MainWindow : Window {
                       || !string.Equals(previousTextVerbosity, normalizedTextVerbosity, StringComparison.Ordinal)
                       || previousTemperature != normalizedTemperature
                       || previousImageGenerationEnabled != request.ImageGenerationEnabled
+                      || previousImageGenerationOverrideActive != request.ImageGenerationOverrideActive
                       || !string.Equals(previousImageGenerationQuality, normalizedImageGenerationQuality, StringComparison.Ordinal)
                       || !string.Equals(previousImageGenerationSize, normalizedImageGenerationSize, StringComparison.Ordinal)
                       || !string.Equals(previousImageGenerationOutputFormat, normalizedImageGenerationOutputFormat, StringComparison.Ordinal)
@@ -458,6 +492,7 @@ public sealed partial class MainWindow : Window {
                       || hasApiKeyUpdate;
 
         _localProviderTransport = normalizedTransport;
+        _appState.LocalProviderRuntimeOverrideActive = true;
         _localProviderBaseUrl = normalizedBaseUrl;
         _localProviderModel = normalizedModel;
         _localProviderOpenAIAuthMode = normalizedOpenAIAuthMode;
@@ -491,6 +526,7 @@ public sealed partial class MainWindow : Window {
 
         void RestorePreviousRuntimeState() {
             _localProviderTransport = previousTransport;
+            _appState.LocalProviderRuntimeOverrideActive = previousRuntimeOverrideActive;
             _localProviderBaseUrl = previousBaseUrl;
             _localProviderModel = previousModel;
             _localProviderOpenAIAuthMode = previousOpenAIAuthMode;
@@ -660,6 +696,7 @@ public sealed partial class MainWindow : Window {
                     profileName: profileSaved ? _appProfileName : null,
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
+            await RefreshRuntimeMetadataAfterMutationAsync(client, appendWarnings: true).ConfigureAwait(false);
             return true;
         } catch (Exception ex) {
             AppendSystem("Live runtime apply failed (session kept running). " + ex.Message);

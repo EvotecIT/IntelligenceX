@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Theming;
 
 namespace IntelligenceX.Chat.App.Native;
@@ -51,6 +55,16 @@ internal sealed partial class NativeConversationStateStore {
             assistantCapabilityQuestion,
             assistantRuntimeIntrospectionQuestion,
             runtimeSelfReportAnalysis.DetectionSource);
+        var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
+            ? BuildNativeRuntimeCapabilityContextLines(
+                conversation,
+                sessionPolicy,
+                MainWindow.ShouldUseCompactRuntimeCapabilityContext(
+                    assistantRuntimeIntrospectionQuestion,
+                    runtimeSelfReportAnalysis.CompactReply,
+                    runtimeSelfReportAnalysis.DetectionSource),
+                runtimeSelfReportAnalysis.DetectionSource)
+            : null;
 
         return DesktopChatTurnProtocol.BuildRequestText(new DesktopChatTurnPromptContext {
             UserText = userText,
@@ -76,6 +90,7 @@ internal sealed partial class NativeConversationStateStore {
             PersistentMemoryLines = BuildNativeMemoryContextLines(_state, userText),
             PersistentMemoryEnabled = _state.PersistentMemoryEnabled,
             CapabilitySelfKnowledgeLines = capabilitySelfKnowledgeLines,
+            RuntimeCapabilityLines = runtimeCapabilityLines,
             ProactiveExecutionEnabled = DesktopChatTurnProtocol.ResolveProactiveExecutionGuidanceMode(
                 _state.ProactiveModeEnabled,
                 userText,
@@ -84,6 +99,74 @@ internal sealed partial class NativeConversationStateStore {
                 recentAssistantAskedQuestion),
             RuntimeSelfReportAnalysis = runtimeSelfReportAnalysis
         });
+    }
+
+    private IReadOnlyList<string> BuildNativeRuntimeCapabilityContextLines(
+        NativeConversation conversation,
+        SessionPolicyDto? sessionPolicy,
+        bool compactSelfReport,
+        RuntimeSelfReportDetectionSource detectionSource) {
+        var state = _state ?? throw new InvalidOperationException("Native profile state must be loaded before runtime facts are built.");
+        var options = CreateChatRequestOptions(conversation, sessionPolicy);
+        var tooling = DesktopRuntimeToolingSummaryResolver.Resolve(sessionPolicy);
+        var reachability = (sessionPolicy?.CapabilitySnapshot?.RemoteReachabilityMode ?? string.Empty).Trim();
+        var detailedExecutionLocality = reachability.Length == 0
+            ? "unknown (the live session policy has not reported execution reachability)."
+            : "runtime reachability mode " + reachability + ".";
+        var compactExecutionLocality = reachability.Length == 0
+            ? "unknown:session_policy_loading."
+            : "reachability:" + reachability + ".";
+        var runtimeIdentity = DesktopRuntimeIdentityResolver.Resolve(
+            state.LocalProviderRuntimeOverrideActive,
+            state.LocalProviderTransport,
+            options.Model,
+            sessionPolicy);
+
+        var detailLines = new List<string> {
+            "Session policy: " + (sessionPolicy is null
+                ? "still loading."
+                : sessionPolicy.ReadOnly
+                    ? "read-only; dangerous/write tools disabled."
+                    : "read-write; dangerous/write tools " + (sessionPolicy.DangerousToolsEnabled ? "enabled." : "disabled.")),
+            "Configured tool packs: enabled " + tooling.EnabledPacks.ToString(CultureInfo.InvariantCulture)
+            + ", disabled " + tooling.DisabledPacks.ToString(CultureInfo.InvariantCulture) + ".",
+            "Parallel tool execution: " + (options.ParallelTools ? "enabled" : "disabled")
+            + " (" + (options.ParallelToolMode ?? ChatRequestOptionsFactory.ParallelToolModeAuto) + "); max tool rounds: "
+            + options.MaxToolRounds.ToString(CultureInfo.InvariantCulture) + ".",
+            "Turn timeout: " + (options.TurnTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default")
+            + "s; tool timeout: " + (options.ToolTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s.",
+            "Plan/execute/review loop: "
+            + (options.PlanExecuteReviewLoop.HasValue ? (options.PlanExecuteReviewLoop.Value ? "enabled" : "disabled") : "default")
+            + "; max review passes: " + (options.MaxReviewPasses?.ToString(CultureInfo.InvariantCulture) ?? "default") + ".",
+            "Proactive execution mode: " + (state.ProactiveModeEnabled ? "enabled." : "disabled.")
+        };
+        if (state.LocalProviderRuntimeOverrideActive) {
+            detailLines.Insert(
+                2,
+                "Reasoning effort: " + DescribeRuntimeOverride(options.ReasoningEffort)
+                + ", summary: " + DescribeRuntimeOverride(options.ReasoningSummary)
+                + ", verbosity: " + DescribeRuntimeOverride(options.TextVerbosity)
+                + ", temperature: " + (options.Temperature?.ToString("0.###", CultureInfo.InvariantCulture) ?? "provider default") + ".");
+        } else {
+            detailLines.Insert(2, "Provider controls: inherited from the active service profile; app defaults are not authoritative.");
+        }
+
+        return DesktopRuntimeCapabilityContextBuilder.Build(
+            new DesktopRuntimeCapabilityContext(
+                runtimeIdentity.TransportLabel,
+                runtimeIdentity.ModelLabel,
+                tooling.DetailedAvailability,
+                tooling.CompactAvailability,
+                detailedExecutionLocality,
+                compactExecutionLocality,
+                detailLines),
+            compactSelfReport,
+            detectionSource);
+    }
+
+    private static string DescribeRuntimeOverride(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? "provider default" : normalized;
     }
 
     /// <summary>

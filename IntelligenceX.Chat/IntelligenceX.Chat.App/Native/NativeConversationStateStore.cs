@@ -92,6 +92,10 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         }
         _state = loadedState ?? new ChatAppState { ProfileName = _profileName };
         ChatServiceLaunchProfileMapper.NormalizeProviderState(_state);
+        _state.LocalProviderRuntimeOverrideActive =
+            ChatServiceLaunchProfileMapper.ResolveRuntimeOverrideActive(
+                _state,
+                loadedState is not null);
         _state.LocalProviderImageGenerationOverrideActive =
             ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
                 _state,
@@ -184,7 +188,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
     private ChatAppState MergeWorkspaceIntoState(
         NativeConversationWorkspace workspace,
         ChatAppState? latestState) {
-        var mergedState = latestState ?? _state ?? new ChatAppState { ProfileName = _profileName };
+        var mergedState = ResolveWorkspaceMergeState(latestState);
         var existingConversations = mergedState.Conversations ?? new List<ChatConversationState>();
         var existingById = existingConversations
             .Where(static state => !string.IsNullOrWhiteSpace(state.Id))
@@ -265,6 +269,25 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             mergedState.Messages = (active.Messages ?? new List<ChatMessageState>())
                 .Select(CloneMessage)
                 .ToList();
+        }
+
+        return mergedState;
+    }
+
+    private ChatAppState ResolveWorkspaceMergeState(ChatAppState? latestState) {
+        var mergedState = latestState ?? _state ?? new ChatAppState { ProfileName = _profileName };
+        if (latestState is null || _state is null) {
+            return mergedState;
+        }
+
+        if (!latestState.LocalProviderRuntimeOverrideActiveWasPresent) {
+            latestState.LocalProviderRuntimeOverrideActive =
+                ChatServiceLaunchProfileMapper.ResolveRuntimeOverrideActive(latestState, isLoadedProfile: true);
+        }
+
+        if (!latestState.LocalProviderImageGenerationOverrideActiveWasPresent) {
+            latestState.LocalProviderImageGenerationOverrideActive =
+                ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(latestState, isLoadedProfile: true);
         }
 
         return mergedState;

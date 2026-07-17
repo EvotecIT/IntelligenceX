@@ -40,6 +40,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
         var options = ChatServiceLaunchProfileMapper.Create(
             new ChatAppState {
                 ProfileName = " enterprise ",
+                LocalProviderRuntimeOverrideActive = true,
                 LocalProviderTransport = " compatible-http ",
                 LocalProviderBaseUrl = " http://127.0.0.1:1234/v1 ",
                 LocalProviderModel = " local-model ",
@@ -57,6 +58,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
             new[] { new ChatServicePackToggle("active-directory", true) });
 
         Assert.Equal("enterprise", options.LoadProfileName);
+        Assert.True(options.ApplyRuntimeOverrides);
         Assert.Equal("enterprise", options.SaveProfileName);
         Assert.Equal("compatible-http", options.OpenAITransport);
         Assert.Equal("http://127.0.0.1:1234/v1", options.OpenAIBaseUrl);
@@ -81,6 +83,79 @@ public sealed class ChatServiceLaunchProfileMapperTests {
         var toggle = Assert.Single(options.PackToggles!);
         Assert.Equal("active-directory", toggle.PackId);
         Assert.True(toggle.Enabled);
+    }
+
+    /// <summary>
+    /// Ensures a conversation-only app state selects an existing service profile without replacing its runtime settings.
+    /// </summary>
+    [Fact]
+    public void Create_UnconfiguredAppProfileIsLoadOnly() {
+        var options = ChatServiceLaunchProfileMapper.Create(new ChatAppState {
+            ProfileName = "existing-service-profile",
+            LocalProviderModel = "app-default-that-must-not-win"
+        });
+
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 42,
+            profileOptions: options);
+
+        Assert.False(options.ApplyRuntimeOverrides);
+        Assert.Contains("--profile", args);
+        Assert.Contains("existing-service-profile", args);
+        Assert.DoesNotContain("--save-profile", args);
+        Assert.DoesNotContain("--model", args);
+        Assert.DoesNotContain("app-default-that-must-not-win", args);
+    }
+
+    /// <summary>
+    /// Preserves legacy app-owned profiles while keeping explicit conversation-only profiles load-only.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, true, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, true, true, false)]
+    [InlineData(false, false, false, false)]
+    public void ResolveRuntimeOverrideActive_TracksPersistedAuthority(
+        bool active,
+        bool markerWasPresent,
+        bool loadedProfile,
+        bool expected) {
+        var state = new ChatAppState {
+            LocalProviderRuntimeOverrideActive = active,
+            LocalProviderRuntimeOverrideActiveWasPresent = markerWasPresent
+        };
+
+        Assert.Equal(expected, ChatServiceLaunchProfileMapper.ResolveRuntimeOverrideActive(state, loadedProfile));
+    }
+
+    /// <summary>
+    /// Ensures load-only profiles do not receive app-default provider controls on each turn.
+    /// </summary>
+    [Fact]
+    public void CreateFromState_LoadOnlyProfileDefersProviderControlsToService() {
+        var state = new ChatAppState {
+            LocalProviderRuntimeOverrideActive = false,
+            LocalProviderTransport = "compatible-http",
+            LocalProviderBaseUrl = "http://127.0.0.1:1234/v1",
+            LocalProviderModel = "app-default-that-must-not-win",
+            LocalProviderReasoningEffort = "high",
+            LocalProviderTemperature = 0.75,
+            CachedModelsTransport = "compatible-http",
+            CachedModelsBaseUrl = "http://127.0.0.1:1234/v1",
+            CachedModels = [
+                new ModelInfoDto { Id = "stale-local-default", Model = "stale-local-default", IsDefault = true }
+            ]
+        };
+
+        var inherited = ChatRequestOptionsFactory.CreateFromState(state);
+        var explicitConversation = ChatRequestOptionsFactory.CreateFromState(state, "gpt-5.4");
+
+        Assert.Null(inherited.Model);
+        Assert.Null(inherited.ReasoningEffort);
+        Assert.Null(inherited.Temperature);
+        Assert.Equal("gpt-5.4", explicitConversation.Model);
     }
 
     /// <summary>
@@ -145,6 +220,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
     public void CreateFromState_MapsPerTurnProviderAndAutonomyOptions() {
         var options = ChatRequestOptionsFactory.CreateFromState(
             new ChatAppState {
+                LocalProviderRuntimeOverrideActive = true,
                 LocalProviderTransport = "compatible-http",
                 LocalProviderBaseUrl = "http://127.0.0.1:1234/v1",
                 LocalProviderModel = "profile-model",
