@@ -170,7 +170,9 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
 
                 _discardedConversationIds.Remove(conversation.Id);
                 _discardedConversationBaselines.Remove(conversation.Id);
-                persisted.Add(MergeConversation(conversation, existing, baseline));
+                var merged = MergeConversation(conversation, existing, baseline);
+                ApplyPersistedMetadata(conversation, merged);
+                persisted.Add(merged);
             }
 
             foreach (var existing in existingConversations) {
@@ -290,6 +292,16 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             ? EnsureUtc(existing.UpdatedUtc)
             : EnsureUtc(conversation.UpdatedUtc);
         return existing;
+    }
+
+    private static void ApplyPersistedMetadata(
+        NativeConversation conversation,
+        ChatConversationState persisted) {
+        conversation.Title = ChatConversationIdentity.NormalizeTitle(persisted.Title);
+        conversation.ThreadId = string.IsNullOrWhiteSpace(persisted.ThreadId)
+            ? null
+            : persisted.ThreadId.Trim();
+        conversation.UpdatedUtc = EnsureUtc(persisted.UpdatedUtc);
     }
 
     private static string? ResolveConcurrentValue(

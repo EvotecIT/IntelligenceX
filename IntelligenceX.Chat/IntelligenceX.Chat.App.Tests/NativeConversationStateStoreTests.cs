@@ -217,6 +217,7 @@ public sealed class NativeConversationStateStoreTests {
             var workspace = await nativeStore.LoadAsync(CancellationToken.None);
             var nativeConversation = Assert.Single(workspace.Conversations);
             var nativeTime = DateTime.UtcNow.AddSeconds(-2);
+            nativeConversation.Title = "Native title";
             nativeConversation.Messages.Add(new NativeChatTranscriptItem(
                 "assistant",
                 "native answer",
@@ -226,11 +227,12 @@ public sealed class NativeConversationStateStoreTests {
             nativeConversation.ThreadId = "thread-native";
             nativeConversation.UpdatedUtc = nativeTime;
 
+            var legacyTime = DateTime.UtcNow.AddSeconds(-1);
             using (var concurrentStore = new ChatAppStateStore(path)) {
                 var concurrentState = await concurrentStore.GetAsync("default", CancellationToken.None);
                 Assert.NotNull(concurrentState);
                 var legacyConversation = Assert.Single(concurrentState!.Conversations);
-                var legacyTime = DateTime.UtcNow.AddSeconds(-1);
+                legacyConversation.Title = "Legacy title";
                 legacyConversation.Messages.Add(new ChatMessageState {
                     Role = "assistant",
                     Text = "legacy answer",
@@ -248,6 +250,7 @@ public sealed class NativeConversationStateStoreTests {
             var state = await verifier.GetAsync("default", CancellationToken.None);
             Assert.NotNull(state);
             var merged = Assert.Single(state!.Conversations);
+            Assert.Equal("Legacy title", merged.Title);
             Assert.Equal("thread-legacy", merged.ThreadId);
             Assert.Equal(
                 new[] { "baseline", "native answer", "legacy answer" },
@@ -255,6 +258,10 @@ public sealed class NativeConversationStateStoreTests {
             Assert.Equal("native-model", merged.Messages[1].Model);
             Assert.Equal("legacy-model", merged.Messages[2].Model);
             Assert.Equal(merged.Messages.Select(message => message.Text), state.Messages.Select(message => message.Text));
+            Assert.Equal(merged.Title, nativeConversation.Title);
+            Assert.Equal(merged.ThreadId, nativeConversation.ThreadId);
+            Assert.Equal(merged.UpdatedUtc, nativeConversation.UpdatedUtc);
+            Assert.Equal(legacyTime, nativeConversation.UpdatedUtc);
         } finally {
             DeleteTemporaryDirectory(directory);
         }
