@@ -69,4 +69,68 @@ public sealed class NativeTranscriptScrollBehaviorTests {
             NativeTranscriptScrollBehavior.CalculateWheelTarget(current, scrollableHeight, wheelDelta));
     }
 
+    /// <summary>
+    /// Ensures a wheel gesture supersedes an in-flight follow operation instead of leaving it stuck.
+    /// </summary>
+    [Fact]
+    public void WheelChange_InterruptsFollowAndAllowsTheNextSendToFollowAgain() {
+        var state = new NativeTranscriptScrollState();
+        Assert.True(state.TryQueueFollowUpdate(2, 800, 1000));
+        Assert.True(state.TryBeginQueuedFollow(2, 800, 1000, out _, out var followVersion));
+        Assert.True(state.IsCurrentOperation(followVersion));
+
+        Assert.True(state.TryPlanWheelChange(850, 1000, 120, out var target, out var wheelVersion));
+        Assert.Equal(778, target);
+        Assert.False(state.IsCurrentOperation(followVersion));
+        Assert.True(state.IsCurrentOperation(wheelVersion));
+
+        Assert.True(state.TryCompleteOperation(wheelVersion, target, 1000));
+        Assert.False(state.IsFollowingEnd);
+
+        state.RequestFollowToEnd();
+        Assert.True(state.TryQueueFollowUpdate(4, target, 1200));
+    }
+
+    /// <summary>
+    /// Coalesces rapid wheel notches against the intended animated target rather than a lagging viewport offset.
+    /// </summary>
+    [Fact]
+    public void WheelChange_AccumulatesAgainstPendingAnimatedTarget() {
+        var state = new NativeTranscriptScrollState();
+
+        Assert.True(state.TryPlanWheelChange(500, 1000, 120, out var first, out _));
+        Assert.True(state.TryPlanWheelChange(500, 1000, 120, out var second, out _));
+
+        Assert.Equal(428, first);
+        Assert.Equal(356, second);
+    }
+
+    /// <summary>
+    /// Preserves follow intent when content grows while a programmatic move is completing.
+    /// </summary>
+    [Fact]
+    public void FollowCompletion_PreservesIntentAcrossExtentGrowth() {
+        var state = new NativeTranscriptScrollState();
+        Assert.True(state.TryQueueFollowUpdate(2, 800, 1000));
+        Assert.True(state.TryBeginQueuedFollow(2, 800, 1000, out _, out var version));
+
+        Assert.True(state.TryCompleteOperation(version, 1000, 1200));
+        Assert.True(state.IsFollowingEnd);
+        Assert.True(state.TryQueueFollowUpdate(2, 1000, 1200));
+    }
+
+    /// <summary>
+    /// Restores the real viewport follow state when WinUI rejects an animated wheel request.
+    /// </summary>
+    [Fact]
+    public void RejectedWheelChange_RestoresViewportFollowState() {
+        var state = new NativeTranscriptScrollState();
+        Assert.True(state.TryPlanWheelChange(1000, 1000, 120, out _, out var version));
+
+        state.CancelManualOperation(version, 1000, 1000);
+
+        Assert.True(state.IsFollowingEnd);
+        Assert.False(state.IsCurrentOperation(version));
+    }
+
 }

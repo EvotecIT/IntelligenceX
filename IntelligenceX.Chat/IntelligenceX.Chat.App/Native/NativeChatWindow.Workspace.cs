@@ -1,4 +1,5 @@
 using System;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -41,6 +42,10 @@ internal sealed partial class NativeChatWindow {
             UIElement.PointerWheelChangedEvent,
             new PointerEventHandler(OnTranscriptPointerWheelChanged),
             handledEventsToo: true);
+        _transcriptScrollRecoveryTimer = DispatcherQueue.CreateTimer();
+        _transcriptScrollRecoveryTimer.Interval = TimeSpan.FromMilliseconds(350);
+        _transcriptScrollRecoveryTimer.IsRepeating = false;
+        _transcriptScrollRecoveryTimer.Tick += OnTranscriptScrollRecoveryTick;
         _transcriptItems.SizeChanged += OnTranscriptItemsSizeChanged;
         _emptyTranscriptHost = new Grid {
             Padding = new Thickness(24, 18, 24, 18)
@@ -269,42 +274,28 @@ internal sealed partial class NativeChatWindow {
             return;
         }
 
-        _isTranscriptFollowingEnd = true;
+        _transcriptScrollState.RequestFollowToEnd();
         QueueTranscriptFollowToEnd();
     }
 
     private void OnTranscriptViewChanged(object? sender, ScrollViewerViewChangedEventArgs args) {
-        var scrollableHeight = _transcriptScroll.ScrollableHeight;
-        var extentGrew = scrollableHeight > _lastTranscriptScrollableHeight + 0.5;
-        _lastTranscriptScrollableHeight = scrollableHeight;
-
-        if (_transcriptManualScrollInProgress) {
-            if (!args.IsIntermediate) {
-                _transcriptManualScrollInProgress = false;
-                _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
-                    _transcriptScroll.VerticalOffset,
-                    scrollableHeight);
-            }
-
+        if (args.IsIntermediate) {
+            _transcriptScrollState.ObserveUserView(
+                _transcriptScroll.VerticalOffset,
+                _transcriptScroll.ScrollableHeight);
             return;
         }
 
-        if (_transcriptFollowChangeInProgress) {
-            if (!args.IsIntermediate) {
-                CompleteTranscriptFollowChange();
-            }
-
-            return;
-        }
-
-        if (_isTranscriptFollowingEnd && extentGrew) {
+        if (_transcriptScrollState.CompleteActiveOperation(
+                _transcriptScroll.VerticalOffset,
+                _transcriptScroll.ScrollableHeight)) {
             QueueTranscriptFollowToEnd();
             return;
         }
 
-        _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
+        _transcriptScrollState.ObserveUserView(
             _transcriptScroll.VerticalOffset,
-            scrollableHeight);
+            _transcriptScroll.ScrollableHeight);
     }
 
     private void OnTranscriptItemsSizeChanged(object sender, SizeChangedEventArgs args) {
@@ -329,72 +320,108 @@ internal sealed partial class NativeChatWindow {
     private bool HandleTranscriptWheelDelta(int wheelDelta) {
         var currentOffset = _transcriptScroll.VerticalOffset;
         var scrollableHeight = _transcriptScroll.ScrollableHeight;
-        var target = NativeTranscriptScrollBehavior.CalculateWheelTarget(
-            currentOffset,
-            scrollableHeight,
-            wheelDelta);
-        if (Math.Abs(target - currentOffset) < 0.5) {
+        if (!_transcriptScrollState.TryPlanWheelChange(
+                currentOffset,
+                scrollableHeight,
+                wheelDelta,
+                out var target,
+                out var operationVersion)) {
             return false;
         }
 
-        _isTranscriptFollowingEnd = NativeTranscriptScrollBehavior.IsAtEnd(
-            target,
-            _transcriptScroll.ScrollableHeight);
-        _transcriptManualScrollInProgress = true;
         var viewChangeAccepted = _transcriptScroll.ChangeView(
             horizontalOffset: null,
             verticalOffset: target,
             zoomFactor: null,
-            disableAnimation: true);
+            disableAnimation: false);
         if (!viewChangeAccepted) {
-            _transcriptManualScrollInProgress = false;
+            _transcriptScrollState.CancelManualOperation(
+                operationVersion,
+                _transcriptScroll.VerticalOffset,
+                _transcriptScroll.ScrollableHeight);
+            return false;
         }
 
-        return viewChangeAccepted;
+        ScheduleTranscriptScrollRecovery(operationVersion);
+        return true;
     }
 
     private void QueueTranscriptFollowToEnd() {
-        if (!_isTranscriptFollowingEnd
-            || _viewModel.Transcript.Count == 0
-            || _transcriptFollowUpdateQueued
-            || _transcriptFollowChangeInProgress
-            || !NativeTranscriptScrollBehavior.RequiresFollowUpdate(
+        if (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
+
+        if (!_transcriptScrollState.TryQueueFollowUpdate(
+                _viewModel.Transcript.Count,
                 _transcriptScroll.VerticalOffset,
                 _transcriptScroll.ScrollableHeight)) {
             return;
         }
 
-        _transcriptFollowUpdateQueued = true;
         if (!DispatcherQueue.TryEnqueue(() => {
-                _transcriptFollowUpdateQueued = false;
-                if (!_isTranscriptFollowingEnd
-                    || _viewModel.Transcript.Count == 0
-                    || !NativeTranscriptScrollBehavior.RequiresFollowUpdate(
-                        _transcriptScroll.VerticalOffset,
-                        _transcriptScroll.ScrollableHeight)) {
+                if (_lifetimeCts.IsCancellationRequested) {
+                    _transcriptScrollState.CancelQueuedFollow();
                     return;
                 }
 
-                _transcriptFollowChangeInProgress = true;
+                if (!_transcriptScrollState.TryBeginQueuedFollow(
+                        _viewModel.Transcript.Count,
+                        _transcriptScroll.VerticalOffset,
+                        _transcriptScroll.ScrollableHeight,
+                        out var target,
+                        out var operationVersion)) {
+                    return;
+                }
+
                 if (!_transcriptScroll.ChangeView(
                         horizontalOffset: null,
-                        verticalOffset: _transcriptScroll.ScrollableHeight,
+                        verticalOffset: target,
                         zoomFactor: null,
                         disableAnimation: true)) {
-                    CompleteTranscriptFollowChange();
+                    _ = _transcriptScrollState.TryCompleteOperation(
+                        operationVersion,
+                        _transcriptScroll.VerticalOffset,
+                        _transcriptScroll.ScrollableHeight);
+                    ScheduleTranscriptScrollRecovery(_transcriptScrollState.OperationVersion);
+                    return;
                 }
+
+                ScheduleTranscriptScrollRecovery(operationVersion);
             })) {
-            _transcriptFollowUpdateQueued = false;
+            _transcriptScrollState.CancelQueuedFollow();
         }
     }
 
-    private void CompleteTranscriptFollowChange() {
-        if (!_transcriptFollowChangeInProgress) {
+    private void ScheduleTranscriptScrollRecovery(long operationVersion) {
+        if (_lifetimeCts.IsCancellationRequested) {
             return;
         }
 
-        _transcriptFollowChangeInProgress = false;
+        _transcriptScrollRecoveryVersion = operationVersion;
+        _transcriptScrollRecoveryTimer.Stop();
+        _transcriptScrollRecoveryTimer.Start();
+    }
+
+    private void OnTranscriptScrollRecoveryTick(DispatcherQueueTimer sender, object args) {
+        sender.Stop();
+        if (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
+
+        if (!_transcriptScrollState.IsCurrentVersion(_transcriptScrollRecoveryVersion)) {
+            return;
+        }
+
+        _ = _transcriptScrollState.TryCompleteOperation(
+            _transcriptScrollRecoveryVersion,
+            _transcriptScroll.VerticalOffset,
+            _transcriptScroll.ScrollableHeight);
         QueueTranscriptFollowToEnd();
+    }
+
+    private void StopTranscriptScrollRecovery() {
+        _transcriptScrollRecoveryTimer.Stop();
+        _transcriptScrollRecoveryTimer.Tick -= OnTranscriptScrollRecoveryTick;
     }
 
 }

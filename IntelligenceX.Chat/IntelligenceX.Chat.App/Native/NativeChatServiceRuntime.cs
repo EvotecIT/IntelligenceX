@@ -68,6 +68,10 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
 
     internal async Task RefreshSessionPolicyAsync(CancellationToken cancellationToken) {
         var client = await EnsureConnectedAsync(_ => Task.CompletedTask, cancellationToken).ConfigureAwait(false);
+        _ = await client.RequestAsync<ToolListMessage>(
+                new ListToolsRequest { RequestId = "native-tools-refresh-" + Guid.NewGuid().ToString("N") },
+                cancellationToken)
+            .ConfigureAwait(false);
         var hello = await client.RequestAsync<HelloMessage>(
                 new HelloRequest { RequestId = "native-hello-refresh-" + Guid.NewGuid().ToString("N") },
                 cancellationToken)
@@ -226,6 +230,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
             }
 
             var client = new ChatServiceClient();
+            var serviceLaunchedWithProfileOptions = false;
             try {
                 await status("Connecting to local chat service...").ConfigureAwait(false);
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -233,13 +238,17 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
                 await client.ConnectAsync(_pipeName, timeout.Token).ConfigureAwait(false);
             } catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested) {
                 await client.DisposeAsync().ConfigureAwait(false);
-                await StartServiceAsync(status, cancellationToken).ConfigureAwait(false);
+                serviceLaunchedWithProfileOptions = await StartServiceAsync(status, cancellationToken).ConfigureAwait(false);
                 client = new ChatServiceClient();
                 await RetryConnectAsync(client, status, cancellationToken).ConfigureAwait(false);
             }
 
             try {
-                await SynchronizeSelectedProfileAsync(client, status, cancellationToken).ConfigureAwait(false);
+                if (ShouldSynchronizeSelectedProfile(serviceLaunchedWithProfileOptions)) {
+                    await SynchronizeSelectedProfileAsync(client, status, cancellationToken).ConfigureAwait(false);
+                } else {
+                    await status("Selected chat profile applied when the local service started.").ConfigureAwait(false);
+                }
                 var hello = await client.RequestAsync<HelloMessage>(
                         new HelloRequest { RequestId = "native-hello-" + Guid.NewGuid().ToString("N") },
                         cancellationToken)
@@ -263,7 +272,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         }
     }
 
-    private async Task StartServiceAsync(Func<string, Task> status, CancellationToken cancellationToken) {
+    private async Task<bool> StartServiceAsync(Func<string, Task> status, CancellationToken cancellationToken) {
         await status("Starting local chat service...").ConfigureAwait(false);
         var startOptions = CreateServiceProcessStartOptions();
         var result = await _processHost.EnsureRunningAsync(startOptions, cancellationToken)
@@ -273,7 +282,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
                 _detachOwnedServiceOnDispose,
                 result.Launched,
                 startOptions.DetachedServiceMode);
-            return;
+            return result.Launched && startOptions.ProfileOptions is not null;
         }
 
         var message = result.Failure switch {
@@ -286,6 +295,9 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         await status(message).ConfigureAwait(false);
         throw new InvalidOperationException(message, result.Exception);
     }
+
+    internal static bool ShouldSynchronizeSelectedProfile(bool serviceLaunchedWithProfileOptions) =>
+        !serviceLaunchedWithProfileOptions;
 
     internal static bool ResolveDetachedServiceOwnership(
         bool currentlyOwned,

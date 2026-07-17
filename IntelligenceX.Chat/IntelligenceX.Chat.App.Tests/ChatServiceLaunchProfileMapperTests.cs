@@ -33,6 +33,21 @@ public sealed class ChatServiceLaunchProfileMapperTests {
     }
 
     /// <summary>
+    /// Avoids replaying the same profile over IPC when a freshly launched service already received it on its command line.
+    /// Existing services still need live synchronization.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void NativeRuntime_ShouldSynchronizeSelectedProfile_AvoidsDuplicateColdStartApply(
+        bool serviceLaunchedWithProfileOptions,
+        bool expected) {
+        Assert.Equal(
+            expected,
+            NativeChatServiceRuntime.ShouldSynchronizeSelectedProfile(serviceLaunchedWithProfileOptions));
+    }
+
+    /// <summary>
     /// Ensures persisted provider settings map identically for every desktop shell.
     /// </summary>
     [Fact]

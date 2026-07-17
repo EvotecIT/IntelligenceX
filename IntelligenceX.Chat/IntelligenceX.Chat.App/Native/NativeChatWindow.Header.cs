@@ -142,12 +142,69 @@ internal sealed partial class NativeChatWindow {
     }
 
     private async Task CheckSignInFromNativeAsync() {
-        _ = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
+        var login = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
+        if (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
+
+        if (login.IsAuthenticated) {
+            await RefreshRuntimeReadinessAsync().ConfigureAwait(true);
+        }
         UpdateCommandState();
     }
 
+    private Task RefreshRuntimeReadinessAsync(bool force = false) {
+        if (_lifetimeCts.IsCancellationRequested) {
+            return Task.CompletedTask;
+        }
+
+        var activeRefresh = _runtimeReadinessTask;
+        if (!activeRefresh.IsCompleted) {
+            if (!force) {
+                return activeRefresh;
+            }
+
+            _runtimeReadinessTask = RefreshRuntimeReadinessAfterAsync(activeRefresh);
+            return _runtimeReadinessTask;
+        }
+
+        _runtimeReadinessTask = RefreshRuntimeReadinessCoreAsync();
+        return _runtimeReadinessTask;
+    }
+
+    private async Task RefreshRuntimeReadinessAfterAsync(Task activeRefresh) {
+        await activeRefresh.ConfigureAwait(true);
+        if (!_lifetimeCts.IsCancellationRequested) {
+            await RefreshRuntimeReadinessCoreAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async Task RefreshRuntimeReadinessCoreAsync() {
+        try {
+            _viewModel.SetHostStatus("Loading tool packs...");
+            await _runtime.RefreshSessionPolicyAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            if (_viewModel.AuthenticationState == NativeAuthenticationState.SignedIn) {
+                _viewModel.SetHostStatus(string.Empty);
+            }
+        } catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) {
+            // Window shutdown owns cancellation of the background readiness refresh.
+        } catch (Exception ex) {
+            StartupLog.Write("Native runtime readiness refresh failed: " + ex);
+            if (!_lifetimeCts.IsCancellationRequested) {
+                _viewModel.SetHostStatus("Signed in, but tools could not be loaded: " + ex.Message);
+            }
+        }
+    }
+
     private async Task StartSignInFromNativeAsync() {
-        _ = await _viewModel.StartSignInAsync().ConfigureAwait(true);
+        var login = await _viewModel.StartSignInAsync().ConfigureAwait(true);
+        if (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
+
+        if (login.IsAuthenticated) {
+            await RefreshRuntimeReadinessAsync().ConfigureAwait(true);
+        }
         UpdateCommandState();
     }
 

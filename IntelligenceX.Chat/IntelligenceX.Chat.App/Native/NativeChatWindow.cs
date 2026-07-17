@@ -36,15 +36,14 @@ internal sealed partial class NativeChatWindow : Window {
     private MainWindow? _settingsWindow;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private Task _settingsReloadTask = Task.CompletedTask;
+    private Task _runtimeReadinessTask = Task.CompletedTask;
     private ItemsRepeater _transcriptItems = null!;
     private ScrollViewer _transcriptScroll = null!;
     private Grid _emptyTranscriptHost = null!;
     private Grid _root = null!;
-    private bool _isTranscriptFollowingEnd = true;
-    private bool _transcriptFollowUpdateQueued;
-    private bool _transcriptFollowChangeInProgress;
-    private bool _transcriptManualScrollInProgress;
-    private double _lastTranscriptScrollableHeight;
+    private readonly NativeTranscriptScrollState _transcriptScrollState = new();
+    private DispatcherQueueTimer _transcriptScrollRecoveryTimer = null!;
+    private long _transcriptScrollRecoveryVersion;
 
     public NativeChatWindow() {
         Title = "IntelligenceX Chat";
@@ -74,7 +73,10 @@ internal sealed partial class NativeChatWindow : Window {
             ConfigureWindowPlacement();
             await _viewModel.InitializeConversationsAsync().ConfigureAwait(true);
             RefreshConversationChrome();
-            _ = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
+            var login = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
+            if (login.IsAuthenticated) {
+                _ = RefreshRuntimeReadinessAsync();
+            }
 
             UpdateCommandState();
             _composer.Focus(FocusState.Programmatic);
@@ -113,11 +115,17 @@ internal sealed partial class NativeChatWindow : Window {
 
         Closed += async (_, _) => {
             _lifetimeCts.Cancel();
+            StopTranscriptScrollRecovery();
             _settingsWindow?.Close();
             try {
                 await _settingsReloadTask.ConfigureAwait(false);
             } catch (OperationCanceledException) {
                 // Native shutdown cancels any pending post-settings refresh.
+            }
+            try {
+                await _runtimeReadinessTask.ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                // Native shutdown cancels any pending tool-catalog refresh.
             }
             await _runtime.DisposeAsync().ConfigureAwait(false);
             await _conversationStore.DisposeAsync().ConfigureAwait(false);
