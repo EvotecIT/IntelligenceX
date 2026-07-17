@@ -63,17 +63,32 @@ internal static class DelimitedTextFormatter {
     }
 
     private static string SanitizeTsvCell(string value) =>
-        (value ?? string.Empty)
+        NeutralizeSpreadsheetFormula((value ?? string.Empty)
             .Replace('\t', ' ')
             .Replace("\r\n", " ", StringComparison.Ordinal)
             .Replace('\r', ' ')
             .Replace('\n', ' ')
-            .Trim();
+            .Trim());
 
     private static string EscapeCsvCell(string value) {
-        var text = value ?? string.Empty;
+        var text = NeutralizeSpreadsheetFormula(value ?? string.Empty);
         return text.IndexOfAny([',', '"', '\r', '\n']) < 0
             ? text
             : "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+    }
+
+    private static string NeutralizeSpreadsheetFormula(string value) {
+        var firstContentIndex = 0;
+        while (firstContentIndex < value.Length && char.IsWhiteSpace(value[firstContentIndex])) {
+            firstContentIndex++;
+        }
+
+        if (firstContentIndex >= value.Length) {
+            return value;
+        }
+
+        return value[firstContentIndex] is '=' or '+' or '-' or '@'
+            ? "'" + value
+            : value;
     }
 }

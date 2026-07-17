@@ -145,17 +145,16 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         }
     }
 
-    public bool CanSend => !IsSending
-                           && Volatile.Read(ref _sendStarting) == 0
+    public bool CanSend => !IsTurnBusy
                            && CanUseRuntime
                            && !string.IsNullOrWhiteSpace(Draft);
 
     public bool CanStop => IsSending;
 
-    public bool CanCheckSignIn => !IsCheckingSignIn && !IsSending;
+    public bool CanCheckSignIn => !IsCheckingSignIn && !IsTurnBusy;
 
     public bool CanStartSignIn => !IsCheckingSignIn
-                                  && !IsSending
+                                  && !IsTurnBusy
                                   && AuthenticationState != NativeAuthenticationState.SignedIn;
 
     public async Task InitializeConversationsAsync(CancellationToken cancellationToken = default) {
@@ -182,7 +181,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public async Task<bool> CreateConversationAsync() {
-        if (IsSending) {
+        if (IsTurnBusy) {
             return false;
         }
 
@@ -210,7 +209,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public async Task<bool> SelectConversationAsync(string conversationId) {
-        if (IsSending) {
+        if (IsTurnBusy) {
             return false;
         }
 
@@ -228,8 +227,8 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public async Task<NativeLoginResult> CheckSignInAsync() {
-        if (IsSending) {
-            return new NativeLoginResult(false, null, "Sign-in cannot be checked while a chat turn is running.");
+        if (IsTurnBusy) {
+            return new NativeLoginResult(false, null, "Sign-in cannot be checked while a chat turn is running or starting.");
         }
 
         if (IsCheckingSignIn) {
@@ -257,8 +256,8 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public async Task<NativeLoginResult> StartSignInAsync() {
-        if (IsSending) {
-            return new NativeLoginResult(false, null, "Sign-in cannot start while a chat turn is running.");
+        if (IsTurnBusy) {
+            return new NativeLoginResult(false, null, "Sign-in cannot start while a chat turn is running or starting.");
         }
 
         if (IsCheckingSignIn) {
@@ -292,19 +291,13 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         }
     }
 
-    public async Task<bool> SendDraftAsync() {
-        var text = Draft.Trim();
-        if (text.Length == 0 || IsSending || !CanUseRuntime) {
-            return false;
-        }
+    public Task<bool> SendDraftAsync() => SendAsync(Draft, clearDraftOnStart: true);
 
-        Draft = string.Empty;
-        return await SendAsync(text).ConfigureAwait(false);
-    }
+    public Task<bool> SendAsync(string text) => SendAsync(text, clearDraftOnStart: false);
 
-    public async Task<bool> SendAsync(string text) {
+    private async Task<bool> SendAsync(string text, bool clearDraftOnStart) {
         text = (text ?? string.Empty).Trim();
-        if (text.Length == 0 || IsSending || !CanUseRuntime) {
+        if (text.Length == 0 || IsTurnBusy || !CanUseRuntime) {
             return false;
         }
 
@@ -312,12 +305,16 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             return false;
         }
 
-        RunOnUi(() => OnPropertyChanged(nameof(CanSend)));
+        RunOnUi(NotifyTurnBusyChanged);
         try {
+            if (clearDraftOnStart) {
+                RunOnUi(() => Draft = string.Empty);
+            }
+
             return await SendCoreAsync(text).ConfigureAwait(false);
         } finally {
             Volatile.Write(ref _sendStarting, 0);
-            RunOnUi(() => OnPropertyChanged(nameof(CanSend)));
+            RunOnUi(NotifyTurnBusyChanged);
         }
     }
 
@@ -348,12 +345,17 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         }).ConfigureAwait(false);
 
         try {
+            var requestOptions = _requestOptionsProvider?.Invoke(conversation);
+            await RunOnUiAsync(() => {
+                assistantItem.SetModel(requestOptions?.Model);
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
             var result = await _runtime.RunTurnAsync(
                     new ChatRequest {
                         RequestId = requestId,
                         ThreadId = conversation.ThreadId,
                         Text = text,
-                        Options = _requestOptionsProvider?.Invoke(conversation)
+                        Options = requestOptions
                     },
                     (update, _) => ApplyTurnUpdateAsync(update, assistantItem, accumulator),
                     cts.Token)
@@ -596,6 +598,14 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     private void RunOnUi(Action action) => _dispatch(action);
+
+    private bool IsTurnBusy => IsSending || Volatile.Read(ref _sendStarting) != 0;
+
+    private void NotifyTurnBusyChanged() {
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanCheckSignIn));
+        OnPropertyChanged(nameof(CanStartSignIn));
+    }
 
     private bool CanUseRuntime => AuthenticationState is not NativeAuthenticationState.Checking
         and not NativeAuthenticationState.Required

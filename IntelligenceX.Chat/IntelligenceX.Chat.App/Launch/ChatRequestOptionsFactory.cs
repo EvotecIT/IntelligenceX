@@ -123,10 +123,16 @@ internal static class ChatRequestOptionsFactory {
     public static ChatRequestOptions CreateFromState(ChatAppState state, string? conversationModelOverride = null) {
         ArgumentNullException.ThrowIfNull(state);
         var imageOverridesActive = state.LocalProviderImageGenerationOverrideActive;
+        var configuredModel = string.IsNullOrWhiteSpace(conversationModelOverride)
+            ? state.LocalProviderModel
+            : conversationModelOverride;
+        var resolvedModel = ChatRequestModelResolver.Resolve(
+            state.LocalProviderTransport,
+            state.LocalProviderBaseUrl,
+            configuredModel,
+            ChatRequestModelResolver.ResolveCachedCatalog(state));
         return Create(new DesktopChatRequestSettings {
-            Model = string.IsNullOrWhiteSpace(conversationModelOverride)
-                ? state.LocalProviderModel
-                : conversationModelOverride,
+            Model = resolvedModel,
             ReasoningEffort = state.LocalProviderReasoningEffort,
             ReasoningSummary = state.LocalProviderReasoningSummary,
             TextVerbosity = state.LocalProviderTextVerbosity,

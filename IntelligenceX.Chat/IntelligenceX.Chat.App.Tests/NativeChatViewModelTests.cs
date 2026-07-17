@@ -61,6 +61,7 @@ public sealed class NativeChatViewModelTests {
 
         Assert.True(sent);
         Assert.Same(options, Assert.Single(runtime.Requests).Options);
+        Assert.Equal("conversation-model", Assert.Single(model.Transcript, item => item.IsAssistant).Model);
     }
 
     /// <summary>
@@ -75,13 +76,28 @@ public sealed class NativeChatViewModelTests {
         var firstSend = model.SendAsync("first");
         await store.SaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(model.IsSending);
+        model.Draft = "keep this draft";
+        var other = new NativeConversation("chat-other", "Other");
+        model.Conversations.Add(other);
 
-        var secondSent = await model.SendAsync("second");
+        var secondSent = await model.SendDraftAsync();
+        var created = await model.CreateConversationAsync();
+        var selected = await model.SelectConversationAsync(other.Id);
+        var signInCheck = await model.CheckSignInAsync();
+        var signIn = await model.StartSignInAsync();
         store.ReleaseSave.TrySetResult();
         var firstSent = await firstSend;
 
         Assert.True(firstSent);
         Assert.False(secondSent);
+        Assert.False(created);
+        Assert.False(selected);
+        Assert.False(signInCheck.IsAuthenticated);
+        Assert.Contains("running or starting", signInCheck.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.False(signIn.IsAuthenticated);
+        Assert.Contains("running or starting", signIn.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("keep this draft", model.Draft);
+        Assert.NotSame(other, model.ActiveConversation);
         Assert.Single(runtime.Requests);
     }
 

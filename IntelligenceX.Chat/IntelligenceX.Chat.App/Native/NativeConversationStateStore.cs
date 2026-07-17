@@ -22,7 +22,13 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
     private readonly ChatAppStateStore _stateStore;
     private readonly string _profileName;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private readonly Dictionary<string, ChatConversationState> _baselineConversations =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _baselinePersistedConversationIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _discardedConversationIds = new(StringComparer.OrdinalIgnoreCase);
     private ChatAppState? _state;
+    private string? _baselineActiveConversationId;
+    private bool _hasBaseline;
 
     public NativeConversationStateStore(string? databasePath = null, string profileName = "default") {
         _profileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
@@ -63,6 +69,11 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
                 _state,
                 loadedState is not null);
+        var persistedConversationIds = new HashSet<string>(
+            (_state.Conversations ?? new List<ChatConversationState>())
+            .Where(state => !IsSystemConversation(state.Id) && !string.IsNullOrWhiteSpace(state.Id))
+            .Select(static state => state.Id.Trim()),
+            StringComparer.OrdinalIgnoreCase);
 
         var conversations = new List<NativeConversation>();
         if (_state.Conversations is { Count: > 0 }) {
@@ -91,10 +102,22 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
 
         conversations.Sort(static (left, right) => right.UpdatedUtc.CompareTo(left.UpdatedUtc));
         RemoveDuplicateEmptyDrafts(conversations);
+        var retainedConversationIds = new HashSet<string>(
+            conversations.Select(static conversation => conversation.Id),
+            StringComparer.OrdinalIgnoreCase);
+        _discardedConversationIds.Clear();
+        foreach (var id in persistedConversationIds) {
+            if (!retainedConversationIds.Contains(id)) {
+                _discardedConversationIds.Add(id);
+            }
+        }
+
         var activeId = conversations.Any(item => string.Equals(item.Id, _state.ActiveConversationId, StringComparison.OrdinalIgnoreCase))
             ? _state.ActiveConversationId!
             : conversations[0].Id;
-        return new NativeConversationWorkspace(conversations, activeId);
+        var workspace = new NativeConversationWorkspace(conversations, activeId);
+        CaptureBaseline(workspace, persistedConversationIds);
+        return workspace;
     }
 
     public async Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) {
@@ -117,11 +140,32 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             foreach (var conversation in workspace.Conversations) {
                 workspaceIds.Add(conversation.Id);
                 existingById.TryGetValue(conversation.Id, out var existing);
+                _baselineConversations.TryGetValue(conversation.Id, out var baseline);
+                var unchangedSinceLoad = _hasBaseline
+                                         && baseline is not null
+                                         && ConversationMatches(conversation, baseline);
+                if (unchangedSinceLoad) {
+                    if (existing is not null) {
+                        persisted.Add(existing);
+                        _discardedConversationIds.Remove(conversation.Id);
+                    } else if (!_baselinePersistedConversationIds.Contains(conversation.Id)
+                               && !_discardedConversationIds.Contains(conversation.Id)) {
+                        persisted.Add(MapConversation(conversation, existing: null));
+                    } else {
+                        _discardedConversationIds.Add(conversation.Id);
+                    }
+
+                    continue;
+                }
+
+                _discardedConversationIds.Remove(conversation.Id);
                 persisted.Add(MapConversation(conversation, existing));
             }
 
             foreach (var existing in existingConversations) {
-                if (!IsSystemConversation(existing.Id) && !workspaceIds.Contains(existing.Id)) {
+                if (!IsSystemConversation(existing.Id)
+                    && !workspaceIds.Contains(existing.Id)
+                    && !_discardedConversationIds.Contains(existing.Id)) {
                     persisted.Add(existing);
                 }
             }
@@ -129,16 +173,39 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             persisted.Sort(static (left, right) => right.UpdatedUtc.CompareTo(left.UpdatedUtc));
             persisted.AddRange(systemConversations);
             _state.Conversations = persisted;
-            _state.ActiveConversationId = workspace.ActiveConversationId;
+            var nativeActiveChanged = !_hasBaseline
+                                      || !string.Equals(
+                                          workspace.ActiveConversationId,
+                                          _baselineActiveConversationId,
+                                          StringComparison.OrdinalIgnoreCase);
+            var activeId = nativeActiveChanged
+                ? workspace.ActiveConversationId
+                : _state.ActiveConversationId;
+            var active = persisted.FirstOrDefault(item =>
+                string.Equals(item.Id, activeId, StringComparison.OrdinalIgnoreCase));
+            if (active is null) {
+                active = persisted.FirstOrDefault(item => !IsSystemConversation(item.Id));
+                activeId = active?.Id;
+            }
 
-            var active = workspace.Conversations.FirstOrDefault(item =>
-                string.Equals(item.Id, workspace.ActiveConversationId, StringComparison.OrdinalIgnoreCase));
+            _state.ActiveConversationId = activeId;
             if (active is not null) {
                 _state.ThreadId = active.ThreadId;
-                _state.Messages = active.Messages.Select(MapMessage).ToList();
+                _state.Messages = (active.Messages ?? new List<ChatMessageState>())
+                    .Select(CloneMessage)
+                    .ToList();
             }
 
             await _stateStore.UpsertAsync(_profileName, _state, cancellationToken).ConfigureAwait(false);
+            var savedConversationIds = new HashSet<string>(
+                (_state.Conversations ?? new List<ChatConversationState>())
+                .Where(state => !IsSystemConversation(state.Id))
+                .Select(static state => state.Id),
+                StringComparer.OrdinalIgnoreCase);
+            CaptureBaseline(
+                workspace,
+                savedConversationIds);
+            _discardedConversationIds.RemoveWhere(savedConversationIds.Contains);
         } finally {
             _saveGate.Release();
         }
@@ -188,6 +255,59 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             TimeUtc = message.CreatedAt.UtcDateTime,
             Model = message.Model
         };
+
+    private static ChatMessageState CloneMessage(ChatMessageState message) =>
+        new() {
+            Role = message.Role,
+            Text = message.Text,
+            TimeUtc = message.TimeUtc,
+            Model = message.Model
+        };
+
+    private void CaptureBaseline(
+        NativeConversationWorkspace workspace,
+        IEnumerable<string> persistedConversationIds) {
+        _baselineConversations.Clear();
+        foreach (var conversation in workspace.Conversations) {
+            _baselineConversations[conversation.Id] = MapConversation(conversation, existing: null);
+        }
+
+        _baselinePersistedConversationIds.Clear();
+        foreach (var id in persistedConversationIds) {
+            if (!string.IsNullOrWhiteSpace(id)) {
+                _baselinePersistedConversationIds.Add(id.Trim());
+            }
+        }
+
+        _baselineActiveConversationId = workspace.ActiveConversationId;
+        _hasBaseline = true;
+    }
+
+    private static bool ConversationMatches(NativeConversation conversation, ChatConversationState baseline) {
+        if (!string.Equals(conversation.Title, baseline.Title, StringComparison.Ordinal)
+            || !string.Equals(conversation.ThreadId, baseline.ThreadId, StringComparison.Ordinal)
+            || EnsureUtc(conversation.UpdatedUtc) != EnsureUtc(baseline.UpdatedUtc)) {
+            return false;
+        }
+
+        var baselineMessages = baseline.Messages ?? new List<ChatMessageState>();
+        if (conversation.Messages.Count != baselineMessages.Count) {
+            return false;
+        }
+
+        for (var i = 0; i < conversation.Messages.Count; i++) {
+            var current = conversation.Messages[i];
+            var original = baselineMessages[i];
+            if (!string.Equals(current.Role, original.Role, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(current.Text, original.Text, StringComparison.Ordinal)
+                || current.CreatedAt.UtcDateTime != EnsureUtc(original.TimeUtc)
+                || !string.Equals(current.Model, original.Model, StringComparison.Ordinal)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static bool IsSystemConversation(string? id) =>
         string.Equals(

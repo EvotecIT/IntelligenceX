@@ -82,6 +82,16 @@ public sealed class NativeConversationStateStoreTests {
                     "default",
                     new ChatAppState {
                         ThemePreset = "dark",
+                        ActiveConversationId = "chat-existing",
+                        ThreadId = "thread-original",
+                        Messages = new List<ChatMessageState> {
+                            new() {
+                                Role = "assistant",
+                                Text = "Existing answer",
+                                TimeUtc = persistedMessageTime,
+                                Model = "gpt-test"
+                            }
+                        },
                         Conversations = new List<ChatConversationState> {
                             new() { Id = "chat-system", Title = "System" },
                             new() {
@@ -120,6 +130,27 @@ public sealed class NativeConversationStateStoreTests {
                     var concurrentlyUpdated = await concurrentStore.GetAsync("default", CancellationToken.None);
                     Assert.NotNull(concurrentlyUpdated);
                     concurrentlyUpdated!.ThemePreset = "light";
+                    var concurrentlyEdited = Assert.Single(
+                        concurrentlyUpdated.Conversations,
+                        item => item.Id == "chat-existing");
+                    concurrentlyEdited.Title = "Updated by legacy shell";
+                    concurrentlyEdited.ThreadId = "thread-legacy";
+                    concurrentlyEdited.Messages = new List<ChatMessageState> {
+                        new() {
+                            Role = "assistant",
+                            Text = "Newer legacy answer",
+                            TimeUtc = DateTime.UtcNow,
+                            Model = "gpt-legacy"
+                        }
+                    };
+                    concurrentlyEdited.UpdatedUtc = DateTime.UtcNow;
+                    concurrentlyUpdated.ThreadId = concurrentlyEdited.ThreadId;
+                    concurrentlyUpdated.Messages = concurrentlyEdited.Messages.Select(message => new ChatMessageState {
+                        Role = message.Role,
+                        Text = message.Text,
+                        TimeUtc = message.TimeUtc,
+                        Model = message.Model
+                    }).ToList();
                     concurrentlyUpdated.Conversations.Add(new ChatConversationState {
                         Id = "chat-external",
                         Title = "Added after native load"
@@ -141,8 +172,13 @@ public sealed class NativeConversationStateStoreTests {
             Assert.Equal("gpt-test", existing.ModelLabel);
             Assert.Equal("gpt-test", existing.ModelOverride);
             Assert.Equal("Confirm the directory scope", existing.PendingAssistantQuestionHint);
-            Assert.Equal("gpt-test", Assert.Single(existing.Messages).Model);
+            Assert.Equal("Updated by legacy shell", existing.Title);
+            Assert.Equal("thread-legacy", existing.ThreadId);
+            Assert.Equal("Newer legacy answer", Assert.Single(existing.Messages).Text);
+            Assert.Equal("gpt-legacy", Assert.Single(existing.Messages).Model);
             Assert.Equal("pending-one", Assert.Single(existing.PendingActions).Id);
+            Assert.Equal("thread-legacy", state.ThreadId);
+            Assert.Equal("Newer legacy answer", Assert.Single(state.Messages).Text);
         } finally {
             DeleteTemporaryDirectory(directory);
         }
@@ -226,6 +262,81 @@ public sealed class NativeConversationStateStoreTests {
     }
 
     /// <summary>
+    /// Ensures the native shell resolves stale cloud defaults through the cached local runtime catalog.
+    /// </summary>
+    [Fact]
+    public async Task CreateChatRequestOptions_UsesCachedLocalRuntimeModel() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        LocalProviderTransport = "compatible-http",
+                        LocalProviderBaseUrl = "http://127.0.0.1:1234/v1",
+                        LocalProviderModel = "gpt-5.4",
+                        CachedModelsTransport = "compatible-http",
+                        CachedModelsBaseUrl = "http://127.0.0.1:1234/v1/",
+                        CachedModels = new List<IntelligenceX.Chat.Abstractions.Protocol.ModelInfoDto> {
+                            new() { Id = "local/secondary", Model = "local/secondary" },
+                            new() { Id = "local/default", Model = "local/default", IsDefault = true }
+                        },
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-local", Title = "Local chat" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            var options = nativeStore.CreateChatRequestOptions(
+                Assert.Single(workspace.Conversations, item => item.Id == "chat-local"));
+
+            Assert.Equal("local/default", options.Model);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures legacy top-level transcripts are migrated into the conversation collection on first native save.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_PersistsConversationCreatedFromLegacyTopLevelTranscript() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        ThreadId = "legacy-thread",
+                        Messages = new List<ChatMessageState> {
+                            new() { Role = "user", Text = "Legacy question" }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using (var nativeStore = new NativeConversationStateStore(path)) {
+                var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+                await nativeStore.SaveAsync(workspace, CancellationToken.None);
+            }
+
+            using var verifier = new ChatAppStateStore(path);
+            var state = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(state);
+            var conversation = Assert.Single(state!.Conversations);
+            Assert.Equal("legacy-thread", conversation.ThreadId);
+            Assert.Equal("Legacy question", Assert.Single(conversation.Messages).Text);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Ensures stale empty drafts are collapsed without removing real conversations.
     /// </summary>
     [Fact]
@@ -259,6 +370,12 @@ public sealed class NativeConversationStateStoreTests {
             Assert.Equal(2, workspace.Conversations.Count);
             Assert.Single(workspace.Conversations, conversation => conversation.IsEmptyDraft);
             Assert.Contains(workspace.Conversations, conversation => conversation.Id == "chat-real");
+
+            await nativeStore.SaveAsync(workspace, CancellationToken.None);
+            using var verifier = new ChatAppStateStore(path);
+            var state = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(state);
+            Assert.DoesNotContain(state!.Conversations, conversation => conversation.Id == "chat-empty-old");
         } finally {
             DeleteTemporaryDirectory(directory);
         }

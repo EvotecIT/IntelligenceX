@@ -34,7 +34,7 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
 
     public DateTimeOffset CreatedAt { get; }
 
-    public string? Model { get; }
+    public string? Model { get; private set; }
 
     public IReadOnlyList<NativeTranscriptContent> Content => _content;
 
@@ -74,6 +74,19 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
         }
 
         Text += value;
+    }
+
+    /// <summary>
+    /// Records the resolved model used for an assistant response before it is persisted.
+    /// </summary>
+    public void SetModel(string? model) {
+        var normalized = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
+        if (string.Equals(Model, normalized, StringComparison.Ordinal)) {
+            return;
+        }
+
+        Model = normalized;
+        OnPropertyChanged(nameof(Model));
     }
 
     private void RefreshContentIfReady() {
