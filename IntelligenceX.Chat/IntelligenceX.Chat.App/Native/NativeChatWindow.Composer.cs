@@ -59,7 +59,8 @@ internal sealed partial class NativeChatWindow {
         };
         var sendAccelerator = new KeyboardAccelerator {
             Key = VirtualKey.Enter,
-            Modifiers = VirtualKeyModifiers.None
+            Modifiers = VirtualKeyModifiers.None,
+            ScopeOwner = _composer
         };
         sendAccelerator.Invoked += OnComposerSendInvoked;
         _composer.KeyboardAccelerators.Add(sendAccelerator);
