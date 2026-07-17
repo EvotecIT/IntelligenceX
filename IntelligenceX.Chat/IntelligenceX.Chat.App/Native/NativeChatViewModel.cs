@@ -366,6 +366,9 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                     assistantItem.Text = result.Response.Text;
                 }
 
+                assistantItem.SetModel(string.IsNullOrWhiteSpace(result.Metrics?.Model)
+                    ? requestOptions?.Model
+                    : result.Metrics!.Model);
                 assistantItem.Status = "Complete";
                 conversation.ThreadId = string.IsNullOrWhiteSpace(result.Response.ThreadId)
                     ? conversation.ThreadId

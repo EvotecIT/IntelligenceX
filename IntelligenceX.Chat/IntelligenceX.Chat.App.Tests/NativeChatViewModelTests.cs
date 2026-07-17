@@ -47,7 +47,10 @@ public sealed class NativeChatViewModelTests {
     /// </summary>
     [Fact]
     public async Task SendAsync_ForwardsSharedRequestOptions() {
-        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult(
+            "done",
+            "thread-1",
+            effectiveModel: "runtime-model")));
         var options = new ChatRequestOptions {
             Model = "conversation-model",
             ReasoningEffort = "high",
@@ -61,7 +64,7 @@ public sealed class NativeChatViewModelTests {
 
         Assert.True(sent);
         Assert.Same(options, Assert.Single(runtime.Requests).Options);
-        Assert.Equal("conversation-model", Assert.Single(model.Transcript, item => item.IsAssistant).Model);
+        Assert.Equal("runtime-model", Assert.Single(model.Transcript, item => item.IsAssistant).Model);
     }
 
     /// <summary>
@@ -450,13 +453,26 @@ public sealed class NativeChatViewModelTests {
         Assert.Contains("| svc-sync | High |", markdown, StringComparison.Ordinal);
     }
 
-    private static ChatTurnRunResult CreateTurnResult(string text, string? threadId) =>
+    private static ChatTurnRunResult CreateTurnResult(
+        string text,
+        string? threadId,
+        string? effectiveModel = null) =>
         new(new ChatResultMessage {
             Kind = ChatServiceMessageKind.Response,
             RequestId = "test-result",
             ThreadId = threadId ?? string.Empty,
             Text = text
-        }, null);
+        }, string.IsNullOrWhiteSpace(effectiveModel)
+            ? null
+            : new ChatMetricsMessage {
+                Kind = ChatServiceMessageKind.Event,
+                RequestId = "test-result",
+                ThreadId = threadId ?? string.Empty,
+                StartedAtUtc = DateTime.UtcNow.AddSeconds(-1),
+                CompletedAtUtc = DateTime.UtcNow,
+                Outcome = "ok",
+                Model = effectiveModel
+            });
 
     private sealed class ScriptedRuntime : INativeChatRuntime {
         private readonly Func<TestTurnUpdates, Task<ChatTurnRunResult>> _handler;

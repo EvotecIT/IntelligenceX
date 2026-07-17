@@ -26,6 +26,8 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _baselinePersistedConversationIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _discardedConversationIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ChatConversationState> _discardedConversationBaselines =
+        new(StringComparer.OrdinalIgnoreCase);
     private ChatAppState? _state;
     private string? _baselineActiveConversationId;
     private bool _hasBaseline;
@@ -69,10 +71,15 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
                 _state,
                 loadedState is not null);
-        var persistedConversationIds = new HashSet<string>(
-            (_state.Conversations ?? new List<ChatConversationState>())
+        var persistedConversationsById = (_state.Conversations ?? new List<ChatConversationState>())
             .Where(state => !IsSystemConversation(state.Id) && !string.IsNullOrWhiteSpace(state.Id))
-            .Select(static state => state.Id.Trim()),
+            .GroupBy(static state => state.Id.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group.First(),
+                StringComparer.OrdinalIgnoreCase);
+        var persistedConversationIds = new HashSet<string>(
+            persistedConversationsById.Keys,
             StringComparer.OrdinalIgnoreCase);
 
         var conversations = new List<NativeConversation>();
@@ -106,9 +113,11 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             conversations.Select(static conversation => conversation.Id),
             StringComparer.OrdinalIgnoreCase);
         _discardedConversationIds.Clear();
+        _discardedConversationBaselines.Clear();
         foreach (var id in persistedConversationIds) {
             if (!retainedConversationIds.Contains(id)) {
                 _discardedConversationIds.Add(id);
+                _discardedConversationBaselines[id] = CloneConversation(persistedConversationsById[id]);
             }
         }
 
@@ -148,6 +157,7 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
                     if (existing is not null) {
                         persisted.Add(existing);
                         _discardedConversationIds.Remove(conversation.Id);
+                        _discardedConversationBaselines.Remove(conversation.Id);
                     } else if (!_baselinePersistedConversationIds.Contains(conversation.Id)
                                && !_discardedConversationIds.Contains(conversation.Id)) {
                         persisted.Add(MapConversation(conversation, existing: null));
@@ -159,15 +169,26 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
                 }
 
                 _discardedConversationIds.Remove(conversation.Id);
-                persisted.Add(MapConversation(conversation, existing));
+                _discardedConversationBaselines.Remove(conversation.Id);
+                persisted.Add(MergeConversation(conversation, existing, baseline));
             }
 
             foreach (var existing in existingConversations) {
-                if (!IsSystemConversation(existing.Id)
-                    && !workspaceIds.Contains(existing.Id)
-                    && !_discardedConversationIds.Contains(existing.Id)) {
-                    persisted.Add(existing);
+                if (IsSystemConversation(existing.Id) || workspaceIds.Contains(existing.Id)) {
+                    continue;
                 }
+
+                if (_discardedConversationIds.Contains(existing.Id)) {
+                    if (_discardedConversationBaselines.TryGetValue(existing.Id, out var discardedBaseline)
+                        && ConversationStateMatches(existing, discardedBaseline)) {
+                        continue;
+                    }
+
+                    _discardedConversationIds.Remove(existing.Id);
+                    _discardedConversationBaselines.Remove(existing.Id);
+                }
+
+                persisted.Add(existing);
             }
 
             persisted.Sort(static (left, right) => right.UpdatedUtc.CompareTo(left.UpdatedUtc));
@@ -206,6 +227,9 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
                 workspace,
                 savedConversationIds);
             _discardedConversationIds.RemoveWhere(savedConversationIds.Contains);
+            foreach (var id in savedConversationIds) {
+                _discardedConversationBaselines.Remove(id);
+            }
         } finally {
             _saveGate.Release();
         }
@@ -237,6 +261,98 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
         return state;
     }
 
+    private static ChatConversationState MergeConversation(
+        NativeConversation conversation,
+        ChatConversationState? existing,
+        ChatConversationState? baseline) {
+        if (existing is null || baseline is null) {
+            return MapConversation(conversation, existing);
+        }
+
+        existing.Id = conversation.Id;
+        existing.Title = ResolveConcurrentValue(
+            conversation.Title,
+            baseline.Title,
+            existing.Title,
+            conversation.UpdatedUtc,
+            existing.UpdatedUtc) ?? ChatConversationIdentity.DefaultTitle;
+        existing.ThreadId = ResolveConcurrentValue(
+            conversation.ThreadId,
+            baseline.ThreadId,
+            existing.ThreadId,
+            conversation.UpdatedUtc,
+            existing.UpdatedUtc);
+        existing.Messages = MergeMessages(
+            conversation.Messages,
+            baseline.Messages ?? new List<ChatMessageState>(),
+            existing.Messages ?? new List<ChatMessageState>());
+        existing.UpdatedUtc = EnsureUtc(existing.UpdatedUtc) >= EnsureUtc(conversation.UpdatedUtc)
+            ? EnsureUtc(existing.UpdatedUtc)
+            : EnsureUtc(conversation.UpdatedUtc);
+        return existing;
+    }
+
+    private static string? ResolveConcurrentValue(
+        string? nativeValue,
+        string? baselineValue,
+        string? persistedValue,
+        DateTime nativeUpdatedUtc,
+        DateTime persistedUpdatedUtc) {
+        var nativeChanged = !string.Equals(nativeValue, baselineValue, StringComparison.Ordinal);
+        var persistedChanged = !string.Equals(persistedValue, baselineValue, StringComparison.Ordinal);
+        if (!nativeChanged) {
+            return persistedValue;
+        }
+
+        if (!persistedChanged || string.Equals(nativeValue, persistedValue, StringComparison.Ordinal)) {
+            return nativeValue;
+        }
+
+        return EnsureUtc(persistedUpdatedUtc) > EnsureUtc(nativeUpdatedUtc)
+            ? persistedValue
+            : nativeValue;
+    }
+
+    private static List<ChatMessageState> MergeMessages(
+        IReadOnlyList<NativeChatTranscriptItem> nativeMessages,
+        IReadOnlyList<ChatMessageState> baselineMessages,
+        IReadOnlyList<ChatMessageState> persistedMessages) {
+        var baselineMatched = new bool[baselineMessages.Count];
+        var nativeAdditions = new List<ChatMessageState>();
+        for (var nativeIndex = 0; nativeIndex < nativeMessages.Count; nativeIndex++) {
+            var nativeMessage = MapMessage(nativeMessages[nativeIndex]);
+            var matchedBaselineIndex = -1;
+            for (var baselineIndex = 0; baselineIndex < baselineMessages.Count; baselineIndex++) {
+                if (!baselineMatched[baselineIndex]
+                    && MessageMatches(nativeMessage, baselineMessages[baselineIndex])) {
+                    matchedBaselineIndex = baselineIndex;
+                    break;
+                }
+            }
+
+            if (matchedBaselineIndex >= 0) {
+                baselineMatched[matchedBaselineIndex] = true;
+            } else {
+                nativeAdditions.Add(nativeMessage);
+            }
+        }
+
+        var merged = persistedMessages.Select(CloneMessage).ToList();
+        foreach (var addition in nativeAdditions) {
+            if (!merged.Any(message => MessageMatches(message, addition))) {
+                var insertionIndex = merged.FindIndex(message =>
+                    EnsureUtc(message.TimeUtc) > EnsureUtc(addition.TimeUtc));
+                if (insertionIndex < 0) {
+                    merged.Add(CloneMessage(addition));
+                } else {
+                    merged.Insert(insertionIndex, CloneMessage(addition));
+                }
+            }
+        }
+
+        return merged;
+    }
+
     private static NativeChatTranscriptItem MapMessage(ChatMessageState state) {
         var role = string.IsNullOrWhiteSpace(state.Role) ? "system" : state.Role.Trim().ToLowerInvariant();
         var status = string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase) ? "Complete" : string.Empty;
@@ -263,6 +379,75 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
             TimeUtc = message.TimeUtc,
             Model = message.Model
         };
+
+    private static ChatConversationState CloneConversation(ChatConversationState conversation) =>
+        new() {
+            Id = conversation.Id,
+            Title = conversation.Title,
+            ThreadId = conversation.ThreadId,
+            RuntimeLabel = conversation.RuntimeLabel,
+            ModelLabel = conversation.ModelLabel,
+            ModelOverride = conversation.ModelOverride,
+            PendingAssistantQuestionHint = conversation.PendingAssistantQuestionHint,
+            Messages = (conversation.Messages ?? new List<ChatMessageState>()).Select(CloneMessage).ToList(),
+            PendingActions = (conversation.PendingActions ?? new List<ChatPendingActionState>())
+                .Select(static action => new ChatPendingActionState {
+                    Id = action.Id,
+                    Title = action.Title,
+                    Request = action.Request,
+                    Reply = action.Reply
+                })
+                .ToList(),
+            UpdatedUtc = conversation.UpdatedUtc
+        };
+
+    private static bool ConversationStateMatches(ChatConversationState current, ChatConversationState baseline) {
+        if (!string.Equals(current.Id, baseline.Id, StringComparison.Ordinal)
+            || !string.Equals(current.Title, baseline.Title, StringComparison.Ordinal)
+            || !string.Equals(current.ThreadId, baseline.ThreadId, StringComparison.Ordinal)
+            || !string.Equals(current.RuntimeLabel, baseline.RuntimeLabel, StringComparison.Ordinal)
+            || !string.Equals(current.ModelLabel, baseline.ModelLabel, StringComparison.Ordinal)
+            || !string.Equals(current.ModelOverride, baseline.ModelOverride, StringComparison.Ordinal)
+            || !string.Equals(current.PendingAssistantQuestionHint, baseline.PendingAssistantQuestionHint, StringComparison.Ordinal)
+            || EnsureUtc(current.UpdatedUtc) != EnsureUtc(baseline.UpdatedUtc)) {
+            return false;
+        }
+
+        var currentMessages = current.Messages ?? new List<ChatMessageState>();
+        var baselineMessages = baseline.Messages ?? new List<ChatMessageState>();
+        if (currentMessages.Count != baselineMessages.Count) {
+            return false;
+        }
+
+        for (var i = 0; i < currentMessages.Count; i++) {
+            if (!MessageMatches(currentMessages[i], baselineMessages[i])) {
+                return false;
+            }
+        }
+
+        var currentActions = current.PendingActions ?? new List<ChatPendingActionState>();
+        var baselineActions = baseline.PendingActions ?? new List<ChatPendingActionState>();
+        if (currentActions.Count != baselineActions.Count) {
+            return false;
+        }
+
+        for (var i = 0; i < currentActions.Count; i++) {
+            if (!string.Equals(currentActions[i].Id, baselineActions[i].Id, StringComparison.Ordinal)
+                || !string.Equals(currentActions[i].Title, baselineActions[i].Title, StringComparison.Ordinal)
+                || !string.Equals(currentActions[i].Request, baselineActions[i].Request, StringComparison.Ordinal)
+                || !string.Equals(currentActions[i].Reply, baselineActions[i].Reply, StringComparison.Ordinal)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool MessageMatches(ChatMessageState left, ChatMessageState right) =>
+        string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(left.Text, right.Text, StringComparison.Ordinal)
+        && EnsureUtc(left.TimeUtc) == EnsureUtc(right.TimeUtc)
+        && string.Equals(left.Model, right.Model, StringComparison.Ordinal);
 
     private void CaptureBaseline(
         NativeConversationWorkspace workspace,

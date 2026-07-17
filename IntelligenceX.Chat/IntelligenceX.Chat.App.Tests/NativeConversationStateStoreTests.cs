@@ -185,6 +185,82 @@ public sealed class NativeConversationStateStoreTests {
     }
 
     /// <summary>
+    /// Ensures simultaneous native and legacy turns retain both transcript branches instead of using last-writer-wins.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_MergesConcurrentNativeAndLegacyConversationTurns() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            var baselineTime = DateTime.UtcNow.AddMinutes(-5);
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        ActiveConversationId = "chat-shared",
+                        Conversations = new List<ChatConversationState> {
+                            new() {
+                                Id = "chat-shared",
+                                Title = "Shared chat",
+                                ThreadId = "thread-baseline",
+                                UpdatedUtc = baselineTime,
+                                Messages = new List<ChatMessageState> {
+                                    new() { Role = "user", Text = "baseline", TimeUtc = baselineTime }
+                                }
+                            }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            var nativeConversation = Assert.Single(workspace.Conversations);
+            var nativeTime = DateTime.UtcNow.AddSeconds(-2);
+            nativeConversation.Messages.Add(new NativeChatTranscriptItem(
+                "assistant",
+                "native answer",
+                new DateTimeOffset(nativeTime, TimeSpan.Zero),
+                "Complete",
+                "native-model"));
+            nativeConversation.ThreadId = "thread-native";
+            nativeConversation.UpdatedUtc = nativeTime;
+
+            using (var concurrentStore = new ChatAppStateStore(path)) {
+                var concurrentState = await concurrentStore.GetAsync("default", CancellationToken.None);
+                Assert.NotNull(concurrentState);
+                var legacyConversation = Assert.Single(concurrentState!.Conversations);
+                var legacyTime = DateTime.UtcNow.AddSeconds(-1);
+                legacyConversation.Messages.Add(new ChatMessageState {
+                    Role = "assistant",
+                    Text = "legacy answer",
+                    TimeUtc = legacyTime,
+                    Model = "legacy-model"
+                });
+                legacyConversation.ThreadId = "thread-legacy";
+                legacyConversation.UpdatedUtc = legacyTime;
+                await concurrentStore.UpsertAsync("default", concurrentState, CancellationToken.None);
+            }
+
+            await nativeStore.SaveAsync(workspace, CancellationToken.None);
+
+            using var verifier = new ChatAppStateStore(path);
+            var state = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(state);
+            var merged = Assert.Single(state!.Conversations);
+            Assert.Equal("thread-legacy", merged.ThreadId);
+            Assert.Equal(
+                new[] { "baseline", "native answer", "legacy answer" },
+                merged.Messages.Select(message => message.Text));
+            Assert.Equal("native-model", merged.Messages[1].Model);
+            Assert.Equal("legacy-model", merged.Messages[2].Model);
+            Assert.Equal(merged.Messages.Select(message => message.Text), state.Messages.Select(message => message.Text));
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
     /// Verifies native service startup uses provider settings from the selected persisted profile.
     /// </summary>
     [Fact]
@@ -376,6 +452,60 @@ public sealed class NativeConversationStateStoreTests {
             var state = await verifier.GetAsync("default", CancellationToken.None);
             Assert.NotNull(state);
             Assert.DoesNotContain(state!.Conversations, conversation => conversation.Id == "chat-empty-old");
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures a draft collapsed by native load is retained if another shell populates it before save.
+    /// </summary>
+    [Fact]
+    public async Task SaveAsync_PreservesCollapsedDraftPopulatedConcurrently() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        Conversations = new List<ChatConversationState> {
+                            new() { Id = "chat-empty-new", Title = "New Chat", UpdatedUtc = DateTime.UtcNow },
+                            new() { Id = "chat-empty-old", Title = "New Chat", UpdatedUtc = DateTime.UtcNow.AddMinutes(-1) }
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            Assert.Single(workspace.Conversations);
+
+            using (var concurrentStore = new ChatAppStateStore(path)) {
+                var state = await concurrentStore.GetAsync("default", CancellationToken.None);
+                Assert.NotNull(state);
+                var populated = Assert.Single(state!.Conversations, conversation => conversation.Id == "chat-empty-old");
+                populated.Title = "Legacy follow-up";
+                populated.ThreadId = "thread-legacy";
+                populated.Messages.Add(new ChatMessageState { Role = "user", Text = "keep me" });
+                populated.PendingActions.Add(new ChatPendingActionState {
+                    Id = "pending-legacy",
+                    Title = "Confirm",
+                    Request = "keep",
+                    Reply = "yes"
+                });
+                populated.UpdatedUtc = DateTime.UtcNow;
+                await concurrentStore.UpsertAsync("default", state, CancellationToken.None);
+            }
+
+            await nativeStore.SaveAsync(workspace, CancellationToken.None);
+
+            using var verifier = new ChatAppStateStore(path);
+            var saved = await verifier.GetAsync("default", CancellationToken.None);
+            Assert.NotNull(saved);
+            var preserved = Assert.Single(saved!.Conversations, conversation => conversation.Id == "chat-empty-old");
+            Assert.Equal("keep me", Assert.Single(preserved.Messages).Text);
+            Assert.Equal("pending-legacy", Assert.Single(preserved.PendingActions).Id);
         } finally {
             DeleteTemporaryDirectory(directory);
         }
