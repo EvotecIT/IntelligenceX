@@ -159,6 +159,10 @@ public sealed class NativeConversationStateStoreTests {
                 }
 
                 await nativeStore.SaveAsync(loaded, CancellationToken.None);
+
+                var liveConversation = Assert.Single(loaded.Conversations, item => item.Id == "chat-existing");
+                Assert.Equal("Updated by legacy shell", liveConversation.Title);
+                Assert.Equal("thread-legacy", liveConversation.ThreadId);
             }
 
             using var verifier = new ChatAppStateStore(path);

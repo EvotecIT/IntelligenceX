@@ -155,6 +155,7 @@ internal sealed class NativeConversationStateStore : INativeConversationStore {
                                          && ConversationMatches(conversation, baseline);
                 if (unchangedSinceLoad) {
                     if (existing is not null) {
+                        ApplyPersistedMetadata(conversation, existing);
                         persisted.Add(existing);
                         _discardedConversationIds.Remove(conversation.Id);
                         _discardedConversationBaselines.Remove(conversation.Id);
