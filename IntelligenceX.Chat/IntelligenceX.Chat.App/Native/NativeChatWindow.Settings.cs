@@ -28,7 +28,10 @@ internal sealed partial class NativeChatWindow {
         }
 
         _viewModel.InvalidateAuthenticationState();
-        var settingsWindow = new MainWindow(openOptionsOnLaunch: true, pipeName: _runtime.PipeName) {
+        var settingsWindow = new MainWindow(
+            openOptionsOnLaunch: true,
+            pipeName: _runtime.PipeName,
+            profileName: _conversationStore.ActiveProfileName) {
             Title = "IntelligenceX Chat - Runtime settings"
         };
         _settingsWindow = settingsWindow;

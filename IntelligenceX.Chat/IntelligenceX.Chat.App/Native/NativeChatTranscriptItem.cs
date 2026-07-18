@@ -107,7 +107,7 @@ internal sealed class NativeChatTranscriptItem : INotifyPropertyChanged {
         !IsAssistant
         || string.Equals(_status, "Complete", StringComparison.OrdinalIgnoreCase)
         || string.Equals(_status, "Complete with warning", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(_status, "Error", StringComparison.OrdinalIgnoreCase)
+        || _status.StartsWith("Error", StringComparison.OrdinalIgnoreCase)
         || string.Equals(_status, "Canceled", StringComparison.OrdinalIgnoreCase);
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

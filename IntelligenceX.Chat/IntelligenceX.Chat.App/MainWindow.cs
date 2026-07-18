@@ -385,7 +385,7 @@ public sealed partial class MainWindow : Window {
     private MemoryDebugSnapshot? _lastMemoryDebugSnapshot;
     private readonly List<MemoryDebugSnapshot> _memoryDebugHistory = new();
     private int _memoryDebugSequence;
-    private string _appProfileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
+    private string _appProfileName = "default";
     private readonly ChatAppStateStore _stateStore = new(ChatAppStateStore.GetDefaultDbPath());
     private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
     private readonly SemaphoreSlim _onboardingGate = new(1, 1);
@@ -715,18 +715,25 @@ public sealed partial class MainWindow : Window {
     /// <summary>
     /// Initializes the desktop chat window.
     /// </summary>
-    public MainWindow() : this(openOptionsOnLaunch: false, pipeName: null) { }
+    public MainWindow() : this(openOptionsOnLaunch: false, pipeName: null, profileName: null) { }
 
     /// <summary>
     /// Initializes the shared desktop workspace and optionally opens its configuration panel after navigation.
     /// </summary>
-    internal MainWindow(bool openOptionsOnLaunch) : this(openOptionsOnLaunch, pipeName: null) { }
+    internal MainWindow(bool openOptionsOnLaunch) : this(openOptionsOnLaunch, pipeName: null, profileName: null) { }
 
     /// <summary>
     /// Initializes the shared desktop workspace on the requested service pipe.
     /// </summary>
-    internal MainWindow(bool openOptionsOnLaunch, string? pipeName) {
+    internal MainWindow(bool openOptionsOnLaunch, string? pipeName) : this(openOptionsOnLaunch, pipeName, profileName: null) { }
+
+    /// <summary>
+    /// Initializes the shared desktop workspace on the requested service pipe and profile.
+    /// </summary>
+    internal MainWindow(bool openOptionsOnLaunch, string? pipeName, string? profileName) {
         StartupLog.Write("MainWindow.ctor enter");
+        _appProfileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(
+            profileName ?? Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
         _pipeName = string.IsNullOrWhiteSpace(pipeName) ? "intelligencex.chat" : pipeName.Trim();
         _optionsPanelOpenRequested = openOptionsOnLaunch ? 1 : 0;
         _markdownOptions = MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell();

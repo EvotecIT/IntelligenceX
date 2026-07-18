@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Chat.App.Conversation;
@@ -71,6 +72,7 @@ internal static class DesktopChatStateMerger {
                && left.ProactiveModeEnabled == right.ProactiveModeEnabled
                && left.ShowAssistantTurnTrace == right.ShowAssistantTurnTrace
                && left.ShowAssistantDraftBubbles == right.ShowAssistantDraftBubbles
+               && ModelCatalogContentEquals(left, right)
                && SequenceEqual(left.DisabledTools, right.DisabledTools, StringComparer.Ordinal.Equals);
     }
 
@@ -237,6 +239,7 @@ internal static class DesktopChatStateMerger {
         local.ProactiveModeEnabled = Resolve(local.ProactiveModeEnabled, baseline.ProactiveModeEnabled, latest.ProactiveModeEnabled);
         local.ShowAssistantTurnTrace = Resolve(local.ShowAssistantTurnTrace, baseline.ShowAssistantTurnTrace, latest.ShowAssistantTurnTrace);
         local.ShowAssistantDraftBubbles = Resolve(local.ShowAssistantDraftBubbles, baseline.ShowAssistantDraftBubbles, latest.ShowAssistantDraftBubbles);
+        MergeModelCatalogState(local, baseline, latest);
         local.DisabledTools = ResolveStringList(local.DisabledTools, baseline.DisabledTools, latest.DisabledTools);
     }
 
@@ -322,6 +325,20 @@ internal static class DesktopChatStateMerger {
         return resolved.ToList();
     }
 
+    private static void MergeModelCatalogState(ChatAppState local, ChatAppState baseline, ChatAppState latest) {
+        var source = ModelCatalogContentEquals(local, baseline) ? latest : local;
+        local.CachedModelsTransport = source.CachedModelsTransport;
+        local.CachedModelsBaseUrl = source.CachedModelsBaseUrl;
+        local.CachedModels = (source.CachedModels ?? new List<ModelInfoDto>())
+            .Select(CloneModelInfo)
+            .ToList();
+        local.CachedFavoriteModels = (source.CachedFavoriteModels ?? new List<string>()).ToList();
+        local.CachedRecentModels = (source.CachedRecentModels ?? new List<string>()).ToList();
+        local.CachedModelListIsStale = source.CachedModelListIsStale;
+        local.CachedModelListWarning = source.CachedModelListWarning;
+        local.CachedModelsUpdatedUtc = source.CachedModelsUpdatedUtc;
+    }
+
     private static List<ChatQueuedTurnState> MergeQueuedTurns(
         IReadOnlyList<ChatQueuedTurnState>? local,
         IReadOnlyList<ChatQueuedTurnState>? baseline,
@@ -405,6 +422,38 @@ internal static class DesktopChatStateMerger {
         && EnsureUtc(left.EnqueuedUtc) == EnsureUtc(right.EnqueuedUtc)
         && left.SkipUserBubbleOnDispatch == right.SkipUserBubbleOnDispatch;
 
+    private static bool ModelCatalogContentEquals(ChatAppState left, ChatAppState right) =>
+        string.Equals(left.CachedModelsTransport, right.CachedModelsTransport, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(left.CachedModelsBaseUrl, right.CachedModelsBaseUrl, StringComparison.OrdinalIgnoreCase)
+        && SequenceEqual(left.CachedModels, right.CachedModels, ModelInfoEquals)
+        && SequenceEqual(left.CachedFavoriteModels, right.CachedFavoriteModels, StringComparer.Ordinal.Equals)
+        && SequenceEqual(left.CachedRecentModels, right.CachedRecentModels, StringComparer.Ordinal.Equals)
+        && left.CachedModelListIsStale == right.CachedModelListIsStale
+        && string.Equals(left.CachedModelListWarning, right.CachedModelListWarning, StringComparison.Ordinal);
+
+    private static bool ModelInfoEquals(ModelInfoDto left, ModelInfoDto right) =>
+        string.Equals(left.Id, right.Id, StringComparison.Ordinal)
+        && string.Equals(left.Model, right.Model, StringComparison.Ordinal)
+        && string.Equals(left.DisplayName, right.DisplayName, StringComparison.Ordinal)
+        && string.Equals(left.Description, right.Description, StringComparison.Ordinal)
+        && left.IsDefault == right.IsDefault
+        && string.Equals(left.OwnedBy, right.OwnedBy, StringComparison.Ordinal)
+        && string.Equals(left.Publisher, right.Publisher, StringComparison.Ordinal)
+        && string.Equals(left.Architecture, right.Architecture, StringComparison.Ordinal)
+        && string.Equals(left.Quantization, right.Quantization, StringComparison.Ordinal)
+        && string.Equals(left.CompatibilityType, right.CompatibilityType, StringComparison.Ordinal)
+        && string.Equals(left.RuntimeState, right.RuntimeState, StringComparison.Ordinal)
+        && string.Equals(left.ModelType, right.ModelType, StringComparison.Ordinal)
+        && left.MaxContextLength == right.MaxContextLength
+        && left.LoadedContextLength == right.LoadedContextLength
+        && SequenceEqual(left.Capabilities, right.Capabilities, StringComparer.Ordinal.Equals)
+        && string.Equals(left.DefaultReasoningEffort, right.DefaultReasoningEffort, StringComparison.Ordinal)
+        && SequenceEqual(left.SupportedReasoningEfforts, right.SupportedReasoningEfforts, ReasoningEffortEquals);
+
+    private static bool ReasoningEffortEquals(ReasoningEffortOptionDto left, ReasoningEffortOptionDto right) =>
+        string.Equals(left.ReasoningEffort, right.ReasoningEffort, StringComparison.Ordinal)
+        && string.Equals(left.Description, right.Description, StringComparison.Ordinal);
+
     private static bool SequenceEqual<T>(
         IReadOnlyList<T>? left,
         IReadOnlyList<T>? right,
@@ -428,6 +477,14 @@ internal static class DesktopChatStateMerger {
             ConversationId = value.ConversationId,
             EnqueuedUtc = value.EnqueuedUtc,
             SkipUserBubbleOnDispatch = value.SkipUserBubbleOnDispatch
+        };
+
+    private static ModelInfoDto CloneModelInfo(ModelInfoDto value) =>
+        value with {
+            Capabilities = value.Capabilities?.ToArray() ?? Array.Empty<string>(),
+            SupportedReasoningEfforts = value.SupportedReasoningEfforts?
+                .Select(static option => option with { })
+                .ToArray() ?? Array.Empty<ReasoningEffortOptionDto>()
         };
 
     private static ChatMemoryFactState CloneMemoryFact(ChatMemoryFactState value) =>

@@ -23,6 +23,7 @@ internal interface INativeConversationStore : IAsyncDisposable {
 internal sealed partial class NativeConversationStateStore : INativeConversationStore {
     private readonly ChatAppStateStore _stateStore;
     private string _profileName;
+    private string? _pendingProfileName;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private readonly Dictionary<string, ChatConversationState> _baselineConversations =
         new(StringComparer.OrdinalIgnoreCase);
@@ -44,6 +45,8 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         ?? _state?.ThemePreset
         ?? ThemeContract.DefaultPreset;
 
+    internal string ActiveProfileName => _profileName;
+
     public NativeConversationStateStore(string? databasePath = null, string profileName = "default") {
         _profileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
         _stateStore = new ChatAppStateStore(
@@ -53,10 +56,15 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
     internal bool SelectProfile(string? profileName) {
         var normalized = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
         if (string.Equals(_profileName, normalized, StringComparison.OrdinalIgnoreCase)) {
+            _pendingProfileName = null;
             return false;
         }
 
-        _profileName = normalized;
+        if (string.Equals(_pendingProfileName, normalized, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        _pendingProfileName = normalized;
         return true;
     }
 
@@ -89,17 +97,23 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
     }
 
     public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
+        var targetProfileName = _pendingProfileName ?? _profileName;
         ChatAppState? loadedState;
         string? loadWarning = null;
         try {
-            loadedState = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false);
+            loadedState = await _stateStore.GetAsync(targetProfileName, cancellationToken).ConfigureAwait(false);
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            if (string.Equals(_pendingProfileName, targetProfileName, StringComparison.OrdinalIgnoreCase)) {
+                _pendingProfileName = null;
+            }
             throw;
         } catch (Exception ex) {
             StartupLog.Write("Native profile state could not be loaded; using fresh state: " + ex.Message);
             loadWarning = "History load failed; started a fresh chat. " + ex.Message;
             loadedState = null;
         }
+        _profileName = targetProfileName;
+        _pendingProfileName = null;
         _state = NormalizeLoadedProfileState(loadedState);
         var persistedConversationsById = (_state.Conversations ?? new List<ChatConversationState>())
             .Where(state => !IsSystemConversation(state.Id) && !string.IsNullOrWhiteSpace(state.Id))

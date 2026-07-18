@@ -498,12 +498,63 @@ public sealed class NativeConversationStateStoreTests {
 
             Assert.True(nativeStore.SelectProfile("operations"));
             Assert.False(nativeStore.SelectProfile("operations"));
+            Assert.Equal("default", nativeStore.ActiveProfileName);
             var selected = await nativeStore.LoadAsync(CancellationToken.None);
             var conversation = Assert.Single(selected.Conversations);
 
+            Assert.Equal("operations", nativeStore.ActiveProfileName);
             Assert.Equal("chat-operations", conversation.Id);
             Assert.Equal("operations-model", nativeStore.CreateChatRequestOptions(conversation).Model);
             Assert.Equal("operations", nativeStore.CreateServiceLaunchProfileOptions().LoadProfileName);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>
+    /// Ensures a canceled profile load leaves the previous profile as the request and persistence owner.
+    /// </summary>
+    [Fact]
+    public async Task SelectProfile_CanceledLoadKeepsPreviousProfileActive() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        LocalProviderRuntimeOverrideActive = true,
+                        LocalProviderModel = "default-model",
+                        Conversations = [new ChatConversationState { Id = "chat-default", Title = "Default" }]
+                    },
+                    CancellationToken.None);
+                await sharedStore.UpsertAsync(
+                    "operations",
+                    new ChatAppState {
+                        LocalProviderRuntimeOverrideActive = true,
+                        LocalProviderModel = "operations-model",
+                        Conversations = [new ChatConversationState { Id = "chat-operations", Title = "Operations" }]
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            Assert.True(nativeStore.SelectProfile("operations"));
+            using var canceled = new CancellationTokenSource();
+            canceled.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => nativeStore.LoadAsync(canceled.Token));
+
+            Assert.Equal("default", nativeStore.ActiveProfileName);
+            Assert.True(nativeStore.SelectProfile("operations"));
+            var conversation = Assert.Single(workspace.Conversations);
+            Assert.Equal("default-model", nativeStore.CreateChatRequestOptions(conversation).Model);
+            await nativeStore.SaveAsync(workspace, CancellationToken.None);
+            using var verificationStore = new ChatAppStateStore(path);
+            var operations = Assert.IsType<ChatAppState>(
+                await verificationStore.GetAsync("operations", CancellationToken.None));
+            Assert.Equal("chat-operations", Assert.Single(operations.Conversations).Id);
         } finally {
             DeleteTemporaryDirectory(directory);
         }

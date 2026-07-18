@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using Xunit;
 
@@ -124,6 +125,105 @@ public sealed class DesktopChatSharedStateTests {
         Assert.Equal("compatible-http", afterAnotherStaleSave.LocalProviderTransport);
         Assert.Equal("local-model", afterAnotherStaleSave.LocalProviderModel);
         Assert.Equal(["unsafe_tool"], afterAnotherStaleSave.DisabledTools);
+    }
+
+    /// <summary>Ensures transcript persistence cannot overwrite a model catalog refreshed by another window.</summary>
+    [Fact]
+    public void LegacyMerge_PreservesModelCatalogRefreshedAfterLegacyLoad() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        latest.CachedModelsTransport = "compatible-http";
+        latest.CachedModelsBaseUrl = "http://127.0.0.1:1234/v1";
+        latest.CachedModels = [new ModelInfoDto {
+            Id = "fresh-model",
+            Model = "fresh-model",
+            DisplayName = "Fresh model",
+            Capabilities = ["tools", "vision"],
+            SupportedReasoningEfforts = [new ReasoningEffortOptionDto {
+                ReasoningEffort = "high",
+                Description = "High reasoning"
+            }]
+        }];
+        latest.CachedFavoriteModels = ["fresh-model"];
+        latest.CachedRecentModels = ["fresh-model", "older-model"];
+        latest.CachedModelListIsStale = true;
+        latest.CachedModelListWarning = "Using the last successful refresh.";
+        latest.CachedModelsUpdatedUtc = time.AddMinutes(2);
+        var localBeforeMerge = CloneForTest(local);
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        Assert.Equal("compatible-http", merged.CachedModelsTransport);
+        Assert.Equal("http://127.0.0.1:1234/v1", merged.CachedModelsBaseUrl);
+        var model = Assert.Single(merged.CachedModels);
+        Assert.Equal("fresh-model", model.Model);
+        Assert.Equal(["tools", "vision"], model.Capabilities);
+        Assert.Equal("high", Assert.Single(model.SupportedReasoningEfforts).ReasoningEffort);
+        Assert.Equal(["fresh-model"], merged.CachedFavoriteModels);
+        Assert.Equal(["fresh-model", "older-model"], merged.CachedRecentModels);
+        Assert.True(merged.CachedModelListIsStale);
+        Assert.Equal("Using the last successful refresh.", merged.CachedModelListWarning);
+        Assert.Equal(time.AddMinutes(2), merged.CachedModelsUpdatedUtc);
+        Assert.False(DesktopChatStateMerger.RuntimeAndPreferenceStateEquals(localBeforeMerge, merged));
+    }
+
+    /// <summary>Ensures concurrent provider changes cannot combine with another provider's refreshed models.</summary>
+    [Fact]
+    public void LegacyMerge_KeepsConflictingModelCatalogSnapshotCoherent() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        baseline.CachedModelsTransport = "compatible-http";
+        baseline.CachedModelsBaseUrl = "http://provider-a.test/v1";
+        baseline.CachedModelsUpdatedUtc = time;
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+
+        local.CachedModelsTransport = "native";
+        local.CachedModelsBaseUrl = null;
+        local.CachedModels = [];
+        local.CachedFavoriteModels = [];
+        local.CachedRecentModels = [];
+        local.CachedModelListIsStale = false;
+        local.CachedModelListWarning = null;
+        local.CachedModelsUpdatedUtc = time.AddMinutes(1);
+
+        latest.CachedModels = [new ModelInfoDto {
+            Id = "provider-a-model",
+            Model = "provider-a-model"
+        }];
+        latest.CachedFavoriteModels = ["provider-a-model"];
+        latest.CachedRecentModels = ["provider-a-model"];
+        latest.CachedModelsUpdatedUtc = time.AddMinutes(2);
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        Assert.Equal("native", merged.CachedModelsTransport);
+        Assert.Null(merged.CachedModelsBaseUrl);
+        Assert.Empty(merged.CachedModels);
+        Assert.Empty(merged.CachedFavoriteModels);
+        Assert.Empty(merged.CachedRecentModels);
+        Assert.Equal(time.AddMinutes(1), merged.CachedModelsUpdatedUtc);
+    }
+
+    /// <summary>Ensures timestamp-only save churn cannot replace a newer external catalog refresh.</summary>
+    [Fact]
+    public void LegacyMerge_IgnoresTimestampOnlyCatalogChurnWhenChoosingSnapshot() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        baseline.CachedModels = [new ModelInfoDto { Id = "old-model", Model = "old-model" }];
+        baseline.CachedModelsUpdatedUtc = time;
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        local.CachedModelsUpdatedUtc = time.AddMinutes(1);
+        latest.CachedModels = [new ModelInfoDto { Id = "new-model", Model = "new-model" }];
+        latest.CachedModelsUpdatedUtc = time.AddMinutes(2);
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        Assert.Equal("new-model", Assert.Single(merged.CachedModels).Model);
+        Assert.Equal(time.AddMinutes(2), merged.CachedModelsUpdatedUtc);
     }
 
     /// <summary>Ensures a local preference edit still wins when the persisted value has not changed.</summary>
@@ -326,6 +426,19 @@ public sealed class DesktopChatSharedStateTests {
             LocalProviderModel = state.LocalProviderModel,
             TimestampMode = state.TimestampMode,
             AutonomyMaxToolRounds = state.AutonomyMaxToolRounds,
+            CachedModelsTransport = state.CachedModelsTransport,
+            CachedModelsBaseUrl = state.CachedModelsBaseUrl,
+            CachedModels = state.CachedModels.Select(model => model with {
+                Capabilities = model.Capabilities.ToArray(),
+                SupportedReasoningEfforts = model.SupportedReasoningEfforts
+                    .Select(option => option with { })
+                    .ToArray()
+            }).ToList(),
+            CachedFavoriteModels = state.CachedFavoriteModels.ToList(),
+            CachedRecentModels = state.CachedRecentModels.ToList(),
+            CachedModelListIsStale = state.CachedModelListIsStale,
+            CachedModelListWarning = state.CachedModelListWarning,
+            CachedModelsUpdatedUtc = state.CachedModelsUpdatedUtc,
             DisabledTools = state.DisabledTools.ToList(),
             ActiveConversationId = state.ActiveConversationId,
             Conversations = new List<ChatConversationState> { clonedConversation },

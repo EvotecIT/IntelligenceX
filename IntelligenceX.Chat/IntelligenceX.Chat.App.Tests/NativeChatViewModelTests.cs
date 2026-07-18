@@ -182,6 +182,7 @@ public sealed class NativeChatViewModelTests {
         var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
         var store = new BlockingConversationStore();
         var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await model.InitializeConversationsAsync();
         await AuthenticateAsync(model);
 
         var firstSend = model.SendAsync("first");
@@ -240,9 +241,85 @@ public sealed class NativeChatViewModelTests {
 
         Assert.False(sent);
         Assert.Equal(2, model.Transcript.Count);
-        Assert.Equal("Error", model.StatusText);
+        Assert.Contains("pipe unavailable", model.StatusText, StringComparison.Ordinal);
         Assert.Equal("Error", model.Transcript[1].Status);
         Assert.Contains("pipe unavailable", model.Transcript[1].Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures a terminal runtime failure preserves already streamed assistant output and exposes the error separately.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_PreservesStreamedOutputWhenRunnerFails() {
+        var runtime = new ScriptedRuntime(async updates => {
+            await updates.Delta("Useful partial answer").ConfigureAwait(false);
+            throw new InvalidOperationException("terminal frame failed");
+        });
+        var model = new NativeChatViewModel(runtime);
+        await AuthenticateAsync(model);
+
+        var sent = await model.SendAsync("hello");
+
+        Assert.False(sent);
+        var assistant = Assert.Single(model.Transcript, item => item.IsAssistant);
+        Assert.Equal("Useful partial answer", assistant.Text);
+        Assert.Equal("Error: terminal frame failed", assistant.Status);
+        Assert.Contains("terminal frame failed", model.StatusText, StringComparison.Ordinal);
+        Assert.Contains(assistant.Content, content => content.Text.Contains("Useful partial answer", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Ensures startup commands remain disabled until the selected profile has finished loading.
+    /// </summary>
+    [Fact]
+    public async Task InitializeConversationsAsync_GatesSignInUntilProfileStateLoads() {
+        var store = new BlockingLoadConversationStore();
+        var model = new NativeChatViewModel(
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult(string.Empty, null))),
+            conversationStore: store);
+
+        var initialization = model.InitializeConversationsAsync();
+        await store.LoadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(model.CanCheckSignIn);
+        Assert.False(model.CanStartSignIn);
+        Assert.Contains(
+            "profile state is still loading",
+            (await model.CheckSignInAsync()).Error ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "profile state is still loading",
+            (await model.StartSignInAsync()).Error ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+
+        store.ReleaseLoad.TrySetResult();
+        await initialization;
+
+        Assert.True(model.CanCheckSignIn);
+        Assert.True(model.CanStartSignIn);
+    }
+
+    /// <summary>
+    /// Ensures a canceled settings reload restores the previously loaded chat state gate.
+    /// </summary>
+    [Fact]
+    public async Task InitializeConversationsAsync_CanceledReloadRestoresLoadedState() {
+        var store = new BlockingReloadConversationStore();
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await model.InitializeConversationsAsync();
+        await AuthenticateAsync(model);
+        model.Draft = "still usable";
+        using var cancellation = new CancellationTokenSource();
+
+        var reload = model.InitializeConversationsAsync(cancellation.Token);
+        await store.ReloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reload);
+
+        Assert.True(model.CanCheckSignIn);
+        Assert.True(model.CanSend);
     }
 
     /// <summary>
@@ -824,6 +901,50 @@ public sealed class NativeChatViewModelTests {
             SaveStarted.TrySetResult();
             await ReleaseSave.Task.WaitAsync(cancellationToken);
         }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class BlockingLoadConversationStore : INativeConversationStore {
+        public TaskCompletionSource LoadStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseLoad { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
+            LoadStarted.TrySetResult();
+            await ReleaseLoad.Task.WaitAsync(cancellationToken);
+            var conversation = NativeConversation.CreateNew();
+            return new NativeConversationWorkspace([conversation], conversation.Id);
+        }
+
+        public Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class BlockingReloadConversationStore : INativeConversationStore {
+        private int _loadCount;
+
+        public TaskCompletionSource ReloadStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Interlocked.Increment(ref _loadCount) == 1) {
+                var conversation = NativeConversation.CreateNew();
+                return new NativeConversationWorkspace([conversation], conversation.Id);
+            }
+
+            ReloadStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Canceled reload unexpectedly completed.");
+        }
+
+        public Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

@@ -35,6 +35,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     private NativeAuthenticationState _authenticationState = NativeAuthenticationState.Unknown;
     private bool _isSending;
     private bool _isCheckingSignIn;
+    private bool _isConversationStateLoaded;
     private int _sendStarting;
     private string? _activeTurnRequestId;
     private CancellationTokenSource? _activeTurnCts;
@@ -51,6 +52,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _dispatch = dispatch ?? (action => action());
         _conversationStore = conversationStore;
+        _isConversationStateLoaded = conversationStore is null;
         _requestOptionsProvider = requestOptionsProvider;
         _sessionPolicyProvider = sessionPolicyProvider;
         _requestTextProvider = requestTextProvider;
@@ -164,9 +166,12 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
 
     public bool CanStop => IsSending;
 
-    public bool CanCheckSignIn => !IsCheckingSignIn && !IsTurnBusy;
+    public bool CanCheckSignIn => _isConversationStateLoaded
+                                  && !IsCheckingSignIn
+                                  && !IsTurnBusy;
 
-    public bool CanStartSignIn => !IsCheckingSignIn
+    public bool CanStartSignIn => _isConversationStateLoaded
+                                  && !IsCheckingSignIn
                                   && !IsTurnBusy
                                   && AuthenticationState != NativeAuthenticationState.SignedIn;
 
@@ -175,10 +180,13 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             return;
         }
 
+        var hadLoadedConversationState = _isConversationStateLoaded;
+        RunOnUi(() => SetConversationStateLoaded(false));
         NativeConversationWorkspace loaded;
         try {
             loaded = await _conversationStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            RunOnUi(() => SetConversationStateLoaded(hadLoadedConversationState));
             throw;
         } catch (Exception ex) {
             StartupLog.Write("Native conversation state load failed: " + ex);
@@ -202,6 +210,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             if (!string.IsNullOrWhiteSpace(loaded.Warning)) {
                 StatusText = loaded.Warning;
             }
+            SetConversationStateLoaded(true);
             return Task.CompletedTask;
         }).ConfigureAwait(false);
     }
@@ -253,6 +262,10 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public async Task<NativeLoginResult> CheckSignInAsync(CancellationToken cancellationToken = default) {
+        if (!_isConversationStateLoaded) {
+            return new NativeLoginResult(false, null, "Sign-in cannot be checked while profile state is still loading.");
+        }
+
         if (IsTurnBusy) {
             return new NativeLoginResult(false, null, "Sign-in cannot be checked while a chat turn is running or starting.");
         }
@@ -285,6 +298,10 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     }
 
     public async Task<NativeLoginResult> StartSignInAsync() {
+        if (!_isConversationStateLoaded) {
+            return new NativeLoginResult(false, null, "Sign-in cannot start while profile state is still loading.");
+        }
+
         if (IsTurnBusy) {
             return new NativeLoginResult(false, null, "Sign-in cannot start while a chat turn is running or starting.");
         }
@@ -472,10 +489,15 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         } catch (Exception ex) {
             await RunOnUiAsync(() => {
                 EnsureAssistantItemPresent();
-                assistantItem.Status = "Error";
-                assistantItem.Text = "Native chat turn failed: " + ex.Message;
+                var failureText = "Native chat turn failed: " + ex.Message;
+                if (string.IsNullOrWhiteSpace(assistantItem.Text)) {
+                    assistantItem.Text = failureText;
+                    assistantItem.Status = "Error";
+                } else {
+                    assistantItem.Status = "Error: " + ex.Message;
+                }
                 conversation.UpdatedUtc = DateTime.UtcNow;
-                StatusText = "Error";
+                StatusText = failureText;
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
             await TryPersistConversationsAsync().ConfigureAwait(false);
@@ -699,7 +721,19 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         OnPropertyChanged(nameof(CanStartSignIn));
     }
 
-    private bool CanUseRuntime => AuthenticationState == NativeAuthenticationState.SignedIn;
+    private bool CanUseRuntime => _isConversationStateLoaded
+                                  && AuthenticationState == NativeAuthenticationState.SignedIn;
+
+    private void SetConversationStateLoaded(bool value) {
+        if (_isConversationStateLoaded == value) {
+            return;
+        }
+
+        _isConversationStateLoaded = value;
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanCheckSignIn));
+        OnPropertyChanged(nameof(CanStartSignIn));
+    }
 
     private static string FormatStatus(ChatStatusMessage status) {
         if (!string.IsNullOrWhiteSpace(status.Message)) {
