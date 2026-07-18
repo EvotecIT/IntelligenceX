@@ -73,7 +73,8 @@ internal static class DesktopChatStateMerger {
                && left.ShowAssistantTurnTrace == right.ShowAssistantTurnTrace
                && left.ShowAssistantDraftBubbles == right.ShowAssistantDraftBubbles
                && ModelCatalogContentEquals(left, right)
-               && SequenceEqual(left.DisabledTools, right.DisabledTools, StringComparer.Ordinal.Equals);
+               && SequenceEqual(left.DisabledTools, right.DisabledTools, StringComparer.Ordinal.Equals)
+               && SequenceEqual(left.EnabledWriteTools, right.EnabledWriteTools, StringComparer.Ordinal.Equals);
     }
 
     /// <summary>
@@ -241,6 +242,10 @@ internal static class DesktopChatStateMerger {
         local.ShowAssistantDraftBubbles = Resolve(local.ShowAssistantDraftBubbles, baseline.ShowAssistantDraftBubbles, latest.ShowAssistantDraftBubbles);
         MergeModelCatalogState(local, baseline, latest);
         local.DisabledTools = ResolveStringList(local.DisabledTools, baseline.DisabledTools, latest.DisabledTools);
+        local.EnabledWriteTools = ResolveStringList(
+            local.EnabledWriteTools,
+            baseline.EnabledWriteTools,
+            latest.EnabledWriteTools);
     }
 
     private static List<ChatMemoryFactState> MergeMemoryFacts(

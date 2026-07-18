@@ -381,6 +381,7 @@ internal sealed class ChatAppState {
     public string? ActiveConversationId { get; set; }
     public string? ThreadId { get; set; }
     public List<string> DisabledTools { get; set; } = new();
+    public List<string> EnabledWriteTools { get; set; } = new();
     public List<ChatMessageState> Messages { get; set; } = new();
     public List<ChatConversationState> Conversations { get; set; } = new();
     public List<ChatQueuedTurnState> PendingTurns { get; set; } = new();

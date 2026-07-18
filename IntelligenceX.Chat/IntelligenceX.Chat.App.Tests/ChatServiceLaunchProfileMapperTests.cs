@@ -316,6 +316,73 @@ public sealed class ChatServiceLaunchProfileMapperTests {
     }
 
     /// <summary>
+    /// Recognizes every IP loopback form supported by the runtime instead of only one literal host.
+    /// </summary>
+    [Theory]
+    [InlineData("http://127.0.0.2:11434/v1", CompatibleProviderEndpointPolicy.OllamaPreset)]
+    [InlineData("http://[::1]:11434/v1", CompatibleProviderEndpointPolicy.OllamaPreset)]
+    [InlineData("http://127.255.255.254:1234/v1", CompatibleProviderEndpointPolicy.LmStudioPreset)]
+    public void DetectPreset_RecognizesIpLoopbackEndpoints(string endpoint, string expectedPreset) {
+        Assert.Equal(expectedPreset, CompatibleProviderEndpointPolicy.DetectPreset(endpoint));
+    }
+
+    /// <summary>
+    /// Keeps write-capable tools disabled on a fresh native profile while preserving explicit persisted disables.
+    /// </summary>
+    [Fact]
+    public void CreateFromState_SeedsWriteToolDefaultsFromRuntimeCatalog() {
+        var options = ChatRequestOptionsFactory.CreateFromState(
+            new ChatAppState { DisabledTools = ["existing_disabled"] },
+            availableTools: [
+                new ToolDefinitionDto {
+                    Name = "read_tool",
+                    Description = "Reads data.",
+                    IsWriteCapable = false
+                },
+                new ToolDefinitionDto {
+                    Name = "write_tool",
+                    Description = "Changes data.",
+                    IsWriteCapable = true
+                },
+                new ToolDefinitionDto {
+                    Name = " WRITE_TOOL ",
+                    Description = "Duplicate catalog spelling.",
+                    IsWriteCapable = true
+                }
+            ]);
+
+        Assert.NotNull(options.DisabledTools);
+        Assert.Equal(["existing_disabled", "write_tool"], options.DisabledTools!);
+    }
+
+    /// <summary>
+    /// Preserves an explicit write-tool enable made in the shared settings workspace.
+    /// </summary>
+    [Fact]
+    public void CreateFromState_DoesNotOverrideExplicitWriteToolEnable() {
+        var options = ChatRequestOptionsFactory.CreateFromState(
+            new ChatAppState {
+                DisabledTools = ["write_tool"],
+                EnabledWriteTools = ["write_tool"]
+            },
+            availableTools: [
+                new ToolDefinitionDto {
+                    Name = "write_tool",
+                    Description = "Changes data.",
+                    IsWriteCapable = true
+                },
+                new ToolDefinitionDto {
+                    Name = "other_write_tool",
+                    Description = "Changes other data.",
+                    IsWriteCapable = true
+                }
+            ]);
+
+        Assert.NotNull(options.DisabledTools);
+        Assert.Equal(["other_write_tool"], options.DisabledTools!);
+    }
+
+    /// <summary>
     /// Ensures unset native autonomy values inherit the connected service policy.
     /// </summary>
     [Fact]

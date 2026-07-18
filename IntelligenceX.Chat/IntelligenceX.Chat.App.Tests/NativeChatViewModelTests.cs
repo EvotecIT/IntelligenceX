@@ -73,6 +73,57 @@ public sealed class NativeChatViewModelTests {
     }
 
     /// <summary>
+    /// Ensures native request metadata is ready before the profile options snapshot is created.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_PreparesRuntimeMetadataBeforeBuildingRequestOptions() {
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        var metadataReady = false;
+        var model = new NativeChatViewModel(
+            runtime,
+            requestOptionsProvider: _ => {
+                Assert.True(metadataReady);
+                return new ChatRequestOptions { DisabledTools = ["write_tool"] };
+            },
+            requestPreparation: _ => {
+                metadataReady = true;
+                return Task.CompletedTask;
+            });
+        await AuthenticateAsync(model);
+
+        var sent = await model.SendAsync("use safe tools");
+
+        Assert.True(sent);
+        var disabledTools = Assert.Single(runtime.Requests).Options?.DisabledTools;
+        Assert.NotNull(disabledTools);
+        Assert.Equal(["write_tool"], disabledTools!);
+    }
+
+    /// <summary>
+    /// Keeps Stop available while the first turn is waiting for request metadata.
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_RequestPreparationCanBeCanceled() {
+        var preparationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1")));
+        var model = new NativeChatViewModel(
+            runtime,
+            requestPreparation: async cancellationToken => {
+                preparationStarted.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            });
+        await AuthenticateAsync(model);
+
+        var sendTask = model.SendAsync("prepare safely");
+        await preparationStarted.Task;
+
+        Assert.True(model.CanStop);
+        model.CancelActiveTurn();
+        Assert.False(await sendTask);
+        Assert.False(model.CanStop);
+    }
+
+    /// <summary>
     /// Ensures the native view model sends the shared envelope and renders only normalized assistant text.
     /// </summary>
     [Fact]

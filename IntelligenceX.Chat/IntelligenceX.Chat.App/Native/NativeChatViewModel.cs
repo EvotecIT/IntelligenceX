@@ -23,6 +23,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     private readonly INativeConversationStore? _conversationStore;
     private readonly Func<NativeConversation, ChatRequestOptions?>? _requestOptionsProvider;
     private readonly Func<SessionPolicyDto?>? _sessionPolicyProvider;
+    private readonly Func<CancellationToken, Task>? _requestPreparation;
     private readonly Func<NativeConversation, string, SessionPolicyDto?, string>? _requestTextProvider;
     private readonly Func<NativeConversation, string?, CancellationToken, Task<DesktopAssistantTurnProtocolResult>>?
         _assistantTurnNormalizer;
@@ -46,6 +47,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         INativeConversationStore? conversationStore = null,
         Func<NativeConversation, ChatRequestOptions?>? requestOptionsProvider = null,
         Func<SessionPolicyDto?>? sessionPolicyProvider = null,
+        Func<CancellationToken, Task>? requestPreparation = null,
         Func<NativeConversation, string, SessionPolicyDto?, string>? requestTextProvider = null,
         Func<NativeConversation, string?, CancellationToken, Task<DesktopAssistantTurnProtocolResult>>?
             assistantTurnNormalizer = null) {
@@ -55,6 +57,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         _isConversationStateLoaded = conversationStore is null;
         _requestOptionsProvider = requestOptionsProvider;
         _sessionPolicyProvider = sessionPolicyProvider;
+        _requestPreparation = requestPreparation;
         _requestTextProvider = requestTextProvider;
         _assistantTurnNormalizer = assistantTurnNormalizer;
         _activeConversation = NativeConversation.CreateNew();
@@ -397,12 +400,20 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             }).ConfigureAwait(false);
             await TryPersistConversationsAsync().ConfigureAwait(false);
 
+            await RunOnUiAsync(() => {
+                IsSending = true;
+                StatusText = "Preparing runtime...";
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            if (_requestPreparation is not null) {
+                await _requestPreparation(cts.Token).ConfigureAwait(false);
+            }
+
             var sessionPolicy = _sessionPolicyProvider?.Invoke();
             var requestOptions = _requestOptionsProvider?.Invoke(conversation);
             var requestText = _requestTextProvider?.Invoke(conversation, text, sessionPolicy) ?? text;
             await RunOnUiAsync(() => {
                 EnsureAssistantItemPresent();
-                IsSending = true;
                 StatusText = "Sending...";
                 return Task.CompletedTask;
             }).ConfigureAwait(false);

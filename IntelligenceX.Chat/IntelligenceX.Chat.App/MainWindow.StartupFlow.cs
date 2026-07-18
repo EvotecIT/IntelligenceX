@@ -1258,7 +1258,9 @@ public sealed partial class MainWindow : Window {
         RestoreQueuedTurnsFromState(_appState);
         ActivateConversation(ResolveInitialConversationId(_appState));
         if (repairedLegacyTranscriptState) {
-            await PersistAppStateAsync().ConfigureAwait(false);
+            // This repair save happens before the selected profile's live tool catalog has been restored.
+            // Keep its persisted grants intact rather than copying policy from the previously active profile.
+            await PersistAppStateAsync(preserveLoadedToolExposure: true).ConfigureAwait(false);
         }
 
         var knownToolNames = new List<string>(_toolDescriptions.Keys);
@@ -1275,6 +1277,14 @@ public sealed partial class MainWindow : Window {
             foreach (var tool in _appState.DisabledTools) {
                 if (!string.IsNullOrWhiteSpace(tool)) {
                     _toolStates[tool.Trim()] = false;
+                }
+            }
+        }
+
+        if (_appState.EnabledWriteTools is { Count: > 0 }) {
+            foreach (var tool in _appState.EnabledWriteTools) {
+                if (!string.IsNullOrWhiteSpace(tool)) {
+                    _toolStates[tool.Trim()] = true;
                 }
             }
         }

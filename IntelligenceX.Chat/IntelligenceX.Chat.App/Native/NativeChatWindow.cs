@@ -57,8 +57,12 @@ internal sealed partial class NativeChatWindow : Window {
             _runtime,
             DispatchToUiThread,
             _conversationStore,
-            conversation => _conversationStore.CreateChatRequestOptions(conversation, _runtime.SessionPolicy),
+            conversation => _conversationStore.CreateChatRequestOptions(
+                conversation,
+                _runtime.SessionPolicy,
+                _runtime.ToolDefinitions),
             () => _runtime.SessionPolicy,
+            _runtime.EnsureRequestMetadataAsync,
             _conversationStore.BuildRequestText,
             _conversationStore.NormalizeAssistantTurnAsync) {
             OpenLoginUrlAsync = OpenLoginUrlAsync,

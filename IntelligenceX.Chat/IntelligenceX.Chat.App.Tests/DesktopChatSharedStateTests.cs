@@ -109,6 +109,7 @@ public sealed class DesktopChatSharedStateTests {
         latest.LocalProviderModel = "local-model";
         latest.AutonomyMaxToolRounds = 9;
         latest.DisabledTools = ["unsafe_tool"];
+        latest.EnabledWriteTools = ["approved_write_tool"];
         var staleLocal = CloneForTest(local);
 
         var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
@@ -118,6 +119,7 @@ public sealed class DesktopChatSharedStateTests {
         Assert.Equal("local-model", merged.LocalProviderModel);
         Assert.Equal(9, merged.AutonomyMaxToolRounds);
         Assert.Equal(["unsafe_tool"], merged.DisabledTools);
+        Assert.Equal(["approved_write_tool"], merged.EnabledWriteTools);
         Assert.Contains(Assert.Single(merged.Conversations).Messages, message => message.Text == "Legacy addition");
         Assert.False(DesktopChatStateMerger.RuntimeAndPreferenceStateEquals(staleLocal, merged));
 
@@ -125,6 +127,7 @@ public sealed class DesktopChatSharedStateTests {
         Assert.Equal("compatible-http", afterAnotherStaleSave.LocalProviderTransport);
         Assert.Equal("local-model", afterAnotherStaleSave.LocalProviderModel);
         Assert.Equal(["unsafe_tool"], afterAnotherStaleSave.DisabledTools);
+        Assert.Equal(["approved_write_tool"], afterAnotherStaleSave.EnabledWriteTools);
     }
 
     /// <summary>Ensures transcript persistence cannot overwrite a model catalog refreshed by another window.</summary>
@@ -440,6 +443,7 @@ public sealed class DesktopChatSharedStateTests {
             CachedModelListWarning = state.CachedModelListWarning,
             CachedModelsUpdatedUtc = state.CachedModelsUpdatedUtc,
             DisabledTools = state.DisabledTools.ToList(),
+            EnabledWriteTools = state.EnabledWriteTools.ToList(),
             ActiveConversationId = state.ActiveConversationId,
             Conversations = new List<ChatConversationState> { clonedConversation },
             Messages = clonedConversation.Messages.ToList(),

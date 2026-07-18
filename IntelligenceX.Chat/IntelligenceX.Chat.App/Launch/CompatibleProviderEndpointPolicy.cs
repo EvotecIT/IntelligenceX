@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 
 namespace IntelligenceX.Chat.App.Launch;
 
@@ -76,8 +77,12 @@ internal static class CompatibleProviderEndpointPolicy {
                && !string.IsNullOrWhiteSpace(endpoint.Host);
     }
 
-    private static bool IsLoopbackHost(string host) =>
-        string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
+    private static bool IsLoopbackHost(string host) {
+        var normalized = (host ?? string.Empty).Trim().Trim('[', ']');
+        if (string.Equals(normalized, "localhost", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return IPAddress.TryParse(normalized, out var address) && IPAddress.IsLoopback(address);
+    }
 }

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.App.Launch;
 
@@ -124,7 +124,8 @@ internal static class ChatRequestOptionsFactory {
     public static ChatRequestOptions CreateFromState(
         ChatAppState state,
         string? conversationModelOverride = null,
-        SessionPolicyDto? servicePolicy = null) {
+        SessionPolicyDto? servicePolicy = null,
+        IReadOnlyList<ToolDefinitionDto>? availableTools = null) {
         ArgumentNullException.ThrowIfNull(state);
         var imageOverridesActive = state.LocalProviderImageGenerationOverrideActive;
         var runtimeOverridesActive = state.LocalProviderRuntimeOverrideActive;
@@ -151,7 +152,10 @@ internal static class ChatRequestOptionsFactory {
             ImageGenerationOutputCompression = imageOverridesActive ? state.LocalProviderImageGenerationOutputCompression : null,
             ImageGenerationBackground = imageOverridesActive ? state.LocalProviderImageGenerationBackground : null,
             ImageGenerationOutputDirectory = imageOverridesActive ? state.LocalProviderImageGenerationOutputDirectory : null,
-            DisabledTools = state.DisabledTools,
+            DisabledTools = MergeDisabledToolsWithWriteDefaults(
+                state.DisabledTools,
+                state.EnabledWriteTools,
+                availableTools),
             MaxToolRounds = state.AutonomyMaxToolRounds,
             ServiceMaxToolRounds = servicePolicy?.MaxToolRounds,
             ParallelTools = state.AutonomyParallelTools,
@@ -217,6 +221,46 @@ internal static class ChatRequestOptionsFactory {
 
         normalized.Sort(StringComparer.OrdinalIgnoreCase);
         return normalized.Count == 0 ? null : normalized.ToArray();
+    }
+
+    private static IReadOnlyList<string>? MergeDisabledToolsWithWriteDefaults(
+        IReadOnlyList<string>? disabledTools,
+        IReadOnlyList<string>? enabledWriteTools,
+        IReadOnlyList<ToolDefinitionDto>? availableTools) {
+        if ((availableTools is null || availableTools.Count == 0)
+            && (enabledWriteTools is null || enabledWriteTools.Count == 0)) {
+            return disabledTools;
+        }
+
+        var merged = new List<string>((disabledTools?.Count ?? 0) + (availableTools?.Count ?? 0));
+        var explicitlyEnabled = enabledWriteTools is { Count: > 0 }
+            ? new HashSet<string>(enabledWriteTools, StringComparer.OrdinalIgnoreCase)
+            : null;
+        if (disabledTools is not null) {
+            for (var i = 0; i < disabledTools.Count; i++) {
+                var toolName = (disabledTools[i] ?? string.Empty).Trim();
+                if (explicitlyEnabled is null || !explicitlyEnabled.Contains(toolName)) {
+                    merged.Add(toolName);
+                }
+            }
+        }
+
+        if (availableTools is null) {
+            return merged;
+        }
+
+        for (var i = 0; i < availableTools.Count; i++) {
+            var tool = availableTools[i];
+            var toolName = (tool?.Name ?? string.Empty).Trim();
+            if (tool is not null
+                && tool.IsWriteCapable
+                && toolName.Length > 0
+                && (explicitlyEnabled is null || !explicitlyEnabled.Contains(toolName))) {
+                merged.Add(tool.Name);
+            }
+        }
+
+        return merged;
     }
 
     private static int? NormalizeInt(int? value, int min, int max) =>

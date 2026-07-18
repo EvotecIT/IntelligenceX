@@ -84,7 +84,8 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
     /// </summary>
     internal ChatRequestOptions CreateChatRequestOptions(
         NativeConversation conversation,
-        SessionPolicyDto? sessionPolicy = null) {
+        SessionPolicyDto? sessionPolicy = null,
+        IReadOnlyList<ToolDefinitionDto>? availableTools = null) {
         ArgumentNullException.ThrowIfNull(conversation);
         if (_state is null) {
             throw new InvalidOperationException("Native profile state must be loaded before chat requests are created.");
@@ -93,7 +94,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         var modelOverride = (_state.Conversations ?? new List<ChatConversationState>())
             .FirstOrDefault(state => string.Equals(state.Id, conversation.Id, StringComparison.OrdinalIgnoreCase))
             ?.ModelOverride;
-        return ChatRequestOptionsFactory.CreateFromState(_state, modelOverride, sessionPolicy);
+        return ChatRequestOptionsFactory.CreateFromState(_state, modelOverride, sessionPolicy, availableTools);
     }
 
     public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {

@@ -27,12 +27,17 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private readonly string _pipeName;
     private readonly Func<ChatServiceLaunchProfileOptions?>? _profileOptionsProvider;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
+    private readonly SemaphoreSlim _metadataLock = new(1, 1);
     private readonly ChatServiceProcessHost _processHost = new();
     private ChatServiceClient? _client;
     private ChatServiceTurnRunner? _turnRunner;
     private bool _detachOwnedServiceOnDispose;
 
-    internal SessionPolicyDto? SessionPolicy { get; private set; }
+    private NativeRuntimeMetadata? _metadata;
+
+    internal SessionPolicyDto? SessionPolicy => Volatile.Read(ref _metadata)?.Policy;
+
+    internal IReadOnlyList<ToolDefinitionDto>? ToolDefinitions => Volatile.Read(ref _metadata)?.Tools;
 
     internal string PipeName => _pipeName;
 
@@ -72,24 +77,37 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     internal Task SynchronizeSelectedProfileAndRefreshSessionPolicyAsync(CancellationToken cancellationToken) =>
         RefreshSessionPolicyCoreAsync(synchronizeSelectedProfile: true, cancellationToken);
 
+    /// <summary>
+    /// Ensures the first native request can apply catalog-derived write-tool defaults before its options are built.
+    /// </summary>
+    internal Task EnsureRequestMetadataAsync(CancellationToken cancellationToken) =>
+        Volatile.Read(ref _metadata)?.Tools is not null
+            ? Task.CompletedTask
+            : RefreshSessionPolicyCoreAsync(synchronizeSelectedProfile: false, cancellationToken);
+
     private async Task RefreshSessionPolicyCoreAsync(
         bool synchronizeSelectedProfile,
         CancellationToken cancellationToken) {
-        var connection = await EnsureConnectedAsync(_ => Task.CompletedTask, cancellationToken).ConfigureAwait(false);
-        var client = connection.Client;
-        if (synchronizeSelectedProfile && !connection.SelectedProfileSynchronized) {
-            await SynchronizeSelectedProfileAsync(connection.Client, _ => Task.CompletedTask, cancellationToken)
+        await _metadataLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            var connection = await EnsureConnectedAsync(_ => Task.CompletedTask, cancellationToken).ConfigureAwait(false);
+            var client = connection.Client;
+            if (synchronizeSelectedProfile && !connection.SelectedProfileSynchronized) {
+                await SynchronizeSelectedProfileAsync(connection.Client, _ => Task.CompletedTask, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            var toolList = await client.RequestAsync<ToolListMessage>(
+                    new ListToolsRequest { RequestId = "native-tools-refresh-" + Guid.NewGuid().ToString("N") },
+                    cancellationToken)
                 .ConfigureAwait(false);
+            var hello = await client.RequestAsync<HelloMessage>(
+                    new HelloRequest { RequestId = "native-hello-refresh-" + Guid.NewGuid().ToString("N") },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            Volatile.Write(ref _metadata, new NativeRuntimeMetadata(hello.Policy, toolList.Tools ?? Array.Empty<ToolDefinitionDto>()));
+        } finally {
+            _metadataLock.Release();
         }
-        _ = await client.RequestAsync<ToolListMessage>(
-                new ListToolsRequest { RequestId = "native-tools-refresh-" + Guid.NewGuid().ToString("N") },
-                cancellationToken)
-            .ConfigureAwait(false);
-        var hello = await client.RequestAsync<HelloMessage>(
-                new HelloRequest { RequestId = "native-hello-refresh-" + Guid.NewGuid().ToString("N") },
-                cancellationToken)
-            .ConfigureAwait(false);
-        SessionPolicy = hello.Policy;
     }
 
     public async Task<NativeLoginResult> EnsureLoginAsync(
@@ -219,6 +237,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         }
         _processHost.Dispose();
         _connectLock.Dispose();
+        _metadataLock.Dispose();
     }
 
     private async Task<ChatServiceTurnRunner> EnsureTurnRunnerAsync(
@@ -266,7 +285,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
                         new HelloRequest { RequestId = "native-hello-" + Guid.NewGuid().ToString("N") },
                         cancellationToken)
                     .ConfigureAwait(false);
-                SessionPolicy = hello.Policy;
+                Volatile.Write(ref _metadata, new NativeRuntimeMetadata(hello.Policy, Tools: null));
             } catch {
                 await client.DisposeAsync().ConfigureAwait(false);
                 throw;
@@ -449,7 +468,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         }
 
         _turnRunner = null;
-        SessionPolicy = null;
+        Volatile.Write(ref _metadata, null);
         _ = DisposeDisconnectedClientAsync(client);
     }
 
@@ -483,4 +502,6 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private readonly record struct NativeChatServiceConnection(
         ChatServiceClient Client,
         bool SelectedProfileSynchronized);
+
+    private sealed record NativeRuntimeMetadata(SessionPolicyDto? Policy, ToolDefinitionDto[]? Tools);
 }

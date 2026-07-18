@@ -31,7 +31,9 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private async Task PersistAppStateAsync(bool allowDuringShutdown = false) {
+    private async Task PersistAppStateAsync(
+        bool allowDuringShutdown = false,
+        bool preserveLoadedToolExposure = false) {
         if (!_appStateLoaded || (_shutdownRequested && !allowDuringShutdown)) {
             return;
         }
@@ -60,7 +62,11 @@ public sealed partial class MainWindow : Window {
             if (string.IsNullOrWhiteSpace(_sessionThemeOverride)) {
                 _appState.ThemePreset = _themePreset;
             }
-            _appState.DisabledTools = BuildDisabledToolsList();
+            CaptureToolExposureStateForPersistence(
+                _appState,
+                _toolStates,
+                _toolWriteCapabilities,
+                preserveLoadedToolExposure);
             _appState.Messages = BuildMessageStateSnapshot(activeConversation.Messages);
             _appState.Conversations = BuildConversationStateSnapshot();
             _appState.PendingTurns = BuildPendingTurnStateSnapshot();
@@ -239,7 +245,7 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private static List<string> BuildDisabledToolsList(Dictionary<string, bool> toolStates) {
+    private static List<string> BuildDisabledToolsList(IReadOnlyDictionary<string, bool> toolStates) {
         var list = new List<string>();
         foreach (var pair in toolStates) {
             if (!pair.Value) {
@@ -250,8 +256,52 @@ public sealed partial class MainWindow : Window {
         return list;
     }
 
-    private List<string> BuildDisabledToolsList() {
-        return BuildDisabledToolsList(_toolStates);
+    internal static void CaptureToolExposureStateForPersistence(
+        ChatAppState state,
+        IReadOnlyDictionary<string, bool> toolStates,
+        IReadOnlyDictionary<string, bool> toolWriteCapabilities,
+        bool preserveLoadedToolExposure) {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(toolStates);
+        ArgumentNullException.ThrowIfNull(toolWriteCapabilities);
+        if (preserveLoadedToolExposure) {
+            return;
+        }
+
+        state.DisabledTools = BuildDisabledToolsList(toolStates);
+        state.EnabledWriteTools = BuildEnabledWriteToolsList(
+            toolStates,
+            toolWriteCapabilities,
+            state.EnabledWriteTools);
+    }
+
+    internal static List<string> BuildEnabledWriteToolsList(
+        IReadOnlyDictionary<string, bool> toolStates,
+        IReadOnlyDictionary<string, bool> toolWriteCapabilities,
+        IReadOnlyList<string>? persistedEnabledWriteTools) {
+        var enabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (persistedEnabledWriteTools is not null) {
+            for (var i = 0; i < persistedEnabledWriteTools.Count; i++) {
+                var toolName = (persistedEnabledWriteTools[i] ?? string.Empty).Trim();
+                if (toolName.Length > 0 && !toolWriteCapabilities.ContainsKey(toolName)) {
+                    enabled.Add(toolName);
+                }
+            }
+        }
+
+        foreach (var pair in toolWriteCapabilities) {
+            if (pair.Value
+                && toolStates.TryGetValue(pair.Key, out var isEnabled)
+                && isEnabled) {
+                enabled.Add(pair.Key);
+            } else {
+                enabled.Remove(pair.Key);
+            }
+        }
+
+        var list = new List<string>(enabled);
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list;
     }
 
     private static List<ChatMessageState> BuildMessageStateSnapshot(List<(string Role, string Text, DateTime Time, string? Model)> messages) {
