@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace IntelligenceX.Chat.App.Conversation;
 
@@ -27,6 +28,48 @@ internal static class DesktopChatProfileNormalizer {
 
         normalized = TrimProfilePunctuation(normalized!);
         return Clamp(normalized, MaximumPersonaLength);
+    }
+
+    /// <summary>
+    /// Identifies profile fields that still need to be collected before onboarding can complete.
+    /// </summary>
+    internal static List<string> GetMissingOnboardingFields(
+        string? effectiveUserName,
+        string? effectiveAssistantPersona,
+        string? effectiveThemePreset,
+        bool onboardingCompleted) {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(effectiveUserName)) {
+            missing.Add("userName");
+        }
+        if (string.IsNullOrWhiteSpace(effectiveAssistantPersona)) {
+            missing.Add("assistantPersona");
+        }
+        if (string.IsNullOrWhiteSpace(effectiveThemePreset)
+            || (!onboardingCompleted && string.Equals(effectiveThemePreset, "default", StringComparison.OrdinalIgnoreCase))) {
+            missing.Add("themePreset");
+        }
+        return missing;
+    }
+
+    /// <summary>
+    /// Resolves legacy unspecified profile updates consistently for every desktop shell.
+    /// </summary>
+    internal static ProfileUpdateScope ResolveEffectiveUpdateScope(OnboardingProfileUpdate update) {
+        ArgumentNullException.ThrowIfNull(update);
+
+        if (update.Scope != ProfileUpdateScope.Unspecified) {
+            return update.Scope;
+        }
+
+        var completesOnboardingWithProfileFields = update.HasOnboardingCompleted
+                                                  && update.OnboardingCompleted
+                                                  && (update.HasUserName
+                                                      || update.HasAssistantPersona
+                                                      || update.HasThemePreset);
+        return completesOnboardingWithProfileFields
+            ? ProfileUpdateScope.Profile
+            : ProfileUpdateScope.Session;
     }
 
     private static string? NormalizeSingleLine(string? value) {

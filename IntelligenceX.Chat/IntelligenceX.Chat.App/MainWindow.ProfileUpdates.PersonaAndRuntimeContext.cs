@@ -9,45 +9,6 @@ using IntelligenceX.Chat.Client;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
-    internal static IReadOnlyList<string> BuildPersonaGuidanceLines(string? personaText) {
-        var normalized = (personaText ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return Array.Empty<string>();
-        }
-
-        var lines = new List<string>();
-        var role = NormalizePersonaRole(normalized, normalized);
-        if (!string.IsNullOrWhiteSpace(role)) {
-            lines.Add("Preferred role framing: " + role + ".");
-        }
-
-        var traits = CollectPersonaTraits(normalized);
-        for (var i = 0; i < traits.Count; i++) {
-            var trait = (traits[i] ?? string.Empty).Trim();
-            if (trait.Length == 0) {
-                continue;
-            }
-
-            if (string.Equals(trait, "helpful guidance", StringComparison.OrdinalIgnoreCase)) {
-                lines.Add("Be proactively useful: reduce user effort, infer sensible next steps, and avoid making the user micromanage the conversation.");
-            } else if (string.Equals(trait, "friendly tone", StringComparison.OrdinalIgnoreCase)) {
-                lines.Add("Sound warm and human instead of dry, stiff, or corporate.");
-            } else if (string.Equals(trait, "light humor", StringComparison.OrdinalIgnoreCase)) {
-                lines.Add("Light humor is allowed when it fits naturally. Keep it subtle, optional, and secondary to usefulness.");
-            } else if (string.Equals(trait, "concise outputs", StringComparison.OrdinalIgnoreCase)) {
-                lines.Add("Prefer compact phrasing and shorter answers by default unless the user clearly wants depth.");
-            } else if (string.Equals(trait, "pragmatic guidance", StringComparison.OrdinalIgnoreCase)) {
-                lines.Add("Favor concrete next steps, practical judgments, and real-world usefulness over abstract theory.");
-            } else if (string.Equals(trait, "clear explanations", StringComparison.OrdinalIgnoreCase)) {
-                lines.Add("When explanation helps, make it clear and easy to follow instead of compressed or jargon-heavy.");
-            } else if (string.Equals(trait, "optimistic tone", StringComparison.OrdinalIgnoreCase)) {
-                lines.Add("Keep the tone constructive and steady without sounding fake, evasive, or over-cheerful.");
-            }
-        }
-
-        return lines.Count == 0 ? Array.Empty<string>() : lines;
-    }
-
     private IReadOnlyList<string> BuildRuntimeCapabilityContextLines(
         bool compactSelfReport = false,
         RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {

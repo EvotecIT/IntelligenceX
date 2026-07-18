@@ -30,7 +30,6 @@ public sealed partial class MainWindow {
         var capabilityAnswerStyleLines = assistantCapabilityQuestion
             ? ConversationStyleGuidanceBuilder.BuildCapabilityAnswerStyleLines(activeConversation.Messages)
             : null;
-        var personaGuidanceLines = BuildPersonaGuidanceLines(effectivePersona);
         var continuationStateLines = ConversationStyleGuidanceBuilder.BuildContinuationStateLines(
             activeConversation.Messages,
             activeConversation.PendingActions,
@@ -71,7 +70,6 @@ public sealed partial class MainWindow {
             LocalContextLines = localContextLines,
             ConversationStyleLines = conversationStyleLines,
             CapabilityAnswerStyleLines = capabilityAnswerStyleLines,
-            PersonaGuidanceLines = personaGuidanceLines,
             ContinuationStateLines = continuationStateLines,
             RecentAssistantAnswerWasSubstantive = recentAssistantAnswerWasSubstantive,
             RecentAssistantAskedQuestion = recentAssistantAskedQuestion,

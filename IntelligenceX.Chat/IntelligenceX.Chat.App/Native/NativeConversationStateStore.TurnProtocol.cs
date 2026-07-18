@@ -44,7 +44,7 @@ internal sealed partial class NativeConversationStateStore {
         var effectivePersona = _sessionAssistantPersona ?? _state.AssistantPersona;
         var effectiveTheme = _sessionThemePreset ?? _state.ThemePreset;
         IReadOnlyList<string> missingFields = includeOnboardingContext
-            ? MainWindow.BuildMissingOnboardingFields(
+            ? DesktopChatProfileNormalizer.GetMissingOnboardingFields(
                 effectiveUserName,
                 effectivePersona,
                 effectiveTheme,
@@ -80,7 +80,6 @@ internal sealed partial class NativeConversationStateStore {
             CapabilityAnswerStyleLines = assistantCapabilityQuestion
                 ? ConversationStyleGuidanceBuilder.BuildCapabilityAnswerStyleLines(messages)
                 : null,
-            PersonaGuidanceLines = MainWindow.BuildPersonaGuidanceLines(effectivePersona),
             ContinuationStateLines = ConversationStyleGuidanceBuilder.BuildContinuationStateLines(
                 messages,
                 conversation.PendingActions,
@@ -180,7 +179,7 @@ internal sealed partial class NativeConversationStateStore {
         var previousTheme = EffectiveThemePreset;
         var result = DesktopChatTurnProtocol.NormalizeAssistantResponse(assistantText);
         var persistentProfileUpdate = result.ProfileUpdate is not null
-                                      && MainWindow.ResolveEffectiveProfileUpdateScope(result.ProfileUpdate) == ProfileUpdateScope.Profile;
+                                      && DesktopChatProfileNormalizer.ResolveEffectiveUpdateScope(result.ProfileUpdate) == ProfileUpdateScope.Profile;
         var hasPersistentUpdate = persistentProfileUpdate || result.MemoryUpdate is not null;
         var stateChanged = false;
 
@@ -290,7 +289,7 @@ internal sealed partial class NativeConversationStateStore {
             }
         }
         if (update.HasOnboardingCompleted) {
-            var missingFields = MainWindow.BuildMissingOnboardingFields(
+            var missingFields = DesktopChatProfileNormalizer.GetMissingOnboardingFields(
                 state.UserName,
                 state.AssistantPersona,
                 state.ThemePreset,

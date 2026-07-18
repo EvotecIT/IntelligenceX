@@ -1,4 +1,5 @@
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.App.Conversation;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Chat.App.Tests;
 /// <summary>
 /// Regression tests for profile persistence normalization and onboarding-completion eligibility.
 /// </summary>
-public sealed class MainWindowProfileStateNormalizationTests {
+public sealed class DesktopChatProfileNormalizerTests {
     /// <summary>
     /// Ensures onboarding completion with profile fields promotes an otherwise-unspecified scope to persistent profile scope.
     /// </summary>
@@ -20,7 +21,7 @@ public sealed class MainWindowProfileStateNormalizationTests {
             OnboardingCompleted = true
         };
 
-        var scope = MainWindow.ResolveEffectiveProfileUpdateScope(update);
+        var scope = DesktopChatProfileNormalizer.ResolveEffectiveUpdateScope(update);
 
         Assert.Equal(ProfileUpdateScope.Profile, scope);
     }
@@ -36,7 +37,7 @@ public sealed class MainWindowProfileStateNormalizationTests {
             AssistantPersona = "focused helper"
         };
 
-        var scope = MainWindow.ResolveEffectiveProfileUpdateScope(update);
+        var scope = DesktopChatProfileNormalizer.ResolveEffectiveUpdateScope(update);
 
         Assert.Equal(ProfileUpdateScope.Session, scope);
     }
@@ -46,7 +47,7 @@ public sealed class MainWindowProfileStateNormalizationTests {
     /// </summary>
     [Fact]
     public void BuildMissingOnboardingFields_TreatsDefaultThemeAsMissingBeforeCompletion() {
-        var missing = MainWindow.BuildMissingOnboardingFields(
+        var missing = DesktopChatProfileNormalizer.GetMissingOnboardingFields(
             effectiveUserName: "Przemek",
             effectiveAssistantPersona: "concise analyst",
             effectiveThemePreset: "default",
@@ -60,7 +61,7 @@ public sealed class MainWindowProfileStateNormalizationTests {
     /// </summary>
     [Fact]
     public void BuildMissingOnboardingFields_AllowsDefaultThemeAfterCompletion() {
-        var missing = MainWindow.BuildMissingOnboardingFields(
+        var missing = DesktopChatProfileNormalizer.GetMissingOnboardingFields(
             effectiveUserName: "Przemek",
             effectiveAssistantPersona: "concise analyst",
             effectiveThemePreset: "default",

@@ -5,7 +5,6 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -59,78 +58,6 @@ public sealed partial class MainWindow : Window {
 
     private static string? NormalizeAssistantPersonaValue(string? value) =>
         DesktopChatProfileNormalizer.NormalizeAssistantPersona(value);
-
-    private static List<string> CollectPersonaTraits(string hintText) {
-        var traits = new List<string>();
-        AddTraitIfPresent(traits, hintText, "optimistic", "optimistic tone");
-        AddTraitIfPresent(traits, hintText, "helpful", "helpful guidance");
-        AddTraitIfPresent(traits, hintText, "friendly", "friendly tone");
-        if (hintText.Contains("funny", StringComparison.OrdinalIgnoreCase)
-            || hintText.Contains("humor", StringComparison.OrdinalIgnoreCase)
-            || hintText.Contains("humour", StringComparison.OrdinalIgnoreCase)) {
-            traits.Add("light humor");
-        }
-        AddTraitIfPresent(traits, hintText, "concise", "concise outputs");
-        AddTraitIfPresent(traits, hintText, "pragmatic", "pragmatic guidance");
-        if (hintText.Contains("explan", StringComparison.OrdinalIgnoreCase)
-            || hintText.Contains("detailed", StringComparison.OrdinalIgnoreCase)) {
-            traits.Add("clear explanations");
-        }
-
-        return traits;
-    }
-
-    private static void AddTraitIfPresent(List<string> traits, string text, string needle, string label) {
-        if (!text.Contains(needle, StringComparison.OrdinalIgnoreCase)) {
-            return;
-        }
-
-        if (!traits.Exists(t => string.Equals(t, label, StringComparison.OrdinalIgnoreCase))) {
-            traits.Add(label);
-        }
-    }
-
-    private static string JoinTraits(IReadOnlyList<string> traits) {
-        if (traits.Count == 0) {
-            return string.Empty;
-        }
-
-        if (traits.Count == 1) {
-            return traits[0];
-        }
-
-        if (traits.Count == 2) {
-            return traits[0] + " and " + traits[1];
-        }
-
-        var sb = new StringBuilder();
-        for (var i = 0; i < traits.Count; i++) {
-            if (i > 0) {
-                sb.Append(i == traits.Count - 1 ? ", and " : ", ");
-            }
-            sb.Append(traits[i]);
-        }
-
-        return sb.ToString();
-    }
-
-    private static string NormalizePersonaRole(string genericPersona, string hintText) {
-        var lowerHint = hintText.ToLowerInvariant();
-        if (lowerHint.Contains("security analyst", StringComparison.Ordinal)
-            || lowerHint.Contains("security", StringComparison.Ordinal)) {
-            return "security analyst";
-        }
-
-        var token = genericPersona.Trim().ToLowerInvariant();
-        return token switch {
-            "analyst" or "analyst mode" => "analyst",
-            "engineer" => "engineer",
-            "admin" or "administrator" => "admin engineer",
-            "operator" => "operations analyst",
-            "security" => "security analyst",
-            _ => genericPersona.Trim()
-        };
-    }
 
     private static string? NormalizeUserNameValue(string? value) =>
         DesktopChatProfileNormalizer.NormalizeUserName(value);

@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.Client;
@@ -809,30 +810,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private List<string> BuildMissingOnboardingFields() {
-        return BuildMissingOnboardingFields(
+        return DesktopChatProfileNormalizer.GetMissingOnboardingFields(
             GetEffectiveUserName(),
             GetEffectiveAssistantPersona(),
             GetEffectiveThemePreset(),
             _appState.OnboardingCompleted);
-    }
-
-    internal static List<string> BuildMissingOnboardingFields(
-        string? effectiveUserName,
-        string? effectiveAssistantPersona,
-        string? effectiveThemePreset,
-        bool onboardingCompleted) {
-        var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(effectiveUserName)) {
-            missing.Add("userName");
-        }
-        if (string.IsNullOrWhiteSpace(effectiveAssistantPersona)) {
-            missing.Add("assistantPersona");
-        }
-        if (string.IsNullOrWhiteSpace(effectiveThemePreset)
-            || (!onboardingCompleted && string.Equals(effectiveThemePreset, "default", StringComparison.OrdinalIgnoreCase))) {
-            missing.Add("themePreset");
-        }
-        return missing;
     }
 
     private string BuildKickoffRequestText(IReadOnlyList<string> missingFields) {

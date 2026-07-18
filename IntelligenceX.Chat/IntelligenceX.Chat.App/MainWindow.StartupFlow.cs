@@ -1218,7 +1218,7 @@ public sealed partial class MainWindow : Window {
         _serviceProfileNames = Array.Empty<string>();
         _serviceActiveProfileName = null;
         if (_appState.OnboardingCompleted
-            && BuildMissingOnboardingFields(
+            && DesktopChatProfileNormalizer.GetMissingOnboardingFields(
                 _appState.UserName,
                 _appState.AssistantPersona,
                 _appState.ThemePreset,

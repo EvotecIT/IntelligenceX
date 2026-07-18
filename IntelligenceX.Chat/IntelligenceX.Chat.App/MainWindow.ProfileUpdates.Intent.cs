@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.App.Conversation;
 
 namespace IntelligenceX.Chat.App;
 
@@ -45,7 +46,7 @@ public sealed partial class MainWindow {
     private async Task<bool> ApplyProfileUpdateAsync(
         OnboardingProfileUpdate update,
         bool autoCompleteOnboardingForProfileScope) {
-        var scope = ResolveEffectiveProfileUpdateScope(update);
+        var scope = DesktopChatProfileNormalizer.ResolveEffectiveUpdateScope(update);
         var persistProfile = scope == ProfileUpdateScope.Profile;
         var changed = false;
         var effectiveThemeBefore = GetEffectiveThemePreset();
@@ -110,7 +111,7 @@ public sealed partial class MainWindow {
             }
         }
 
-        var completionEligibleMissingFields = BuildMissingOnboardingFields(
+        var completionEligibleMissingFields = DesktopChatProfileNormalizer.GetMissingOnboardingFields(
             GetEffectiveUserName(),
             GetEffectiveAssistantPersona(),
             GetEffectiveThemePreset(),
@@ -151,22 +152,5 @@ public sealed partial class MainWindow {
         }
 
         return true;
-    }
-
-    internal static ProfileUpdateScope ResolveEffectiveProfileUpdateScope(OnboardingProfileUpdate update) {
-        ArgumentNullException.ThrowIfNull(update);
-
-        if (update.Scope != ProfileUpdateScope.Unspecified) {
-            return update.Scope;
-        }
-
-        var completesOnboardingWithProfileFields = update.HasOnboardingCompleted
-                                                  && update.OnboardingCompleted
-                                                  && (update.HasUserName
-                                                      || update.HasAssistantPersona
-                                                      || update.HasThemePreset);
-        return completesOnboardingWithProfileFields
-            ? ProfileUpdateScope.Profile
-            : ProfileUpdateScope.Session;
     }
 }

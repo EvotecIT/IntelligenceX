@@ -116,6 +116,7 @@ internal static class PromptMarkdownBuilder {
 
             if (hasPersona) {
                 markdown.Bullet("Assistant persona: " + effectivePersona!.Trim());
+                markdown.Bullet("Interpret this persona semantically in the language it was written. Apply it to role, tone, detail, and style without overriding factual accuracy, safety, or actual runtime capabilities.");
             }
 
             markdown.Bullet("Use this only as stable session metadata. The user request above remains the primary task input for this turn.");
@@ -421,7 +422,8 @@ internal static class PromptMarkdownBuilder {
                 markdown.Bullet("Assistant persona: " + effectivePersona!.Trim());
             }
             markdown
-                .Bullet("Treat this persona as the preferred voice and working style for the assistant unless the user overrides it in the conversation.")
+                .Bullet("Interpret this persona semantically in the language it was written and treat it as the preferred voice and working style unless the user overrides it in the conversation.")
+                .Bullet("Apply the persona to role, tone, detail, and style without overriding factual accuracy, safety, or actual runtime capabilities.")
                 .Bullet("If the user's style is sharper, warmer, more terse, or more playful than the persona, adapt the delivery while preserving the persona's core intent.")
                 .Bullet("Keep responses natural and conversational; avoid robotic template phrasing.")
                 .BlankLine();
