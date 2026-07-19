@@ -21,10 +21,11 @@
     <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.28</OfficeImoMarkdownRendererNuGetVersion>
     <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.41</OfficeImoExcelNuGetVersion>
     <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.37</OfficeImoWordMarkdownNuGetVersion>
+    <AngleSharpNuGetVersion Condition="'$(AngleSharpNuGetVersion)' == ''">1.5.2</AngleSharpNuGetVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- OfficeIMO.Markdown.Html and OfficeIMO.Word.Html pin vulnerable AngleSharp 1.4.0 transitively. -->
-    <PackageReference Include="AngleSharp" Version="1.5.2" PrivateAssets="all" />
+    <PackageReference Include="AngleSharp" Version="$(AngleSharpNuGetVersion)" PrivateAssets="all" />
   </ItemGroup>
 </Project>
