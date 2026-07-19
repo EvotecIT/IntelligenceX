@@ -16,6 +16,79 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Tests the native chat view model without constructing WinUI controls.
 /// </summary>
 public sealed class NativeChatViewModelTests {
+    /// <summary>Ensures native history management deletes the persisted conversation and keeps a usable draft.</summary>
+    [Fact]
+    public async Task DeleteConversationAsync_RemovesConversationAndPersistsDiscardIntent() {
+        var first = new NativeConversation("chat-first", "First");
+        var second = new NativeConversation("chat-second", "Second");
+        var workspace = new NativeConversationWorkspace([first, second], first.Id);
+        var store = new FakeConversationStore(workspace);
+        var model = new NativeChatViewModel(
+            new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1"))),
+            conversationStore: store);
+        await model.InitializeConversationsAsync();
+
+        var deleted = await model.DeleteConversationAsync(first.Id);
+
+        Assert.True(deleted);
+        Assert.DoesNotContain(model.Conversations, conversation => conversation.Id == first.Id);
+        Assert.Equal(second.Id, model.ActiveConversation.Id);
+        Assert.NotNull(store.LastSaved);
+        Assert.Contains(first.Id, store.LastSaved!.DiscardedConversationIds);
+        Assert.Equal(1, store.SaveCount);
+    }
+
+    /// <summary>Ensures persisted queued prompts are visible and manually dispatched by the native shell.</summary>
+    [Fact]
+    public async Task RunNextQueuedTurnAsync_ClaimsAndDispatchesRestoredTurn() {
+        var conversation = new NativeConversation("chat-queued", "Queued");
+        var queued = new NativeQueuedTurn(
+            "Run replication health",
+            conversation.Id,
+            DateTime.UtcNow,
+            SkipUserBubbleOnDispatch: false,
+            NativeQueuedTurnSource.Pending);
+        var workspace = new NativeConversationWorkspace([conversation], conversation.Id, queuedTurns: [queued]);
+        var store = new FakeConversationStore(workspace);
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("Healthy", "thread-queued")));
+        var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await model.InitializeConversationsAsync();
+        await AuthenticateAsync(model);
+
+        var dispatched = await model.RunNextQueuedTurnAsync();
+
+        Assert.True(dispatched);
+        Assert.Empty(model.QueuedTurns);
+        Assert.Equal(queued, store.CompletedQueuedTurn);
+        Assert.Equal("Run replication health", Assert.Single(runtime.Requests).Text);
+        Assert.Contains(model.Transcript, item => item.IsAssistant && item.Text == "Healthy");
+    }
+
+    /// <summary>Ensures a stale native window cannot dispatch a queued turn already claimed elsewhere.</summary>
+    [Fact]
+    public async Task RunNextQueuedTurnAsync_DoesNotDispatchWhenAtomicClaimLoses() {
+        var conversation = new NativeConversation("chat-queued", "Queued");
+        var queued = new NativeQueuedTurn(
+            "Run replication health",
+            conversation.Id,
+            DateTime.UtcNow,
+            SkipUserBubbleOnDispatch: false,
+            NativeQueuedTurnSource.Pending);
+        var workspace = new NativeConversationWorkspace([conversation], conversation.Id, queuedTurns: [queued]);
+        var store = new FakeConversationStore(workspace) { QueuedTurnClaimResult = false };
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("Healthy", "thread-queued")));
+        var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await model.InitializeConversationsAsync();
+        await AuthenticateAsync(model);
+
+        var dispatched = await model.RunNextQueuedTurnAsync();
+
+        Assert.False(dispatched);
+        Assert.Empty(model.QueuedTurns);
+        Assert.Empty(runtime.Requests);
+        Assert.Contains("another window", model.StatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Ensures sending a prompt creates native transcript items and applies streamed/final assistant text.
     /// </summary>
@@ -892,7 +965,7 @@ public sealed class NativeChatViewModelTests {
         }
     }
 
-    private sealed class FakeConversationStore : INativeConversationStore {
+    private sealed class FakeConversationStore : INativeConversationStore, INativeQueuedTurnStore {
         private readonly NativeConversationWorkspace _workspace;
 
         public FakeConversationStore(NativeConversationWorkspace workspace) {
@@ -903,6 +976,10 @@ public sealed class NativeChatViewModelTests {
 
         public NativeConversationWorkspace? LastSaved { get; private set; }
 
+        public NativeQueuedTurn? CompletedQueuedTurn { get; private set; }
+
+        public bool QueuedTurnClaimResult { get; init; } = true;
+
         public Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(_workspace);
@@ -912,6 +989,17 @@ public sealed class NativeChatViewModelTests {
             cancellationToken.ThrowIfCancellationRequested();
             SaveCount++;
             LastSaved = workspace;
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> CompleteQueuedTurnAsync(NativeQueuedTurn turn, CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+            CompletedQueuedTurn = turn;
+            return Task.FromResult(QueuedTurnClaimResult);
+        }
+
+        public Task ClearQueuedTurnsAsync(CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
             return Task.CompletedTask;
         }
 

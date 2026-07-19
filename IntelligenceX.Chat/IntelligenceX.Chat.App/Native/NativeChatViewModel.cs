@@ -63,6 +63,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         _activeConversation = NativeConversation.CreateNew();
         Conversations.Add(_activeConversation);
         _workspace = new NativeConversationWorkspace(Conversations, _activeConversation.Id);
+        QueuedTurns.CollectionChanged += (_, _) => NotifyQueueCommandState();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -70,6 +71,8 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     public ObservableCollection<NativeChatTranscriptItem> Transcript { get; } = new();
 
     public ObservableCollection<NativeConversation> Conversations { get; } = new();
+
+    public ObservableCollection<NativeQueuedTurn> QueuedTurns { get; } = new();
 
     public NativeConversation ActiveConversation => _activeConversation;
 
@@ -116,6 +119,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             OnPropertyChanged(nameof(CanStop));
             OnPropertyChanged(nameof(CanCheckSignIn));
             OnPropertyChanged(nameof(CanStartSignIn));
+            NotifyQueueCommandState();
         }
     }
 
@@ -130,6 +134,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanSend));
             OnPropertyChanged(nameof(CanStartSignIn));
+            NotifyQueueCommandState();
         }
     }
 
@@ -145,6 +150,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             OnPropertyChanged(nameof(CanCheckSignIn));
             OnPropertyChanged(nameof(CanSend));
             OnPropertyChanged(nameof(CanStartSignIn));
+            NotifyQueueCommandState();
             if (value) {
                 AuthenticationState = NativeAuthenticationState.Checking;
             }
@@ -168,6 +174,10 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                            && !string.IsNullOrWhiteSpace(Draft);
 
     public bool CanStop => IsSending;
+
+    public bool CanRunQueuedTurn => QueuedTurns.Count > 0 && CanUseRuntime && !IsTurnBusy;
+
+    public bool CanClearQueuedTurns => QueuedTurns.Count > 0 && !IsTurnBusy;
 
     public bool CanCheckSignIn => _isConversationStateLoaded
                                   && !IsCheckingSignIn
@@ -208,6 +218,10 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             }
 
             _workspace = new NativeConversationWorkspace(Conversations, loaded.ActiveConversationId);
+            QueuedTurns.Clear();
+            foreach (var queuedTurn in loaded.QueuedTurns) {
+                QueuedTurns.Add(queuedTurn);
+            }
             var active = FindConversation(loaded.ActiveConversationId) ?? Conversations[0];
             ActivateConversation(active);
             if (!string.IsNullOrWhiteSpace(loaded.Warning)) {
@@ -264,6 +278,97 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         return true;
     }
 
+    public async Task<bool> DeleteConversationAsync(string conversationId) {
+        if (IsTurnBusy) {
+            return false;
+        }
+
+        var deleted = FindConversation(conversationId);
+        if (deleted is null) {
+            return false;
+        }
+
+        await RunOnUiAsync(() => {
+            var deletedIndex = Conversations.IndexOf(deleted);
+            var deletedActiveConversation = ReferenceEquals(deleted, _activeConversation);
+            Conversations.Remove(deleted);
+            _workspace.MarkConversationDiscarded(deleted.Id);
+            if (Conversations.Count == 0) {
+                Conversations.Add(NativeConversation.CreateNew());
+            }
+
+            if (deletedActiveConversation) {
+                ActivateConversation(Conversations[Math.Min(Math.Max(0, deletedIndex), Conversations.Count - 1)]);
+            }
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        await TryPersistConversationsAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<bool> RunNextQueuedTurnAsync() {
+        if (!CanRunQueuedTurn || QueuedTurns.Count == 0) {
+            return false;
+        }
+
+        var queuedTurn = QueuedTurns[0];
+        if (_conversationStore is INativeQueuedTurnStore queuedTurnStore) {
+            try {
+                var claimed = await queuedTurnStore.CompleteQueuedTurnAsync(queuedTurn, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (!claimed) {
+                    await RunOnUiAsync(() => {
+                        QueuedTurns.Remove(queuedTurn);
+                        StatusText = "Queued turn was already claimed in another window.";
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                    return false;
+                }
+            } catch (Exception ex) {
+                RunOnUi(() => StatusText = "Queued turn could not be claimed: " + ex.Message);
+                return false;
+            }
+        }
+
+        await RunOnUiAsync(() => {
+            var target = FindConversation(queuedTurn.ConversationId);
+            if (target is null && !string.IsNullOrWhiteSpace(queuedTurn.ConversationId)) {
+                target = new NativeConversation(queuedTurn.ConversationId!, "Queued conversation");
+                Conversations.Insert(0, target);
+            }
+            target ??= _activeConversation;
+            if (!ReferenceEquals(target, _activeConversation)) {
+                ActivateConversation(target);
+            }
+            QueuedTurns.Remove(queuedTurn);
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        return await SendAsync(queuedTurn.Text, clearDraftOnStart: false, queuedTurn.SkipUserBubbleOnDispatch)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<bool> ClearQueuedTurnsAsync() {
+        if (!CanClearQueuedTurns) {
+            return false;
+        }
+
+        if (_conversationStore is INativeQueuedTurnStore queuedTurnStore) {
+            try {
+                await queuedTurnStore.ClearQueuedTurnsAsync(CancellationToken.None).ConfigureAwait(false);
+            } catch (Exception ex) {
+                RunOnUi(() => StatusText = "Queued turns could not be cleared: " + ex.Message);
+                return false;
+            }
+        }
+
+        await RunOnUiAsync(() => {
+            QueuedTurns.Clear();
+            StatusText = ResolveReadyStatus();
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        return true;
+    }
+
     public async Task<NativeLoginResult> CheckSignInAsync(CancellationToken cancellationToken = default) {
         if (!_isConversationStateLoaded) {
             return new NativeLoginResult(false, null, "Sign-in cannot be checked while profile state is still loading.");
@@ -300,7 +405,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         }
     }
 
-    public async Task<NativeLoginResult> StartSignInAsync() {
+    public async Task<NativeLoginResult> StartSignInAsync(CancellationToken cancellationToken = default) {
         if (!_isConversationStateLoaded) {
             return new NativeLoginResult(false, null, "Sign-in cannot start while profile state is still loading.");
         }
@@ -315,7 +420,8 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
 
         RunOnUi(() => IsCheckingSignIn = true);
         try {
-            using var timeout = new CancellationTokenSource(InteractiveSignInTimeout);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(InteractiveSignInTimeout);
             var result = await _runtime.StartLoginAsync(
                     new NativeLoginCallbacks {
                         Status = SetRuntimeStatusAsync,
@@ -326,6 +432,8 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                 .ConfigureAwait(false);
             ApplyLoginResult(result);
             return result;
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
         } catch (OperationCanceledException) {
             var result = new NativeLoginResult(false, null, "Sign-in timed out.");
             ApplyLoginResult(result);
@@ -340,11 +448,11 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         }
     }
 
-    public Task<bool> SendDraftAsync() => SendAsync(Draft, clearDraftOnStart: true);
+    public Task<bool> SendDraftAsync() => SendAsync(Draft, clearDraftOnStart: true, skipUserBubble: false);
 
-    public Task<bool> SendAsync(string text) => SendAsync(text, clearDraftOnStart: false);
+    public Task<bool> SendAsync(string text) => SendAsync(text, clearDraftOnStart: false, skipUserBubble: false);
 
-    private async Task<bool> SendAsync(string text, bool clearDraftOnStart) {
+    private async Task<bool> SendAsync(string text, bool clearDraftOnStart, bool skipUserBubble) {
         text = (text ?? string.Empty).Trim();
         if (text.Length == 0 || IsTurnBusy || !CanUseRuntime) {
             return false;
@@ -360,25 +468,25 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                 RunOnUi(() => Draft = string.Empty);
             }
 
-            return await SendCoreAsync(text).ConfigureAwait(false);
+            return await SendCoreAsync(text, skipUserBubble).ConfigureAwait(false);
         } finally {
             Volatile.Write(ref _sendStarting, 0);
             RunOnUi(NotifyTurnBusyChanged);
         }
     }
 
-    private async Task<bool> SendCoreAsync(string text) {
+    private async Task<bool> SendCoreAsync(string text, bool skipUserBubble) {
         var conversation = _activeConversation;
         var requestId = "native-" + Guid.NewGuid().ToString("N");
         var accumulator = new ChatTurnTextAccumulator();
         using var cts = new CancellationTokenSource();
         _activeTurnCts = cts;
         _activeTurnRequestId = requestId;
-        var userItem = new NativeChatTranscriptItem("user", text, DateTimeOffset.Now);
+        var userItem = skipUserBubble ? null : new NativeChatTranscriptItem("user", text, DateTimeOffset.Now);
         var assistantItem = new NativeChatTranscriptItem("assistant", string.Empty, DateTimeOffset.Now, "Waiting for runtime...");
 
         void EnsureAssistantItemPresent() {
-            if (!conversation.Messages.Contains(userItem)) {
+            if (userItem is not null && !conversation.Messages.Contains(userItem)) {
                 return;
             }
 
@@ -392,9 +500,11 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
 
         try {
             await RunOnUiAsync(() => {
-                conversation.Messages.Add(userItem);
-                Transcript.Add(userItem);
-                conversation.UpdateTitleFromFirstUserMessage();
+                if (userItem is not null) {
+                    conversation.Messages.Add(userItem);
+                    Transcript.Add(userItem);
+                    conversation.UpdateTitleFromFirstUserMessage();
+                }
                 conversation.UpdatedUtc = DateTime.UtcNow;
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
@@ -730,6 +840,12 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         OnPropertyChanged(nameof(CanSend));
         OnPropertyChanged(nameof(CanCheckSignIn));
         OnPropertyChanged(nameof(CanStartSignIn));
+        NotifyQueueCommandState();
+    }
+
+    private void NotifyQueueCommandState() {
+        OnPropertyChanged(nameof(CanRunQueuedTurn));
+        OnPropertyChanged(nameof(CanClearQueuedTurns));
     }
 
     private bool CanUseRuntime => _isConversationStateLoaded
@@ -744,6 +860,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
         OnPropertyChanged(nameof(CanSend));
         OnPropertyChanged(nameof(CanCheckSignIn));
         OnPropertyChanged(nameof(CanStartSignIn));
+        NotifyQueueCommandState();
     }
 
     private static string FormatStatus(ChatStatusMessage status) {

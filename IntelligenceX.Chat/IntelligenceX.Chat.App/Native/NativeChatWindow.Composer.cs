@@ -99,7 +99,12 @@ internal sealed partial class NativeChatWindow {
 
     private async Task SendAsync() {
         UpdateCommandState();
-        _ = await _viewModel.SendDraftAsync().ConfigureAwait(true);
+        var sendTask = _viewModel.SendDraftAsync();
+        _activeSendTask = sendTask;
+        _ = await sendTask.ConfigureAwait(true);
+        if (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
         UpdateCommandState();
         _composer.Focus(FocusState.Programmatic);
     }
@@ -122,6 +127,8 @@ internal sealed partial class NativeChatWindow {
         _stopButton.IsEnabled = _viewModel.CanStop;
         _checkSignInButton.IsEnabled = _viewModel.CanCheckSignIn;
         _signInButton.IsEnabled = _viewModel.CanStartSignIn;
+        _runQueuedTurnButton.IsEnabled = _viewModel.CanRunQueuedTurn;
+        _clearQueuedTurnsButton.IsEnabled = _viewModel.CanClearQueuedTurns;
         _checkSignInButton.Visibility = Visibility.Visible;
         _signInButton.Visibility = Visibility.Visible;
         _signInStatusChip.Visibility = Visibility.Visible;

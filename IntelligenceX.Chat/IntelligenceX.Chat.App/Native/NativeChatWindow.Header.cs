@@ -142,7 +142,12 @@ internal sealed partial class NativeChatWindow {
     }
 
     private async Task CheckSignInFromNativeAsync() {
-        var login = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
+        NativeLoginResult login;
+        try {
+            login = await _viewModel.CheckSignInAsync(_lifetimeCts.Token).ConfigureAwait(true);
+        } catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
         if (_lifetimeCts.IsCancellationRequested) {
             return;
         }
@@ -204,7 +209,14 @@ internal sealed partial class NativeChatWindow {
     }
 
     private async Task StartSignInFromNativeAsync() {
-        var login = await _viewModel.StartSignInAsync().ConfigureAwait(true);
+        var signInTask = _viewModel.StartSignInAsync(_lifetimeCts.Token);
+        _interactiveSignInTask = signInTask;
+        NativeLoginResult login;
+        try {
+            login = await signInTask.ConfigureAwait(true);
+        } catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
         if (_lifetimeCts.IsCancellationRequested) {
             return;
         }

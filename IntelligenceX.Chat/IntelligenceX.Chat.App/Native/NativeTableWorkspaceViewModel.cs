@@ -119,7 +119,9 @@ internal sealed class NativeTableWorkspaceViewModel {
         }
 
         if (visible) {
-            _hiddenColumnIndexes.Remove(columnIndex);
+            if (_hiddenColumnIndexes.Remove(columnIndex)) {
+                Refresh(resetWindow: true);
+            }
             return;
         }
 
@@ -128,13 +130,18 @@ internal sealed class NativeTableWorkspaceViewModel {
         }
 
         _hiddenColumnIndexes.Add(columnIndex);
-        if (_columnFilters.Remove(columnIndex)) {
-            Refresh(resetWindow: true);
+        _columnFilters.Remove(columnIndex);
+        if (SortColumnIndex == columnIndex) {
+            SortColumnIndex = null;
+            SortDescending = false;
         }
+        Refresh(resetWindow: true);
     }
 
-    public void ResetColumnVisibility() =>
+    public void ResetColumnVisibility() {
         _hiddenColumnIndexes.Clear();
+        Refresh(resetWindow: true);
+    }
 
     public string GetColumnFilter(int columnIndex) =>
         _columnFilters.TryGetValue(columnIndex, out var value) ? value : string.Empty;
@@ -221,7 +228,10 @@ internal sealed class NativeTableWorkspaceViewModel {
     private void Refresh(bool resetWindow = false) {
         IEnumerable<NativeTableWorkspaceRow> rows = _sourceRows;
         if (_searchText.Length > 0) {
-            rows = rows.Where(row => row.Cells.Any(cell => cell.Contains(_searchText, StringComparison.OrdinalIgnoreCase)));
+            var visibleColumns = VisibleColumnIndexes;
+            rows = rows.Where(row => visibleColumns.Any(column =>
+                column < row.Cells.Count
+                && row.Cells[column].Contains(_searchText, StringComparison.OrdinalIgnoreCase)));
         }
 
         if (_columnFilters.Count > 0) {

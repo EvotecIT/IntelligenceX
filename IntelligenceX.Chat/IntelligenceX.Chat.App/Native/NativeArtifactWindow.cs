@@ -37,6 +37,10 @@ internal static class NativeArtifactWindow {
         };
         window.Closed += (_, _) => OpenWindows.Remove(window);
         OpenWindows.Add(window);
+        var iconPath = MainWindow.EnsureAppIcon();
+        if (!string.IsNullOrWhiteSpace(iconPath)) {
+            window.AppWindow.SetIcon(iconPath);
+        }
         window.AppWindow.Resize(new SizeInt32(Math.Max(640, width), Math.Max(480, height)));
         window.Activate();
     }

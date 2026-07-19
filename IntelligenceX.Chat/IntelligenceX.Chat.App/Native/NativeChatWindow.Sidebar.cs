@@ -15,6 +15,7 @@ internal sealed partial class NativeChatWindow {
         var grid = new Grid { RowSpacing = 10 };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         shell.Child = grid;
 
@@ -27,6 +28,10 @@ internal sealed partial class NativeChatWindow {
         Grid.SetRow(_sidebarSearchBox, 1);
         grid.Children.Add(_sidebarSearchBox);
 
+        _queuedTurnsPanel = BuildQueuedTurnsPanel();
+        Grid.SetRow(_queuedTurnsPanel, 2);
+        grid.Children.Add(_queuedTurnsPanel);
+
         _sidebarItemsPanel = new ListView {
             SelectionMode = ListViewSelectionMode.None,
             IsItemClickEnabled = false,
@@ -36,10 +41,89 @@ internal sealed partial class NativeChatWindow {
         ScrollViewer.SetVerticalScrollBarVisibility(_sidebarItemsPanel, ScrollBarVisibility.Auto);
         ScrollViewer.SetHorizontalScrollMode(_sidebarItemsPanel, ScrollMode.Disabled);
         ScrollViewer.SetHorizontalScrollBarVisibility(_sidebarItemsPanel, ScrollBarVisibility.Disabled);
-        Grid.SetRow(_sidebarItemsPanel, 2);
+        Grid.SetRow(_sidebarItemsPanel, 3);
         grid.Children.Add(_sidebarItemsPanel);
         RenderSidebarItems();
         return shell;
+    }
+
+    private Border BuildQueuedTurnsPanel() {
+        var grid = new Grid { ColumnSpacing = 6 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        _queuedTurnsText = new TextBlock {
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 12,
+            Foreground = NativeControlBrushes.WarningText
+        };
+        grid.Children.Add(_queuedTurnsText);
+
+        _runQueuedTurnButton = new Button {
+            Content = "Run next",
+            MinHeight = 30,
+            Padding = new Thickness(8, 4, 8, 4)
+        };
+        _runQueuedTurnButton.Click += async (_, _) => {
+            var queuedTask = _viewModel.RunNextQueuedTurnAsync();
+            _activeSendTask = queuedTask;
+            _ = await queuedTask.ConfigureAwait(true);
+            if (_lifetimeCts.IsCancellationRequested) {
+                return;
+            }
+            RefreshConversationChrome();
+        };
+        Grid.SetColumn(_runQueuedTurnButton, 1);
+        grid.Children.Add(_runQueuedTurnButton);
+
+        _clearQueuedTurnsButton = new Button {
+            Content = "Clear",
+            MinHeight = 30,
+            Padding = new Thickness(8, 4, 8, 4)
+        };
+        _clearQueuedTurnsButton.Click += async (_, _) => await ClearQueuedTurnsFromNativeAsync().ConfigureAwait(true);
+        Grid.SetColumn(_clearQueuedTurnsButton, 2);
+        grid.Children.Add(_clearQueuedTurnsButton);
+
+        var panel = new Border {
+            Padding = new Thickness(8),
+            CornerRadius = new CornerRadius(6),
+            Background = NativeControlBrushes.WarningSoft,
+            BorderBrush = NativeControlBrushes.Rgb(242, 211, 143),
+            BorderThickness = new Thickness(1),
+            Child = grid,
+            Visibility = Visibility.Collapsed
+        };
+        return panel;
+    }
+
+    private void RenderQueuedTurnsState() {
+        if (_queuedTurnsPanel is null || _queuedTurnsText is null) {
+            return;
+        }
+
+        var count = _viewModel.QueuedTurns.Count;
+        _queuedTurnsPanel.Visibility = count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        _queuedTurnsText.Text = count == 1 ? "1 queued turn" : count + " queued turns";
+        UpdateCommandState();
+    }
+
+    private async Task ClearQueuedTurnsFromNativeAsync() {
+        var dialog = new ContentDialog {
+            XamlRoot = ((FrameworkElement)Content).XamlRoot,
+            Title = "Clear queued turns?",
+            Content = "Remove all prompts waiting in this profile?",
+            PrimaryButtonText = "Clear queue",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary) {
+            if (_lifetimeCts.IsCancellationRequested) {
+                return;
+            }
+
+            _ = await TrackPersistenceTaskAsync(_viewModel.ClearQueuedTurnsAsync()).ConfigureAwait(true);
+        }
     }
 
     private FrameworkElement BuildSidebarHeader() {
@@ -114,7 +198,7 @@ internal sealed partial class NativeChatWindow {
         }
     }
 
-    private Button BuildNavigationRow(NativeConversation conversation) {
+    private FrameworkElement BuildNavigationRow(NativeConversation conversation) {
         var active = string.Equals(
             _viewModel.ActiveConversation.Id,
             conversation.Id,
@@ -165,7 +249,6 @@ internal sealed partial class NativeChatWindow {
 
         var button = new Button {
             Padding = new Thickness(9, 8, 9, 8),
-            Margin = new Thickness(0, 0, 0, 7),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Background = active ? NativeControlBrushes.Surface : NativeControlBrushes.SurfaceMuted,
@@ -180,7 +263,53 @@ internal sealed partial class NativeChatWindow {
             RefreshConversationChrome();
             _composer.Focus(FocusState.Programmatic);
         };
-        return button;
+
+        var row = new Grid {
+            ColumnSpacing = 4,
+            Margin = new Thickness(0, 0, 0, 7)
+        };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(button);
+
+        var deleteButton = new Button {
+            Content = new SymbolIcon(Symbol.Delete),
+            MinWidth = 34,
+            MinHeight = 34,
+            Padding = new Thickness(7),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsEnabled = !_viewModel.IsSending
+        };
+        ToolTipService.SetToolTip(deleteButton, "Delete this conversation");
+        deleteButton.Click += async (_, _) => await DeleteConversationFromNativeAsync(conversation).ConfigureAwait(true);
+        Grid.SetColumn(deleteButton, 1);
+        row.Children.Add(deleteButton);
+        return row;
+    }
+
+    private async Task DeleteConversationFromNativeAsync(NativeConversation conversation) {
+        var dialog = new ContentDialog {
+            XamlRoot = ((FrameworkElement)Content).XamlRoot,
+            Title = "Delete conversation?",
+            Content = "Delete '" + conversation.Title + "' from local history?",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) {
+            return;
+        }
+
+        if (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
+
+        _ = await TrackPersistenceTaskAsync(_viewModel.DeleteConversationAsync(conversation.Id)).ConfigureAwait(true);
+        if (_lifetimeCts.IsCancellationRequested) {
+            return;
+        }
+        RefreshConversationChrome();
+        _composer.Focus(FocusState.Programmatic);
     }
 
     private void RefreshConversationChrome() {

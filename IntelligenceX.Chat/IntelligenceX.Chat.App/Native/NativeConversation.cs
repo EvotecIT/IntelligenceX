@@ -87,13 +87,17 @@ internal sealed class NativeConversation {
 }
 
 internal sealed class NativeConversationWorkspace {
+    private readonly HashSet<string> _discardedConversationIds = new(StringComparer.OrdinalIgnoreCase);
+
     public NativeConversationWorkspace(
         IReadOnlyList<NativeConversation> conversations,
         string activeConversationId,
-        string? warning = null) {
+        string? warning = null,
+        IReadOnlyList<NativeQueuedTurn>? queuedTurns = null) {
         Conversations = conversations ?? throw new ArgumentNullException(nameof(conversations));
         ActiveConversationId = activeConversationId ?? string.Empty;
         Warning = string.IsNullOrWhiteSpace(warning) ? null : warning.Trim();
+        QueuedTurns = queuedTurns ?? Array.Empty<NativeQueuedTurn>();
     }
 
     public IReadOnlyList<NativeConversation> Conversations { get; }
@@ -101,4 +105,32 @@ internal sealed class NativeConversationWorkspace {
     public string ActiveConversationId { get; set; }
 
     public string? Warning { get; }
+
+    public IReadOnlyList<NativeQueuedTurn> QueuedTurns { get; }
+
+    public IReadOnlySet<string> DiscardedConversationIds => _discardedConversationIds;
+
+    public void MarkConversationDiscarded(string? conversationId) {
+        var normalized = (conversationId ?? string.Empty).Trim();
+        if (normalized.Length > 0) {
+            _discardedConversationIds.Add(normalized);
+        }
+    }
+
+    public bool IsConversationDiscarded(string? conversationId) =>
+        _discardedConversationIds.Contains((conversationId ?? string.Empty).Trim());
+
+    public void ClearDiscardedConversations() => _discardedConversationIds.Clear();
 }
+
+internal enum NativeQueuedTurnSource {
+    Pending,
+    AfterLogin
+}
+
+internal sealed record NativeQueuedTurn(
+    string Text,
+    string? ConversationId,
+    DateTime EnqueuedUtc,
+    bool SkipUserBubbleOnDispatch,
+    NativeQueuedTurnSource Source);

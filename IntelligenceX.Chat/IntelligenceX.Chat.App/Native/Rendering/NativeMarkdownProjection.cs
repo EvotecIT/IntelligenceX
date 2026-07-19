@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using ChartForgeX.Markup;
 using ChartForgeX.Markup.Mermaid;
@@ -108,11 +109,100 @@ internal static class NativeMarkdownProjection {
             return;
         }
 
-        result.Add(new NativeTranscriptContent(
-            NativeTranscriptContentKind.Paragraph,
-            paragraph.Text,
-            sourceLine: paragraph.SourceSpan?.StartLine,
-            inlines: ProjectInlines(paragraph.InlineRuns)));
+        if (!paragraph.InlineRuns.Any(IsInlineImage)) {
+            result.Add(new NativeTranscriptContent(
+                NativeTranscriptContentKind.Paragraph,
+                paragraph.Text,
+                sourceLine: paragraph.SourceSpan?.StartLine,
+                inlines: ProjectInlines(paragraph.InlineRuns)));
+            return;
+        }
+
+        var segment = new List<MarkdownNativeInline>();
+        foreach (var inline in paragraph.InlineRuns) {
+            if (!TryProjectInlineImage(inline, out var image)) {
+                segment.Add(inline);
+                continue;
+            }
+
+            AddInlineParagraphSegment(result, segment, paragraph.SourceSpan?.StartLine);
+            result.Add(new NativeTranscriptContent(
+                NativeTranscriptContentKind.Image,
+                image.AlternateText,
+                sourceLine: paragraph.SourceSpan?.StartLine,
+                image: image));
+        }
+
+        AddInlineParagraphSegment(result, segment, paragraph.SourceSpan?.StartLine);
+    }
+
+    private static void AddInlineParagraphSegment(
+        ICollection<NativeTranscriptContent> result,
+        List<MarkdownNativeInline> segment,
+        int? sourceLine) {
+        if (segment.Count == 0) {
+            return;
+        }
+
+        var text = string.Concat(segment.Select(GetInlineText));
+        if (!string.IsNullOrWhiteSpace(text)) {
+            result.Add(new NativeTranscriptContent(
+                NativeTranscriptContentKind.Paragraph,
+                text,
+                sourceLine: sourceLine,
+                inlines: ProjectInlines(segment)));
+        }
+        segment.Clear();
+    }
+
+    private static bool IsInlineImage(MarkdownNativeInline inline) =>
+        inline.Kind == MarkdownNativeInlineKind.Image
+        || (inline.Kind == MarkdownNativeInlineKind.ImageLink
+            && inline.Children.Any(static child => child.Kind == MarkdownNativeInlineKind.Image));
+
+    private static bool TryProjectInlineImage(
+        MarkdownNativeInline inline,
+        out NativeTranscriptImage image) {
+        image = null!;
+        var imageInline = inline.Kind == MarkdownNativeInlineKind.Image
+            ? inline
+            : inline.Kind == MarkdownNativeInlineKind.ImageLink
+                ? inline.Children.FirstOrDefault(static child => child.Kind == MarkdownNativeInlineKind.Image)
+                : null;
+        if (imageInline is null) {
+            return false;
+        }
+
+        var source = imageInline.GetMetadata("source") ?? imageInline.GetMetadata("target");
+        if (string.IsNullOrWhiteSpace(source)) {
+            return false;
+        }
+
+        var alternateText = string.IsNullOrWhiteSpace(imageInline.Text) ? "Image" : imageInline.Text;
+        var linkUrl = inline.Kind == MarkdownNativeInlineKind.ImageLink
+            ? inline.GetMetadata("target")
+            : null;
+        image = new NativeTranscriptImage(
+            source,
+            alternateText,
+            imageInline.GetMetadata("title"),
+            linkUrl,
+            ReadOptionalDimension(imageInline.GetMetadata("width")),
+            ReadOptionalDimension(imageInline.GetMetadata("height")));
+        return true;
+    }
+
+    private static double? ReadOptionalDimension(string? value) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed > 0d
+            ? parsed
+            : null;
+
+    private static string GetInlineText(MarkdownNativeInline inline) {
+        if (inline.Children.Count == 0) {
+            return inline.Text ?? string.Empty;
+        }
+
+        return string.Concat(inline.Children.Select(GetInlineText));
     }
 
     private static void AddList(ICollection<NativeTranscriptContent> result, MarkdownNativeListBlock list) {

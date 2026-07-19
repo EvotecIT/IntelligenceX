@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.App.Launch;
@@ -33,10 +35,20 @@ internal sealed partial class NativeChatWindow : Window {
     private ListView _sidebarItemsPanel = null!;
     private TextBox _sidebarSearchBox = null!;
     private TextBlock _selectedContextText = null!;
+    private Border _queuedTurnsPanel = null!;
+    private TextBlock _queuedTurnsText = null!;
+    private Button _runQueuedTurnButton = null!;
+    private Button _clearQueuedTurnsButton = null!;
     private MainWindow? _settingsWindow;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private Task _settingsReloadTask = Task.CompletedTask;
     private Task _runtimeReadinessTask = Task.CompletedTask;
+    private Task _initializationTask = Task.CompletedTask;
+    private Task _interactiveSignInTask = Task.CompletedTask;
+    private Task _activeSendTask = Task.CompletedTask;
+    private readonly object _persistenceTasksSync = new();
+    private readonly HashSet<Task> _activePersistenceTasks = [];
+    private ContentDialog? _loginDialog;
     private ItemsRepeater _transcriptItems = null!;
     private ScrollViewer _transcriptScroll = null!;
     private Grid _emptyTranscriptHost = null!;
@@ -72,25 +84,15 @@ internal sealed partial class NativeChatWindow : Window {
         _conversationStore.EffectiveThemeChanged += ApplyNativeTheme;
         _root = BuildShell();
         Content = _root;
-        _root.Loaded += async (_, _) => {
-            StartupLog.Write("NativeChatWindow root loaded");
-            ConfigureWindowPlacement();
-            await _viewModel.InitializeConversationsAsync().ConfigureAwait(true);
-            RefreshConversationChrome();
-            var login = await _viewModel.CheckSignInAsync().ConfigureAwait(true);
-            if (login.IsAuthenticated) {
-                _ = RefreshRuntimeReadinessAsync();
-            }
-
-            UpdateCommandState();
-            _composer.Focus(FocusState.Programmatic);
-        };
+        _root.Loaded += (_, _) => _initializationTask = InitializeNativeShellAsync();
 
         _viewModel.PropertyChanged += (_, args) => {
             if (args.PropertyName is nameof(NativeChatViewModel.CanSend)
                 or nameof(NativeChatViewModel.CanStop)
                 or nameof(NativeChatViewModel.CanCheckSignIn)
-                or nameof(NativeChatViewModel.CanStartSignIn)) {
+                or nameof(NativeChatViewModel.CanStartSignIn)
+                or nameof(NativeChatViewModel.CanRunQueuedTurn)
+                or nameof(NativeChatViewModel.CanClearQueuedTurns)) {
                 UpdateCommandState();
             }
 
@@ -109,6 +111,7 @@ internal sealed partial class NativeChatWindow : Window {
             }
         };
         _viewModel.Conversations.CollectionChanged += (_, _) => RenderSidebarItems();
+        _viewModel.QueuedTurns.CollectionChanged += (_, _) => RenderQueuedTurnsState();
         _viewModel.Transcript.CollectionChanged += (_, _) => {
             RenderTranscript();
             ScrollTranscriptToEnd();
@@ -119,8 +122,14 @@ internal sealed partial class NativeChatWindow : Window {
 
         Closed += async (_, _) => {
             _lifetimeCts.Cancel();
+            _viewModel.CancelActiveTurn();
             StopTranscriptScrollRecovery();
+            _loginDialog?.Hide();
             _settingsWindow?.Close();
+            await AwaitShutdownTaskAsync(_initializationTask, "initialization").ConfigureAwait(false);
+            await AwaitShutdownTaskAsync(_interactiveSignInTask, "interactive sign-in").ConfigureAwait(false);
+            await AwaitShutdownTaskAsync(_activeSendTask, "active turn").ConfigureAwait(false);
+            await AwaitPersistenceTasksAsync().ConfigureAwait(false);
             try {
                 await _settingsReloadTask.ConfigureAwait(false);
             } catch (OperationCanceledException) {
@@ -135,6 +144,67 @@ internal sealed partial class NativeChatWindow : Window {
             await _conversationStore.DisposeAsync().ConfigureAwait(false);
             _lifetimeCts.Dispose();
         };
+    }
+
+    private async Task InitializeNativeShellAsync() {
+        try {
+            StartupLog.Write("NativeChatWindow root loaded");
+            ConfigureWindowPlacement();
+            await _viewModel.InitializeConversationsAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            if (_lifetimeCts.IsCancellationRequested) {
+                return;
+            }
+
+            RefreshConversationChrome();
+            var login = await _viewModel.CheckSignInAsync(_lifetimeCts.Token).ConfigureAwait(true);
+            if (login.IsAuthenticated) {
+                _ = RefreshRuntimeReadinessAsync();
+            }
+
+            UpdateCommandState();
+            _composer.Focus(FocusState.Programmatic);
+        } catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) {
+            // Window shutdown owns cancellation of native initialization.
+        }
+    }
+
+    private static async Task AwaitShutdownTaskAsync(Task task, string operation) {
+        try {
+            await task.ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            // Cancellation is the expected shutdown path.
+        } catch (Exception ex) {
+            StartupLog.Write("Native " + operation + " settlement failed during shutdown: " + ex);
+        }
+    }
+
+    private async Task<T> TrackPersistenceTaskAsync<T>(Task<T> task) {
+        lock (_persistenceTasksSync) {
+            _activePersistenceTasks.Add(task);
+        }
+
+        try {
+            return await task.ConfigureAwait(true);
+        } finally {
+            lock (_persistenceTasksSync) {
+                _activePersistenceTasks.Remove(task);
+            }
+        }
+    }
+
+    private async Task AwaitPersistenceTasksAsync() {
+        while (true) {
+            Task[] tasks;
+            lock (_persistenceTasksSync) {
+                if (_activePersistenceTasks.Count == 0) {
+                    return;
+                }
+
+                tasks = _activePersistenceTasks.ToArray();
+            }
+
+            await AwaitShutdownTaskAsync(Task.WhenAll(tasks), "profile persistence").ConfigureAwait(false);
+        }
     }
 
     private Grid BuildShell() {
@@ -209,6 +279,10 @@ internal sealed partial class NativeChatWindow : Window {
 
             var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
             var appWindow = AppWindow.GetFromWindowId(windowId);
+            var iconPath = MainWindow.EnsureAppIcon();
+            if (!string.IsNullOrWhiteSpace(iconPath)) {
+                appWindow.SetIcon(iconPath);
+            }
             appWindow.MoveAndResize(new RectInt32(20, 36, 1120, 760));
             StartupLog.Write("NativeChatWindow placement resized");
         } catch (Exception ex) {
@@ -244,9 +318,16 @@ internal sealed partial class NativeChatWindow : Window {
             DefaultButton = ContentDialogButton.Primary
         };
 
-        var result = await dialog.ShowAsync();
-        return result == ContentDialogResult.Primary
-            ? input.Text
-            : null;
+        _loginDialog = dialog;
+        try {
+            var result = await dialog.ShowAsync();
+            return result == ContentDialogResult.Primary
+                ? input.Text
+                : null;
+        } finally {
+            if (ReferenceEquals(_loginDialog, dialog)) {
+                _loginDialog = null;
+            }
+        }
     }
 }

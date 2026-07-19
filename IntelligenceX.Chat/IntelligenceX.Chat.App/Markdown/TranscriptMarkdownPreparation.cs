@@ -71,6 +71,12 @@ internal static class TranscriptMarkdownPreparation {
     private static readonly Regex WorkingMemoryMarkerBlockRegex = new(
         @"(?is)ix:working-memory:v1.*?(?=(?:\r?\n\s*(?:Reason code:|Please retry|Tool receipt:|Action:))|$)",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex WorkingMemoryProtocolLineRegex = new(
+        @"^(?:ix:working-memory:v1(?:\s|$)|intent_anchor:|domain_scope_family:|recent_tools:|recent_evidence_\d+:|recent_tool_execution_backends:|prior_answer_plan_[a-z0-9_]+:|\[Capability snapshot\]|ix:capability-snapshot:v1(?:\s|$)|enabled_packs:|routing_families:|skills:|healthy_tools:|follow_up:)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex SelectedActionRequestOnlyRegex = new(
+        @"^\s*Selected action request:\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex EmptySelectedActionRequestLineRegex = new(
         @"(?im)^\s*Selected action request:\s*$\r?\n?",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -218,6 +224,8 @@ internal static class TranscriptMarkdownPreparation {
             normalized = WorkingMemoryMarkerBlockRegex.Replace(normalized, string.Empty);
             normalized = ExecutionContractMarkerLineRegex.Replace(normalized, string.Empty);
             normalized = EmptySelectedActionRequestLineRegex.Replace(normalized, string.Empty);
+        } else if (normalized.IndexOf("[Working memory checkpoint]", StringComparison.OrdinalIgnoreCase) >= 0) {
+            normalized = StripStandaloneWorkingMemoryCheckpoint(normalized);
         }
 
         if (normalized.IndexOf("Recovered findings from executed tools", StringComparison.OrdinalIgnoreCase) >= 0) {
@@ -229,6 +237,49 @@ internal static class TranscriptMarkdownPreparation {
         return newline == "\r\n"
             ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
             : normalized;
+    }
+
+    private static string StripStandaloneWorkingMemoryCheckpoint(string text) {
+        var lines = text.Split('\n');
+        var output = new StringBuilder(text.Length);
+        var strippingProtocolLines = false;
+        for (var index = 0; index < lines.Length; index++) {
+            var line = lines[index];
+            if (!strippingProtocolLines) {
+                var markerIndex = line.IndexOf("[Working memory checkpoint]", StringComparison.OrdinalIgnoreCase);
+                if (markerIndex >= 0) {
+                    var prefix = line[..markerIndex];
+                    if (prefix.Trim().Length > 0 && !SelectedActionRequestOnlyRegex.IsMatch(prefix)) {
+                        AppendSanitizedLine(output, prefix.TrimEnd());
+                    }
+                    strippingProtocolLines = true;
+                    continue;
+                }
+            } else {
+                var trimmed = line.Trim();
+                if (trimmed.Length == 0) {
+                    strippingProtocolLines = false;
+                    AppendSanitizedLine(output, string.Empty);
+                    continue;
+                }
+                if (WorkingMemoryProtocolLineRegex.IsMatch(trimmed)) {
+                    continue;
+                }
+
+                strippingProtocolLines = false;
+            }
+
+            AppendSanitizedLine(output, line);
+        }
+
+        return output.ToString().TrimEnd('\n');
+    }
+
+    private static void AppendSanitizedLine(StringBuilder output, string line) {
+        if (output.Length > 0) {
+            output.Append('\n');
+        }
+        output.Append(line);
     }
 
     private static string RehydrateCollapsedRecoveredFindingsTables(string text) {

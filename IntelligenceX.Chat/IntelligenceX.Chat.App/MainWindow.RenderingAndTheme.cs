@@ -161,57 +161,13 @@ public sealed partial class MainWindow : Window {
         return UiShellAssets.Load();
     }
 
-    internal static string BuildTranscriptExportSuccessNoticeText(TranscriptExportResult result) {
-        if (!result.Succeeded) {
-            return BuildTranscriptExportFailureNoticeText(result);
-        }
+    internal static string BuildTranscriptExportSuccessNoticeText(TranscriptExportResult result) =>
+        TranscriptExportNoticeFormatter.FormatSuccess(result);
 
-        if (!result.UsedFallback || result.Fallback is not { } fallback) {
-            return SystemNoticeFormatter.Format(SystemNotice.TranscriptExported(result.OutputPath));
-        }
+    internal static string BuildTranscriptExportFailureNoticeText(TranscriptExportResult result) =>
+        TranscriptExportNoticeFormatter.FormatFailure(result);
 
-        return fallback.Kind switch {
-            TranscriptExportFallbackKind.DocxWithoutMaterializedVisuals =>
-                "Exported transcript: " + result.OutputPath + " (DOCX export retried without materialized visuals.)",
-            TranscriptExportFallbackKind.Markdown =>
-                "Exported transcript: " + result.OutputPath + " (DOCX export fell back to Markdown.)",
-            _ => SystemNoticeFormatter.Format(SystemNotice.TranscriptExported(result.OutputPath))
-        };
-    }
-
-    internal static string BuildTranscriptExportFailureNoticeText(TranscriptExportResult result) {
-        var failure = result.Failure;
-        var stage = DescribeTranscriptExportStage(failure?.Stage ?? TranscriptExportStage.None);
-        var message = (failure?.Message ?? "Unknown error.").Trim();
-        if (message.Length == 0) {
-            message = "Unknown error.";
-        }
-
-        if (result.Fallback is { } fallback) {
-            return "Transcript export failed during "
-                   + stage
-                   + ": "
-                   + message
-                   + " (attempted fallback path: "
-                   + fallback.OutputPath
-                   + ").";
-        }
-
-        return "Transcript export failed during " + stage + ": " + message;
-    }
-
-    private static string DescribeTranscriptExportStage(TranscriptExportStage stage) {
-        return stage switch {
-            TranscriptExportStage.MarkdownWrite => "markdown write",
-            TranscriptExportStage.MarkdownFallbackWrite => "markdown fallback write",
-            TranscriptExportStage.DocxWrite => "DOCX write",
-            TranscriptExportStage.DocxWriteWithMaterializedVisuals => "DOCX write with materialized visuals",
-            TranscriptExportStage.DocxWriteWithoutMaterializedVisuals => "DOCX retry without materialized visuals",
-            _ => "export"
-        };
-    }
-
-    private static string EnsureAppIcon() {
+    internal static string EnsureAppIcon() {
         var iconPath = Path.Combine(AppContext.BaseDirectory, "app.ico");
         if (File.Exists(iconPath)) {
             return iconPath;

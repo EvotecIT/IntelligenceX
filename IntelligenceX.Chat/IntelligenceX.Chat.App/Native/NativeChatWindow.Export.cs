@@ -47,8 +47,8 @@ internal sealed partial class NativeChatWindow {
                 visualMaterialization.AllowedImageDirectories)).ConfigureAwait(true);
 
         _viewModel.SetHostStatus(result.Succeeded
-            ? "Transcript exported."
-            : "Transcript export failed: " + (result.Failure?.Message ?? "Unknown error."));
+            ? TranscriptExportNoticeFormatter.FormatSuccess(result)
+            : TranscriptExportNoticeFormatter.FormatFailure(result));
     }
 
     private async Task<string?> ShowNativeTranscriptSavePickerAsync(string title) {

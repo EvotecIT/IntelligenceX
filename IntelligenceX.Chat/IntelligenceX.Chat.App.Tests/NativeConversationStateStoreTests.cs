@@ -16,6 +16,140 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Guards native conversation persistence through the shared desktop state owner.
 /// </summary>
 public sealed class NativeConversationStateStoreTests {
+    /// <summary>Ensures restored assistant messages use the same display sanitizer as live turns.</summary>
+    [Fact]
+    public async Task LoadAsync_SanitizesPersistedAssistantProtocolArtifacts() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        Conversations = [new ChatConversationState {
+                            Id = "chat-restored",
+                            Title = "Restored",
+                            Messages = [new ChatMessageState {
+                                Role = "assistant",
+                                Text = """
+                                    [Working memory checkpoint] ix: working-memory: v1 recent_tools: ad_environment_discover
+
+                                    ## Active Directory result
+
+                                    Healthy.
+                                    """,
+                                TimeUtc = DateTime.UtcNow
+                            }]
+                        }]
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            var message = Assert.Single(Assert.Single(workspace.Conversations).Messages);
+
+            Assert.DoesNotContain("working memory checkpoint", message.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Active Directory result", message.Text, StringComparison.Ordinal);
+            Assert.Contains("Healthy.", message.Text, StringComparison.Ordinal);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>Ensures native queue controls claim and clear the shared persisted queues atomically.</summary>
+    [Fact]
+    public async Task QueuedTurnControls_UpdateSharedPersistedQueues() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            var firstTime = DateTime.UtcNow.AddMinutes(-2);
+            var secondTime = DateTime.UtcNow.AddMinutes(-1);
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        PendingTurns = [new ChatQueuedTurnState {
+                            Text = "Run pending",
+                            ConversationId = "chat-one",
+                            EnqueuedUtc = firstTime
+                        }],
+                        QueuedTurnsAfterLogin = [new ChatQueuedTurnState {
+                            Text = "Run after login",
+                            ConversationId = "chat-one",
+                            EnqueuedUtc = secondTime,
+                            SkipUserBubbleOnDispatch = true
+                        }]
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            Assert.Equal(2, workspace.QueuedTurns.Count);
+            Assert.Equal(NativeQueuedTurnSource.Pending, workspace.QueuedTurns[0].Source);
+            Assert.Equal(NativeQueuedTurnSource.AfterLogin, workspace.QueuedTurns[1].Source);
+
+            Assert.True(await nativeStore.CompleteQueuedTurnAsync(workspace.QueuedTurns[0], CancellationToken.None));
+            using (var verifier = new ChatAppStateStore(path)) {
+                var state = Assert.IsType<ChatAppState>(await verifier.GetAsync("default", CancellationToken.None));
+                Assert.Empty(state.PendingTurns);
+                Assert.Single(state.QueuedTurnsAfterLogin);
+            }
+
+            await using (var staleNativeStore = new NativeConversationStateStore(path)) {
+                Assert.False(await staleNativeStore.CompleteQueuedTurnAsync(workspace.QueuedTurns[0], CancellationToken.None));
+            }
+
+            await nativeStore.ClearQueuedTurnsAsync(CancellationToken.None);
+            using (var verifier = new ChatAppStateStore(path)) {
+                var state = Assert.IsType<ChatAppState>(await verifier.GetAsync("default", CancellationToken.None));
+                Assert.Empty(state.PendingTurns);
+                Assert.Empty(state.QueuedTurnsAfterLogin);
+            }
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>Ensures a native delete removes unchanged persisted history instead of resurrecting it.</summary>
+    [Fact]
+    public async Task SaveAsync_AppliesExplicitConversationDeletion() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            using (var sharedStore = new ChatAppStateStore(path)) {
+                await sharedStore.UpsertAsync(
+                    "default",
+                    new ChatAppState {
+                        ActiveConversationId = "chat-one",
+                        Conversations = [
+                            new ChatConversationState { Id = "chat-one", Title = "One" },
+                            new ChatConversationState { Id = "chat-two", Title = "Two" }
+                        ]
+                    },
+                    CancellationToken.None);
+            }
+
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            var conversations = Assert.IsType<List<NativeConversation>>(workspace.Conversations);
+            conversations.RemoveAll(conversation => conversation.Id == "chat-one");
+            workspace.ActiveConversationId = "chat-two";
+            workspace.MarkConversationDiscarded("chat-one");
+
+            await nativeStore.SaveAsync(workspace, CancellationToken.None);
+
+            using var verifier = new ChatAppStateStore(path);
+            var state = Assert.IsType<ChatAppState>(await verifier.GetAsync("default", CancellationToken.None));
+            Assert.Equal("chat-two", Assert.Single(state.Conversations).Id);
+            Assert.Equal("chat-two", state.ActiveConversationId);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+
     /// <summary>
     /// Ensures service startup cannot silently replace an unloaded profile with defaults.
     /// </summary>
@@ -364,6 +498,30 @@ public sealed class NativeConversationStateStoreTests {
             Assert.Equal("operations-model", options.Model);
             Assert.Equal("high", options.ReasoningEffort);
             Assert.True(options.OpenAIAllowInsecureHttp);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    /// <summary>Ensures a fresh native app asks the service to bootstrap its matching load-only profile.</summary>
+    [Fact]
+    public async Task CreateServiceLaunchProfileOptions_BootstrapsMissingProfileOnce() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            await using var nativeStore = new NativeConversationStateStore(path, "operations");
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+
+            var initialOptions = nativeStore.CreateServiceLaunchProfileOptions();
+            Assert.False(initialOptions.ApplyRuntimeOverrides);
+            Assert.True(initialOptions.BootstrapMissingProfile);
+            Assert.Equal("operations", initialOptions.LoadProfileName);
+            Assert.Equal("operations", initialOptions.SaveProfileName);
+
+            await nativeStore.SaveAsync(workspace, CancellationToken.None);
+            _ = await nativeStore.LoadAsync(CancellationToken.None);
+
+            Assert.False(nativeStore.CreateServiceLaunchProfileOptions().BootstrapMissingProfile);
         } finally {
             DeleteTemporaryDirectory(directory);
         }

@@ -16,6 +16,7 @@ internal sealed record ChatServicePackToggle(string PackId, bool Enabled);
 internal sealed class ChatServiceLaunchProfileOptions {
     public string? LoadProfileName { get; init; }
     public bool ApplyRuntimeOverrides { get; init; } = true;
+    public bool BootstrapMissingProfile { get; init; }
     public string? SaveProfileName { get; init; }
     public string? Model { get; init; }
     public string? OpenAITransport { get; init; }
@@ -170,6 +171,11 @@ internal static class ServiceLaunchArguments {
                     profileOptions.ClearImageGenerationOutputDirectory);
 
                 AddPackToggleArgs(args, profileOptions.PackToggles);
+            } else if (profileOptions.BootstrapMissingProfile) {
+                // The service accepts a missing --profile only when the matching --save-profile
+                // is present. This bootstraps a fresh native app once without turning later
+                // launches into app-owned runtime override writes.
+                AddKeyValueArg(args, "--save-profile", profileOptions.SaveProfileName);
             }
         }
 

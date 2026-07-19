@@ -24,6 +24,8 @@ internal static class DesktopChatMemorySelector {
     private const int MaximumStoredFacts = 120;
     private const int MaximumSelectedFacts = 10;
     private const int EmptyQuerySelectionLimit = 8;
+    private const int SemanticVectorDimensions = 4096;
+    private const double MinimumSemanticCandidateSimilarity = 0.12d;
     private const double DuplicateSimilarityThreshold = 0.72d;
     private static readonly StringComparer TokenComparer = StringComparer.OrdinalIgnoreCase;
     private static readonly Regex TokenSplitRegex = new(
@@ -56,23 +58,37 @@ internal static class DesktopChatMemorySelector {
         }
 
         var documentFrequencies = BuildDocumentFrequencies(normalizedFacts);
+        var querySemanticVector = BuildSemanticVector(query);
         var candidates = new List<ScoredFact>(normalizedFacts.Count);
         foreach (var fact in normalizedFacts) {
-            var factTokens = Tokenize(BuildSearchText(fact));
+            var searchText = BuildSearchText(fact);
+            var factTokens = Tokenize(searchText);
             var overlapScore = ComputeWeightedOverlap(queryTokens, factTokens, documentFrequencies, normalizedFacts.Count);
             var tokenSimilarity = ComputeJaccard(queryTokens, factTokens);
+            var factSemanticVector = BuildSemanticVector(searchText);
+            var semanticSimilarity = Math.Max(
+                ComputeCosine(querySemanticVector, factSemanticVector),
+                ComputeScriptAwareQueryCoverage(query, searchText));
             var containsQuery = fact.Fact.Contains(query, StringComparison.OrdinalIgnoreCase)
                                 || query.Contains(fact.Fact, StringComparison.OrdinalIgnoreCase);
-            if (overlapScore <= 0d && !containsQuery) {
+            if (overlapScore <= 0d
+                && !containsQuery
+                && semanticSimilarity < MinimumSemanticCandidateSimilarity) {
                 continue;
             }
 
             var score = (fact.Weight * 0.8d)
                         + overlapScore
                         + (tokenSimilarity * 3d)
+                        + Math.Min(3.6d, semanticSimilarity * 4.8d)
                         + (containsQuery ? 2.25d : 0d)
                         + ComputeRecencyBoost(fact.UpdatedUtc, clock);
-            candidates.Add(new ScoredFact(fact, factTokens, score, tokenSimilarity));
+            candidates.Add(new ScoredFact(
+                fact,
+                factTokens,
+                factSemanticVector,
+                score,
+                Math.Max(tokenSimilarity, semanticSimilarity)));
         }
 
         if (candidates.Count == 0) {
@@ -229,6 +245,7 @@ internal static class DesktopChatMemorySelector {
             .Select(fact => new ScoredFact(
                 fact,
                 Tokenize(BuildSearchText(fact)),
+                BuildSemanticVector(BuildSearchText(fact)),
                 fact.Weight + ComputeRecencyBoost(fact.UpdatedUtc, nowUtc),
                 0d))
             .ToList();
@@ -244,7 +261,9 @@ internal static class DesktopChatMemorySelector {
             var tooSimilar = selected.Any(existing =>
                 existing.Fact.Fact.Contains(candidate.Fact.Fact, StringComparison.OrdinalIgnoreCase)
                 || candidate.Fact.Fact.Contains(existing.Fact.Fact, StringComparison.OrdinalIgnoreCase)
-                || ComputeJaccard(existing.Tokens, candidate.Tokens) >= DuplicateSimilarityThreshold);
+                || Math.Max(
+                    ComputeJaccard(existing.Tokens, candidate.Tokens),
+                    ComputeCosine(existing.SemanticVector, candidate.SemanticVector)) >= DuplicateSimilarityThreshold);
             if (!tooSimilar) {
                 selected.Add(candidate);
             }
@@ -282,11 +301,138 @@ internal static class DesktopChatMemorySelector {
         for (var left = 0; left < selected.Count - 1; left++) {
             for (var right = left + 1; right < selected.Count; right++) {
                 total += ComputeJaccard(selected[left].Tokens, selected[right].Tokens);
+                total += ComputeCosine(selected[left].SemanticVector, selected[right].SemanticVector);
                 pairs++;
             }
         }
 
-        return pairs == 0 ? 0d : total / pairs;
+        return pairs == 0 ? 0d : total / (pairs * 2d);
+    }
+
+    private static Dictionary<int, double> BuildSemanticVector(string? text) {
+        var vector = new Dictionary<int, double>();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return vector;
+        }
+
+        var normalized = text.Normalize(NormalizationForm.FormKC).ToLowerInvariant();
+        foreach (var token in Tokenize(normalized)) {
+            AddSemanticFeature(vector, token, 1.2d);
+            if (!ContainsLatinLetter(token)) {
+                AddCharacterNgrams(vector, "_" + token + "_", 2, 4, 0.35d);
+            }
+        }
+
+        // Whole-text character n-grams preserve intent in scripts where whitespace tokenization is weak.
+        if (ContainsNonLatinLetter(normalized)) {
+            AddCharacterNgrams(vector, normalized, 2, 3, 0.15d);
+        }
+        return vector;
+    }
+
+    private static void AddCharacterNgrams(
+        IDictionary<int, double> vector,
+        string text,
+        int minimumLength,
+        int maximumLength,
+        double weight) {
+        for (var length = minimumLength; length <= maximumLength; length++) {
+            for (var index = 0; index <= text.Length - length; index++) {
+                var value = text.Substring(index, length).Trim();
+                if (value.Length == 0 || value.All(char.IsWhiteSpace)) {
+                    continue;
+                }
+
+                AddSemanticFeature(vector, length + ":" + value, weight);
+            }
+        }
+    }
+
+    private static void AddSemanticFeature(IDictionary<int, double> vector, string feature, double weight) {
+        unchecked {
+            uint hash = 2166136261u;
+            foreach (var character in feature) {
+                hash ^= character;
+                hash *= 16777619u;
+            }
+
+            var bucket = (int)(hash % SemanticVectorDimensions);
+            vector[bucket] = vector.TryGetValue(bucket, out var current) ? current + weight : weight;
+        }
+    }
+
+    private static double ComputeCosine(
+        IReadOnlyDictionary<int, double> left,
+        IReadOnlyDictionary<int, double> right) {
+        if (left.Count == 0 || right.Count == 0) {
+            return 0d;
+        }
+
+        var dot = 0d;
+        var leftNorm = 0d;
+        var rightNorm = 0d;
+        foreach (var pair in left) {
+            leftNorm += pair.Value * pair.Value;
+            if (right.TryGetValue(pair.Key, out var other)) {
+                dot += pair.Value * other;
+            }
+        }
+        foreach (var pair in right) {
+            rightNorm += pair.Value * pair.Value;
+        }
+
+        var denominator = Math.Sqrt(leftNorm) * Math.Sqrt(rightNorm);
+        if (denominator <= 0d) {
+            return 0d;
+        }
+
+        var similarity = dot / denominator;
+        return double.IsFinite(similarity) ? Math.Clamp(similarity, 0d, 1d) : 0d;
+    }
+
+    private static double ComputeScriptAwareQueryCoverage(string query, string candidate) {
+        var queryFeatures = BuildNonLatinIntentFeatures(query);
+        if (queryFeatures.Count == 0) {
+            return 0d;
+        }
+
+        var candidateFeatures = BuildNonLatinIntentFeatures(candidate);
+        if (candidateFeatures.Count == 0) {
+            return 0d;
+        }
+
+        var matches = queryFeatures.Count(candidateFeatures.Contains);
+        return matches / (double)queryFeatures.Count;
+    }
+
+    private static HashSet<string> BuildNonLatinIntentFeatures(string? text) {
+        var features = new HashSet<string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(text)) {
+            return features;
+        }
+
+        var sequence = new StringBuilder();
+        void FlushSequence() {
+            if (sequence.Length == 0) {
+                return;
+            }
+
+            var width = sequence.Length == 1 ? 1 : 2;
+            for (var index = 0; index <= sequence.Length - width; index++) {
+                features.Add(sequence.ToString(index, width));
+            }
+            sequence.Clear();
+        }
+
+        foreach (var character in text.Normalize(NormalizationForm.FormKC).ToLowerInvariant()) {
+            if (char.IsLetterOrDigit(character) && character is not (>= '\u0041' and <= '\u024F')) {
+                sequence.Append(character);
+            } else {
+                FlushSequence();
+            }
+        }
+        FlushSequence();
+        return features;
     }
 
     private static double ComputeAverageRelevance(IReadOnlyList<ScoredFact> selected, double topScore) {
@@ -356,6 +502,16 @@ internal static class DesktopChatMemorySelector {
         return false;
     }
 
+    private static bool ContainsNonLatinLetter(string text) {
+        foreach (var character in text) {
+            if (char.IsLetter(character) && character is not (>= '\u0041' and <= '\u024F')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     internal static string[] NormalizeTags(string[]? tags) {
         if (tags is null || tags.Length == 0) {
             return Array.Empty<string>();
@@ -388,6 +544,7 @@ internal static class DesktopChatMemorySelector {
     private sealed record ScoredFact(
         ChatMemoryFactState Fact,
         HashSet<string> Tokens,
+        Dictionary<int, double> SemanticVector,
         double Score,
         double QuerySimilarity);
 }

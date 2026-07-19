@@ -34,5 +34,11 @@
     <ChartForgeXMarkupNuGetVersion Condition="'$(ChartForgeXMarkupNuGetVersion)' == ''">1.0.2</ChartForgeXMarkupNuGetVersion>
     <ChartForgeXMermaidNuGetVersion Condition="'$(ChartForgeXMermaidNuGetVersion)' == ''">1.0.2</ChartForgeXMermaidNuGetVersion>
     <ChartForgeXMarkupMermaidNuGetVersion Condition="'$(ChartForgeXMarkupMermaidNuGetVersion)' == ''">1.0.2</ChartForgeXMarkupMermaidNuGetVersion>
+    <AngleSharpNuGetVersion Condition="'$(AngleSharpNuGetVersion)' == ''">1.5.2</AngleSharpNuGetVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- OfficeIMO.Markdown.Html and OfficeIMO.Word.Html pin vulnerable AngleSharp 1.4.0 transitively. -->
+    <PackageReference Include="AngleSharp" Version="$(AngleSharpNuGetVersion)" PrivateAssets="all" />
+  </ItemGroup>
 </Project>

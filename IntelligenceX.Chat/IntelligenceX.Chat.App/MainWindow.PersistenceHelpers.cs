@@ -114,6 +114,7 @@ public sealed partial class MainWindow : Window {
                 }
 
                 _appState = _stateStore.CloneState(mergedSnapshot);
+                RestoreAccountUsageFromAppState();
                 _themePreset = NormalizeTheme(_appState.ThemePreset) ?? ThemeContract.DefaultPreset;
                 _appState.ThemePreset = _themePreset;
                 _persistentMemoryEnabled = _appState.PersistentMemoryEnabled;

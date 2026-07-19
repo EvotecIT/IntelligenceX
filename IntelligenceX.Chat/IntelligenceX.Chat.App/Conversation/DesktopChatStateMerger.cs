@@ -20,6 +20,7 @@ internal static class DesktopChatStateMerger {
                && left.PersistentMemoryEnabled == right.PersistentMemoryEnabled
                && string.Equals(left.ActiveConversationId, right.ActiveConversationId, StringComparison.OrdinalIgnoreCase)
                && SequenceEqual(left.MemoryFacts, right.MemoryFacts, MemoryFactEquals)
+               && SequenceEqual(left.AccountUsage, right.AccountUsage, AccountUsageEquals)
                && SequenceEqual(
                    left.Conversations,
                    right.Conversations,
@@ -117,6 +118,7 @@ internal static class DesktopChatStateMerger {
             baseline.PersistentMemoryEnabled,
             latest.PersistentMemoryEnabled);
         local.MemoryFacts = MergeMemoryFacts(local.MemoryFacts, baseline.MemoryFacts, latest.MemoryFacts);
+        local.AccountUsage = MergeAccountUsage(local.AccountUsage, baseline.AccountUsage, latest.AccountUsage);
         local.Conversations = DesktopChatConversationStateMerger.MergeConversations(
             local.Conversations,
             baseline.Conversations,
@@ -276,6 +278,140 @@ internal static class DesktopChatStateMerger {
             .ToList();
     }
 
+    private static List<ChatAccountUsageState> MergeAccountUsage(
+        IReadOnlyList<ChatAccountUsageState>? local,
+        IReadOnlyList<ChatAccountUsageState>? baseline,
+        IReadOnlyList<ChatAccountUsageState>? latest) {
+        var localByKey = IndexAccountUsage(local);
+        var baselineByKey = IndexAccountUsage(baseline);
+        var latestByKey = IndexAccountUsage(latest);
+        var keys = latestByKey.Keys
+            .Concat(localByKey.Keys)
+            .Concat(baselineByKey.Keys)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        var merged = new List<ChatAccountUsageState>();
+        foreach (var key in keys) {
+            localByKey.TryGetValue(key, out var localValue);
+            baselineByKey.TryGetValue(key, out var baselineValue);
+            latestByKey.TryGetValue(key, out var latestValue);
+            var resolved = ResolveAccountUsage(localValue, baselineValue, latestValue);
+            if (resolved is not null) {
+                merged.Add(resolved);
+            }
+        }
+
+        return merged
+            .OrderByDescending(static value => value.LastSeenUtc ?? DateTime.MinValue)
+            .ThenBy(static value => value.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static ChatAccountUsageState? ResolveAccountUsage(
+        ChatAccountUsageState? local,
+        ChatAccountUsageState? baseline,
+        ChatAccountUsageState? latest) {
+        if (baseline is null) {
+            if (local is null) {
+                return latest is null ? null : CloneAccountUsage(latest);
+            }
+            if (latest is null || AccountUsageEquals(local, latest)) {
+                return CloneAccountUsage(local);
+            }
+
+            return MergeConcurrentAccountUsage(local, new ChatAccountUsageState { Key = local.Key }, latest);
+        }
+        if (local is null) {
+            return latest is null || AccountUsageEquals(latest, baseline) ? null : CloneAccountUsage(latest);
+        }
+        if (latest is null) {
+            return AccountUsageEquals(local, baseline) ? null : CloneAccountUsage(local);
+        }
+        if (AccountUsageEquals(local, baseline)) {
+            return CloneAccountUsage(latest);
+        }
+        if (AccountUsageEquals(latest, baseline) || AccountUsageEquals(local, latest)) {
+            return CloneAccountUsage(local);
+        }
+
+        return MergeConcurrentAccountUsage(local, baseline, latest);
+    }
+
+    private static ChatAccountUsageState MergeConcurrentAccountUsage(
+        ChatAccountUsageState local,
+        ChatAccountUsageState baseline,
+        ChatAccountUsageState latest) {
+        var newerSnapshot = SelectNewerAccountUsageSnapshot(local, latest);
+        var merged = CloneAccountUsage(newerSnapshot);
+        merged.Key = local.Key;
+        merged.Label = string.IsNullOrWhiteSpace(newerSnapshot.Label)
+            ? string.IsNullOrWhiteSpace(local.Label) ? latest.Label : local.Label
+            : newerSnapshot.Label;
+        merged.PromptTokens = MergeCumulativeCounter(baseline.PromptTokens, local.PromptTokens, latest.PromptTokens);
+        merged.CompletionTokens = MergeCumulativeCounter(
+            baseline.CompletionTokens,
+            local.CompletionTokens,
+            latest.CompletionTokens);
+        merged.TotalTokens = MergeCumulativeCounter(baseline.TotalTokens, local.TotalTokens, latest.TotalTokens);
+        merged.CachedPromptTokens = MergeCumulativeCounter(
+            baseline.CachedPromptTokens,
+            local.CachedPromptTokens,
+            latest.CachedPromptTokens);
+        merged.ReasoningTokens = MergeCumulativeCounter(
+            baseline.ReasoningTokens,
+            local.ReasoningTokens,
+            latest.ReasoningTokens);
+        merged.Turns = MergeCumulativeCounter(baseline.Turns, local.Turns, latest.Turns);
+        merged.LastSeenUtc = SelectLater(local.LastSeenUtc, latest.LastSeenUtc);
+        merged.UsageLimitHitUtc = SelectLater(local.UsageLimitHitUtc, latest.UsageLimitHitUtc);
+        merged.UsageLimitRetryAfterUtc = SelectLater(
+            local.UsageLimitRetryAfterUtc,
+            latest.UsageLimitRetryAfterUtc);
+        return merged;
+    }
+
+    private static ChatAccountUsageState SelectNewerAccountUsageSnapshot(
+        ChatAccountUsageState local,
+        ChatAccountUsageState latest) {
+        var snapshotComparison = Nullable.Compare(
+            local.UsageSnapshotRetrievedAtUtc,
+            latest.UsageSnapshotRetrievedAtUtc);
+        if (snapshotComparison != 0) {
+            return snapshotComparison > 0 ? local : latest;
+        }
+
+        var lastSeenComparison = Nullable.Compare(local.LastSeenUtc, latest.LastSeenUtc);
+        return lastSeenComparison >= 0 ? local : latest;
+    }
+
+    private static long MergeCumulativeCounter(long baseline, long local, long latest) {
+        if (local < baseline || latest < baseline) {
+            return Math.Max(local, latest);
+        }
+
+        var merged = (decimal)baseline + (local - baseline) + (latest - baseline);
+        return merged >= long.MaxValue ? long.MaxValue : (long)merged;
+    }
+
+    private static int MergeCumulativeCounter(int baseline, int local, int latest) {
+        if (local < baseline || latest < baseline) {
+            return Math.Max(local, latest);
+        }
+
+        var merged = (long)baseline + (local - baseline) + (latest - baseline);
+        return merged >= int.MaxValue ? int.MaxValue : (int)merged;
+    }
+
+    private static DateTime? SelectLater(DateTime? local, DateTime? latest) {
+        if (!local.HasValue) {
+            return latest;
+        }
+        if (!latest.HasValue) {
+            return local;
+        }
+
+        return local.Value >= latest.Value ? local : latest;
+    }
+
     private static T? ResolveEntity<T>(
         T? local,
         T? baseline,
@@ -414,6 +550,14 @@ internal static class DesktopChatStateMerger {
             .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
     }
 
+    private static Dictionary<string, ChatAccountUsageState> IndexAccountUsage(
+        IReadOnlyList<ChatAccountUsageState>? usage) {
+        return (usage ?? Array.Empty<ChatAccountUsageState>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value.Key))
+            .GroupBy(static value => value.Key.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
+    }
+
     private static bool MemoryFactEquals(ChatMemoryFactState left, ChatMemoryFactState right) =>
         string.Equals(left.Id, right.Id, StringComparison.OrdinalIgnoreCase)
         && string.Equals(left.Fact, right.Fact, StringComparison.Ordinal)
@@ -426,6 +570,30 @@ internal static class DesktopChatStateMerger {
         && string.Equals(left.ConversationId, right.ConversationId, StringComparison.OrdinalIgnoreCase)
         && EnsureUtc(left.EnqueuedUtc) == EnsureUtc(right.EnqueuedUtc)
         && left.SkipUserBubbleOnDispatch == right.SkipUserBubbleOnDispatch;
+
+    private static bool AccountUsageEquals(ChatAccountUsageState left, ChatAccountUsageState right) =>
+        string.Equals(left.Key, right.Key, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(left.Label, right.Label, StringComparison.Ordinal)
+        && left.PromptTokens == right.PromptTokens
+        && left.CompletionTokens == right.CompletionTokens
+        && left.TotalTokens == right.TotalTokens
+        && left.CachedPromptTokens == right.CachedPromptTokens
+        && left.ReasoningTokens == right.ReasoningTokens
+        && left.Turns == right.Turns
+        && left.LastSeenUtc == right.LastSeenUtc
+        && left.UsageLimitHitUtc == right.UsageLimitHitUtc
+        && left.UsageLimitRetryAfterUtc == right.UsageLimitRetryAfterUtc
+        && string.Equals(left.PlanType, right.PlanType, StringComparison.Ordinal)
+        && string.Equals(left.Email, right.Email, StringComparison.OrdinalIgnoreCase)
+        && left.RateLimitAllowed == right.RateLimitAllowed
+        && left.RateLimitReached == right.RateLimitReached
+        && left.RateLimitUsedPercent == right.RateLimitUsedPercent
+        && left.RateLimitWindowResetUtc == right.RateLimitWindowResetUtc
+        && left.UsageSnapshotRetrievedAtUtc == right.UsageSnapshotRetrievedAtUtc
+        && string.Equals(left.UsageSnapshotSource, right.UsageSnapshotSource, StringComparison.Ordinal)
+        && left.CreditsHasCredits == right.CreditsHasCredits
+        && left.CreditsUnlimited == right.CreditsUnlimited
+        && left.CreditsBalance == right.CreditsBalance;
 
     private static bool ModelCatalogContentEquals(ChatAppState left, ChatAppState right) =>
         string.Equals(left.CachedModelsTransport, right.CachedModelsTransport, StringComparison.OrdinalIgnoreCase)
@@ -499,6 +667,32 @@ internal static class DesktopChatStateMerger {
             Weight = value.Weight,
             Tags = value.Tags.ToArray(),
             UpdatedUtc = value.UpdatedUtc
+        };
+
+    private static ChatAccountUsageState CloneAccountUsage(ChatAccountUsageState value) =>
+        new() {
+            Key = value.Key,
+            Label = value.Label,
+            PromptTokens = value.PromptTokens,
+            CompletionTokens = value.CompletionTokens,
+            TotalTokens = value.TotalTokens,
+            CachedPromptTokens = value.CachedPromptTokens,
+            ReasoningTokens = value.ReasoningTokens,
+            Turns = value.Turns,
+            LastSeenUtc = value.LastSeenUtc,
+            UsageLimitHitUtc = value.UsageLimitHitUtc,
+            UsageLimitRetryAfterUtc = value.UsageLimitRetryAfterUtc,
+            PlanType = value.PlanType,
+            Email = value.Email,
+            RateLimitAllowed = value.RateLimitAllowed,
+            RateLimitReached = value.RateLimitReached,
+            RateLimitUsedPercent = value.RateLimitUsedPercent,
+            RateLimitWindowResetUtc = value.RateLimitWindowResetUtc,
+            UsageSnapshotRetrievedAtUtc = value.UsageSnapshotRetrievedAtUtc,
+            UsageSnapshotSource = value.UsageSnapshotSource,
+            CreditsHasCredits = value.CreditsHasCredits,
+            CreditsUnlimited = value.CreditsUnlimited,
+            CreditsBalance = value.CreditsBalance
         };
 
     private static DateTime EnsureUtc(DateTime value) => value.Kind switch {

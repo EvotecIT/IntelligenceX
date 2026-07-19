@@ -19,6 +19,7 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
     private string? _previewError;
     private Task? _previewLoadTask;
     private bool _isLoaded;
+    private bool _isExpanded = true;
 
     public NativeVisualArtifactHostControl(NativeTranscriptVisual? visual, string? caption = null) {
         _visual = visual;
@@ -40,6 +41,10 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
             : FormatArtifactDetail(artifact, hasPreview);
         var stack = new StackPanel { Spacing = 8 };
         stack.Children.Add(BuildHeader(hasPreview));
+        if (!_isExpanded) {
+            return BuildCard(stack);
+        }
+
         stack.Children.Add(new TextBlock {
             Text = detail,
             TextWrapping = TextWrapping.Wrap,
@@ -69,15 +74,18 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
             });
         }
 
-        return new Border {
+        return BuildCard(stack);
+    }
+
+    private static Border BuildCard(FrameworkElement child) =>
+        new() {
             Padding = new Thickness(14),
             CornerRadius = new CornerRadius(8),
             BorderBrush = NativeControlBrushes.BorderStrong,
             BorderThickness = new Thickness(1),
             Background = NativeControlBrushes.Surface,
-            Child = stack
+            Child = child
         };
-    }
 
     private FrameworkElement BuildHeader(bool hasPreview) {
         var grid = new Grid { ColumnSpacing = 8 };
@@ -89,6 +97,22 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = NativeControlBrushes.TextPrimary
         });
+        var actions = new StackPanel {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8
+        };
+        var toggle = new Button {
+            Content = _isExpanded ? "Collapse" : "Show preview",
+            MinHeight = 32
+        };
+        ToolTipService.SetToolTip(toggle, _isExpanded
+            ? "Collapse this visual card while keeping it in the transcript."
+            : "Restore this visual preview.");
+        toggle.Click += (_, _) => {
+            _isExpanded = !_isExpanded;
+            Content = Build();
+        };
+        actions.Children.Add(toggle);
         if (hasPreview && _visual != null && _preview != null) {
             var visual = _visual.WithPreview(_preview);
             var open = new Button {
@@ -104,9 +128,10 @@ internal sealed class NativeVisualArtifactHostControl : UserControl {
                 () => new NativeVisualWorkspaceControl(visual),
                 width: 1280,
                 height: 820);
-            Grid.SetColumn(open, 1);
-            grid.Children.Add(open);
+            actions.Children.Add(open);
         }
+        Grid.SetColumn(actions, 1);
+        grid.Children.Add(actions);
 
         return grid;
     }

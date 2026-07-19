@@ -233,6 +233,21 @@ public sealed class NativeRenderingProjectionTests {
         Assert.Equal("Current topology", image.Title);
     }
 
+    /// <summary>Ensures an image embedded in paragraph text remains a native preview instead of alt text.</summary>
+    [Fact]
+    public void Project_PromotesInlineMarkdownImageToNativeImageContent() {
+        const string markdown = "See ![Replication topology](https://example.test/topology.png) now.";
+
+        var content = NativeMarkdownProjection.Project(markdown);
+
+        Assert.Contains(content, item => item.Kind == NativeTranscriptContentKind.Paragraph && item.Text.Contains("See", StringComparison.Ordinal));
+        var image = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.Image).Image;
+        Assert.NotNull(image);
+        Assert.Equal("https://example.test/topology.png", image.Source);
+        Assert.Equal("Replication topology", image.AlternateText);
+        Assert.Contains(content, item => item.Kind == NativeTranscriptContentKind.Paragraph && item.Text.Contains("now", StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// Ensures transcript rendering never fetches model-provided remote images without an explicit operator action.
     /// </summary>

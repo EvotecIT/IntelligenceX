@@ -10,6 +10,31 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Guards the shared persistent-memory contract used by every desktop shell.
 /// </summary>
 public sealed class DesktopChatMemorySelectorTests {
+    /// <summary>Ensures character n-grams retain relevant non-whitespace-script memory.</summary>
+    [Fact]
+    public void Select_UsesScriptAwareSimilarityWhenExactTokensDoNotOverlap() {
+        var now = new DateTime(2026, 7, 19, 10, 0, 0, DateTimeKind.Utc);
+        var selection = DesktopChatMemorySelector.Select(
+            [
+                new ChatMemoryFactState {
+                    Fact = "界面默认使用深色主题",
+                    Weight = 5,
+                    UpdatedUtc = now
+                },
+                new ChatMemoryFactState {
+                    Fact = "域控制器复制实验室是 ad.evotec.xyz",
+                    Weight = 1,
+                    UpdatedUtc = now.AddHours(-1)
+                }
+            ],
+            "检查域复制健康",
+            now);
+
+        Assert.Contains("域控制器复制实验室是 ad.evotec.xyz", selection.Lines);
+        Assert.DoesNotContain("界面默认使用深色主题", selection.Lines);
+        Assert.True(selection.TopSimilarity >= 0.12d);
+    }
+
     private static readonly DateTime NowUtc = new(2026, 7, 17, 10, 0, 0, DateTimeKind.Utc);
 
     /// <summary>Ranks matching memory above unrelated higher-weight facts.</summary>

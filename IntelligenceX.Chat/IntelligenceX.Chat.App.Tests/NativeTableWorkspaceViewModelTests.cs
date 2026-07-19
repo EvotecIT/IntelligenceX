@@ -344,6 +344,25 @@ public sealed class NativeTableWorkspaceViewModelTests {
         Assert.Equal(0, model.WindowStartIndex);
     }
 
+    /// <summary>Ensures search and sorting never rely on content from a hidden column.</summary>
+    [Fact]
+    public void SetColumnVisible_RemovesHiddenColumnFromSearchAndSort() {
+        var model = new NativeTableWorkspaceViewModel(new NativeTranscriptTable(
+            ["Name", "Private note"],
+            [
+                ["Alpha", "secret needle"],
+                ["Bravo", "visible only elsewhere"]
+            ]));
+        model.SortByColumn(1);
+        model.SetSearch("needle");
+        Assert.Single(model.VisibleRows);
+
+        model.SetColumnVisible(1, visible: false);
+
+        Assert.Null(model.SortColumnIndex);
+        Assert.Empty(model.VisibleRows);
+    }
+
     /// <summary>
     /// Ensures the model keeps at least one column visible for rendering and export.
     /// </summary>

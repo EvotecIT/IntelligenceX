@@ -263,6 +263,83 @@ public sealed class DesktopChatSharedStateTests {
         Assert.False(DesktopChatStateMerger.LiveOperationalStateEquals(localBeforeMerge, merged));
     }
 
+    /// <summary>Ensures a stale transcript save cannot replace newer token, rate-limit, or credit usage.</summary>
+    [Fact]
+    public void LegacyMerge_PreservesAccountUsageChangedAfterLegacyLoad() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        baseline.AccountUsage.Add(new ChatAccountUsageState {
+            Key = "native:account-1",
+            Label = "Account 1",
+            TotalTokens = 10,
+            Turns = 1,
+            LastSeenUtc = time
+        });
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        latest.AccountUsage[0].TotalTokens = 400;
+        latest.AccountUsage[0].Turns = 4;
+        latest.AccountUsage[0].RateLimitReached = true;
+        latest.AccountUsage[0].CreditsBalance = 12.5d;
+        latest.AccountUsage[0].LastSeenUtc = time.AddMinutes(2);
+        var localBeforeMerge = CloneForTest(local);
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        var usage = Assert.Single(merged.AccountUsage);
+        Assert.Equal(400, usage.TotalTokens);
+        Assert.Equal(4, usage.Turns);
+        Assert.True(usage.RateLimitReached);
+        Assert.Equal(12.5d, usage.CreditsBalance);
+        Assert.False(DesktopChatStateMerger.SharedStateEquals(localBeforeMerge, merged));
+    }
+
+    /// <summary>Ensures independent turns and the newest provider snapshot survive a concurrent cross-window save.</summary>
+    [Fact]
+    public void LegacyMerge_CombinesConcurrentAccountUsageDeltasAndKeepsNewestSnapshot() {
+        var time = new DateTime(2026, 7, 17, 8, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildState("Operator", "Memory", "Initial message", time);
+        baseline.AccountUsage.Add(new ChatAccountUsageState {
+            Key = "native:account-1",
+            Label = "Account 1",
+            PromptTokens = 100,
+            CompletionTokens = 50,
+            TotalTokens = 150,
+            Turns = 1,
+            LastSeenUtc = time,
+            UsageSnapshotRetrievedAtUtc = time,
+            RateLimitReached = false,
+            CreditsBalance = 20d
+        });
+        var local = CloneForTest(baseline);
+        var latest = CloneForTest(baseline);
+        local.AccountUsage[0].PromptTokens = 110;
+        local.AccountUsage[0].CompletionTokens = 55;
+        local.AccountUsage[0].TotalTokens = 165;
+        local.AccountUsage[0].Turns = 2;
+        local.AccountUsage[0].LastSeenUtc = time.AddMinutes(1);
+        latest.AccountUsage[0].PromptTokens = 120;
+        latest.AccountUsage[0].CompletionTokens = 58;
+        latest.AccountUsage[0].TotalTokens = 178;
+        latest.AccountUsage[0].Turns = 2;
+        latest.AccountUsage[0].LastSeenUtc = time.AddMinutes(2);
+        latest.AccountUsage[0].UsageSnapshotRetrievedAtUtc = time.AddMinutes(2);
+        latest.AccountUsage[0].RateLimitReached = true;
+        latest.AccountUsage[0].CreditsBalance = 12.5d;
+
+        var merged = DesktopChatStateMerger.MergeLegacySnapshot(local, baseline, latest);
+
+        var usage = Assert.Single(merged.AccountUsage);
+        Assert.Equal(130, usage.PromptTokens);
+        Assert.Equal(63, usage.CompletionTokens);
+        Assert.Equal(193, usage.TotalTokens);
+        Assert.Equal(3, usage.Turns);
+        Assert.Equal(time.AddMinutes(2), usage.LastSeenUtc);
+        Assert.Equal(time.AddMinutes(2), usage.UsageSnapshotRetrievedAtUtc);
+        Assert.True(usage.RateLimitReached);
+        Assert.Equal(12.5d, usage.CreditsBalance);
+    }
+
     /// <summary>Ensures concurrent queue additions survive without resurrecting a consumed baseline entry.</summary>
     [Fact]
     public void LegacyMerge_CombinesConcurrentQueueAdditionsAndHonorsConsumption() {
@@ -458,6 +535,30 @@ public sealed class DesktopChatSharedStateTests {
                 ConversationId = turn.ConversationId,
                 EnqueuedUtc = turn.EnqueuedUtc,
                 SkipUserBubbleOnDispatch = turn.SkipUserBubbleOnDispatch
+            }).ToList(),
+            AccountUsage = state.AccountUsage.Select(value => new ChatAccountUsageState {
+                Key = value.Key,
+                Label = value.Label,
+                PromptTokens = value.PromptTokens,
+                CompletionTokens = value.CompletionTokens,
+                TotalTokens = value.TotalTokens,
+                CachedPromptTokens = value.CachedPromptTokens,
+                ReasoningTokens = value.ReasoningTokens,
+                Turns = value.Turns,
+                LastSeenUtc = value.LastSeenUtc,
+                UsageLimitHitUtc = value.UsageLimitHitUtc,
+                UsageLimitRetryAfterUtc = value.UsageLimitRetryAfterUtc,
+                PlanType = value.PlanType,
+                Email = value.Email,
+                RateLimitAllowed = value.RateLimitAllowed,
+                RateLimitReached = value.RateLimitReached,
+                RateLimitUsedPercent = value.RateLimitUsedPercent,
+                RateLimitWindowResetUtc = value.RateLimitWindowResetUtc,
+                UsageSnapshotRetrievedAtUtc = value.UsageSnapshotRetrievedAtUtc,
+                UsageSnapshotSource = value.UsageSnapshotSource,
+                CreditsHasCredits = value.CreditsHasCredits,
+                CreditsUnlimited = value.CreditsUnlimited,
+                CreditsBalance = value.CreditsBalance
             }).ToList(),
             MemoryFacts = state.MemoryFacts.Select(fact => new ChatMemoryFactState {
                 Id = fact.Id,

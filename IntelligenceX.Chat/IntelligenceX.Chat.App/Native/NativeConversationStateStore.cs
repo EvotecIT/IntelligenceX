@@ -7,6 +7,7 @@ using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Launch;
+using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Theming;
 
 namespace IntelligenceX.Chat.App.Native;
@@ -17,10 +18,16 @@ internal interface INativeConversationStore : IAsyncDisposable {
     Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken);
 }
 
+internal interface INativeQueuedTurnStore {
+    Task<bool> CompleteQueuedTurnAsync(NativeQueuedTurn turn, CancellationToken cancellationToken);
+
+    Task ClearQueuedTurnsAsync(CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// Native conversation adapter over the shared desktop application state store.
 /// </summary>
-internal sealed partial class NativeConversationStateStore : INativeConversationStore {
+internal sealed partial class NativeConversationStateStore : INativeConversationStore, INativeQueuedTurnStore {
     private readonly ChatAppStateStore _stateStore;
     private string _profileName;
     private string? _pendingProfileName;
@@ -37,6 +44,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
     private string? _sessionThemePreset;
     private string? _baselineActiveConversationId;
     private bool _hasBaseline;
+    private bool _profileStateWasMissingAtLoad;
 
     internal event Action<string>? EffectiveThemeChanged;
 
@@ -76,7 +84,10 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             throw new InvalidOperationException("Native profile state must be loaded before the local chat service starts.");
         }
 
-        return ChatServiceLaunchProfileMapper.Create(_state);
+        return ChatServiceLaunchProfileMapper.Create(
+            _state,
+            packToggles: null,
+            bootstrapMissingProfile: _profileStateWasMissingAtLoad);
     }
 
     /// <summary>
@@ -100,9 +111,11 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
     public async Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
         var targetProfileName = _pendingProfileName ?? _profileName;
         ChatAppState? loadedState;
+        var profileStateWasMissing = false;
         string? loadWarning = null;
         try {
             loadedState = await _stateStore.GetAsync(targetProfileName, cancellationToken).ConfigureAwait(false);
+            profileStateWasMissing = loadedState is null;
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             if (string.Equals(_pendingProfileName, targetProfileName, StringComparison.OrdinalIgnoreCase)) {
                 _pendingProfileName = null;
@@ -115,6 +128,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         }
         _profileName = targetProfileName;
         _pendingProfileName = null;
+        _profileStateWasMissingAtLoad = profileStateWasMissing;
         _state = NormalizeLoadedProfileState(loadedState);
         var persistedConversationsById = (_state.Conversations ?? new List<ChatConversationState>())
             .Where(state => !IsSystemConversation(state.Id) && !string.IsNullOrWhiteSpace(state.Id))
@@ -170,7 +184,8 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         var activeId = conversations.Any(item => string.Equals(item.Id, _state.ActiveConversationId, StringComparison.OrdinalIgnoreCase))
             ? _state.ActiveConversationId!
             : conversations[0].Id;
-        var workspace = new NativeConversationWorkspace(conversations, activeId, loadWarning);
+        var queuedTurns = MapQueuedTurns(_state);
+        var workspace = new NativeConversationWorkspace(conversations, activeId, loadWarning, queuedTurns);
         CaptureBaseline(workspace, persistedConversationIds);
         EffectiveThemeChanged?.Invoke(EffectiveThemePreset);
         return workspace;
@@ -182,6 +197,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
     internal async Task ReloadProfileStateAsync(CancellationToken cancellationToken) {
         var previousTheme = EffectiveThemePreset;
         var loadedState = await _stateStore.GetAsync(_profileName, cancellationToken).ConfigureAwait(false);
+        _profileStateWasMissingAtLoad = loadedState is null;
         _state = NormalizeLoadedProfileState(loadedState);
         _sessionUserName = null;
         _sessionAssistantPersona = null;
@@ -222,10 +238,53 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             CaptureBaseline(
                 workspace,
                 savedConversationIds);
+            workspace.ClearDiscardedConversations();
             _discardedConversationIds.RemoveWhere(savedConversationIds.Contains);
             foreach (var id in savedConversationIds) {
                 _discardedConversationBaselines.Remove(id);
             }
+        } finally {
+            _saveGate.Release();
+        }
+    }
+
+    public async Task<bool> CompleteQueuedTurnAsync(NativeQueuedTurn turn, CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(turn);
+        var claimed = false;
+        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            _state = await _stateStore.UpdateAsync(
+                _profileName,
+                latestState => {
+                    var state = latestState ?? _state ?? new ChatAppState { ProfileName = _profileName };
+                    state.PendingTurns ??= new List<ChatQueuedTurnState>();
+                    state.QueuedTurnsAfterLogin ??= new List<ChatQueuedTurnState>();
+                    var queue = turn.Source == NativeQueuedTurnSource.AfterLogin
+                        ? state.QueuedTurnsAfterLogin
+                        : state.PendingTurns;
+                    claimed = RemoveQueuedTurn(queue, turn);
+                    return state;
+                },
+                cancellationToken).ConfigureAwait(false);
+        } finally {
+            _saveGate.Release();
+        }
+
+        return claimed;
+    }
+
+    public async Task ClearQueuedTurnsAsync(CancellationToken cancellationToken) {
+        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            _state = await _stateStore.UpdateAsync(
+                _profileName,
+                latestState => {
+                    var state = latestState ?? _state ?? new ChatAppState { ProfileName = _profileName };
+                    state.PendingTurns = new List<ChatQueuedTurnState>();
+                    state.QueuedTurnsAfterLogin = new List<ChatQueuedTurnState>();
+                    return state;
+                },
+                cancellationToken).ConfigureAwait(false);
         } finally {
             _saveGate.Release();
         }
@@ -277,6 +336,12 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
 
         foreach (var existing in existingConversations) {
             if (IsSystemConversation(existing.Id) || workspaceIds.Contains(existing.Id)) {
+                continue;
+            }
+
+            if (workspace.IsConversationDiscarded(existing.Id)
+                && _baselineConversations.TryGetValue(existing.Id, out var deleteBaseline)
+                && DesktopChatConversationStateMerger.ConversationEqualsIncludingTimestamp(existing, deleteBaseline)) {
                 continue;
             }
 
@@ -403,7 +468,7 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             : string.Empty;
         return new NativeChatTranscriptItem(
             role,
-            state.Text ?? string.Empty,
+            TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay(role, state.Text),
             new DateTimeOffset(EnsureUtc(state.TimeUtc)),
             status,
             state.Model);
@@ -428,6 +493,48 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             Request = action.Request,
             Reply = action.Reply
         };
+
+    private static IReadOnlyList<NativeQueuedTurn> MapQueuedTurns(ChatAppState state) {
+        var queued = new List<NativeQueuedTurn>();
+        AddQueuedTurns(queued, state.PendingTurns, NativeQueuedTurnSource.Pending);
+        AddQueuedTurns(queued, state.QueuedTurnsAfterLogin, NativeQueuedTurnSource.AfterLogin);
+        queued.Sort(static (left, right) => EnsureUtc(left.EnqueuedUtc).CompareTo(EnsureUtc(right.EnqueuedUtc)));
+        return queued;
+    }
+
+    private static void AddQueuedTurns(
+        ICollection<NativeQueuedTurn> target,
+        IReadOnlyList<ChatQueuedTurnState>? source,
+        NativeQueuedTurnSource queueSource) {
+        foreach (var value in source ?? Array.Empty<ChatQueuedTurnState>()) {
+            var text = (value.Text ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            target.Add(new NativeQueuedTurn(
+                text,
+                string.IsNullOrWhiteSpace(value.ConversationId) ? null : value.ConversationId.Trim(),
+                EnsureUtc(value.EnqueuedUtc),
+                value.SkipUserBubbleOnDispatch,
+                queueSource));
+        }
+    }
+
+    private static bool RemoveQueuedTurn(IList<ChatQueuedTurnState> queue, NativeQueuedTurn turn) {
+        for (var index = 0; index < queue.Count; index++) {
+            var candidate = queue[index];
+            if (string.Equals(candidate.Text?.Trim(), turn.Text, StringComparison.Ordinal)
+                && string.Equals(candidate.ConversationId?.Trim(), turn.ConversationId, StringComparison.OrdinalIgnoreCase)
+                && EnsureUtc(candidate.EnqueuedUtc) == EnsureUtc(turn.EnqueuedUtc)
+                && candidate.SkipUserBubbleOnDispatch == turn.SkipUserBubbleOnDispatch) {
+                queue.RemoveAt(index);
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void CaptureBaseline(
         NativeConversationWorkspace workspace,

@@ -27,7 +27,8 @@ internal static class ChatServiceLaunchProfileMapper {
     /// </summary>
     public static ChatServiceLaunchProfileOptions Create(
         ChatAppState state,
-        IReadOnlyList<ChatServicePackToggle>? packToggles = null) {
+        IReadOnlyList<ChatServicePackToggle>? packToggles = null,
+        bool bootstrapMissingProfile = false) {
         ArgumentNullException.ThrowIfNull(state);
 
         var profileName = NormalizeProfileName(state.ProfileName);
@@ -50,6 +51,7 @@ internal static class ChatServiceLaunchProfileMapper {
         return new ChatServiceLaunchProfileOptions {
             LoadProfileName = profileName,
             ApplyRuntimeOverrides = state.LocalProviderRuntimeOverrideActive,
+            BootstrapMissingProfile = bootstrapMissingProfile,
             SaveProfileName = profileName,
             Model = model,
             OpenAITransport = transport,
