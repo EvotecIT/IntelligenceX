@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   website-build:
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-website-ci.yml@d24c3a970a4c7ca1ec012ebe5461ff8b346a9123
+    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-website-ci.yml@71fdfa7e1b767aff6c505ee7dbcb01b3dfc4b51b
     with:
       website_root: Website
       pipeline_config: Website/pipeline.json
