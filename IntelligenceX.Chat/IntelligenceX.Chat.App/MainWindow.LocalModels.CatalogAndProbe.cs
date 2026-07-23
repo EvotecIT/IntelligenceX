@@ -247,23 +247,6 @@ public sealed partial class MainWindow : Window {
         return clone;
     }
 
-    private static bool ShouldAllowInsecureHttp(string transport, string? baseUrl) {
-        if (!string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-
-        var value = (baseUrl ?? string.Empty).Trim();
-        if (value.Length == 0) {
-            return true;
-        }
-
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) {
-            return false;
-        }
-
-        return string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase);
-    }
-
     private async Task<LocalRuntimeDetectionSnapshot> ProbeLocalRuntimeAvailabilityAsync() {
         var lmStudioTask = ProbeModelsEndpointWithTimeoutAsync(DefaultLmStudioBaseUrl, TimeSpan.FromSeconds(3));
         var ollamaTask = ProbeModelsEndpointWithTimeoutAsync(DefaultOllamaBaseUrl, TimeSpan.FromSeconds(3));

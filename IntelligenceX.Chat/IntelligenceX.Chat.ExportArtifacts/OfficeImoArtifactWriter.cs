@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using OfficeIMO.Excel;
+using OfficeIMO.Markdown;
 using OfficeIMO.Word.Markdown;
 
 namespace IntelligenceX.Chat.ExportArtifacts;
@@ -18,7 +19,7 @@ public static partial class OfficeImoArtifactWriter {
     /// <param name="outputPath">Destination .xlsx file path.</param>
     public static void WriteXlsx(string title, IReadOnlyList<string[]> rows, string outputPath) {
         using var document = ExcelDocument.Create(outputPath);
-        var sheet = document.AddWorkSheet(SanitizeSheetName(title), SheetNameValidationMode.Sanitize);
+        var sheet = document.AddWorksheet(SanitizeSheetName(title), SheetNameValidationMode.Sanitize);
 
         for (int r = 0; r < rows.Count; r++) {
             var values = rows[r];
@@ -33,7 +34,7 @@ public static partial class OfficeImoArtifactWriter {
         }
 
         sheet.AutoFitColumns();
-        document.Save(openExcel: false);
+        document.Save();
     }
 
     /// <summary>
@@ -90,7 +91,8 @@ public static partial class OfficeImoArtifactWriter {
             allowedImageDirectories,
             docxVisualMaxWidthPx);
 
-        using var document = safeMarkdown.LoadFromMarkdown(options);
+        var markdownDocument = MarkdownReader.Parse(safeMarkdown, options.ReaderOptions);
+        using var document = markdownDocument.ToWordDocument(options);
         document.Save(outputPath);
     }
 
@@ -161,7 +163,7 @@ public static partial class OfficeImoArtifactWriter {
     internal static string NormalizeTranscriptMarkdownForDocx(string markdown) {
         return TranscriptMarkdownContract.PrepareTranscriptMarkdownForDocx(
             markdown,
-            MarkdownToWordCapabilities.PreservesNarrativeSingleLineDefinitionsAsSeparateParagraphs());
+            preservesGroupedDefinitionLikeParagraphs: false);
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {

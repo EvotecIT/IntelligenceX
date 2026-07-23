@@ -1,0 +1,880 @@
+using System;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
+using IntelligenceX.Chat.Client;
+
+namespace IntelligenceX.Chat.App.Native;
+
+/// <summary>
+/// Native chat view model with no WebView or HTML dependency.
+/// </summary>
+internal sealed class NativeChatViewModel : INotifyPropertyChanged {
+    private static readonly TimeSpan SignInCheckTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan InteractiveSignInTimeout = TimeSpan.FromSeconds(190);
+
+    private readonly INativeChatRuntime _runtime;
+    private readonly INativeConversationStore? _conversationStore;
+    private readonly Func<NativeConversation, ChatRequestOptions?>? _requestOptionsProvider;
+    private readonly Func<SessionPolicyDto?>? _sessionPolicyProvider;
+    private readonly Func<CancellationToken, Task>? _requestPreparation;
+    private readonly Func<NativeConversation, string, SessionPolicyDto?, string>? _requestTextProvider;
+    private readonly Func<NativeConversation, string?, CancellationToken, Task<DesktopAssistantTurnProtocolResult>>?
+        _assistantTurnNormalizer;
+    private readonly Action<Action> _dispatch;
+    private NativeConversationWorkspace _workspace;
+    private NativeConversation _activeConversation;
+    private string _draft = string.Empty;
+    private string _statusText = "Ready";
+    private string _signInText = "Sign-in status unknown";
+    private NativeAuthenticationState _authenticationState = NativeAuthenticationState.Unknown;
+    private bool _isSending;
+    private bool _isCheckingSignIn;
+    private bool _isConversationStateLoaded;
+    private int _sendStarting;
+    private string? _activeTurnRequestId;
+    private CancellationTokenSource? _activeTurnCts;
+
+    public NativeChatViewModel(
+        INativeChatRuntime runtime,
+        Action<Action>? dispatch = null,
+        INativeConversationStore? conversationStore = null,
+        Func<NativeConversation, ChatRequestOptions?>? requestOptionsProvider = null,
+        Func<SessionPolicyDto?>? sessionPolicyProvider = null,
+        Func<CancellationToken, Task>? requestPreparation = null,
+        Func<NativeConversation, string, SessionPolicyDto?, string>? requestTextProvider = null,
+        Func<NativeConversation, string?, CancellationToken, Task<DesktopAssistantTurnProtocolResult>>?
+            assistantTurnNormalizer = null) {
+        _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+        _dispatch = dispatch ?? (action => action());
+        _conversationStore = conversationStore;
+        _isConversationStateLoaded = conversationStore is null;
+        _requestOptionsProvider = requestOptionsProvider;
+        _sessionPolicyProvider = sessionPolicyProvider;
+        _requestPreparation = requestPreparation;
+        _requestTextProvider = requestTextProvider;
+        _assistantTurnNormalizer = assistantTurnNormalizer;
+        _activeConversation = NativeConversation.CreateNew();
+        Conversations.Add(_activeConversation);
+        _workspace = new NativeConversationWorkspace(Conversations, _activeConversation.Id);
+        QueuedTurns.CollectionChanged += (_, _) => NotifyQueueCommandState();
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public ObservableCollection<NativeChatTranscriptItem> Transcript { get; } = new();
+
+    public ObservableCollection<NativeConversation> Conversations { get; } = new();
+
+    public ObservableCollection<NativeQueuedTurn> QueuedTurns { get; } = new();
+
+    public NativeConversation ActiveConversation => _activeConversation;
+
+    public Func<Uri, Task> OpenLoginUrlAsync { get; init; } = _ => Task.CompletedTask;
+
+    public Func<NativeLoginPrompt, Task<string?>> PromptForLoginInputAsync { get; init; } = _ => Task.FromResult<string?>(null);
+
+    public string Draft {
+        get => _draft;
+        set {
+            var next = value ?? string.Empty;
+            if (string.Equals(_draft, next, StringComparison.Ordinal)) {
+                return;
+            }
+
+            _draft = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanSend));
+        }
+    }
+
+    public string StatusText {
+        get => _statusText;
+        private set {
+            if (string.Equals(_statusText, value, StringComparison.Ordinal)) {
+                return;
+            }
+
+            _statusText = value ?? string.Empty;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsSending {
+        get => _isSending;
+        private set {
+            if (_isSending == value) {
+                return;
+            }
+
+            _isSending = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanSend));
+            OnPropertyChanged(nameof(CanStop));
+            OnPropertyChanged(nameof(CanCheckSignIn));
+            OnPropertyChanged(nameof(CanStartSignIn));
+            NotifyQueueCommandState();
+        }
+    }
+
+    public NativeAuthenticationState AuthenticationState {
+        get => _authenticationState;
+        private set {
+            if (_authenticationState == value) {
+                return;
+            }
+
+            _authenticationState = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanSend));
+            OnPropertyChanged(nameof(CanStartSignIn));
+            NotifyQueueCommandState();
+        }
+    }
+
+    public bool IsCheckingSignIn {
+        get => _isCheckingSignIn;
+        private set {
+            if (_isCheckingSignIn == value) {
+                return;
+            }
+
+            _isCheckingSignIn = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanCheckSignIn));
+            OnPropertyChanged(nameof(CanSend));
+            OnPropertyChanged(nameof(CanStartSignIn));
+            NotifyQueueCommandState();
+            if (value) {
+                AuthenticationState = NativeAuthenticationState.Checking;
+            }
+        }
+    }
+
+    public string SignInText {
+        get => _signInText;
+        private set {
+            if (string.Equals(_signInText, value, StringComparison.Ordinal)) {
+                return;
+            }
+
+            _signInText = value ?? string.Empty;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool CanSend => !IsTurnBusy
+                           && CanUseRuntime
+                           && !string.IsNullOrWhiteSpace(Draft);
+
+    public bool CanStop => IsSending;
+
+    public bool CanRunQueuedTurn => QueuedTurns.Count > 0 && CanUseRuntime && !IsTurnBusy;
+
+    public bool CanClearQueuedTurns => QueuedTurns.Count > 0 && !IsTurnBusy;
+
+    public bool CanCheckSignIn => _isConversationStateLoaded
+                                  && !IsCheckingSignIn
+                                  && !IsTurnBusy;
+
+    public bool CanStartSignIn => _isConversationStateLoaded
+                                  && !IsCheckingSignIn
+                                  && !IsTurnBusy
+                                  && AuthenticationState != NativeAuthenticationState.SignedIn;
+
+    public async Task InitializeConversationsAsync(CancellationToken cancellationToken = default) {
+        if (_conversationStore is null) {
+            return;
+        }
+
+        var hadLoadedConversationState = _isConversationStateLoaded;
+        RunOnUi(() => SetConversationStateLoaded(false));
+        NativeConversationWorkspace loaded;
+        try {
+            loaded = await _conversationStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            RunOnUi(() => SetConversationStateLoaded(hadLoadedConversationState));
+            throw;
+        } catch (Exception ex) {
+            StartupLog.Write("Native conversation state load failed: " + ex);
+            var fallback = NativeConversation.CreateNew();
+            loaded = new NativeConversationWorkspace(new[] { fallback }, fallback.Id);
+            RunOnUi(() => StatusText = "History load failed; started a fresh chat. " + ex.Message);
+        }
+        await RunOnUiAsync(() => {
+            Conversations.Clear();
+            foreach (var conversation in loaded.Conversations) {
+                Conversations.Add(conversation);
+            }
+
+            if (Conversations.Count == 0) {
+                Conversations.Add(NativeConversation.CreateNew());
+            }
+
+            _workspace = new NativeConversationWorkspace(Conversations, loaded.ActiveConversationId);
+            QueuedTurns.Clear();
+            foreach (var queuedTurn in loaded.QueuedTurns) {
+                QueuedTurns.Add(queuedTurn);
+            }
+            var active = FindConversation(loaded.ActiveConversationId) ?? Conversations[0];
+            ActivateConversation(active);
+            if (!string.IsNullOrWhiteSpace(loaded.Warning)) {
+                StatusText = loaded.Warning;
+            }
+            SetConversationStateLoaded(true);
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+    }
+
+    public async Task<bool> CreateConversationAsync() {
+        if (IsTurnBusy) {
+            return false;
+        }
+
+        var existingDraft = FindEmptyDraft();
+        if (existingDraft is not null) {
+            if (!ReferenceEquals(existingDraft, _activeConversation)) {
+                await RunOnUiAsync(() => {
+                    ActivateConversation(existingDraft);
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+                await TryPersistConversationsAsync().ConfigureAwait(false);
+            }
+
+            return true;
+        }
+
+        await RunOnUiAsync(() => {
+            var conversation = NativeConversation.CreateNew();
+            Conversations.Insert(0, conversation);
+            ActivateConversation(conversation);
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        await TryPersistConversationsAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<bool> SelectConversationAsync(string conversationId) {
+        if (IsTurnBusy) {
+            return false;
+        }
+
+        var selected = FindConversation(conversationId);
+        if (selected is null || ReferenceEquals(selected, _activeConversation)) {
+            return selected is not null;
+        }
+
+        await RunOnUiAsync(() => {
+            ActivateConversation(selected);
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        await TryPersistConversationsAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<bool> DeleteConversationAsync(string conversationId) {
+        if (IsTurnBusy) {
+            return false;
+        }
+
+        var deleted = FindConversation(conversationId);
+        if (deleted is null) {
+            return false;
+        }
+
+        await RunOnUiAsync(() => {
+            var deletedIndex = Conversations.IndexOf(deleted);
+            var deletedActiveConversation = ReferenceEquals(deleted, _activeConversation);
+            Conversations.Remove(deleted);
+            _workspace.MarkConversationDiscarded(deleted.Id);
+            if (Conversations.Count == 0) {
+                Conversations.Add(NativeConversation.CreateNew());
+            }
+
+            if (deletedActiveConversation) {
+                ActivateConversation(Conversations[Math.Min(Math.Max(0, deletedIndex), Conversations.Count - 1)]);
+            }
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        await TryPersistConversationsAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<bool> RunNextQueuedTurnAsync() {
+        if (!CanRunQueuedTurn || QueuedTurns.Count == 0) {
+            return false;
+        }
+
+        var queuedTurn = QueuedTurns[0];
+        if (_conversationStore is INativeQueuedTurnStore queuedTurnStore) {
+            try {
+                var claimed = await queuedTurnStore.CompleteQueuedTurnAsync(queuedTurn, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (!claimed) {
+                    await RunOnUiAsync(() => {
+                        QueuedTurns.Remove(queuedTurn);
+                        StatusText = "Queued turn was already claimed in another window.";
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+                    return false;
+                }
+            } catch (Exception ex) {
+                RunOnUi(() => StatusText = "Queued turn could not be claimed: " + ex.Message);
+                return false;
+            }
+        }
+
+        await RunOnUiAsync(() => {
+            var target = FindConversation(queuedTurn.ConversationId);
+            if (target is null && !string.IsNullOrWhiteSpace(queuedTurn.ConversationId)) {
+                target = new NativeConversation(queuedTurn.ConversationId!, "Queued conversation");
+                Conversations.Insert(0, target);
+            }
+            target ??= _activeConversation;
+            if (!ReferenceEquals(target, _activeConversation)) {
+                ActivateConversation(target);
+            }
+            QueuedTurns.Remove(queuedTurn);
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        return await SendAsync(queuedTurn.Text, clearDraftOnStart: false, queuedTurn.SkipUserBubbleOnDispatch)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<bool> ClearQueuedTurnsAsync() {
+        if (!CanClearQueuedTurns) {
+            return false;
+        }
+
+        if (_conversationStore is INativeQueuedTurnStore queuedTurnStore) {
+            try {
+                await queuedTurnStore.ClearQueuedTurnsAsync(CancellationToken.None).ConfigureAwait(false);
+            } catch (Exception ex) {
+                RunOnUi(() => StatusText = "Queued turns could not be cleared: " + ex.Message);
+                return false;
+            }
+        }
+
+        await RunOnUiAsync(() => {
+            QueuedTurns.Clear();
+            StatusText = ResolveReadyStatus();
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<NativeLoginResult> CheckSignInAsync(CancellationToken cancellationToken = default) {
+        if (!_isConversationStateLoaded) {
+            return new NativeLoginResult(false, null, "Sign-in cannot be checked while profile state is still loading.");
+        }
+
+        if (IsTurnBusy) {
+            return new NativeLoginResult(false, null, "Sign-in cannot be checked while a chat turn is running or starting.");
+        }
+
+        if (IsCheckingSignIn) {
+            return new NativeLoginResult(false, null, "Sign-in check is already running.");
+        }
+
+        RunOnUi(() => IsCheckingSignIn = true);
+        try {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(SignInCheckTimeout);
+            var result = await _runtime.EnsureLoginAsync(SetRuntimeStatusAsync, timeout.Token).ConfigureAwait(false);
+            ApplyLoginResult(result);
+            return result;
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (OperationCanceledException) {
+            var result = new NativeLoginResult(false, null, "Sign-in check timed out.");
+            ApplyLoginResult(result);
+            return result;
+        } catch (Exception ex) {
+            StartupLog.Write("Native sign-in check failed: " + ex);
+            var result = new NativeLoginResult(false, null, ex.Message);
+            ApplyLoginResult(result);
+            return result;
+        } finally {
+            RunOnUi(() => IsCheckingSignIn = false);
+        }
+    }
+
+    public async Task<NativeLoginResult> StartSignInAsync(CancellationToken cancellationToken = default) {
+        if (!_isConversationStateLoaded) {
+            return new NativeLoginResult(false, null, "Sign-in cannot start while profile state is still loading.");
+        }
+
+        if (IsTurnBusy) {
+            return new NativeLoginResult(false, null, "Sign-in cannot start while a chat turn is running or starting.");
+        }
+
+        if (IsCheckingSignIn) {
+            return new NativeLoginResult(false, null, "Sign-in is already running.");
+        }
+
+        RunOnUi(() => IsCheckingSignIn = true);
+        try {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(InteractiveSignInTimeout);
+            var result = await _runtime.StartLoginAsync(
+                    new NativeLoginCallbacks {
+                        Status = SetRuntimeStatusAsync,
+                        OpenUrl = uri => RunOnUiAsync(() => OpenLoginUrlAsync(uri)),
+                        PromptForInput = prompt => RunOnUiAsync(() => PromptForLoginInputAsync(prompt))
+                    },
+                    timeout.Token)
+                .ConfigureAwait(false);
+            ApplyLoginResult(result);
+            return result;
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch (OperationCanceledException) {
+            var result = new NativeLoginResult(false, null, "Sign-in timed out.");
+            ApplyLoginResult(result);
+            return result;
+        } catch (Exception ex) {
+            StartupLog.Write("Native sign-in failed: " + ex);
+            var result = new NativeLoginResult(false, null, ex.Message);
+            ApplyLoginResult(result);
+            return result;
+        } finally {
+            RunOnUi(() => IsCheckingSignIn = false);
+        }
+    }
+
+    public Task<bool> SendDraftAsync() => SendAsync(Draft, clearDraftOnStart: true, skipUserBubble: false);
+
+    public Task<bool> SendAsync(string text) => SendAsync(text, clearDraftOnStart: false, skipUserBubble: false);
+
+    private async Task<bool> SendAsync(string text, bool clearDraftOnStart, bool skipUserBubble) {
+        text = (text ?? string.Empty).Trim();
+        if (text.Length == 0 || IsTurnBusy || !CanUseRuntime) {
+            return false;
+        }
+
+        if (Interlocked.CompareExchange(ref _sendStarting, 1, 0) != 0) {
+            return false;
+        }
+
+        RunOnUi(NotifyTurnBusyChanged);
+        try {
+            if (clearDraftOnStart) {
+                RunOnUi(() => Draft = string.Empty);
+            }
+
+            return await SendCoreAsync(text, skipUserBubble).ConfigureAwait(false);
+        } finally {
+            Volatile.Write(ref _sendStarting, 0);
+            RunOnUi(NotifyTurnBusyChanged);
+        }
+    }
+
+    private async Task<bool> SendCoreAsync(string text, bool skipUserBubble) {
+        var conversation = _activeConversation;
+        var requestId = "native-" + Guid.NewGuid().ToString("N");
+        var accumulator = new ChatTurnTextAccumulator();
+        using var cts = new CancellationTokenSource();
+        _activeTurnCts = cts;
+        _activeTurnRequestId = requestId;
+        var userItem = skipUserBubble ? null : new NativeChatTranscriptItem("user", text, DateTimeOffset.Now);
+        var assistantItem = new NativeChatTranscriptItem("assistant", string.Empty, DateTimeOffset.Now, "Waiting for runtime...");
+
+        void EnsureAssistantItemPresent() {
+            if (userItem is not null && !conversation.Messages.Contains(userItem)) {
+                return;
+            }
+
+            if (!conversation.Messages.Contains(assistantItem)) {
+                conversation.Messages.Add(assistantItem);
+            }
+            if (!Transcript.Contains(assistantItem)) {
+                Transcript.Add(assistantItem);
+            }
+        }
+
+        try {
+            await RunOnUiAsync(() => {
+                if (userItem is not null) {
+                    conversation.Messages.Add(userItem);
+                    Transcript.Add(userItem);
+                    conversation.UpdateTitleFromFirstUserMessage();
+                }
+                conversation.UpdatedUtc = DateTime.UtcNow;
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            await TryPersistConversationsAsync().ConfigureAwait(false);
+
+            await RunOnUiAsync(() => {
+                IsSending = true;
+                StatusText = "Preparing runtime...";
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            if (_requestPreparation is not null) {
+                await _requestPreparation(cts.Token).ConfigureAwait(false);
+            }
+
+            var sessionPolicy = _sessionPolicyProvider?.Invoke();
+            var requestOptions = _requestOptionsProvider?.Invoke(conversation);
+            var requestText = _requestTextProvider?.Invoke(conversation, text, sessionPolicy) ?? text;
+            await RunOnUiAsync(() => {
+                EnsureAssistantItemPresent();
+                StatusText = "Sending...";
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            await RunOnUiAsync(() => {
+                assistantItem.SetModel(requestOptions?.Model);
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            var result = await _runtime.RunTurnAsync(
+                    new ChatRequest {
+                        RequestId = requestId,
+                        ThreadId = conversation.ThreadId,
+                        Text = requestText,
+                        Options = requestOptions
+                    },
+                    (update, _) => ApplyTurnUpdateAsync(update, assistantItem, accumulator),
+                    cts.Token)
+                .ConfigureAwait(false);
+
+            DesktopAssistantTurnProtocolResult? normalizedTurn = null;
+            string? normalizationWarning = null;
+            if (_assistantTurnNormalizer is not null) {
+                try {
+                    normalizedTurn = await _assistantTurnNormalizer(conversation, result.Response.Text, cts.Token)
+                        .ConfigureAwait(false);
+                } catch (OperationCanceledException) when (cts.IsCancellationRequested) {
+                    throw;
+                } catch (Exception ex) {
+                    StartupLog.Write("Native assistant post-processing failed; preserving model output: " + ex);
+                    normalizedTurn = DesktopChatTurnProtocol.NormalizeAssistantResponse(result.Response.Text);
+                    normalizationWarning = "Response completed, but profile or memory post-processing failed: " + ex.Message;
+                }
+            }
+            await RunOnUiAsync(() => {
+                var effectiveNormalizedTurn = normalizedTurn;
+                if (normalizationWarning is not null
+                    && effectiveNormalizedTurn is not null
+                    && string.IsNullOrWhiteSpace(effectiveNormalizedTurn.VisibleText)
+                    && !string.IsNullOrWhiteSpace(assistantItem.Text)) {
+                    effectiveNormalizedTurn = DesktopChatTurnProtocol.NormalizeAssistantResponse(assistantItem.Text);
+                }
+
+                var visibleText = effectiveNormalizedTurn?.VisibleText ?? result.Response.Text;
+                if (effectiveNormalizedTurn is not null) {
+                    if (!string.IsNullOrWhiteSpace(visibleText)
+                        || string.IsNullOrWhiteSpace(assistantItem.Text)) {
+                        assistantItem.Text = visibleText;
+                    }
+                    if (normalizationWarning is not null) {
+                        conversation.PendingActions.Clear();
+                        conversation.PendingActions.AddRange(effectiveNormalizedTurn.PendingActions);
+                        conversation.PendingAssistantQuestionHint = effectiveNormalizedTurn.PendingAssistantQuestionHint;
+                    }
+                } else if (!string.IsNullOrWhiteSpace(visibleText)) {
+                    assistantItem.Text = visibleText;
+                }
+
+                assistantItem.SetModel(string.IsNullOrWhiteSpace(result.Metrics?.Model)
+                    ? requestOptions?.Model
+                    : result.Metrics!.Model);
+                assistantItem.Status = normalizationWarning is null ? "Complete" : "Complete with warning";
+                conversation.ThreadId = string.IsNullOrWhiteSpace(result.Response.ThreadId)
+                    ? conversation.ThreadId
+                    : result.Response.ThreadId;
+                conversation.UpdatedUtc = DateTime.UtcNow;
+                StatusText = normalizationWarning ?? ResolveReadyStatus();
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            await TryPersistConversationsAsync().ConfigureAwait(false);
+            return true;
+        } catch (OperationCanceledException) {
+            await RunOnUiAsync(() => {
+                EnsureAssistantItemPresent();
+                assistantItem.Status = "Canceled";
+                if (string.IsNullOrWhiteSpace(assistantItem.Text)) {
+                    assistantItem.Text = "Turn canceled.";
+                }
+
+                StatusText = "Canceled";
+                conversation.UpdatedUtc = DateTime.UtcNow;
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            await TryPersistConversationsAsync().ConfigureAwait(false);
+            return false;
+        } catch (Exception ex) {
+            await RunOnUiAsync(() => {
+                EnsureAssistantItemPresent();
+                var failureText = "Native chat turn failed: " + ex.Message;
+                if (string.IsNullOrWhiteSpace(assistantItem.Text)) {
+                    assistantItem.Text = failureText;
+                    assistantItem.Status = "Error";
+                } else {
+                    assistantItem.Status = "Error: " + ex.Message;
+                }
+                conversation.UpdatedUtc = DateTime.UtcNow;
+                StatusText = failureText;
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            await TryPersistConversationsAsync().ConfigureAwait(false);
+            return false;
+        } finally {
+            if (ReferenceEquals(_activeTurnCts, cts)) {
+                _activeTurnCts = null;
+                _activeTurnRequestId = null;
+            }
+
+            await RunOnUiAsync(() => {
+                IsSending = false;
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+        }
+    }
+
+    public void CancelActiveTurn() {
+        var requestId = _activeTurnRequestId;
+        _activeTurnCts?.Cancel();
+        if (!string.IsNullOrWhiteSpace(requestId)) {
+            _ = CancelServiceTurnAsync(requestId);
+        }
+    }
+
+    public void SetHostStatus(string message) =>
+        StatusText = string.IsNullOrWhiteSpace(message) ? ResolveReadyStatus() : message.Trim();
+
+    public void SetHostSignInText(string message) =>
+        SignInText = string.IsNullOrWhiteSpace(message) ? "Sign-in status unknown" : message.Trim();
+
+    internal bool HasActiveTurn => IsTurnBusy;
+
+    internal void InvalidateAuthenticationState() => RunOnUi(() => {
+        SignInText = "Sign-in status unknown";
+        AuthenticationState = NativeAuthenticationState.Unknown;
+        StatusText = "Runtime settings are being updated...";
+    });
+
+    private Task SetRuntimeStatusAsync(string message) {
+        RunOnUi(() => StatusText = string.IsNullOrWhiteSpace(message) ? ResolveReadyStatus() : message.Trim());
+        return Task.CompletedTask;
+    }
+
+    private NativeConversation? FindConversation(string? conversationId) {
+        var normalized = (conversationId ?? string.Empty).Trim();
+        for (var i = 0; i < Conversations.Count; i++) {
+            if (string.Equals(Conversations[i].Id, normalized, StringComparison.OrdinalIgnoreCase)) {
+                return Conversations[i];
+            }
+        }
+
+        return null;
+    }
+
+    private NativeConversation? FindEmptyDraft() {
+        for (var i = 0; i < Conversations.Count; i++) {
+            if (Conversations[i].IsEmptyDraft) {
+                return Conversations[i];
+            }
+        }
+
+        return null;
+    }
+
+    private void ActivateConversation(NativeConversation conversation) {
+        _activeConversation = conversation;
+        _workspace.ActiveConversationId = conversation.Id;
+        Transcript.Clear();
+        foreach (var message in conversation.Messages) {
+            Transcript.Add(message);
+        }
+
+        OnPropertyChanged(nameof(ActiveConversation));
+    }
+
+    private async Task TryPersistConversationsAsync() {
+        if (_conversationStore is null) {
+            return;
+        }
+
+        try {
+            await _conversationStore.SaveAsync(_workspace, CancellationToken.None).ConfigureAwait(false);
+        } catch (Exception ex) {
+            RunOnUi(() => StatusText = "History save failed: " + ex.Message);
+        }
+    }
+
+    private async Task CancelServiceTurnAsync(string requestId) {
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await _runtime.CancelTurnAsync(requestId, cts.Token).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            // Cancellation forwarding is best-effort after the local turn is already stopped.
+        } catch (Exception ex) {
+            RunOnUi(() => StatusText = "Cancel request failed: " + ex.Message);
+        }
+    }
+
+    private ValueTask ApplyTurnUpdateAsync(
+        ChatTurnUpdate update,
+        NativeChatTranscriptItem assistantItem,
+        ChatTurnTextAccumulator accumulator) {
+        switch (update) {
+            case ChatTurnStatusUpdate status:
+                var message = FormatStatus(status.Status);
+                RunOnUi(() => {
+                    assistantItem.Status = message;
+                    StatusText = message;
+                });
+                break;
+            case ChatTurnDeltaUpdate delta:
+                var deltaDraft = accumulator.Append(delta.Delta.Text);
+                RunOnUi(() => assistantItem.Text = deltaDraft);
+                break;
+            case ChatTurnProvisionalUpdate provisional:
+                var provisionalDraft = accumulator.Append(provisional.Provisional.Text, fromProvisionalEvent: true);
+                RunOnUi(() => assistantItem.Text = provisionalDraft);
+                break;
+            case ChatTurnInterimUpdate interim when !string.IsNullOrWhiteSpace(interim.Interim.Text):
+                var currentDraft = accumulator.Snapshot();
+                if (currentDraft.Length == 0 || interim.Interim.Text.StartsWith(currentDraft, StringComparison.Ordinal)) {
+                    RunOnUi(() => assistantItem.Text = interim.Interim.Text);
+                }
+                break;
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    private Task RunOnUiAsync(Func<Task> action) {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        RunOnUi(() => {
+            Task task;
+            try {
+                task = action();
+            } catch (Exception ex) {
+                completion.TrySetException(ex);
+                return;
+            }
+
+            _ = CompleteUiTaskAsync(task, completion);
+        });
+        return completion.Task;
+    }
+
+    private Task<T> RunOnUiAsync<T>(Func<Task<T>> action) {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        RunOnUi(() => {
+            Task<T> task;
+            try {
+                task = action();
+            } catch (Exception ex) {
+                completion.TrySetException(ex);
+                return;
+            }
+
+            _ = CompleteUiTaskAsync(task, completion);
+        });
+        return completion.Task;
+    }
+
+    private static async Task CompleteUiTaskAsync(Task task, TaskCompletionSource completion) {
+        try {
+            await task.ConfigureAwait(true);
+            completion.TrySetResult();
+        } catch (Exception ex) {
+            completion.TrySetException(ex);
+        }
+    }
+
+    private static async Task CompleteUiTaskAsync<T>(Task<T> task, TaskCompletionSource<T> completion) {
+        try {
+            completion.TrySetResult(await task.ConfigureAwait(true));
+        } catch (Exception ex) {
+            completion.TrySetException(ex);
+        }
+    }
+
+    private void ApplyLoginResult(NativeLoginResult result) {
+        RunOnUi(() => {
+            if (result.IsAuthenticated) {
+                SignInText = string.IsNullOrWhiteSpace(result.AccountId)
+                    ? "Signed in"
+                    : "Signed in: " + result.AccountId!.Trim();
+                AuthenticationState = NativeAuthenticationState.SignedIn;
+                StatusText = ResolveReadyStatus();
+                return;
+            }
+
+            if (result.IsCanceled) {
+                SignInText = "Sign-in required";
+                AuthenticationState = NativeAuthenticationState.Required;
+                StatusText = "Sign-in canceled";
+                return;
+            }
+
+            SignInText = string.IsNullOrWhiteSpace(result.Error)
+                ? "Sign-in required"
+                : "Sign-in failed";
+            AuthenticationState = string.IsNullOrWhiteSpace(result.Error)
+                ? NativeAuthenticationState.Required
+                : NativeAuthenticationState.Failed;
+            if (!string.IsNullOrWhiteSpace(result.Error)) {
+                StartupLog.Write("Native sign-in result failed: " + result.Error.Trim());
+                StatusText = "Sign-in failed. Use Sign in to reconnect.";
+            }
+        });
+    }
+
+    private void RunOnUi(Action action) => _dispatch(action);
+
+    private string ResolveReadyStatus() =>
+        NativeRuntimeStatusFormatter.FormatReady(_sessionPolicyProvider?.Invoke());
+
+    private bool IsTurnBusy => IsSending || Volatile.Read(ref _sendStarting) != 0;
+
+    private void NotifyTurnBusyChanged() {
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanCheckSignIn));
+        OnPropertyChanged(nameof(CanStartSignIn));
+        NotifyQueueCommandState();
+    }
+
+    private void NotifyQueueCommandState() {
+        OnPropertyChanged(nameof(CanRunQueuedTurn));
+        OnPropertyChanged(nameof(CanClearQueuedTurns));
+    }
+
+    private bool CanUseRuntime => _isConversationStateLoaded
+                                  && AuthenticationState == NativeAuthenticationState.SignedIn;
+
+    private void SetConversationStateLoaded(bool value) {
+        if (_isConversationStateLoaded == value) {
+            return;
+        }
+
+        _isConversationStateLoaded = value;
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanCheckSignIn));
+        OnPropertyChanged(nameof(CanStartSignIn));
+        NotifyQueueCommandState();
+    }
+
+    private static string FormatStatus(ChatStatusMessage status) {
+        if (!string.IsNullOrWhiteSpace(status.Message)) {
+            return status.Message!;
+        }
+
+        if (!string.IsNullOrWhiteSpace(status.ToolName)) {
+            return status.Status + ": " + status.ToolName;
+        }
+
+        return status.Status;
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+}

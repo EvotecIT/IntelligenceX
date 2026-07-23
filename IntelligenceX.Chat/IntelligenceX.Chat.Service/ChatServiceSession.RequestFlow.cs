@@ -33,6 +33,9 @@ internal sealed partial class ChatServiceSession {
         return configuredLimit < 0 ? 0 : configuredLimit;
     }
 
+    internal static bool ShouldPublishAssistantDelta(bool bufferDraftDeltas, int reviewOnlySuppressionDepth) =>
+        !bufferDraftDeltas && reviewOnlySuppressionDepth <= 0;
+
     internal static int ResolveGlobalExecutionLaneConcurrency(int configuredConcurrency) {
         return configuredConcurrency < 0 ? 0 : configuredConcurrency;
     }
@@ -914,37 +917,43 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var acceptedThreadHint = ResolveRecoveredThreadAlias(request.ThreadId) ?? string.Empty;
-        await TryWriteStatusAsync(
-                writer,
-                requestId,
-                acceptedThreadHint,
-                status: ChatStatusCodes.Accepted,
-                message: "Request accepted.")
-            .ConfigureAwait(false);
+        try {
+            var acceptedThreadHint = ResolveRecoveredThreadAlias(request.ThreadId) ?? string.Empty;
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    acceptedThreadHint,
+                    status: ChatStatusCodes.Accepted,
+                    message: "Request accepted.")
+                .ConfigureAwait(false);
 
-        if (queuePosition > 1) {
-            var queueThreadHint = acceptedThreadHint;
-            if (string.IsNullOrWhiteSpace(queueThreadHint)) {
-                queueThreadHint = ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot()) ?? string.Empty;
+            if (queuePosition > 1) {
+                var queueThreadHint = acceptedThreadHint;
+                if (string.IsNullOrWhiteSpace(queueThreadHint)) {
+                    queueThreadHint = ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot()) ?? string.Empty;
+                }
+
+                await TryWriteStatusAsync(
+                        writer,
+                        requestId,
+                        queueThreadHint,
+                        status: ChatStatusCodes.TurnQueued,
+                        message: BuildSessionLaneQueuedStatusMessage(queuePosition))
+                    .ConfigureAwait(false);
+                StartSessionQueueWaitHeartbeat(run, cancellationToken);
+            } else {
+                await TryWriteStatusAsync(
+                        writer,
+                        requestId,
+                        string.Empty,
+                        status: ChatStatusCodes.Thinking,
+                        message: "Entering execution lane...")
+                    .ConfigureAwait(false);
             }
-
-            await TryWriteStatusAsync(
-                    writer,
-                    requestId,
-                    queueThreadHint,
-                    status: ChatStatusCodes.TurnQueued,
-                    message: BuildSessionLaneQueuedStatusMessage(queuePosition))
-                .ConfigureAwait(false);
-            StartSessionQueueWaitHeartbeat(run, cancellationToken);
-        } else {
-            await TryWriteStatusAsync(
-                    writer,
-                    requestId,
-                    string.Empty,
-                    status: ChatStatusCodes.Thinking,
-                    message: "Entering execution lane...")
-                .ConfigureAwait(false);
+        } finally {
+            // The queue pump may be scheduled immediately. Do not allow execution statuses to
+            // overtake the admission statuses on faster worker threads.
+            run.MarkAdmissionReady();
         }
     }
 
@@ -962,7 +971,7 @@ internal sealed partial class ChatServiceSession {
                 run.MarkStarted();
             }
 
-            run.Task = ExecuteQueuedChatRunAsync(run, cancellationToken);
+            run.Task = ExecuteAdmittedChatRunAsync(run, cancellationToken);
             try {
                 await run.Task.ConfigureAwait(false);
             } catch {
@@ -981,6 +990,11 @@ internal sealed partial class ChatServiceSession {
         lock (_chatRunLock) {
             _chatRunPumpTask = null;
         }
+    }
+
+    private async Task ExecuteAdmittedChatRunAsync(ChatRun run, CancellationToken sessionCancellationToken) {
+        await run.WaitForAdmissionAsync(sessionCancellationToken).ConfigureAwait(false);
+        await ExecuteQueuedChatRunAsync(run, sessionCancellationToken).ConfigureAwait(false);
     }
 
     private async Task ExecuteQueuedChatRunAsync(ChatRun run, CancellationToken sessionCancellationToken) {
@@ -1122,8 +1136,16 @@ internal sealed partial class ChatServiceSession {
                 requestedModel,
                 runtimeDefaultModel);
             var bufferDraftDeltasForSmartReview = ShouldBufferDraftDeltasForSmartReview(request);
+            var deltaWrites = new ChatDeltaWriteQueue(
+                delta => TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta));
             ChatMetricsMessage? turnMetrics = null;
             ChatServiceMessage? turnResponse = null;
+            async Task CompleteDeltaWritesAsync() {
+                deltaSubscription?.Dispose();
+                deltaSubscription = null;
+                await deltaWrites.CompleteAsync().ConfigureAwait(false);
+            }
+
             BeginTurnTimelineCapture(request.RequestId);
             try {
                 if (bufferDraftDeltasForSmartReview) {
@@ -1141,14 +1163,17 @@ internal sealed partial class ChatServiceSession {
                     if (firstDeltaUtcTicks == 0) {
                         _ = Interlocked.CompareExchange(ref firstDeltaUtcTicks, DateTime.UtcNow.Ticks, 0);
                     }
-                    if (bufferDraftDeltasForSmartReview) {
+                    if (!ShouldPublishAssistantDelta(
+                            bufferDraftDeltasForSmartReview,
+                            Volatile.Read(ref _assistantDeltaSuppressionDepth))) {
                         return;
                     }
-                    _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta);
+                    _ = deltaWrites.TryEnqueue(delta);
                 });
 
                 var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, run, run.Cts.Token)
                     .ConfigureAwait(false);
+                await CompleteDeltaWritesAsync().ConfigureAwait(false);
                 usageDto = MapUsage(result.Usage);
                 toolCallsCount = result.ToolCallsCount;
                 toolRounds = result.ToolRounds;
@@ -1172,6 +1197,7 @@ internal sealed partial class ChatServiceSession {
 
                 await TryRecordRecentModelAsync(telemetryModel, CancellationToken.None).ConfigureAwait(false);
             } catch (OpenAIAuthenticationRequiredException) {
+                await CompleteDeltaWritesAsync().ConfigureAwait(false);
                 outcome = "error";
                 outcomeCode = "not_authenticated";
                 await TryWriteStatusAsync(
@@ -1188,6 +1214,7 @@ internal sealed partial class ChatServiceSession {
                     Code = "not_authenticated"
                 };
             } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
+                await CompleteDeltaWritesAsync().ConfigureAwait(false);
                 outcome = "canceled";
                 outcomeCode = "chat_canceled";
                 await TryWriteStatusAsync(
@@ -1204,6 +1231,7 @@ internal sealed partial class ChatServiceSession {
                     Code = "chat_canceled"
                 };
             } catch (OperationCanceledException ex) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken, ex.CancellationToken)) {
+                await CompleteDeltaWritesAsync().ConfigureAwait(false);
                 outcome = "timeout";
                 outcomeCode = "chat_timeout";
                 var turnTimeoutSeconds = ResolveEffectiveTurnTimeoutSeconds(request);
@@ -1224,10 +1252,12 @@ internal sealed partial class ChatServiceSession {
                     Code = "chat_timeout"
                 };
             } catch (OperationCanceledException) when (sessionCancellationToken.IsCancellationRequested) {
+                await CompleteDeltaWritesAsync().ConfigureAwait(false);
                 // Session shutting down.
                 outcome = "canceled";
                 outcomeCode = "session_canceled";
             } catch (Exception ex) {
+                await CompleteDeltaWritesAsync().ConfigureAwait(false);
                 outcome = "error";
                 outcomeCode = "chat_failed";
                 await TryWriteStatusAsync(
@@ -1244,6 +1274,7 @@ internal sealed partial class ChatServiceSession {
                     Code = "chat_failed"
                 };
             } finally {
+                await CompleteDeltaWritesAsync().ConfigureAwait(false);
                 var completedAtUtc = DateTime.UtcNow;
                 var durationMs = (long)Math.Max(0, (completedAtUtc - startedAtUtc).TotalMilliseconds);
                 DateTime? firstDeltaAtUtc = null;
@@ -1296,7 +1327,6 @@ internal sealed partial class ChatServiceSession {
                     turnMetrics = null;
                 }
 
-                deltaSubscription?.Dispose();
                 EndTurnTimelineCapture(request.RequestId);
             }
 

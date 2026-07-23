@@ -61,7 +61,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             var xlsxPath = Path.Combine(root, "table.xlsx");
             LocalExportArtifactWriter.ExportTable(ExportPreferencesContract.FormatXlsx, "sample", rows, xlsxPath);
             Assert.True(File.Exists(xlsxPath));
-            using (var workbook = ExcelDocument.Load(xlsxPath, readOnly: true)) {
+            using (var workbook = ExcelDocument.Load(xlsxPath)) {
                 var sheet = workbook[0];
                 Assert.True(sheet.TryGetCellText(1, 1, out var header));
                 Assert.Equal("Name", header);
@@ -70,7 +70,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             var docxPath = Path.Combine(root, "table.docx");
             LocalExportArtifactWriter.ExportTable(ExportPreferencesContract.FormatDocx, "sample", rows, docxPath);
             Assert.True(File.Exists(docxPath));
-            using (var docx = WordDocument.Load(docxPath, readOnly: true)) {
+            using (var docx = WordDocument.Load(docxPath)) {
                 var table = docx.Tables.First();
                 var headerTexts = table.Rows[0]
                     .Cells
@@ -114,7 +114,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             Assert.Equal(ExportPreferencesContract.FormatDocx, docxResult.ActualFormat);
             Assert.Equal(docxPath, docxResult.OutputPath);
             Assert.True(File.Exists(docxPath));
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("Transcript", bodyText);
             Assert.Contains("item 1", bodyText);
@@ -326,7 +326,7 @@ public sealed partial class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures full-transcript export normalization keeps adjacent ordered-list items stable for current OfficeIMO rendering.
+    /// Ensures full-transcript export normalization preserves adjacent ordered-list items.
     /// </summary>
     [Fact]
     public void NormalizeTranscriptMarkdownForExport_PreservesAdjacentOrderedItems() {
@@ -384,6 +384,37 @@ public sealed partial class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures a failed materialized DOCX attempt retries and falls back from the original portable Markdown.
+    /// </summary>
+    [Fact]
+    public void ExportDocxWithMaterializedVisualFallback_UsesOriginalMarkdownForMarkdownFallback() {
+        const string originalMarkdown = "# Transcript\n\nOriginal visual fence.";
+        const string materializedMarkdown = "# Transcript\n\n![Visual](C:/temp/deleted-after-export.png)";
+        string? savedMarkdown = null;
+        var docxAttempts = 0;
+
+        var result = LocalExportArtifactWriter.ExportDocxWithMaterializedVisualFallback(
+            "transcript",
+            originalMarkdown,
+            materializedMarkdown,
+            @"C:\exports\transcript.docx",
+            [@"C:\temp"],
+            docxVisualMaxWidthPx: null,
+            markdownWriter: (_, text) => savedMarkdown = text,
+            docxWriter: (_, _, _, _, _) => {
+                docxAttempts++;
+                throw new InvalidOperationException("docx write boom");
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(TranscriptExportOutcomeKind.SucceededWithFallback, result.OutcomeKind);
+        Assert.Equal(TranscriptExportFallbackKind.Markdown, result.Fallback?.Kind);
+        Assert.Equal(2, docxAttempts);
+        Assert.Contains("Original visual fence.", savedMarkdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("deleted-after-export.png", savedMarkdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the typed result stays failed when DOCX export is retried later and markdown fallback is intentionally disabled.
     /// </summary>
     [Fact]
@@ -430,7 +461,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var paragraph = docx.Paragraphs.First(p => p.Text.Contains("Short answer", StringComparison.Ordinal));
             var combinedRuns = string.Concat(paragraph.GetRuns().Select(run => run.Text));
 
@@ -462,7 +493,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
 
             Assert.Contains("Short answer: **no — nothing is failed** ✅", bodyText, StringComparison.Ordinal);
@@ -494,7 +525,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
 
             Assert.Contains("key", bodyText, StringComparison.Ordinal);
@@ -522,7 +553,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
 
             Assert.Contains("key", bodyText, StringComparison.Ordinal);
@@ -560,7 +591,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("Only total count checked, not origin split", bodyText, StringComparison.Ordinal);
             Assert.Contains("external/custom rules can drift or disappear between hosts", bodyText, StringComparison.Ordinal);
@@ -657,7 +688,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
             Assert.True(File.Exists(docxPath));
 
-            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            using var docx = WordDocument.Load(docxPath);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("Mermaid snapshot", bodyText, StringComparison.Ordinal);
             Assert.Contains("Chart snapshot", bodyText, StringComparison.Ordinal);

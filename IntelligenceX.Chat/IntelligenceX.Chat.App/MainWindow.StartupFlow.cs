@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI.Input;
@@ -982,9 +983,10 @@ public sealed partial class MainWindow : Window {
                     }), true);
 
                 var navTcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-                void OnNavigationCompleted(WebView2 _, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs __) {
+                void OnNavigationCompleted(WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args) {
                     _webView.NavigationCompleted -= OnNavigationCompleted;
                     navTcs.TrySetResult(null);
+                    _ = FlushRequestedOptionsPanelAsync();
                 }
                 _webView.NavigationCompleted += OnNavigationCompleted;
                 StartupLog.Write("EnsureWebViewInitializedAsync.navigate begin");
@@ -1152,17 +1154,19 @@ public sealed partial class MainWindow : Window {
         } catch (Exception ex) {
             AppendSystem(SystemNotice.StateLoadFailed(ex.Message));
             _appState = new ChatAppState { ProfileName = _appProfileName };
+            _persistedAppStateBaseline = _stateStore.CloneState(_appState);
         }
     }
 
     private async Task LoadProfileStateAsync(string profileName, bool render) {
-        var normalized = ResolveAppProfileName(profileName);
+        var normalized = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
         var loaded = await _stateStore.GetAsync(normalized, CancellationToken.None).ConfigureAwait(false);
         var previousTransport = _localProviderTransport;
 
         _appProfileName = normalized;
         _knownProfiles.Add(normalized);
         _appState = loaded ?? new ChatAppState { ProfileName = normalized };
+        _persistedAppStateBaseline = _stateStore.CloneState(_appState);
         _sessionUserNameOverride = null;
         _sessionAssistantPersonaOverride = null;
         _sessionThemeOverride = null;
@@ -1172,6 +1176,10 @@ public sealed partial class MainWindow : Window {
         _themePreset = NormalizeTheme(_appState.ThemePreset) ?? "default";
         _appState.ThemePreset = _themePreset;
         _localProviderTransport = NormalizeLocalProviderTransport(_appState.LocalProviderTransport);
+        _appState.LocalProviderRuntimeOverrideActive =
+            ChatServiceLaunchProfileMapper.ResolveRuntimeOverrideActive(
+                _appState,
+                loaded is not null);
         _localProviderBaseUrl = NormalizeLocalProviderBaseUrl(_appState.LocalProviderBaseUrl, _localProviderTransport);
         _localProviderModel = NormalizeLocalProviderModel(_appState.LocalProviderModel, _localProviderTransport);
         _localProviderOpenAIAuthMode = NormalizeLocalProviderOpenAIAuthMode(_appState.LocalProviderOpenAIAuthMode);
@@ -1182,31 +1190,16 @@ public sealed partial class MainWindow : Window {
         _localProviderTextVerbosity = NormalizeLocalProviderTextVerbosity(_appState.LocalProviderTextVerbosity);
         _localProviderTemperature = NormalizeLocalProviderTemperature(_appState.LocalProviderTemperature);
         _localProviderImageGenerationEnabled = _appState.LocalProviderImageGenerationEnabled;
-        _localProviderImageGenerationOverrideActive = ResolveLocalProviderImageGenerationOverrideActive(_appState, loaded is not null);
+        _localProviderImageGenerationOverrideActive = ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(
+            _appState,
+            loaded is not null);
         _localProviderImageGenerationQuality = NormalizeLocalProviderImageGenerationQuality(_appState.LocalProviderImageGenerationQuality);
         _localProviderImageGenerationSize = NormalizeLocalProviderImageGenerationSize(_appState.LocalProviderImageGenerationSize);
         _localProviderImageGenerationOutputFormat = NormalizeLocalProviderImageGenerationOutputFormat(_appState.LocalProviderImageGenerationOutputFormat);
         _localProviderImageGenerationOutputCompression = NormalizeLocalProviderImageGenerationOutputCompression(_appState.LocalProviderImageGenerationOutputCompression);
         _localProviderImageGenerationBackground = NormalizeLocalProviderImageGenerationBackground(_appState.LocalProviderImageGenerationBackground);
         _localProviderImageGenerationOutputDirectory = NormalizeLocalProviderImageGenerationOutputDirectory(_appState.LocalProviderImageGenerationOutputDirectory);
-        _appState.LocalProviderTransport = _localProviderTransport;
-        _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
-        _appState.LocalProviderModel = _localProviderModel;
-        _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
-        _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
-        _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
-        _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
-        _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
-        _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
-        _appState.LocalProviderTemperature = _localProviderTemperature;
-        _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
-        _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
-        _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
-        _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
-        _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
-        _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
-        _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
-        _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
+        CaptureLocalProviderSettingsIntoAppState();
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
         } else if (!string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {
@@ -1225,7 +1218,7 @@ public sealed partial class MainWindow : Window {
         _serviceProfileNames = Array.Empty<string>();
         _serviceActiveProfileName = null;
         if (_appState.OnboardingCompleted
-            && BuildMissingOnboardingFields(
+            && DesktopChatProfileNormalizer.GetMissingOnboardingFields(
                 _appState.UserName,
                 _appState.AssistantPersona,
                 _appState.ThemePreset,
@@ -1265,7 +1258,9 @@ public sealed partial class MainWindow : Window {
         RestoreQueuedTurnsFromState(_appState);
         ActivateConversation(ResolveInitialConversationId(_appState));
         if (repairedLegacyTranscriptState) {
-            await PersistAppStateAsync().ConfigureAwait(false);
+            // This repair save happens before the selected profile's live tool catalog has been restored.
+            // Keep its persisted grants intact rather than copying policy from the previously active profile.
+            await PersistAppStateAsync(preserveLoadedToolExposure: true).ConfigureAwait(false);
         }
 
         var knownToolNames = new List<string>(_toolDescriptions.Keys);
@@ -1286,6 +1281,14 @@ public sealed partial class MainWindow : Window {
             }
         }
 
+        if (_appState.EnabledWriteTools is { Count: > 0 }) {
+            foreach (var tool in _appState.EnabledWriteTools) {
+                if (!string.IsNullOrWhiteSpace(tool)) {
+                    _toolStates[tool.Trim()] = true;
+                }
+            }
+        }
+
         if (!render) {
             return;
         }
@@ -1293,17 +1296,6 @@ public sealed partial class MainWindow : Window {
         await RenderTranscriptAsync().ConfigureAwait(false);
         await ApplyThemeFromStateAsync().ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
-    }
-
-    internal static bool ResolveLocalProviderImageGenerationOverrideActive(ChatAppState state, bool isLoadedProfile) {
-        if (state is null) {
-            return false;
-        }
-
-        return state.LocalProviderImageGenerationOverrideActive ||
-               isLoadedProfile &&
-               !state.LocalProviderImageGenerationOverrideActiveWasPresent &&
-               !state.LocalProviderImageGenerationEnabled;
     }
 
 }

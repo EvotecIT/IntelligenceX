@@ -1274,7 +1274,7 @@ internal sealed partial class ChatServiceSession {
         return await chatTask.ConfigureAwait(false);
     }
 
-    internal Task<TurnInfo> RunReviewOnlyModelPhaseWithProgressAsync(
+    internal async Task<TurnInfo> RunReviewOnlyModelPhaseWithProgressAsync(
         IntelligenceXClient client,
         StreamWriter writer,
         string requestId,
@@ -1287,18 +1287,25 @@ internal sealed partial class ChatServiceSession {
         string heartbeatLabel,
         int heartbeatSeconds) {
         // Review-only passes are in-thread rewrites of the current draft and must never execute tools.
-        return RunModelPhaseWithProgressAsync(
-            client,
-            writer,
-            requestId,
-            threadId,
-            input,
-            CopyChatOptionsWithoutTools(options, newThreadOverride: false),
-            cancellationToken,
-            phaseStatus,
-            phaseMessage,
-            heartbeatLabel,
-            heartbeatSeconds);
+        // Their structured control output is internal orchestration state, not assistant content.
+        Interlocked.Increment(ref _assistantDeltaSuppressionDepth);
+        try {
+            return await RunModelPhaseWithProgressAsync(
+                    client,
+                    writer,
+                    requestId,
+                    threadId,
+                    input,
+                    CopyChatOptionsWithoutTools(options, newThreadOverride: false),
+                    cancellationToken,
+                    phaseStatus,
+                    phaseMessage,
+                    heartbeatLabel,
+                    heartbeatSeconds)
+                .ConfigureAwait(false);
+        } finally {
+            Interlocked.Decrement(ref _assistantDeltaSuppressionDepth);
+        }
     }
 
     private static ChatOptions CopyChatOptions(ChatOptions options, bool? newThreadOverride = null) {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.App.Markdown;
 
 namespace IntelligenceX.Chat.App;
@@ -12,11 +13,6 @@ public sealed partial class MainWindow {
         var activeConversation = GetActiveConversation();
         var effectivePersona = GetEffectiveAssistantPersona();
         var effectiveName = GetEffectiveUserName();
-        var profileIntent = ParseUserProfileIntent(userText);
-        var includeLiveProfileUpdates = ShouldIncludeLiveProfileUpdates(
-            profileIntent.HasUserName,
-            profileIntent.HasAssistantPersona,
-            profileIntent.HasThemePreset);
         var onboardingInProgress = !_appState.OnboardingCompleted;
         var runtimeSelfReportAnalysis = ConversationTurnShapeClassifier.AnalyzeAssistantRuntimeIntrospectionQuestion(userText);
         var assistantCapabilityQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(userText);
@@ -28,30 +24,12 @@ public sealed partial class MainWindow {
             assistantCapabilityQuestion,
             assistantRuntimeIntrospectionQuestion);
         var memoryContextLines = BuildPersistentMemoryContextLines(userText);
-        var shouldUseThinRequestEnvelope = ShouldUseThinServiceRequestEnvelope(
-            includeOnboardingContext,
-            includeLiveProfileUpdates);
-
-        if (shouldUseThinRequestEnvelope) {
-            var runtimeSelfReportDirectiveLines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(runtimeSelfReportAnalysis);
-
-            return PromptMarkdownBuilder.BuildThinServiceRequest(
-                userText: userText,
-                effectiveName: effectiveName,
-                effectivePersona: effectivePersona,
-                persistentMemoryLines: memoryContextLines,
-                persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty,
-                runtimeSelfReportDirectiveLines: runtimeSelfReportDirectiveLines,
-                runtimeSelfReportAnalysis: runtimeSelfReportAnalysis);
-        }
-
         IReadOnlyList<string> missingFields = includeOnboardingContext ? BuildMissingOnboardingFields() : Array.Empty<string>();
         var localContextLines = BuildLocalContextFallbackLines(activeConversation, userText);
         var conversationStyleLines = ConversationStyleGuidanceBuilder.BuildRecentUserStyleLines(activeConversation.Messages);
         var capabilityAnswerStyleLines = assistantCapabilityQuestion
             ? ConversationStyleGuidanceBuilder.BuildCapabilityAnswerStyleLines(activeConversation.Messages)
             : null;
-        var personaGuidanceLines = BuildPersonaGuidanceLines(effectivePersona);
         var continuationStateLines = ConversationStyleGuidanceBuilder.BuildContinuationStateLines(
             activeConversation.Messages,
             activeConversation.PendingActions,
@@ -83,27 +61,25 @@ public sealed partial class MainWindow {
             assistantRuntimeIntrospectionQuestion,
             recentAssistantAskedQuestion);
 
-        return PromptMarkdownBuilder.BuildServiceRequest(
-            userText: userText,
-            effectiveName: effectiveName,
-            effectivePersona: effectivePersona,
-            onboardingInProgress: includeOnboardingContext,
-            missingOnboardingFields: missingFields,
-            includeLiveProfileUpdates: includeLiveProfileUpdates,
-            executionBehaviorPrompt: PromptAssets.GetExecutionBehaviorPrompt(),
-            localContextLines: localContextLines,
-            conversationStyleLines: conversationStyleLines,
-            capabilityAnswerStyleLines: capabilityAnswerStyleLines,
-            personaGuidanceLines: personaGuidanceLines,
-            continuationStateLines: continuationStateLines,
-            recentAssistantAnswerWasSubstantive: recentAssistantAnswerWasSubstantive,
-            recentAssistantAskedQuestion: recentAssistantAskedQuestion,
-            persistentMemoryLines: memoryContextLines,
-            persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty,
-            capabilitySelfKnowledgeLines: capabilitySelfKnowledgeLines,
-            runtimeCapabilityLines: runtimeCapabilityLines,
-            proactiveExecutionEnabled: proactiveExecutionEnabled,
-            runtimeSelfReportAnalysis: runtimeSelfReportAnalysis);
+        return DesktopChatTurnProtocol.BuildRequestText(new DesktopChatTurnPromptContext {
+            UserText = userText,
+            EffectiveUserName = effectiveName,
+            EffectiveAssistantPersona = effectivePersona,
+            IncludeOnboardingContext = includeOnboardingContext,
+            MissingOnboardingFields = missingFields,
+            LocalContextLines = localContextLines,
+            ConversationStyleLines = conversationStyleLines,
+            CapabilityAnswerStyleLines = capabilityAnswerStyleLines,
+            ContinuationStateLines = continuationStateLines,
+            RecentAssistantAnswerWasSubstantive = recentAssistantAnswerWasSubstantive,
+            RecentAssistantAskedQuestion = recentAssistantAskedQuestion,
+            PersistentMemoryLines = memoryContextLines,
+            PersistentMemoryEnabled = _persistentMemoryEnabled,
+            CapabilitySelfKnowledgeLines = capabilitySelfKnowledgeLines,
+            RuntimeCapabilityLines = runtimeCapabilityLines,
+            ProactiveExecutionEnabled = proactiveExecutionEnabled,
+            RuntimeSelfReportAnalysis = runtimeSelfReportAnalysis
+        });
     }
 
     internal static bool? ResolveProactiveExecutionGuidanceMode(
@@ -112,17 +88,12 @@ public sealed partial class MainWindow {
         bool assistantCapabilityQuestion,
         bool assistantRuntimeIntrospectionQuestion,
         bool recentAssistantAskedQuestion) {
-        if (!proactiveModeEnabled) {
-            return false;
-        }
-
-        return ShouldIncludeProactiveExecutionMode(
+        return DesktopChatTurnProtocol.ResolveProactiveExecutionGuidanceMode(
+            proactiveModeEnabled,
             userText,
             assistantCapabilityQuestion,
             assistantRuntimeIntrospectionQuestion,
-            recentAssistantAskedQuestion)
-            ? true
-            : null;
+            recentAssistantAskedQuestion);
     }
 
     internal static IReadOnlyList<string>? SelectCapabilitySelfKnowledgeLines(
@@ -217,38 +188,21 @@ public sealed partial class MainWindow {
         return runtimeSelfReportDetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback;
     }
 
-    internal static bool ShouldIncludeLiveProfileUpdates(
-        bool hasUserNameUpdate,
-        bool hasAssistantPersonaUpdate,
-        bool hasThemePresetUpdate) {
-        return hasUserNameUpdate || hasAssistantPersonaUpdate || hasThemePresetUpdate;
-    }
-
     internal static bool ShouldUseThinServiceRequestEnvelope(
         bool includeOnboardingContext,
-        bool includeLiveProfileUpdates) {
-        return !includeOnboardingContext && !includeLiveProfileUpdates;
-    }
+        bool includeLiveProfileUpdates) =>
+        DesktopChatTurnProtocol.ShouldUseThinRequestEnvelope(includeOnboardingContext, includeLiveProfileUpdates);
 
     internal static bool ShouldIncludeAmbientOnboardingContext(
         string? userText,
         bool onboardingInProgress,
         bool assistantCapabilityQuestion,
         bool assistantRuntimeIntrospectionQuestion) {
-        if (!onboardingInProgress) {
-            return false;
-        }
-
-        var normalized = (userText ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        if (assistantCapabilityQuestion || assistantRuntimeIntrospectionQuestion) {
-            return false;
-        }
-
-        return ConversationTurnShapeClassifier.LooksLikeLowContextShortTurn(normalized);
+        return DesktopChatTurnProtocol.ShouldIncludeAmbientOnboardingContext(
+            userText,
+            onboardingInProgress,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion);
     }
 
     internal static bool ShouldIncludeProactiveExecutionMode(
@@ -256,18 +210,10 @@ public sealed partial class MainWindow {
         bool assistantCapabilityQuestion,
         bool assistantRuntimeIntrospectionQuestion,
         bool recentAssistantAskedQuestion) {
-        var normalized = (userText ?? string.Empty).Trim();
-        if (normalized.Length == 0
-            || assistantCapabilityQuestion
-            || assistantRuntimeIntrospectionQuestion
-            || ConversationTurnShapeClassifier.LooksLikeLowContextShortTurn(normalized)) {
-            return false;
-        }
-
-        if (recentAssistantAskedQuestion && ConversationTurnShapeClassifier.LooksLikeContextDependentFollowUp(normalized)) {
-            return true;
-        }
-
-        return !ConversationTurnShapeClassifier.ContainsQuestionSignal(normalized);
+        return DesktopChatTurnProtocol.ShouldIncludeProactiveExecutionMode(
+            userText,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion,
+            recentAssistantAskedQuestion);
     }
 }

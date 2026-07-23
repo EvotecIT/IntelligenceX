@@ -48,20 +48,20 @@ public sealed partial class MainWindow : Window {
     private const int VkLButton = 0x0001;
     private const int MaxConversations = 40;
     private const int MaxMessagesPerConversation = 250;
-    private const int MaxQueuedTurns = 8;
+    private const int MaxQueuedTurns = ChatQueueContract.MaxTurns;
     private const int MaxActivityTimelineEntries = 6;
     private const int MaxActivityTimelineLabelChars = 48;
     private const int MaxRoutingPromptExposureHistoryEntries = 6;
     private const int MaxAssistantTurnTimelineEntries = 8;
-    private const string SystemConversationId = "chat-system";
+    private const string SystemConversationId = ChatConversationIdentity.SystemConversationId;
     private const string SystemConversationTitle = "System";
-    private const string DefaultConversationTitle = "New Chat";
+    private const string DefaultConversationTitle = ChatConversationIdentity.DefaultTitle;
     private const string DefaultLocalModel = OpenAIModelCatalog.DefaultModel;
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
     private const string TransportCopilotCli = "copilot-cli";
-    private const string DefaultOllamaBaseUrl = "http://127.0.0.1:11434";
-    private const string DefaultLmStudioBaseUrl = "http://127.0.0.1:1234/v1";
+    private const string DefaultOllamaBaseUrl = ChatServiceLaunchProfileMapper.DefaultOllamaBaseUrl;
+    private const string DefaultLmStudioBaseUrl = ChatServiceLaunchProfileMapper.DefaultLmStudioBaseUrl;
     private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan PersistDebounceInterval = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan UiPublishCoalesceInterval = TimeSpan.FromMilliseconds(24);
@@ -160,18 +160,6 @@ public sealed partial class MainWindow : Window {
         TimeSpan.FromSeconds(10),
         TimeSpan.FromSeconds(14)
     };
-    private static readonly Regex UserNameIntentRegex = new(@"\b(?:you can call me|call me|my name is|name is|set my name to|change my name to)\s+(?<value>[^,\.\!\?\r\n]{1,64})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex PersonaIntentRegex = new(@"\b(?:assistant\s+persona|persona|style|tone|mode)\s*(?:is|to|=|:)\s*(?<value>[^,\.\!\?\r\n]{2,180})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex PersonaUseIntentRegex = new(@"\b(?:use|switch to|go with)\s+(?<value>[^,\.\!\?\r\n]{2,180})\s+(?:persona|style|tone|mode)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex ThemeIntentRegex = new(
-        $@"\b(?:theme)\s*(?:is|to|=|:)?\s*(?<value>{ThemeContract.ThemeValueRegexAlternation})\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex ThemeUseIntentRegex = new(
-        $@"\b(?:use|switch to|set)\s+(?<value>{ThemeContract.ThemeValueRegexAlternation})\s+theme\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex MemoryRememberIntentRegex = new(@"\b(?:remember(?:\s+this|\s+that)?|save\s+this|store\s+this)\b[\s,:-]*(?<value>[^\r\n]{6,240})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex MemoryFutureIntentRegex = new(@"\bfor\s+next\s+time\b[\s,:-]*(?<value>[^\r\n]{6,220})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-
     [DllImport("user32.dll")]
     private static extern bool ReleaseCapture();
 
@@ -224,6 +212,8 @@ public sealed partial class MainWindow : Window {
     private readonly WebView2 _webView;
     private readonly MarkdownRendererOptions _markdownOptions;
     private readonly Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment?> _webViewEnvironmentTask;
+    private readonly SemaphoreSlim _optionsPanelGate = new(1, 1);
+    private int _optionsPanelOpenRequested;
     private delegate IntPtr WindowProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -270,7 +260,10 @@ public sealed partial class MainWindow : Window {
     private static readonly bool DetachedServiceMode = ResolveDetachedServiceMode();
     private static readonly GlobalWheelHookMode WheelHookMode = ResolveGlobalWheelHookMode(Environment.GetEnvironmentVariable("IXCHAT_WHEEL_HOOK_MODE"));
 
-    private readonly string _pipeName = "intelligencex.chat";
+    private readonly string _pipeName;
+    private readonly TaskCompletionSource _closeCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly SettingsMutationDrain _settingsMutationDrain = new();
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly object _ensureConnectedSync = new();
     private Task<bool>? _ensureConnectedInFlightTask;
@@ -387,17 +380,17 @@ public sealed partial class MainWindow : Window {
     private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _startupUnavailablePackSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _startupBootstrapSummarySignatures = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, MemorySemanticVectorCacheEntry> _memorySemanticVectorCache = new(StringComparer.OrdinalIgnoreCase);
-    // Guards memory semantic cache + memory diagnostics snapshot/history across UI/async paths.
+    // Guards memory diagnostics snapshot/history across UI/async paths.
     private readonly object _memoryDiagnosticsSync = new();
     private MemoryDebugSnapshot? _lastMemoryDebugSnapshot;
     private readonly List<MemoryDebugSnapshot> _memoryDebugHistory = new();
     private int _memoryDebugSequence;
-    private string _appProfileName = ResolveAppProfileName(Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
+    private string _appProfileName = "default";
     private readonly ChatAppStateStore _stateStore = new(ChatAppStateStore.GetDefaultDbPath());
     private readonly SemaphoreSlim _stateWriteGate = new(1, 1);
     private readonly SemaphoreSlim _onboardingGate = new(1, 1);
     private ChatAppState _appState = new();
+    private ChatAppState? _persistedAppStateBaseline;
     private readonly HashSet<string> _knownProfiles = new(StringComparer.OrdinalIgnoreCase);
     private bool _appStateLoaded;
     private bool _isSending;
@@ -661,21 +654,6 @@ public sealed partial class MainWindow : Window {
         bool PromptExposureReordered,
         string[] PromptExposureTopToolNames);
 
-    private sealed class UserProfileIntent {
-        public string? UserName { get; set; }
-        public bool HasUserName { get; set; }
-        public string? AssistantPersona { get; set; }
-        public bool HasAssistantPersona { get; set; }
-        public string? ThemePreset { get; set; }
-        public bool HasThemePreset { get; set; }
-        public ProfileUpdateScope Scope { get; set; }
-    }
-
-    private sealed class MemorySemanticVectorCacheEntry {
-        public required string Signature { get; init; }
-        public required Dictionary<int, double> Vector { get; init; }
-    }
-
     private sealed class MemoryDebugSnapshot {
         public DateTime UpdatedUtc { get; init; }
         public int Sequence { get; init; }
@@ -737,8 +715,27 @@ public sealed partial class MainWindow : Window {
     /// <summary>
     /// Initializes the desktop chat window.
     /// </summary>
-    public MainWindow() {
+    public MainWindow() : this(openOptionsOnLaunch: false, pipeName: null, profileName: null) { }
+
+    /// <summary>
+    /// Initializes the shared desktop workspace and optionally opens its configuration panel after navigation.
+    /// </summary>
+    internal MainWindow(bool openOptionsOnLaunch) : this(openOptionsOnLaunch, pipeName: null, profileName: null) { }
+
+    /// <summary>
+    /// Initializes the shared desktop workspace on the requested service pipe.
+    /// </summary>
+    internal MainWindow(bool openOptionsOnLaunch, string? pipeName) : this(openOptionsOnLaunch, pipeName, profileName: null) { }
+
+    /// <summary>
+    /// Initializes the shared desktop workspace on the requested service pipe and profile.
+    /// </summary>
+    internal MainWindow(bool openOptionsOnLaunch, string? pipeName, string? profileName) {
         StartupLog.Write("MainWindow.ctor enter");
+        _appProfileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(
+            profileName ?? Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
+        _pipeName = string.IsNullOrWhiteSpace(pipeName) ? "intelligencex.chat" : pipeName.Trim();
+        _optionsPanelOpenRequested = openOptionsOnLaunch ? 1 : 0;
         _markdownOptions = MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell();
         StartupLogRendererDiagnostics();
         Title = "IntelligenceX Chat";
@@ -770,24 +767,33 @@ public sealed partial class MainWindow : Window {
         };
 
         Closed += async (_, _) => {
-            StopAutoReconnectLoop();
-            await CancelQueuedPersistAppStateAsync().ConfigureAwait(false);
-            await PersistAppStateAsync(allowDuringShutdown: true).ConfigureAwait(false);
-            CancelQueuedUiPublishesForShutdown();
-            await DisposeClientAsync().ConfigureAwait(false);
-            StopServiceIfOwned();
-            _serviceProcessHost.Dispose();
-            DetachNativeTitleBarEventSubscriptions();
-            LogInputReliabilityTelemetry("shutdown");
-            UninstallGlobalWheelHook();
-            UninstallWindowMessageHook();
             try {
-                CleanupStaleVisualPopoutFiles(GetVisualPopoutDirectoryPath());
-            } catch {
-                // Ignore visual popout cleanup failures during shutdown.
+                await _settingsMutationDrain.DrainAsync().ConfigureAwait(false);
+                StopAutoReconnectLoop();
+                await CancelQueuedPersistAppStateAsync().ConfigureAwait(false);
+                await PersistAppStateAsync(allowDuringShutdown: true).ConfigureAwait(false);
+                CancelQueuedUiPublishesForShutdown();
+                await DisposeClientAsync().ConfigureAwait(false);
+                StopServiceIfOwned();
+                _serviceProcessHost.Dispose();
+                DetachNativeTitleBarEventSubscriptions();
+                LogInputReliabilityTelemetry("shutdown");
+                UninstallGlobalWheelHook();
+                UninstallWindowMessageHook();
+                try {
+                    CleanupStaleVisualPopoutFiles(GetVisualPopoutDirectoryPath());
+                } catch {
+                    // Ignore visual popout cleanup failures during shutdown.
+                }
+                _stateStore.Dispose();
+            } finally {
+                _closeCompletion.TrySetResult();
             }
-            _stateStore.Dispose();
         };
     }
+
+    internal Task CloseCompletion => _closeCompletion.Task;
+
+    internal string ActiveProfileName => _appProfileName;
 
 }

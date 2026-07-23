@@ -21,7 +21,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var description = InvokeContractMethod("DescribeMarkdownRendererContract");
 
         Assert.Contains("OfficeIMO.MarkdownRenderer", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.2.6", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.2.30", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 
@@ -33,7 +33,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var description = InvokeContractMethod("DescribeMarkdownContract");
 
         Assert.Contains("OfficeIMO.Markdown", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.6.6", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.6.30", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 
@@ -92,17 +92,18 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
-    /// Verifies the repo declares the current published OfficeIMO package pins used by package-mode adoption.
+    /// Verifies the repo declares the OfficeIMO release-candidate package pins used by package-mode adoption.
     /// </summary>
     [Fact]
-    public void DirectoryBuildProps_PinsCurrentPublishedOfficeImoPackageVersions() {
+    public void DirectoryBuildProps_PinsOfficeImoReleaseCandidatePackageVersions() {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = LoadMsBuildProperties(propsPath);
 
-        Assert.Equal("0.6.28", props["OfficeImoMarkdownNuGetVersion"]);
-        Assert.Equal("0.2.28", props["OfficeImoMarkdownRendererNuGetVersion"]);
-        Assert.Equal("0.6.41", props["OfficeImoExcelNuGetVersion"]);
-        Assert.Equal("1.0.37", props["OfficeImoWordMarkdownNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoMarkdownNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoMarkdownRendererNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoMarkdownRendererIntelligenceXNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoExcelNuGetVersion"]);
+        Assert.Equal("2.0.2", props["OfficeImoWordMarkdownNuGetVersion"]);
     }
 
     /// <summary>

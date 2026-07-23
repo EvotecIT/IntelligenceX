@@ -8,6 +8,23 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Covers App transcript normalization entrypoints used when conversations are loaded or previews stream in.
 /// </summary>
 public sealed class MainWindowTranscriptLoadNormalizationTests {
+    /// <summary>Ensures checkpoint cleanup stops at valid Markdown even when no blank separator survived transport.</summary>
+    [Fact]
+    public void PrepareMessageBodyForDisplay_PreservesContentImmediatelyAfterWorkingMemoryCheckpoint() {
+        const string input = """
+            [Working memory checkpoint] ix: working-memory: v1 recent_tools: ad_environment_discover
+            ## Active Directory result
+            Healthy.
+            """;
+
+        var prepared = TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay("Assistant", input);
+
+        Assert.DoesNotContain("Working memory checkpoint", prepared, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("recent_tools", prepared, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("## Active Directory result", prepared, StringComparison.Ordinal);
+        Assert.Contains("Healthy.", prepared, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Ensures assistant transcript artifacts are normalized before they are re-persisted.
     /// </summary>

@@ -31,7 +31,9 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private async Task PersistAppStateAsync(bool allowDuringShutdown = false) {
+    private async Task PersistAppStateAsync(
+        bool allowDuringShutdown = false,
+        bool preserveLoadedToolExposure = false) {
         if (!_appStateLoaded || (_shutdownRequested && !allowDuringShutdown)) {
             return;
         }
@@ -52,25 +54,7 @@ public sealed partial class MainWindow : Window {
             _appState.PersistentMemoryEnabled = _persistentMemoryEnabled;
             _appState.ShowAssistantTurnTrace = _showAssistantTurnTrace;
             _appState.ShowAssistantDraftBubbles = _showAssistantDraftBubbles;
-            _appState.LocalProviderTransport = _localProviderTransport;
-            _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
-            _appState.LocalProviderModel = _localProviderModel;
-            _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
-            _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
-            _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
-            SyncNativeAccountSlotsToAppState();
-            _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
-            _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
-            _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
-            _appState.LocalProviderTemperature = _localProviderTemperature;
-            _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
-            _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
-            _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
-            _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
-            _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
-            _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
-            _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
-            _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
+            CaptureLocalProviderSettingsIntoAppState();
             CaptureModelCatalogCacheIntoAppState();
             _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
             _appState.ActiveConversationId = _activeConversationId;
@@ -78,7 +62,11 @@ public sealed partial class MainWindow : Window {
             if (string.IsNullOrWhiteSpace(_sessionThemeOverride)) {
                 _appState.ThemePreset = _themePreset;
             }
-            _appState.DisabledTools = BuildDisabledToolsList();
+            CaptureToolExposureStateForPersistence(
+                _appState,
+                _toolStates,
+                _toolWriteCapabilities,
+                preserveLoadedToolExposure);
             _appState.Messages = BuildMessageStateSnapshot(activeConversation.Messages);
             _appState.Conversations = BuildConversationStateSnapshot();
             _appState.PendingTurns = BuildPendingTurnStateSnapshot();
@@ -86,7 +74,26 @@ public sealed partial class MainWindow : Window {
             lock (_turnDiagnosticsSync) {
                 SyncAccountUsageToAppStateLocked();
             }
-            await _stateStore.UpsertAsync(_appProfileName, _appState, CancellationToken.None).ConfigureAwait(false);
+            var localSnapshot = _stateStore.CloneState(_appState);
+            var localBeforeMerge = _stateStore.CloneState(localSnapshot);
+            var baseline = _persistedAppStateBaseline;
+            var mergedSnapshot = await _stateStore.UpdateAsync(
+                    _appProfileName,
+                    latest => DesktopChatStateMerger.MergeLegacySnapshot(localSnapshot, baseline, latest),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            var sharedStateChanged = !DesktopChatStateMerger.SharedStateEquals(localBeforeMerge, mergedSnapshot);
+            var runtimeOrPreferenceStateChanged =
+                !DesktopChatStateMerger.RuntimeAndPreferenceStateEquals(localBeforeMerge, mergedSnapshot);
+            var liveOperationalStateChanged =
+                !DesktopChatStateMerger.LiveOperationalStateEquals(localBeforeMerge, mergedSnapshot);
+            // Do not advance the three-way baseline past runtime/preferences or queue state this window has not loaded.
+            // Keeping the prior baseline lets later saves continue recognizing those values as external.
+            if (!runtimeOrPreferenceStateChanged
+                && !liveOperationalStateChanged
+                && (!sharedStateChanged || await TryReconcileMergedSharedStateAsync(mergedSnapshot).ConfigureAwait(false))) {
+                _persistedAppStateBaseline = _stateStore.CloneState(mergedSnapshot);
+            }
             _knownProfiles.Add(_appProfileName);
         } catch (Exception ex) {
             if (VerboseServiceLogs || _debugMode) {
@@ -95,6 +102,42 @@ public sealed partial class MainWindow : Window {
         } finally {
             _stateWriteGate.Release();
         }
+    }
+
+    private Task<bool> TryReconcileMergedSharedStateAsync(ChatAppState mergedSnapshot) {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Reconcile() {
+            try {
+                if (IsTurnDispatchInProgress()) {
+                    completion.TrySetResult(false);
+                    return;
+                }
+
+                _appState = _stateStore.CloneState(mergedSnapshot);
+                RestoreAccountUsageFromAppState();
+                _themePreset = NormalizeTheme(_appState.ThemePreset) ?? ThemeContract.DefaultPreset;
+                _appState.ThemePreset = _themePreset;
+                _persistentMemoryEnabled = _appState.PersistentMemoryEnabled;
+                _ = LoadConversationsFromState(_appState);
+                ActivateConversation(ResolveInitialConversationId(_appState));
+                _modelKickoffAttempted = _messages.Count > 0;
+                _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
+                _ = RenderTranscriptAsync();
+                _ = PublishOptionsStateAsync();
+                _ = ApplyThemeFromStateAsync();
+                completion.TrySetResult(true);
+            } catch (Exception ex) {
+                completion.TrySetException(ex);
+            }
+        }
+
+        if (DispatcherQueue.HasThreadAccess) {
+            Reconcile();
+        } else if (!DispatcherQueue.TryEnqueue(Reconcile)) {
+            completion.TrySetResult(false);
+        }
+
+        return completion.Task;
     }
 
     private void QueuePersistAppState() {
@@ -203,7 +246,7 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    private static List<string> BuildDisabledToolsList(Dictionary<string, bool> toolStates) {
+    private static List<string> BuildDisabledToolsList(IReadOnlyDictionary<string, bool> toolStates) {
         var list = new List<string>();
         foreach (var pair in toolStates) {
             if (!pair.Value) {
@@ -214,8 +257,52 @@ public sealed partial class MainWindow : Window {
         return list;
     }
 
-    private List<string> BuildDisabledToolsList() {
-        return BuildDisabledToolsList(_toolStates);
+    internal static void CaptureToolExposureStateForPersistence(
+        ChatAppState state,
+        IReadOnlyDictionary<string, bool> toolStates,
+        IReadOnlyDictionary<string, bool> toolWriteCapabilities,
+        bool preserveLoadedToolExposure) {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(toolStates);
+        ArgumentNullException.ThrowIfNull(toolWriteCapabilities);
+        if (preserveLoadedToolExposure) {
+            return;
+        }
+
+        state.DisabledTools = BuildDisabledToolsList(toolStates);
+        state.EnabledWriteTools = BuildEnabledWriteToolsList(
+            toolStates,
+            toolWriteCapabilities,
+            state.EnabledWriteTools);
+    }
+
+    internal static List<string> BuildEnabledWriteToolsList(
+        IReadOnlyDictionary<string, bool> toolStates,
+        IReadOnlyDictionary<string, bool> toolWriteCapabilities,
+        IReadOnlyList<string>? persistedEnabledWriteTools) {
+        var enabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (persistedEnabledWriteTools is not null) {
+            for (var i = 0; i < persistedEnabledWriteTools.Count; i++) {
+                var toolName = (persistedEnabledWriteTools[i] ?? string.Empty).Trim();
+                if (toolName.Length > 0 && !toolWriteCapabilities.ContainsKey(toolName)) {
+                    enabled.Add(toolName);
+                }
+            }
+        }
+
+        foreach (var pair in toolWriteCapabilities) {
+            if (pair.Value
+                && toolStates.TryGetValue(pair.Key, out var isEnabled)
+                && isEnabled) {
+                enabled.Add(pair.Key);
+            } else {
+                enabled.Remove(pair.Key);
+            }
+        }
+
+        var list = new List<string>(enabled);
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list;
     }
 
     private static List<ChatMessageState> BuildMessageStateSnapshot(List<(string Role, string Text, DateTime Time, string? Model)> messages) {

@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.App.Conversation;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -35,8 +36,12 @@ public sealed class ChatAppStateStoreQueuePersistenceTests {
             Assert.NotNull(loaded);
             Assert.NotNull(loaded!.PendingTurns);
             Assert.NotNull(loaded.QueuedTurnsAfterLogin);
-            Assert.True(loaded.PendingTurns.Count <= 24);
-            Assert.True(loaded.QueuedTurnsAfterLogin.Count <= 24);
+            Assert.True(loaded.PendingTurns.Count <= ChatQueueContract.MaxTurns);
+            Assert.True(loaded.QueuedTurnsAfterLogin.Count <= ChatQueueContract.MaxTurns);
+            Assert.Equal("pending-turn-0", loaded.PendingTurns[0].Text);
+            Assert.Equal("pending-turn-7", loaded.PendingTurns[^1].Text);
+            Assert.Equal("signin-turn-0", loaded.QueuedTurnsAfterLogin[0].Text);
+            Assert.Equal("signin-turn-7", loaded.QueuedTurnsAfterLogin[^1].Text);
             Assert.All(loaded.PendingTurns, item => Assert.False(string.IsNullOrWhiteSpace(item.Text)));
             Assert.All(loaded.QueuedTurnsAfterLogin, item => Assert.False(string.IsNullOrWhiteSpace(item.Text)));
         } finally {

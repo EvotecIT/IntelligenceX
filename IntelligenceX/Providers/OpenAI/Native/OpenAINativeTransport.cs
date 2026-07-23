@@ -431,7 +431,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         throw new InvalidOperationException("Tool schema fallback exhausted without capturing an exception.");
     }
 
-    private void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,
+    internal void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,
         ref string? streamError) {
         var type = evt.GetString("type");
         if (string.IsNullOrWhiteSpace(type)) {
@@ -440,7 +440,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
 
         if (string.Equals(type, "response.output_text.delta", StringComparison.Ordinal)) {
             var piece = evt.GetString("delta");
-            if (!string.IsNullOrWhiteSpace(piece)) {
+            if (StreamingTextDelta.HasContent(piece)) {
                 delta.Append(piece);
                 DeltaReceived?.Invoke(this, piece!);
             }
@@ -449,7 +449,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
 
         if (string.Equals(type, "response.refusal.delta", StringComparison.Ordinal)) {
             var piece = evt.GetString("delta");
-            if (!string.IsNullOrWhiteSpace(piece)) {
+            if (StreamingTextDelta.HasContent(piece)) {
                 delta.Append(piece);
                 DeltaReceived?.Invoke(this, piece!);
             }

@@ -89,9 +89,42 @@ internal sealed partial class ChatServiceSession {
                 RunAsProfilePath = runtimePolicy.RunAsProfilePath,
                 AuthenticationProfilePath = runtimePolicy.AuthenticationProfilePath
             },
+            RuntimeIdentity = new SessionRuntimeIdentityDto {
+                ProfileName = NormalizeRuntimeIdentityValue(options.ProfileName),
+                Transport = FormatRuntimeTransport(options.OpenAITransport),
+                Model = ResolvePolicyRuntimeModel(options)
+            },
             RoutingCatalog = MapRoutingCatalogDiagnostics(routingCatalog),
             CapabilitySnapshot = resolvedCapabilitySnapshot
         };
+    }
+
+    private static string FormatRuntimeTransport(OpenAITransportKind transport) {
+        return transport switch {
+            OpenAITransportKind.Native => "native",
+            OpenAITransportKind.AppServer => "appserver",
+            OpenAITransportKind.CompatibleHttp => "compatible-http",
+            OpenAITransportKind.CopilotCli => "copilot-cli",
+            _ => "unknown"
+        };
+    }
+
+    private static string? NormalizeRuntimeIdentityValue(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string? ResolvePolicyRuntimeModel(ServiceOptions options) {
+        var configuredModel = NormalizeRuntimeIdentityValue(options.Model);
+        if (options.OpenAITransport == OpenAITransportKind.CompatibleHttp
+            && IsLoopbackEndpoint(options.OpenAIBaseUrl)
+            && ShouldAutoResolveLocalCompatibleModel(configuredModel ?? string.Empty)) {
+            // The service resolves this fallback against the live local catalog immediately before each turn.
+            // Do not expose the configured cloud fallback as though it were the executing local model.
+            return null;
+        }
+
+        return configuredModel;
     }
 
     private static ToolPackInfoDto[] BuildPackPolicyList(
@@ -185,6 +218,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private sealed class ChatRun {
+        private readonly TaskCompletionSource<bool> _admissionReady =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _turnTimeoutCancellationMarked;
 
         public ChatRun(string chatRequestId, CancellationTokenSource cts, IntelligenceXClient client, StreamWriter writer, ChatRequest request) {
@@ -217,6 +252,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         public void MarkCompleted() {
+            _admissionReady.TrySetResult(true);
             IsCompleted = true;
             try {
                 Cts.Dispose();
@@ -227,6 +263,14 @@ internal sealed partial class ChatServiceSession {
 
         public void MarkStarted() {
             Started = true;
+        }
+
+        public void MarkAdmissionReady() {
+            _admissionReady.TrySetResult(true);
+        }
+
+        public Task WaitForAdmissionAsync(CancellationToken cancellationToken) {
+            return _admissionReady.Task.WaitAsync(cancellationToken);
         }
 
         public void MarkTurnTimeoutCancellation() {

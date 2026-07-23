@@ -88,14 +88,6 @@ public sealed partial class MainWindow : Window {
 
         // Keep the turn startup path responsive; state durability is still preserved via debounced persistence.
         QueuePersistAppState();
-        try {
-            await ApplyUserProfileIntentAsync(text).ConfigureAwait(false);
-        } catch (Exception ex) {
-            if (VerboseServiceLogs || _debugMode) {
-                AppendSystem("Profile intent update skipped for this turn: " + ex.Message);
-            }
-        }
-
         return new ChatTurnContext(
             conversation,
             conversationId,

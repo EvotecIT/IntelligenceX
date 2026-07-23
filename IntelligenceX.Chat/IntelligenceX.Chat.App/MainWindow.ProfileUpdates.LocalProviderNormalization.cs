@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI;
@@ -45,190 +46,27 @@ public sealed partial class MainWindow : Window {
     }
 
     internal static bool TryNormalizeLocalProviderTransport(string? value, out string transport) {
-        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-        switch (normalized) {
-            case "native":
-                transport = TransportNative;
-                return true;
-            case "compatible-http":
-            case "compatiblehttp":
-            case "http":
-            case "local":
-            case "ollama":
-            case "lmstudio":
-            case "lm-studio":
-                transport = TransportCompatibleHttp;
-                return true;
-            case "copilot":
-            case "copilot-cli":
-            case "github-copilot":
-            case "githubcopilot":
-                transport = TransportCopilotCli;
-                return true;
-            default:
-                transport = TransportNative;
-                return false;
-        }
+        return ChatServiceLaunchProfileMapper.TryNormalizeTransport(value, out transport);
     }
 
     private static string NormalizeLocalProviderTransport(string? value) {
-        return TryNormalizeLocalProviderTransport(value, out var normalized)
-            ? normalized
-            : TransportNative;
+        return ChatServiceLaunchProfileMapper.NormalizeTransport(value);
     }
 
     private static string? NormalizeLocalProviderBaseUrl(string? value, string transport, string? transportHint = null) {
-        var normalized = (value ?? string.Empty).Trim();
-        if (!string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)) {
-            return null;
-        }
-
-        if (normalized.Length == 0) {
-            var hint = (transportHint ?? string.Empty).Trim().ToLowerInvariant();
-            if (hint is "lmstudio" or "lm-studio") {
-                return DefaultLmStudioBaseUrl;
-            }
-            return DefaultOllamaBaseUrl;
-        }
-
-        return normalized;
+        return ChatServiceLaunchProfileMapper.NormalizeBaseUrl(value, transport, transportHint);
     }
 
     private static string DetectCompatibleProviderPreset(string? baseUrl) {
-        var normalized = (baseUrl ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Length == 0) {
-            return "manual";
-        }
-
-        if (normalized.Contains("127.0.0.1:1234", StringComparison.Ordinal)
-            || normalized.Contains("localhost:1234", StringComparison.Ordinal)) {
-            return "lmstudio";
-        }
-
-        if (normalized.Contains("127.0.0.1:11434", StringComparison.Ordinal)
-            || normalized.Contains("localhost:11434", StringComparison.Ordinal)) {
-            return "ollama";
-        }
-
-        if (normalized.Contains("api.openai.com", StringComparison.Ordinal)) {
-            return "openai";
-        }
-
-        if (normalized.Contains(".openai.azure.com", StringComparison.Ordinal)) {
-            return "azure-openai";
-        }
-
-        if (normalized.Contains("anthropic", StringComparison.Ordinal)
-            || normalized.Contains("claude", StringComparison.Ordinal)) {
-            return "anthropic-bridge";
-        }
-
-        if (normalized.Contains("gemini", StringComparison.Ordinal)
-            || normalized.Contains("googleapis.com", StringComparison.Ordinal)) {
-            return "gemini-bridge";
-        }
-
-        return "manual";
+        return CompatibleProviderEndpointPolicy.DetectPreset(baseUrl);
     }
 
     internal static string? ResolveChatRequestModelOverride(string? transport, string? baseUrl, string? configuredModel,
-        IReadOnlyList<ModelInfoDto>? availableModels) {
-        var normalizedTransport = NormalizeLocalProviderTransport(transport);
-        var normalizedConfiguredModel = (configuredModel ?? string.Empty).Trim();
-        var localCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-            && IsLocalCompatibleRuntimePreset(DetectCompatibleProviderPreset(baseUrl));
-        var supportsCatalogFallback =
-            string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase);
-        if (!supportsCatalogFallback) {
-            return normalizedConfiguredModel.Length == 0 ? null : normalizedConfiguredModel;
-        }
-
-        var preferredModel = ResolvePreferredCatalogModel(availableModels);
-        if (normalizedConfiguredModel.Length == 0) {
-            return preferredModel.Length == 0 ? null : preferredModel;
-        }
-
-        if (CatalogContainsModel(availableModels, normalizedConfiguredModel)) {
-            return normalizedConfiguredModel;
-        }
-
-        if (preferredModel.Length == 0) {
-            if (localCompatibleRuntime && IsLikelyCloudHostedModelName(normalizedConfiguredModel)) {
-                return null;
-            }
-            return normalizedConfiguredModel;
-        }
-
-        if (localCompatibleRuntime || IsLikelyCloudHostedModelName(normalizedConfiguredModel)) {
-            return preferredModel;
-        }
-
-        return normalizedConfiguredModel;
-    }
+        IReadOnlyList<ModelInfoDto>? availableModels) =>
+        ChatRequestModelResolver.Resolve(transport, baseUrl, configuredModel, availableModels);
 
     private static bool IsLocalCompatibleRuntimePreset(string preset) {
-        return string.Equals(preset, "lmstudio", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(preset, "ollama", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsLikelyCloudHostedModelName(string? modelName) {
-        var normalized = (modelName ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        return normalized.StartsWith("gpt-", StringComparison.Ordinal)
-               || string.Equals(normalized, "gpt5", StringComparison.Ordinal)
-               || normalized.StartsWith("chatgpt", StringComparison.Ordinal)
-               || normalized.StartsWith("o1", StringComparison.Ordinal)
-               || normalized.StartsWith("o3", StringComparison.Ordinal)
-               || normalized.StartsWith("o4", StringComparison.Ordinal);
-    }
-
-    private static bool CatalogContainsModel(IReadOnlyList<ModelInfoDto>? availableModels, string model) {
-        if (availableModels is null || availableModels.Count == 0) {
-            return false;
-        }
-
-        for (var i = 0; i < availableModels.Count; i++) {
-            var entry = availableModels[i];
-            var candidate = (entry.Model ?? string.Empty).Trim();
-            if (candidate.Length == 0) {
-                continue;
-            }
-
-            if (string.Equals(candidate, model, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string ResolvePreferredCatalogModel(IReadOnlyList<ModelInfoDto>? availableModels) {
-        if (availableModels is null || availableModels.Count == 0) {
-            return string.Empty;
-        }
-
-        var first = string.Empty;
-        for (var i = 0; i < availableModels.Count; i++) {
-            var entry = availableModels[i];
-            var model = (entry.Model ?? string.Empty).Trim();
-            if (model.Length == 0) {
-                continue;
-            }
-
-            if (first.Length == 0) {
-                first = model;
-            }
-
-            if (entry.IsDefault == true) {
-                return model;
-            }
-        }
-
-        return first;
+        return CompatibleProviderEndpointPolicy.IsLocalRuntimePreset(preset);
     }
 
     private static bool SupportsLocalProviderReasoningControls(string? transport, string? baseUrl) {
@@ -461,27 +299,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string ResolveParallelToolMode(bool? overrideParallelTools) {
-        return overrideParallelTools switch {
-            true => ParallelToolModeAllowParallel,
-            false => ParallelToolModeForceSerial,
-            _ => ParallelToolModeAuto
-        };
-    }
-
-    private static bool ResolveParallelToolsForRequest(string parallelToolMode, bool serviceDefaultParallelTools) {
-        return parallelToolMode switch {
-            ParallelToolModeAllowParallel => true,
-            ParallelToolModeForceSerial => false,
-            _ => serviceDefaultParallelTools
-        };
-    }
-
-    private static int? NormalizePositiveTimeout(int? value) {
-        if (!value.HasValue || value.Value <= 0) {
-            return null;
-        }
-
-        return value.Value;
+        return ChatRequestOptionsFactory.ResolveParallelToolMode(overrideParallelTools);
     }
 
 }

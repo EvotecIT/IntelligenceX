@@ -70,6 +70,9 @@ public sealed partial class MainWindow : Window {
 
         await RefreshServiceProfilesAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
         var profileApplied = await TryApplyServiceProfileAsync(client, setProfileNewThread, appendWarnings).ConfigureAwait(false);
+        if (profileApplied) {
+            await RefreshRuntimeMetadataAfterMutationAsync(client, appendWarnings).ConfigureAwait(false);
+        }
         await RefreshModelsAsync(client, forceModelRefresh, publishOptions: false, appendWarnings).ConfigureAwait(false);
         await RefreshBackgroundSchedulerStatusAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
@@ -94,6 +97,34 @@ public sealed partial class MainWindow : Window {
 
         if (publishOptions) {
             await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task RefreshRuntimeMetadataAfterMutationAsync(ChatServiceClient client, bool appendWarnings) {
+        await RefreshSessionPolicyFromServiceAsync(client, appendWarnings).ConfigureAwait(false);
+        await RefreshToolCatalogFromServiceAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
+    }
+
+    private async Task RefreshSessionPolicyFromServiceAsync(ChatServiceClient client, bool appendWarnings) {
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var hello = await client.RequestAsync<HelloMessage>(
+                new HelloRequest { RequestId = NextId() },
+                cts.Token).ConfigureAwait(false);
+            _sessionPolicy = hello.Policy;
+            var satisfyToolCatalogFromHelloPolicy = ShouldSatisfyStartupToolCatalogFromHelloPolicy(_sessionPolicy);
+            ApplyHelloPolicyToolCatalogPreview(
+                _sessionPolicy,
+                clearExistingToolDefinitions: satisfyToolCatalogFromHelloPolicy);
+            SeedBackgroundSchedulerSnapshot(_sessionPolicy?.CapabilitySnapshot?.BackgroundScheduler);
+            RecordStartupBootstrapCacheMode(_sessionPolicy);
+        } catch (Exception ex) {
+            _sessionPolicy = null;
+            ClearToolCatalogCache(clearCatalogMetadata: true);
+            RecordStartupBootstrapCacheMode(_sessionPolicy);
+            if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
+                AppendSystem(SystemNotice.HelloFailed(ex.Message));
+            }
         }
     }
 
@@ -403,6 +434,7 @@ public sealed partial class MainWindow : Window {
         var hasApiKeyUpdate = clearApiKeyRequested || normalizedApiKey is not null;
         var hasBasicPasswordUpdate = clearBasicAuthRequested || normalizedOpenAIBasicPassword is not null;
         var previousTransport = _localProviderTransport;
+        var previousRuntimeOverrideActive = _appState.LocalProviderRuntimeOverrideActive;
         var previousBaseUrl = _localProviderBaseUrl;
         var previousModel = _localProviderModel;
         var previousOpenAIAuthMode = _localProviderOpenAIAuthMode;
@@ -437,6 +469,7 @@ public sealed partial class MainWindow : Window {
 
         var transportChanged = !string.Equals(previousTransport, normalizedTransport, StringComparison.OrdinalIgnoreCase);
         var changed = transportChanged
+                      || !previousRuntimeOverrideActive
                       || !string.Equals(previousBaseUrl ?? string.Empty, normalizedBaseUrl ?? string.Empty, StringComparison.OrdinalIgnoreCase)
                       || !string.Equals(previousModel, normalizedModel, StringComparison.Ordinal)
                       || !string.Equals(previousOpenAIAuthMode, normalizedOpenAIAuthMode, StringComparison.Ordinal)
@@ -448,6 +481,7 @@ public sealed partial class MainWindow : Window {
                       || !string.Equals(previousTextVerbosity, normalizedTextVerbosity, StringComparison.Ordinal)
                       || previousTemperature != normalizedTemperature
                       || previousImageGenerationEnabled != request.ImageGenerationEnabled
+                      || previousImageGenerationOverrideActive != request.ImageGenerationOverrideActive
                       || !string.Equals(previousImageGenerationQuality, normalizedImageGenerationQuality, StringComparison.Ordinal)
                       || !string.Equals(previousImageGenerationSize, normalizedImageGenerationSize, StringComparison.Ordinal)
                       || !string.Equals(previousImageGenerationOutputFormat, normalizedImageGenerationOutputFormat, StringComparison.Ordinal)
@@ -458,6 +492,7 @@ public sealed partial class MainWindow : Window {
                       || hasApiKeyUpdate;
 
         _localProviderTransport = normalizedTransport;
+        _appState.LocalProviderRuntimeOverrideActive = true;
         _localProviderBaseUrl = normalizedBaseUrl;
         _localProviderModel = normalizedModel;
         _localProviderOpenAIAuthMode = normalizedOpenAIAuthMode;
@@ -487,28 +522,11 @@ public sealed partial class MainWindow : Window {
             SetInteractiveAuthenticationUnknown();
             _loginInProgress = false;
         }
-        _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
-        _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
-        _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
-        _appState.LocalProviderTransport = _localProviderTransport;
-        _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
-        _appState.LocalProviderModel = _localProviderModel;
-        SyncNativeAccountSlotsToAppState();
-        _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
-        _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
-        _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
-        _appState.LocalProviderTemperature = _localProviderTemperature;
-        _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
-        _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
-        _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
-        _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
-        _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
-        _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
-        _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
-        _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
+        CaptureLocalProviderSettingsIntoAppState();
 
         void RestorePreviousRuntimeState() {
             _localProviderTransport = previousTransport;
+            _appState.LocalProviderRuntimeOverrideActive = previousRuntimeOverrideActive;
             _localProviderBaseUrl = previousBaseUrl;
             _localProviderModel = previousModel;
             _localProviderOpenAIAuthMode = previousOpenAIAuthMode;
@@ -533,25 +551,7 @@ public sealed partial class MainWindow : Window {
             _authenticatedAccountId = previousAuthenticatedAccountId;
             _loginInProgress = previousLoginInProgress;
 
-            _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
-            _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
-            _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
-            _appState.LocalProviderTransport = _localProviderTransport;
-            _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
-            _appState.LocalProviderModel = _localProviderModel;
-            SyncNativeAccountSlotsToAppState();
-            _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
-            _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
-            _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
-            _appState.LocalProviderTemperature = _localProviderTemperature;
-            _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
-            _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
-            _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
-            _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
-            _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
-            _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
-            _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
-            _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
+            CaptureLocalProviderSettingsIntoAppState();
         }
 
         var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
@@ -582,7 +582,7 @@ public sealed partial class MainWindow : Window {
                 clearOpenAIBasicAuth: clearBasicAuthRequested,
                 clearOpenAIApiKey: clearApiKeyRequested,
                 openAIStreaming: true,
-                openAIAllowInsecureHttp: ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+                openAIAllowInsecureHttp: ChatServiceLaunchProfileMapper.ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
                 reasoningEffort: _localProviderReasoningEffort,
                 reasoningSummary: _localProviderReasoningSummary,
                 textVerbosity: _localProviderTextVerbosity,
@@ -696,6 +696,7 @@ public sealed partial class MainWindow : Window {
                     profileName: profileSaved ? _appProfileName : null,
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
+            await RefreshRuntimeMetadataAfterMutationAsync(client, appendWarnings: true).ConfigureAwait(false);
             return true;
         } catch (Exception ex) {
             AppendSystem("Live runtime apply failed (session kept running). " + ex.Message);
@@ -761,84 +762,12 @@ public sealed partial class MainWindow : Window {
     }
 
     private ChatServiceLaunchProfileOptions CaptureCurrentServiceLaunchProfileOptions() {
-        var profileName = (_appProfileName ?? string.Empty).Trim();
-        if (profileName.Length == 0) {
-            profileName = ResolveAppProfileName("default");
-        }
-
-        var model = (_localProviderModel ?? string.Empty).Trim();
-        var transport = (_localProviderTransport ?? string.Empty).Trim();
-        var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
-        var authMode = (_localProviderOpenAIAuthMode ?? string.Empty).Trim();
-        var basicUsername = (_localProviderOpenAIBasicUsername ?? string.Empty).Trim();
-        var accountId = (_localProviderOpenAIAccountId ?? string.Empty).Trim();
-        var reasoningEffort = (_localProviderReasoningEffort ?? string.Empty).Trim();
-        var reasoningSummary = (_localProviderReasoningSummary ?? string.Empty).Trim();
-        var textVerbosity = (_localProviderTextVerbosity ?? string.Empty).Trim();
-        var imageQuality = (_localProviderImageGenerationQuality ?? string.Empty).Trim();
-        var imageSize = (_localProviderImageGenerationSize ?? string.Empty).Trim();
-        var imageOutputFormat = (_localProviderImageGenerationOutputFormat ?? string.Empty).Trim();
-        var imageBackground = (_localProviderImageGenerationBackground ?? string.Empty).Trim();
-        var imageOutputDirectory = (_localProviderImageGenerationOutputDirectory ?? string.Empty).Trim();
-        var hasImageGenerationOverrides = HasImageGenerationLaunchOverrides(
-            _localProviderImageGenerationOverrideActive,
-            _localProviderImageGenerationEnabled,
-            imageQuality,
-            imageSize,
-            imageOutputFormat,
-            _localProviderImageGenerationOutputCompression,
-            imageBackground,
-            imageOutputDirectory);
-
-        return new ChatServiceLaunchProfileOptions {
-            LoadProfileName = profileName,
-            SaveProfileName = profileName,
-            Model = model.Length == 0 ? null : model,
-            OpenAITransport = transport.Length == 0 ? null : transport,
-            OpenAIBaseUrl = baseUrl.Length == 0 ? null : baseUrl,
-            OpenAIAuthMode = authMode.Length == 0 ? null : authMode,
-            OpenAIBasicUsername = basicUsername.Length == 0 ? null : basicUsername,
-            OpenAIAccountId = accountId.Length == 0 ? null : accountId,
-            OpenAIStreaming = true,
-            OpenAIAllowInsecureHttp = ShouldAllowInsecureHttp(transport, baseUrl.Length == 0 ? null : baseUrl),
-            ReasoningEffort = reasoningEffort.Length == 0 ? null : reasoningEffort,
-            ReasoningSummary = reasoningSummary.Length == 0 ? null : reasoningSummary,
-            TextVerbosity = textVerbosity.Length == 0 ? null : textVerbosity,
-            Temperature = _localProviderTemperature,
-            ImageGenerationEnabled = hasImageGenerationOverrides ? _localProviderImageGenerationEnabled : null,
-            ImageGenerationQuality = hasImageGenerationOverrides && imageQuality.Length > 0 ? imageQuality : null,
-            ClearImageGenerationQuality = hasImageGenerationOverrides && imageQuality.Length == 0,
-            ImageGenerationSize = hasImageGenerationOverrides && imageSize.Length > 0 ? imageSize : null,
-            ClearImageGenerationSize = hasImageGenerationOverrides && imageSize.Length == 0,
-            ImageGenerationOutputFormat = hasImageGenerationOverrides && imageOutputFormat.Length > 0 ? imageOutputFormat : null,
-            ClearImageGenerationOutputFormat = hasImageGenerationOverrides && imageOutputFormat.Length == 0,
-            ImageGenerationOutputCompression = hasImageGenerationOverrides ? _localProviderImageGenerationOutputCompression : null,
-            ClearImageGenerationOutputCompression = hasImageGenerationOverrides && _localProviderImageGenerationOutputCompression is null,
-            ImageGenerationBackground = hasImageGenerationOverrides && imageBackground.Length > 0 ? imageBackground : null,
-            ClearImageGenerationBackground = hasImageGenerationOverrides && imageBackground.Length == 0,
-            ImageGenerationOutputDirectory = hasImageGenerationOverrides && imageOutputDirectory.Length > 0 ? imageOutputDirectory : null,
-            ClearImageGenerationOutputDirectory = hasImageGenerationOverrides && imageOutputDirectory.Length == 0,
-            PackToggles = BuildRuntimePackTogglesFromSessionPolicy()
-        };
+        CaptureLocalProviderSettingsIntoAppState();
+        _appState.ProfileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(_appProfileName);
+        return ChatServiceLaunchProfileMapper.Create(
+            _appState,
+            BuildRuntimePackTogglesFromSessionPolicy());
     }
-
-    internal static bool HasImageGenerationLaunchOverrides(
-        bool imageGenerationOverrideActive,
-        bool imageGenerationEnabled,
-        string? imageQuality,
-        string? imageSize,
-        string? imageOutputFormat,
-        int? imageOutputCompression,
-        string? imageBackground,
-        string? imageOutputDirectory) =>
-        imageGenerationOverrideActive ||
-        imageGenerationEnabled ||
-        !string.IsNullOrWhiteSpace(imageQuality) ||
-        !string.IsNullOrWhiteSpace(imageSize) ||
-        !string.IsNullOrWhiteSpace(imageOutputFormat) ||
-        imageOutputCompression.HasValue ||
-        !string.IsNullOrWhiteSpace(imageBackground) ||
-        !string.IsNullOrWhiteSpace(imageOutputDirectory);
 
     private ChatServicePackToggle[]? BuildRuntimePackTogglesFromSessionPolicy() {
         var packs = RuntimeToolingMetadataResolver.ResolveEffectivePacks(

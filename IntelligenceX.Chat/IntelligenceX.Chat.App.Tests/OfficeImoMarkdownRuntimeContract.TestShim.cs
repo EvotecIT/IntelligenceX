@@ -49,7 +49,7 @@ internal static class OfficeImoTestAssemblyContractDiagnostics {
         return Describe(
             typeof(MarkdownRenderer).Assembly,
             "OfficeIMO.MarkdownRenderer",
-            "0.2.6",
+            "0.2.30",
             "explicit transcript presets + preprocessor pipeline");
     }
 
@@ -57,7 +57,7 @@ internal static class OfficeImoTestAssemblyContractDiagnostics {
         return Describe(
             typeof(MarkdownInputNormalizer).Assembly,
             "OfficeIMO.Markdown",
-            "0.6.6",
+            "0.6.30",
             "transcript normalization + streaming preview");
     }
 

@@ -1,5 +1,6 @@
 using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using Xunit;
@@ -381,35 +382,21 @@ public sealed class MainWindowPromptContextGatingTests {
     }
 
     /// <summary>
-    /// Ensures ordinary operational turns do not keep live profile-update scaffolding enabled.
-    /// </summary>
-    [Fact]
-    public void ShouldIncludeLiveProfileUpdates_ReturnsFalseWhenNoProfileFieldsArePresent() {
-        var result = MainWindow.ShouldIncludeLiveProfileUpdates(
-            hasUserNameUpdate: false,
-            hasAssistantPersonaUpdate: false,
-            hasThemePresetUpdate: false);
-
-        Assert.False(result);
-    }
-
-    /// <summary>
-    /// Ensures actual name/persona/theme updates still opt into the live profile-update guidance path.
+    /// Ensures every desktop shell exposes the structured profile protocol without English intent matching.
     /// </summary>
     [Theory]
-    [InlineData(true, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(false, false, true)]
-    public void ShouldIncludeLiveProfileUpdates_ReturnsTrueWhenAnyProfileFieldIsPresent(
-        bool hasUserNameUpdate,
-        bool hasAssistantPersonaUpdate,
-        bool hasThemePresetUpdate) {
-        var result = MainWindow.ShouldIncludeLiveProfileUpdates(
-            hasUserNameUpdate,
-            hasAssistantPersonaUpdate,
-            hasThemePresetUpdate);
+    [InlineData("Ustaw mój styl na zwięzłego analityka.")]
+    [InlineData("私のアシスタントのスタイルを簡潔な分析者に変更してください。")]
+    [InlineData("Cambia mi estilo a analista conciso.")]
+    public void DesktopTurnProtocol_IncludesProfileUpdatesForNonEnglishRequests(string userText) {
+        var analysis = ConversationTurnShapeClassifier.AnalyzeAssistantRuntimeIntrospectionQuestion(userText);
+        var request = DesktopChatTurnProtocol.BuildRequestText(new DesktopChatTurnPromptContext {
+            UserText = userText,
+            PersistentMemoryEnabled = true,
+            RuntimeSelfReportAnalysis = analysis
+        });
 
-        Assert.True(result);
+        Assert.Contains("ix_profile", request, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

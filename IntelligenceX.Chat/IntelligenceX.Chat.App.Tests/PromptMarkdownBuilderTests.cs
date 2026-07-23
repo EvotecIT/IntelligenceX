@@ -62,6 +62,29 @@ public sealed class PromptMarkdownBuilderTests {
     }
 
     /// <summary>
+    /// Ensures the thin service path retains the live capability handshake instead of dropping it.
+    /// </summary>
+    [Fact]
+    public void BuildThinServiceRequest_IncludesCapabilityAndRuntimeFacts() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model and tools are active?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
+
+        var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
+            userText: "What model and tools are active?",
+            capabilitySelfKnowledgeLines: ["Active Directory tools are enabled."],
+            runtimeCapabilityLines: ["Runtime transport: native, active model for this turn: gpt-test"],
+            runtimeSelfReportAnalysis: analysis);
+
+        Assert.Contains("[Capability self-knowledge]", markdown, StringComparison.Ordinal);
+        Assert.Contains("Active Directory tools are enabled.", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Runtime capability handshake]", markdown, StringComparison.Ordinal);
+        Assert.Contains("active model for this turn: gpt-test", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures weak lexical-fallback runtime self-report turns do not carry persistent-memory context on the thin path.
     /// </summary>
     [Fact]

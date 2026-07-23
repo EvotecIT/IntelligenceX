@@ -12,6 +12,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI;
@@ -26,18 +28,9 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private const int SafeDefaultMaxToolRounds = ChatRequestOptionLimits.DefaultToolRounds;
     private const int AutonomyMaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
     private const int AutonomyMaxCandidateToolsLimit = ChatRequestOptionLimits.MaxCandidateTools;
-    private const bool SafeDefaultParallelTools = true;
-    private const string ParallelToolModeAuto = "auto";
-    private const string ParallelToolModeForceSerial = "force_serial";
-    private const string ParallelToolModeAllowParallel = "allow_parallel";
-    private const int SafeDefaultTurnTimeoutSeconds = 180;
-    private const int SafeDefaultToolTimeoutSeconds = 60;
-    private static readonly StringComparer MemoryTokenComparer = StringComparer.OrdinalIgnoreCase;
-    private static readonly Regex MemoryTokenSplitRegex = new(@"[^\p{L}\p{Nd}_]+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
-
+    private const string ParallelToolModeAuto = ChatRequestOptionsFactory.ParallelToolModeAuto;
     private void ClearToolCatalogCache(bool clearCatalogMetadata) {
         if (clearCatalogMetadata) {
             _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
@@ -385,7 +378,7 @@ public sealed partial class MainWindow : Window {
                 clearOpenAIBasicAuth: false,
                 clearOpenAIApiKey: false,
                 openAIStreaming: true,
-                openAIAllowInsecureHttp: ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+                openAIAllowInsecureHttp: ChatServiceLaunchProfileMapper.ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
                 reasoningEffort: _localProviderReasoningEffort,
                 reasoningSummary: _localProviderReasoningSummary,
                 textVerbosity: _localProviderTextVerbosity,
@@ -644,32 +637,6 @@ public sealed partial class MainWindow : Window {
     private ChatRequestOptions? BuildChatRequestOptions(ConversationRuntime? conversation = null) {
         var (disabledTools, disabledPackIds) = BuildToolExposureOverridesForRequest(_toolStates, _toolPackIds);
 
-        var normalizedTransport = NormalizeLocalProviderTransport(_localProviderTransport);
-        var localPreset = DetectCompatibleProviderPreset(_localProviderBaseUrl);
-        var isLocalCompatibleRuntime = string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-                                       && IsLocalCompatibleRuntimePreset(localPreset);
-
-        // Local compatible runtimes (LM Studio/Ollama) are much more sensitive to long tool/review loops.
-        // Keep defaults conservative unless the user explicitly overrides autonomy settings.
-        // Keep local-compatible runtime conservative (8 rounds) to avoid runaway loops on weaker local transports;
-        // full/default round budget applies to service/native paths.
-        var defaultMaxToolRounds = isLocalCompatibleRuntime ? 8 : SafeDefaultMaxToolRounds;
-
-        var effectiveMaxToolRounds = _autonomyMaxToolRounds
-            ?? NormalizeAutonomyInt(_sessionPolicy?.MaxToolRounds, min: ChatRequestOptionLimits.MinToolRounds, max: AutonomyMaxToolRoundsLimit)
-            ?? defaultMaxToolRounds;
-
-        var serviceDefaultParallelTools = _sessionPolicy?.ParallelTools ?? SafeDefaultParallelTools;
-        var parallelToolMode = ResolveParallelToolMode(_autonomyParallelTools);
-        var effectiveParallelTools = ResolveParallelToolsForRequest(parallelToolMode, serviceDefaultParallelTools);
-
-        var effectiveTurnTimeoutSeconds = _autonomyTurnTimeoutSeconds
-            ?? NormalizePositiveTimeout(_sessionPolicy?.TurnTimeoutSeconds)
-            ?? SafeDefaultTurnTimeoutSeconds;
-
-        var effectiveToolTimeoutSeconds = _autonomyToolTimeoutSeconds
-            ?? NormalizePositiveTimeout(_sessionPolicy?.ToolTimeoutSeconds)
-            ?? SafeDefaultToolTimeoutSeconds;
         var configuredModel = string.IsNullOrWhiteSpace(conversation?.ModelOverride)
             ? _localProviderModel
             : conversation!.ModelOverride!;
@@ -678,38 +645,39 @@ public sealed partial class MainWindow : Window {
             _localProviderBaseUrl,
             configuredModel,
             _availableModels);
-        var effectiveWeightedToolRouting = _autonomyWeightedToolRouting ?? (isLocalCompatibleRuntime ? false : null);
-        // Keep conversation flow predictable by default; advanced review loops remain opt-in via autonomy controls.
-        var effectivePlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop ?? false;
-        var effectiveMaxReviewPasses = _autonomyMaxReviewPasses ?? 0;
-        var effectiveModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds ?? (isLocalCompatibleRuntime ? 0 : null);
-
-        return new ChatRequestOptions {
-            Model = string.IsNullOrWhiteSpace(resolvedModel) ? null : resolvedModel,
+        var imageOverridesActive = _localProviderImageGenerationOverrideActive;
+        return ChatRequestOptionsFactory.Create(new DesktopChatRequestSettings {
+            Model = resolvedModel,
             ReasoningEffort = _localProviderReasoningEffort,
             ReasoningSummary = _localProviderReasoningSummary,
             TextVerbosity = _localProviderTextVerbosity,
             Temperature = _localProviderTemperature,
-            ImageGenerationEnabled = _localProviderImageGenerationEnabled,
-            ImageGenerationQuality = _localProviderImageGenerationQuality,
-            ImageGenerationSize = _localProviderImageGenerationSize,
-            ImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat,
-            ImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression,
-            ImageGenerationBackground = _localProviderImageGenerationBackground,
-            ImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory,
-            DisabledTools = disabledTools.Length == 0 ? null : disabledTools,
-            DisabledPackIds = disabledPackIds.Length == 0 ? null : disabledPackIds,
-            MaxToolRounds = effectiveMaxToolRounds,
-            ParallelTools = effectiveParallelTools,
-            ParallelToolMode = parallelToolMode,
-            TurnTimeoutSeconds = effectiveTurnTimeoutSeconds,
-            ToolTimeoutSeconds = effectiveToolTimeoutSeconds,
-            WeightedToolRouting = effectiveWeightedToolRouting,
+            ImageGenerationEnabled = imageOverridesActive ? _localProviderImageGenerationEnabled : null,
+            ImageGenerationQuality = imageOverridesActive ? _localProviderImageGenerationQuality : null,
+            ImageGenerationSize = imageOverridesActive ? _localProviderImageGenerationSize : null,
+            ImageGenerationOutputFormat = imageOverridesActive ? _localProviderImageGenerationOutputFormat : null,
+            ImageGenerationOutputCompression = imageOverridesActive ? _localProviderImageGenerationOutputCompression : null,
+            ImageGenerationBackground = imageOverridesActive ? _localProviderImageGenerationBackground : null,
+            ImageGenerationOutputDirectory = imageOverridesActive ? _localProviderImageGenerationOutputDirectory : null,
+            DisabledTools = disabledTools,
+            DisabledPackIds = disabledPackIds,
+            MaxToolRounds = _autonomyMaxToolRounds,
+            ServiceMaxToolRounds = _sessionPolicy?.MaxToolRounds,
+            ParallelTools = _autonomyParallelTools,
+            ServiceParallelTools = _sessionPolicy?.ParallelTools ?? true,
+            TurnTimeoutSeconds = _autonomyTurnTimeoutSeconds,
+            ServiceTurnTimeoutSeconds = _sessionPolicy?.TurnTimeoutSeconds,
+            ToolTimeoutSeconds = _autonomyToolTimeoutSeconds,
+            ServiceToolTimeoutSeconds = _sessionPolicy?.ToolTimeoutSeconds,
+            WeightedToolRouting = _autonomyWeightedToolRouting,
             MaxCandidateTools = _autonomyMaxCandidateTools,
-            PlanExecuteReviewLoop = effectivePlanExecuteReviewLoop,
-            MaxReviewPasses = effectiveMaxReviewPasses,
-            ModelHeartbeatSeconds = effectiveModelHeartbeatSeconds
-        };
+            PlanExecuteReviewLoop = _autonomyPlanExecuteReviewLoop,
+            MaxReviewPasses = _autonomyMaxReviewPasses,
+            ModelHeartbeatSeconds = _autonomyModelHeartbeatSeconds,
+            IsLocalCompatibleRuntime = ChatRequestOptionsFactory.IsLocalCompatibleRuntime(
+                _localProviderTransport,
+                _localProviderBaseUrl)
+        });
     }
 
     private async Task SetAutonomyOverridesAsync(string? maxRounds, string? parallelMode, string? turnTimeout, string? toolTimeout,
@@ -842,30 +810,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private List<string> BuildMissingOnboardingFields() {
-        return BuildMissingOnboardingFields(
+        return DesktopChatProfileNormalizer.GetMissingOnboardingFields(
             GetEffectiveUserName(),
             GetEffectiveAssistantPersona(),
             GetEffectiveThemePreset(),
             _appState.OnboardingCompleted);
-    }
-
-    internal static List<string> BuildMissingOnboardingFields(
-        string? effectiveUserName,
-        string? effectiveAssistantPersona,
-        string? effectiveThemePreset,
-        bool onboardingCompleted) {
-        var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(effectiveUserName)) {
-            missing.Add("userName");
-        }
-        if (string.IsNullOrWhiteSpace(effectiveAssistantPersona)) {
-            missing.Add("assistantPersona");
-        }
-        if (string.IsNullOrWhiteSpace(effectiveThemePreset)
-            || (!onboardingCompleted && string.Equals(effectiveThemePreset, "default", StringComparison.OrdinalIgnoreCase))) {
-            missing.Add("themePreset");
-        }
-        return missing;
     }
 
     private string BuildKickoffRequestText(IReadOnlyList<string> missingFields) {

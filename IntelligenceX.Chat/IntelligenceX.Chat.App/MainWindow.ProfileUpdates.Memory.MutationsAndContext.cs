@@ -16,7 +16,6 @@ public sealed partial class MainWindow : Window {
 
     private void ResetMemoryDiagnosticsState() {
         lock (_memoryDiagnosticsSync) {
-            _memorySemanticVectorCache.Clear();
             _lastMemoryDebugSnapshot = null;
             _memoryDebugHistory.Clear();
             _memoryDebugSequence = 0;
@@ -137,7 +136,7 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        var normalizedTags = NormalizeMemoryTags(tags);
+        var normalizedTags = Conversation.DesktopChatMemorySelector.NormalizeTags(tags);
         var clampedWeight = Math.Clamp(weight, 1, 5);
         var now = DateTime.UtcNow;
 
