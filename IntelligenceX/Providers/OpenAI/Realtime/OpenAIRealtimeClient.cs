@@ -18,8 +18,8 @@ namespace IntelligenceX.OpenAI.Realtime;
 /// </summary>
 /// <remarks>
 /// When no API key is supplied, this client reuses the existing ChatGPT/Codex OAuth bundle.
-/// User-owned apps can keep that bundle in device-protected storage and call OpenAI directly;
-/// no IntelligenceX or Evotec relay is required.
+/// Applications can keep that bundle in device-protected storage and call OpenAI directly;
+/// no intermediary relay is required.
 /// </remarks>
 public sealed class OpenAIRealtimeClient : IDisposable {
     private readonly OpenAIRealtimeOptions _options;
