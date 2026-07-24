@@ -351,10 +351,3 @@ public actor IXCodexAuthSession {
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 }
-
-private extension IXJSONValue {
-    var numberValue: Double? {
-        guard case .number(let value) = self else { return nil }
-        return value
-    }
-}

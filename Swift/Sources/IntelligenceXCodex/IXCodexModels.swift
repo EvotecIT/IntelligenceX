@@ -58,6 +58,43 @@ public enum IXCodexInput: Sendable, Equatable {
     case image(data: Data, mimeType: String, detail: IXImageDetail)
 }
 
+public enum IXCodexTranscriptRole: String, Codable, Sendable, Equatable {
+    case user
+    case assistant
+}
+
+public struct IXCodexTranscriptMessage: Codable, Sendable, Equatable {
+    public let role: IXCodexTranscriptRole
+    public let text: String
+    public let images: [IXCodexImage]
+
+    public init(
+        role: IXCodexTranscriptRole,
+        text: String,
+        images: [IXCodexImage] = []
+    ) {
+        self.role = role
+        self.text = text
+        self.images = images
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case role
+        case text
+        case images
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = try container.decode(IXCodexTranscriptRole.self, forKey: .role)
+        text = try container.decode(String.self, forKey: .text)
+        images = try container.decodeIfPresent(
+            [IXCodexImage].self,
+            forKey: .images
+        ) ?? []
+    }
+}
+
 public struct IXCodexToolDefinition: Sendable, Equatable {
     public let name: String
     public let description: String
@@ -146,7 +183,7 @@ public struct IXCodexToolResult: Sendable, Equatable {
     }
 }
 
-public struct IXCodexImage: Sendable, Equatable, Identifiable {
+public struct IXCodexImage: Codable, Sendable, Equatable, Identifiable {
     public let id: String
     public let data: Data
     public let mimeType: String
@@ -160,12 +197,41 @@ public struct IXCodexImage: Sendable, Equatable, Identifiable {
     }
 }
 
+public struct IXCodexUsage: Sendable, Equatable {
+    public let inputTokens: Int
+    public let outputTokens: Int
+    public let reasoningTokens: Int
+    public let totalTokens: Int
+
+    public init(
+        inputTokens: Int,
+        outputTokens: Int,
+        reasoningTokens: Int,
+        totalTokens: Int
+    ) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.reasoningTokens = reasoningTokens
+        self.totalTokens = totalTokens
+    }
+
+    func adding(_ other: IXCodexUsage) -> IXCodexUsage {
+        IXCodexUsage(
+            inputTokens: inputTokens + other.inputTokens,
+            outputTokens: outputTokens + other.outputTokens,
+            reasoningTokens: reasoningTokens + other.reasoningTokens,
+            totalTokens: totalTokens + other.totalTokens
+        )
+    }
+}
+
 public struct IXCodexTurn: Sendable, Equatable {
     public let responseID: String?
     public let status: String
     public let text: String
     public let toolCalls: [IXCodexToolCall]
     public let images: [IXCodexImage]
+    public let usage: IXCodexUsage?
     let replayItems: [IXJSONValue]
 
     public init(
@@ -173,13 +239,15 @@ public struct IXCodexTurn: Sendable, Equatable {
         status: String = "completed",
         text: String,
         toolCalls: [IXCodexToolCall] = [],
-        images: [IXCodexImage] = []
+        images: [IXCodexImage] = [],
+        usage: IXCodexUsage? = nil
     ) {
         self.responseID = responseID
         self.status = status
         self.text = text
         self.toolCalls = toolCalls
         self.images = images
+        self.usage = usage
         self.replayItems = []
     }
 
@@ -189,6 +257,7 @@ public struct IXCodexTurn: Sendable, Equatable {
         text: String,
         toolCalls: [IXCodexToolCall],
         images: [IXCodexImage],
+        usage: IXCodexUsage?,
         replayItems: [IXJSONValue]
     ) {
         self.responseID = responseID
@@ -196,6 +265,7 @@ public struct IXCodexTurn: Sendable, Equatable {
         self.text = text
         self.toolCalls = toolCalls
         self.images = images
+        self.usage = usage
         self.replayItems = replayItems
     }
 }
@@ -203,10 +273,16 @@ public struct IXCodexTurn: Sendable, Equatable {
 public struct IXCodexRunResult: Sendable, Equatable {
     public let turn: IXCodexTurn
     public let toolCalls: [IXCodexToolCall]
+    public let usage: IXCodexUsage?
 
-    public init(turn: IXCodexTurn, toolCalls: [IXCodexToolCall]) {
+    public init(
+        turn: IXCodexTurn,
+        toolCalls: [IXCodexToolCall],
+        usage: IXCodexUsage? = nil
+    ) {
         self.turn = turn
         self.toolCalls = toolCalls
+        self.usage = usage
     }
 }
 
@@ -218,6 +294,18 @@ public struct IXCodexRunResult: Sendable, Equatable {
 /// so conversation history alone is not an exactly-once boundary.
 public protocol IXCodexToolExecuting: Sendable {
     func execute(_ call: IXCodexToolCall) async -> IXCodexToolResult
+    func execute(_ calls: [IXCodexToolCall]) async -> [IXCodexToolResult]
+}
+
+public extension IXCodexToolExecuting {
+    func execute(_ calls: [IXCodexToolCall]) async -> [IXCodexToolResult] {
+        var results: [IXCodexToolResult] = []
+        results.reserveCapacity(calls.count)
+        for call in calls {
+            results.append(await execute(call))
+        }
+        return results
+    }
 }
 
 public struct IXClosureCodexToolExecutor: IXCodexToolExecuting {

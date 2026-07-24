@@ -3,6 +3,123 @@ import Foundation
 import XCTest
 
 final class IXCodexConversationTests: XCTestCase {
+    func testRestoredTranscriptIsReplayedBeforeTheNewPrompt() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-restored",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [[
+                        "type": "output_text",
+                        "text": "Both rooms are now on",
+                    ]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        await conversation.restoreTranscript([
+            .init(
+                role: .user,
+                text: "Check the kitchen",
+                images: [
+                    .init(
+                        id: "saved-image",
+                        data: Data([0x01, 0x02]),
+                        mimeType: "image/png"
+                    ),
+                ]
+            ),
+            .init(role: .assistant, text: "The kitchen is off"),
+        ])
+
+        _ = try await conversation.run(
+            input: [.text("Turn on the kitchen and living room")],
+            instructions: "Help."
+        )
+
+        let requests = await state.requests
+        let body = try IXJSONValue.decode(
+            try XCTUnwrap(requests.first?.httpBody)
+        )
+        let input = try XCTUnwrap(body["input"]?.arrayValue)
+        XCTAssertEqual(input.count, 3)
+        XCTAssertEqual(input[0]["role"]?.stringValue, "user")
+        XCTAssertEqual(
+            input[0]["content"]?.arrayValue?.first?["text"]?.stringValue,
+            "Check the kitchen"
+        )
+        XCTAssertEqual(
+            input[0]["content"]?.arrayValue?[1]["type"]?.stringValue,
+            "input_image"
+        )
+        XCTAssertEqual(input[1]["role"]?.stringValue, "assistant")
+        XCTAssertEqual(
+            input[1]["content"]?.arrayValue?.first?["type"]?.stringValue,
+            "output_text"
+        )
+        XCTAssertEqual(
+            input[2]["content"]?.arrayValue?.first?["text"]?.stringValue,
+            "Turn on the kitchen and living room"
+        )
+    }
+
+    func testConversationAggregatesReasoningUsageAcrossToolRounds() async throws {
+        let first = sse(response: [
+            "id": "response-tool",
+            "status": "completed",
+            "usage": [
+                "input_tokens": 120,
+                "output_tokens": 30,
+                "total_tokens": 150,
+                "output_tokens_details": ["reasoning_tokens": 20],
+            ],
+            "output": [[
+                "type": "function_call",
+                "call_id": "call-usage",
+                "name": "inspect",
+                "arguments": "{}",
+            ]],
+        ])
+        let second = sse(response: [
+            "id": "response-answer",
+            "status": "completed",
+            "usage": [
+                "input_tokens": 160,
+                "output_tokens": 40,
+                "total_tokens": 200,
+                "output_tokens_details": ["reasoning_tokens": 12],
+            ],
+            "output": [[
+                "type": "message",
+                "content": [["type": "output_text", "text": "Done"]],
+            ]],
+        ])
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: first),
+            IXHTTPResponse(statusCode: 200, body: second),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        let result = try await conversation.run(
+            input: [.text("Inspect")],
+            instructions: "Use tools.",
+            tools: [.init(
+                name: "inspect",
+                description: "Inspect.",
+                parameters: .object(["type": .string("object")])
+            )],
+            executor: IXClosureCodexToolExecutor { call in
+                .success(callID: call.id, message: "Ready")
+            }
+        )
+
+        XCTAssertEqual(result.usage?.inputTokens, 280)
+        XCTAssertEqual(result.usage?.outputTokens, 70)
+        XCTAssertEqual(result.usage?.reasoningTokens, 32)
+        XCTAssertEqual(result.usage?.totalTokens, 350)
+    }
+
     func testConversationExecutesToolAndReplaysCanonicalResult() async throws {
         let first = sse(response: [
             "id": "response-1",
@@ -334,6 +451,77 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(firstContent?["text"]?.stringValue, "Hello")
     }
 
+    func testExplicitUnsupportedModelDoesNotSilentlyFallBack() async throws {
+        let state = ResponseQueue(responses: [
+            .json(400, ["error": ["message": "The model is not supported for this ChatGPT account"]]),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(
+                input: [.text("Hello")],
+                instructions: "Help.",
+                model: "chosen-model"
+            )
+            XCTFail("An explicitly selected model must not silently change")
+        } catch {
+        }
+
+        let requests = await state.requests
+        XCTAssertEqual(requests.count, 1)
+        let body = try IXJSONValue.decode(try XCTUnwrap(requests.first?.httpBody))
+        XCTAssertEqual(body["model"]?.stringValue, "chosen-model")
+    }
+
+    func testToolCallsFromOneModelTurnAreOfferedAsOneBatch() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-tools",
+                "status": "completed",
+                "output": [
+                    [
+                        "type": "function_call",
+                        "call_id": "call-one",
+                        "name": "change",
+                        "arguments": #"{"device":"one"}"#,
+                    ],
+                    [
+                        "type": "function_call",
+                        "call_id": "call-two",
+                        "name": "change",
+                        "arguments": #"{"device":"two"}"#,
+                    ],
+                ],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-answer",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Done"]],
+                ]],
+            ])),
+        ])
+        let executor = BatchRecordingToolExecutor()
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        _ = try await conversation.run(
+            input: [.text("Change both")],
+            instructions: "Use tools.",
+            tools: [
+                .init(
+                    name: "change",
+                    description: "Change a device.",
+                    parameters: .object(["type": .string("object")])
+                ),
+            ],
+            executor: executor
+        )
+
+        let batches = await executor.batches
+        XCTAssertEqual(batches, [["call-one", "call-two"]])
+    }
+
     func testImageGenerationToolIsExplicitlyAdvertised() async throws {
         let state = ResponseQueue(responses: [
             IXHTTPResponse(statusCode: 200, body: sse(response: [
@@ -552,6 +740,19 @@ actor ToolExecutionCounter {
 
     func record() {
         count += 1
+    }
+}
+
+actor BatchRecordingToolExecutor: IXCodexToolExecuting {
+    private(set) var batches: [[String]] = []
+
+    func execute(_ call: IXCodexToolCall) async -> IXCodexToolResult {
+        .success(callID: call.id, message: "Done")
+    }
+
+    func execute(_ calls: [IXCodexToolCall]) async -> [IXCodexToolResult] {
+        batches.append(calls.map(\.id))
+        return calls.map { .success(callID: $0.id, message: "Done") }
     }
 }
 

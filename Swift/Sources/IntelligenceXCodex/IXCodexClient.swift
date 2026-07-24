@@ -110,7 +110,8 @@ public actor IXCodexClient {
                 imageGeneration: imageGeneration,
                 retryUnauthorized: retryUnauthorized
             )
-        } catch let error as IXCodexError where isUnsupportedModel(error) {
+        } catch let error as IXCodexError where
+            model == nil && isUnsupportedModel(error) {
             for fallback in await fallbackModels(excluding: requestedModel) {
                 do {
                     return try await sendResponse(
@@ -394,7 +395,29 @@ public actor IXCodexClient {
             text: normalizedText,
             toolCalls: calls.uniquedByID(),
             images: images,
+            usage: response.flatMap(parseUsage),
             replayItems: responseItems
+        )
+    }
+
+    private func parseUsage(
+        _ response: [String: IXJSONValue]
+    ) -> IXCodexUsage? {
+        guard let usage = response["usage"]?.objectValue else { return nil }
+        let input = Int(usage["input_tokens"]?.numberValue ?? 0)
+        let output = Int(usage["output_tokens"]?.numberValue ?? 0)
+        let reasoning = Int(
+            usage["output_tokens_details"]?.objectValue?["reasoning_tokens"]?
+                .numberValue ?? 0
+        )
+        let total = Int(
+            usage["total_tokens"]?.numberValue ?? Double(input + output)
+        )
+        return IXCodexUsage(
+            inputTokens: input,
+            outputTokens: output,
+            reasoningTokens: reasoning,
+            totalTokens: total
         )
     }
 

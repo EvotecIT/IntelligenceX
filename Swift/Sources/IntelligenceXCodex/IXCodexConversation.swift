@@ -18,6 +18,46 @@ public actor IXCodexConversation {
         history.removeAll(keepingCapacity: true)
     }
 
+    public func restoreTranscript(
+        _ messages: [IXCodexTranscriptMessage]
+    ) {
+        generation &+= 1
+        activeRunID = nil
+        history = messages.compactMap { message in
+            let text = message.text.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            var content: [IXJSONValue] = []
+            if !text.isEmpty {
+                content.append(.object([
+                    "type": .string(
+                        message.role == .user
+                            ? "input_text"
+                            : "output_text"
+                    ),
+                    "text": .string(text),
+                ]))
+            }
+            if message.role == .user {
+                content.append(contentsOf: message.images.map { image in
+                    .object([
+                        "type": .string("input_image"),
+                        "image_url": .string(
+                            "data:\(image.mimeType);base64,\(image.data.base64EncodedString())"
+                        ),
+                        "detail": .string(IXImageDetail.high.rawValue),
+                    ])
+                })
+            }
+            guard !content.isEmpty else { return nil }
+            return .object([
+                "type": .string("message"),
+                "role": .string(message.role.rawValue),
+                "content": .array(content),
+            ])
+        }
+    }
+
     public func run(
         input: [IXCodexInput],
         instructions: String,
@@ -39,6 +79,7 @@ public actor IXCodexConversation {
         var pendingHistory = history
         pendingHistory.append(userMessage)
         var allCalls: [IXCodexToolCall] = []
+        var aggregateUsage: IXCodexUsage?
 
         for round in 0...maximumToolRounds {
             let turn = try await client.response(
@@ -53,17 +94,33 @@ public actor IXCodexConversation {
             guard generation == expectedGeneration, activeRunID == runID else {
                 throw CancellationError()
             }
+            if let usage = turn.usage {
+                aggregateUsage = aggregateUsage?.adding(usage) ?? usage
+            }
             pendingHistory.append(contentsOf: turn.replayItems.map(normalizeReplayItem))
             if turn.toolCalls.isEmpty {
                 history = pendingHistory
-                return IXCodexRunResult(turn: turn, toolCalls: allCalls)
+                return IXCodexRunResult(
+                    turn: turn,
+                    toolCalls: allCalls,
+                    usage: aggregateUsage
+                )
             }
             guard round < maximumToolRounds, let executor else {
                 throw IXCodexError.toolLoopLimitExceeded
             }
             allCalls.append(contentsOf: turn.toolCalls)
+            let results = await executor.execute(turn.toolCalls)
+            var resultsByCallID: [String: IXCodexToolResult] = [:]
+            for result in results {
+                resultsByCallID[result.callID] = result
+            }
             for call in turn.toolCalls {
-                let result = await executor.execute(call)
+                guard let result = resultsByCallID[call.id] else {
+                    throw IXCodexError.invalidResponse(
+                        "Tool executor returned no result for \(call.id)"
+                    )
+                }
                 guard generation == expectedGeneration, activeRunID == runID else {
                     throw CancellationError()
                 }
