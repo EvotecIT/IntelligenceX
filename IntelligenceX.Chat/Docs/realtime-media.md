@@ -91,9 +91,12 @@ Regular IX chat communicates directly with OpenAI's ChatGPT Responses endpoint. 
 
 The desktop chat service now carries generated-image URL/path references in `ChatResultMessage.Images`. Large base64 payloads remain in the provider/core layer instead of being copied into NDJSON frames.
 
-The ChatGPT OAuth Realtime mint path is currently accepted for ChatGPT/Codex sessions, but OpenAI's public API documentation still describes API-key authorization for this endpoint. Treat subscription-backed minting as a capability that may be account- or rollout-dependent, and keep the failure visible rather than silently switching credentials.
+ChatGPT/Codex OAuth is a user-owned subscription capability, not an API-key fallback or an unofficial
+entitlement. Voice uses its plan-specific allowance, while work started through Voice uses the user's existing
+Codex usage budget. Surface plan limits and rollout errors to the user instead of silently switching identities
+or credentials.
 
-OpenAI also does not currently document a general third-party native-app ChatGPT OAuth redirect contract.
-Before shipping the Apple sign-in adapter, validate the complete authorization, callback, token refresh,
-revocation, and reconnect flow on a physical device. This release boundary does not require or justify an
-Evotec relay.
+Because the Realtime voice capability and the Apple adapters are new, validate the complete authorization,
+callback, token refresh, revocation, reconnect, interruption, and quota-exhaustion flows on physical devices
+before release. This is client compatibility and release hardening; it does not require or justify an Evotec
+relay.
