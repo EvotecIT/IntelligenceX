@@ -2,22 +2,32 @@
 
 IntelligenceX can use an existing ChatGPT/Codex sign-in for chat, image generation, and short-lived Realtime credentials. The Realtime client connects to `gpt-realtime-2.1` over WebSocket and handles streamed text and audio events.
 
-The credential boundary matters for mobile apps:
+CasaRay, Tactra, and other user-owned apps should connect directly to OpenAI:
 
-1. A trusted backend loads or refreshes the ChatGPT OAuth session.
-2. The backend calls `CreateClientSecretAsync` and returns only the short-lived `ek_...` value, expiry, and model.
-3. The app opens the WebSocket with that credential.
-4. The app discards the credential when the connection closes or it expires.
+1. The user explicitly signs in to their own ChatGPT account.
+2. The app stores the OAuth session in device-protected storage, such as Apple Keychain.
+3. The app calls OpenAI directly to create its short-lived `ek_...` Realtime credential.
+4. The same app opens the Realtime connection directly to OpenAI.
+5. The app discards the short-lived credential when the connection closes or it expires.
 
-Do not put the persisted ChatGPT access token or refresh token in an iOS app, logs, app settings, or an app-to-service protocol.
+No Evotec account, relay, or hosted IntelligenceX service is required. Prompts, audio, images, tool results,
+and ChatGPT credentials do not pass through Evotec infrastructure. The app must never log credentials or
+store them in plain-text settings.
 
-## Mint a credential in a trusted backend
+## Connect directly from the user's device
 
 ```csharp
+using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.Realtime;
 
-using var realtime = new OpenAIRealtimeClient();
-var credential = await realtime.CreateClientSecretAsync(
+var chatGpt = new OpenAINativeOptions {
+    // CasaRay and Tactra should provide an IAuthBundleStore backed by Apple Keychain.
+    AuthStore = keychainAuthStore,
+    LoadCodexAuthJson = false
+};
+
+using var realtime = new OpenAIRealtimeClient(chatGptOptions: chatGpt);
+using var session = await realtime.ConnectAsync(
     new OpenAIRealtimeSessionOptions {
         Model = "gpt-realtime-2.1",
         OutputModalities = new[] { "audio" },
@@ -25,24 +35,6 @@ var credential = await realtime.CreateClientSecretAsync(
         ClientSecretLifetime = TimeSpan.FromMinutes(2)
     },
     cancellationToken);
-
-// Return only credential.Value, credential.ExpiresAt, and credential.Model.
-```
-
-`OpenAIRealtimeClient` uses `OpenAIRealtimeOptions.ApiKey` when one is supplied. Otherwise it uses the same ChatGPT OAuth store as the native IntelligenceX OpenAI transport.
-
-## Connect from a .NET or iOS client
-
-```csharp
-using IntelligenceX.OpenAI.Realtime;
-
-var credential = new OpenAIRealtimeClientSecret(
-    valueFromBackend,
-    expiresAtFromBackend,
-    modelFromBackend);
-
-using var realtime = new OpenAIRealtimeClient();
-using var session = await realtime.ConnectAsync(credential, cancellationToken);
 
 await session.SendTextAsync("Say hello in Polish.", cancellationToken: cancellationToken);
 
@@ -59,14 +51,49 @@ while (await session.ReceiveEventAsync(cancellationToken) is { } serverEvent) {
 }
 ```
 
+`OpenAIRealtimeClient` uses `OpenAIRealtimeOptions.ApiKey` only when the user explicitly configures one.
+Otherwise it uses the user's ChatGPT OAuth session from the configured `IAuthBundleStore`. Desktop Codex
+integrations can use the existing Codex auth store; Apple apps should use their own Keychain-backed adapter.
+
 The same session can accept microphone buffers through `AppendAudioAsync` and `CommitAudioAsync`. `SendImageAsync` sends a public URL or data URL as Realtime image input.
 
-WebSocket is a good fit for native .NET clients and server-to-server use. OpenAI recommends WebRTC for browser and mobile clients when its media handling and network recovery are a better fit. The short-lived credential flow is the same trust boundary for either transport.
+WebSocket is available for native .NET clients and lower-level integrations. OpenAI recommends WebRTC for
+mobile clients because it handles media and changing network conditions more robustly. CasaRay and Tactra
+should therefore reuse the same local ChatGPT auth and Realtime session configuration while using a thin
+Apple WebRTC transport adapter for production voice.
+
+## Apple integration boundary
+
+CasaRay and Tactra are native Swift applications, so they should not connect to the Windows-shaped
+IntelligenceX Chat service or an Evotec-hosted replacement. Their thin local adapter should use:
+
+- a user-initiated system-browser OAuth flow, using `ASWebAuthenticationSession` when the current
+  ChatGPT/Codex redirect contract supports the app callback and a local loopback callback otherwise;
+- Apple Keychain for the resulting access and refresh credentials;
+- `URLSession` for direct ChatGPT Responses, image-generation, and Realtime credential requests;
+- WebRTC for production voice, with `URLSessionWebSocketTask` available where the WebSocket transport is useful;
+- the shared IntelligenceX capability/action contracts for tool descriptions, confirmation, and result mapping.
+
+This keeps reusable AI behavior and safety contracts in IntelligenceX without putting Evotec in the network
+path. The Swift adapter owns only Apple authentication, secure storage, transport, microphone, and playback.
+
+## Privacy contract
+
+- The app communicates with OpenAI directly.
+- Evotec cannot see prompts, conversations, microphone audio, generated images, tool results, or credentials.
+- ChatGPT OAuth credentials remain in device-protected storage and can be removed by disconnecting the account.
+- IntelligenceX usage telemetry remains opt-in and is not required for ChatGPT, image, or Realtime features.
+- Integrations such as Home Assistant communicate only with destinations the user configures.
 
 ## Chat and image generation
 
-Regular IX chat continues to use the ChatGPT Responses backend. It supports text and image inputs, and the built-in image-generation tool uses OpenAI's current `gpt-image-2` capability. `EasyChatResult.Images` exposes URL, path, base64, and MIME information to library consumers.
+Regular IX chat communicates directly with OpenAI's ChatGPT Responses endpoint. It supports text and image inputs, and the built-in image-generation tool uses OpenAI's current `gpt-image-2` capability. `EasyChatResult.Images` exposes URL, path, base64, and MIME information to library consumers.
 
 The desktop chat service now carries generated-image URL/path references in `ChatResultMessage.Images`. Large base64 payloads remain in the provider/core layer instead of being copied into NDJSON frames.
 
 The ChatGPT OAuth Realtime mint path is currently accepted for ChatGPT/Codex sessions, but OpenAI's public API documentation still describes API-key authorization for this endpoint. Treat subscription-backed minting as a capability that may be account- or rollout-dependent, and keep the failure visible rather than silently switching credentials.
+
+OpenAI also does not currently document a general third-party native-app ChatGPT OAuth redirect contract.
+Before shipping the Apple sign-in adapter, validate the complete authorization, callback, token refresh,
+revocation, and reconnect flow on a physical device. This release boundary does not require or justify an
+Evotec relay.

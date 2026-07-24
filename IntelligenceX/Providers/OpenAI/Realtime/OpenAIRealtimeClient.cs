@@ -18,8 +18,8 @@ namespace IntelligenceX.OpenAI.Realtime;
 /// </summary>
 /// <remarks>
 /// When no API key is supplied, this client reuses the existing ChatGPT/Codex OAuth bundle.
-/// App and iOS clients should receive only the short-lived credential returned by
-/// <see cref="CreateClientSecretAsync"/>; persisted OAuth credentials must remain in the trusted backend.
+/// User-owned apps can keep that bundle in device-protected storage and call OpenAI directly;
+/// no IntelligenceX or Evotec relay is required.
 /// </remarks>
 public sealed class OpenAIRealtimeClient : IDisposable {
     private readonly OpenAIRealtimeOptions _options;
@@ -96,8 +96,8 @@ public sealed class OpenAIRealtimeClient : IDisposable {
     }
 
     /// <summary>
-    /// Opens a Realtime WebSocket with a short-lived credential received from a trusted backend.
-    /// This overload is suitable for app and iOS clients because it does not require persisted OAuth credentials.
+    /// Opens a Realtime WebSocket with an existing short-lived credential.
+    /// This overload is useful when another local component owns credential minting.
     /// </summary>
     public async Task<OpenAIRealtimeSession> ConnectAsync(
         OpenAIRealtimeClientSecret secret,

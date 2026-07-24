@@ -7,7 +7,7 @@ namespace IntelligenceX.OpenAI.Realtime;
 /// </summary>
 public sealed class OpenAIRealtimeClientSecret {
     /// <summary>
-    /// Initializes a short-lived credential received from a trusted backend.
+    /// Initializes a short-lived credential created for a Realtime session.
     /// </summary>
     public OpenAIRealtimeClientSecret(string value, DateTimeOffset expiresAt, string model) {
         Value = NormalizeRequired(value, nameof(value));
