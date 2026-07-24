@@ -29,7 +29,11 @@ let package = Package(
             name: "IntelligenceXCodexApple",
             dependencies: ["IntelligenceXCodex"],
             path: "Swift/Sources/IntelligenceXCodexApple",
-            linkerSettings: [.linkedFramework("Security")]
+            linkerSettings: [
+                .linkedFramework("AuthenticationServices"),
+                .linkedFramework("Network"),
+                .linkedFramework("Security"),
+            ]
         ),
         .target(
             name: "IntelligenceXRealtime",
@@ -54,6 +58,11 @@ let package = Package(
             name: "IntelligenceXRealtimeTests",
             dependencies: ["IntelligenceXCodex", "IntelligenceXRealtime"],
             path: "Swift/Tests/IntelligenceXRealtimeTests"
+        ),
+        .testTarget(
+            name: "IntelligenceXRealtimeWebRTCTests",
+            dependencies: ["IntelligenceXRealtimeWebRTC"],
+            path: "Swift/Tests/IntelligenceXRealtimeWebRTCTests"
         ),
     ]
 )

@@ -57,6 +57,15 @@ public final class IXRealtimeWebRTCSession: NSObject {
             throw IXCodexError.authenticationRequired
         }
         disconnect()
+        do {
+            try await connectPeer()
+        } catch {
+            disconnect()
+            throw error
+        }
+    }
+
+    private func connectPeer() async throws {
         onState(.connecting)
         let configuration = LKRTCConfiguration()
         configuration.sdpSemantics = .unifiedPlan
@@ -198,7 +207,10 @@ extension IXRealtimeWebRTCSession: LKRTCPeerConnectionDelegate {
         Task { @MainActor [weak self] in
             guard let self, peerConnection === self.peerConnection else { return }
             switch newState {
-            case .connected: self.onState(.connected)
+            // A connected peer does not guarantee that the event data channel is
+            // open yet. `dataChannelDidChangeState` is the readiness signal used
+            // before callers send session configuration or tool events.
+            case .connected: break
             case .disconnected, .closed: self.onState(.disconnected)
             case .failed: self.onState(.failed("WebRTC connection failed"))
             default: break

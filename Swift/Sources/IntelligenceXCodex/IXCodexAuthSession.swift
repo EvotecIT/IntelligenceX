@@ -8,6 +8,7 @@ public actor IXCodexAuthSession {
     private let credentialStore: any IXCodexCredentialStoring
     private let httpClient: any IXHTTPClient
     private let now: @Sendable () -> Date
+    private let randomBytes: @Sendable (Int) -> [UInt8]
     private var authGeneration: UInt64 = 0
     private var refreshTask: Task<IXCodexAuthBundle, Error>?
 
@@ -15,12 +16,17 @@ public actor IXCodexAuthSession {
         configuration: IXCodexConfiguration = IXCodexConfiguration(),
         credentialStore: any IXCodexCredentialStoring,
         httpClient: any IXHTTPClient = IXURLSessionHTTPClient(),
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        randomBytes: @escaping @Sendable (Int) -> [UInt8] = { count in
+            var generator = SystemRandomNumberGenerator()
+            return (0..<count).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
+        }
     ) {
         self.configuration = configuration
         self.credentialStore = credentialStore
         self.httpClient = httpClient
         self.now = now
+        self.randomBytes = randomBytes
     }
 
     public func account() async throws -> IXCodexAccount? {
@@ -32,11 +38,95 @@ public actor IXCodexAuthSession {
         try await credentialStore.load()
     }
 
+    public var browserCallbackPorts: [UInt16] {
+        configuration.browserCallbackPorts
+    }
+
     public func signOut() async throws {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
         try await credentialStore.delete()
+    }
+
+    /// Starts the normal Codex ChatGPT browser flow for a temporary localhost callback.
+    public func beginBrowserAuthorization(redirectURL: URL) throws -> IXCodexBrowserAuthorization {
+        guard redirectURL.scheme == "http",
+              redirectURL.host == "localhost",
+              redirectURL.path == "/auth/callback",
+              let port = redirectURL.port,
+              configuration.browserCallbackPorts.contains(UInt16(port)) else {
+            throw IXCodexError.invalidBrowserCallback("the redirect must use an allowed localhost callback")
+        }
+        let verifier = IXCodexPKCE.verifier(randomBytes: randomBytes(32))
+        let state = IXCodexPKCE.state(randomBytes: randomBytes(32))
+        var components = URLComponents(
+            url: configuration.authorizationURL,
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "client_id", value: configuration.clientID),
+            URLQueryItem(name: "redirect_uri", value: redirectURL.absoluteString),
+            URLQueryItem(name: "scope", value: configuration.scope),
+            URLQueryItem(name: "code_challenge", value: IXCodexPKCE.challenge(for: verifier)),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "id_token_add_organizations", value: "true"),
+            URLQueryItem(name: "codex_cli_simplified_flow", value: "true"),
+            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "originator", value: configuration.originator),
+        ]
+        guard let authorizationURL = components?.url else {
+            throw IXCodexError.invalidResponse("browser authorization URL could not be created")
+        }
+        return IXCodexBrowserAuthorization(
+            authorizationURL: authorizationURL,
+            redirectURL: redirectURL,
+            expiresAt: now().addingTimeInterval(10 * 60),
+            state: state,
+            codeVerifier: verifier,
+            expectedAuthGeneration: authGeneration
+        )
+    }
+
+    /// Validates a localhost OAuth callback and stores the resulting rotatable token bundle.
+    public func completeBrowserAuthorization(
+        _ authorization: IXCodexBrowserAuthorization,
+        callbackURL: URL
+    ) async throws -> IXCodexAuthBundle {
+        guard now() < authorization.expiresAt else {
+            throw IXCodexError.browserAuthorizationExpired
+        }
+        guard callbackURL.scheme == authorization.redirectURL.scheme,
+              callbackURL.host == authorization.redirectURL.host,
+              callbackURL.port == authorization.redirectURL.port,
+              callbackURL.path == authorization.redirectURL.path,
+              let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false) else {
+            throw IXCodexError.invalidBrowserCallback("the callback URL did not match the request")
+        }
+        let queryItems = components.queryItems ?? []
+        let states = queryItems.filter { $0.name == "state" }.compactMap(\.value)
+        guard states.count == 1, states[0] == authorization.state else {
+            throw IXCodexError.browserAuthorizationStateMismatch
+        }
+        if queryItems.contains(where: { $0.name == "error" }) {
+            throw IXCodexError.browserAuthorizationDenied
+        }
+        let codes = queryItems.filter { $0.name == "code" }.compactMap(\.value)
+        guard codes.count == 1, let code = codes.first, !code.isEmpty else {
+            throw IXCodexError.invalidBrowserCallback("the authorization code was missing")
+        }
+        return try await requestToken(
+            fields: [
+                "grant_type": "authorization_code",
+                "client_id": configuration.clientID,
+                "code": code,
+                "redirect_uri": authorization.redirectURL.absoluteString,
+                "code_verifier": authorization.codeVerifier,
+            ],
+            previous: nil,
+            expectedGeneration: authorization.expectedAuthGeneration
+        )
     }
 
     public func beginDeviceAuthorization() async throws -> IXCodexDeviceCode {
@@ -256,8 +346,8 @@ public actor IXCodexAuthSession {
     }
 
     private func formEscape(_ value: String) -> String {
-        var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "+&=")
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 }

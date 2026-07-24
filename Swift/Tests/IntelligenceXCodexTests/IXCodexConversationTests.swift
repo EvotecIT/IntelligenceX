@@ -61,7 +61,7 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(requests.count, 2)
         let secondBody = try IXJSONValue.decode(try XCTUnwrap(requests.last?.httpBody))
         let input = try XCTUnwrap(secondBody["input"]?.arrayValue)
-        XCTAssertEqual(input.last?["type"]?.stringValue, "custom_tool_call_output")
+        XCTAssertEqual(input.last?["type"]?.stringValue, "function_call_output")
         XCTAssertEqual(input.last?["call_id"]?.stringValue, "call-1")
         XCTAssertEqual(requests.first?.value(forHTTPHeaderField: "chatgpt-account-id"), "account")
         XCTAssertNil(secondBody["previous_response_id"])
@@ -81,6 +81,150 @@ final class IXCodexConversationTests: XCTestCase {
         let parsed = try IXCodexSSEParser().parse(data)
         XCTAssertEqual(parsed.text, "Hello home")
         XCTAssertEqual(parsed.completedResponse?["id"]?.stringValue, "r1")
+        XCTAssertEqual(parsed.eventTypes, [
+            "response.output_text.delta",
+            "response.output_text.delta",
+            "response.completed",
+        ])
+    }
+
+    func testSSEParserAssemblesFunctionCallFromAddedAndArgumentEvents() throws {
+        let data = Data("""
+        data: {"type":"response.output_item.added","item":{"id":"fc_1","type":"function_call","call_id":"call_1","name":"get_home_state","arguments":""}}
+
+        data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\\"scope\\":"}
+
+        data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"\\"summary\\"}"}
+
+        data: {"type":"response.function_call_arguments.done","item_id":"fc_1","name":"get_home_state","arguments":"{\\"scope\\":\\"summary\\"}"}
+
+        data: {"type":"response.output_item.done","item_id":"fc_1"}
+
+        data: {"type":"response.completed","response":{"id":"r1","status":"completed","output":[]}}
+
+        """.utf8)
+
+        let parsed = try IXCodexSSEParser().parse(data)
+
+        XCTAssertEqual(parsed.streamedItems.count, 1)
+        XCTAssertEqual(parsed.streamedItems[0]["type"]?.stringValue, "function_call")
+        XCTAssertEqual(parsed.streamedItems[0]["call_id"]?.stringValue, "call_1")
+        XCTAssertEqual(parsed.streamedItems[0]["arguments"]?.stringValue, "{\"scope\":\"summary\"}")
+    }
+
+    func testSSEParserAssemblesCompactFunctionCallWithoutNestedItem() throws {
+        let data = Data("""
+        data: {"type":"response.output_item.added","item_id":"fc_compact"}
+
+        data: {"type":"response.function_call_arguments.delta","item_id":"fc_compact","delta":"{}"}
+
+        data: {"type":"response.function_call_arguments.done","item_id":"fc_compact","name":"get_home_state","arguments":"{}"}
+
+        data: {"type":"response.output_item.done","item_id":"fc_compact"}
+
+        data: {"type":"response.completed","response":{"id":"r1","status":"completed","output":[]}}
+
+        """.utf8)
+
+        let parsed = try IXCodexSSEParser().parse(data)
+
+        XCTAssertEqual(parsed.streamedItems.count, 1)
+        XCTAssertEqual(parsed.streamedItems[0]["type"]?.stringValue, "function_call")
+        XCTAssertEqual(parsed.streamedItems[0]["call_id"]?.stringValue, "fc_compact")
+        XCTAssertEqual(parsed.streamedItems[0]["name"]?.stringValue, "get_home_state")
+        XCTAssertEqual(parsed.streamedItems[0]["arguments"]?.stringValue, "{}")
+    }
+
+    func testConversationUsesStreamedToolItemWhenCompletedOutputIsEmpty() async throws {
+        let streamedTool = Data("""
+        data: {"type":"response.output_item.added","item":{"id":"fc_stream","type":"function_call","call_id":"call_stream","name":"get_home_state","arguments":""}}
+
+        data: {"type":"response.function_call_arguments.done","item_id":"fc_stream","arguments":"{}"}
+
+        data: {"type":"response.output_item.done","item":{"id":"fc_stream","type":"function_call","call_id":"call_stream","name":"get_home_state","arguments":"{}"}}
+
+        data: {"type":"response.completed","response":{"id":"r1","status":"completed","output":[]}}
+
+        """.utf8)
+        let final = sse(response: [
+            "id": "r2",
+            "status": "completed",
+            "output": [[
+                "type": "message",
+                "content": [["type": "output_text", "text": "Healthy"]],
+            ]],
+        ])
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: streamedTool),
+            IXHTTPResponse(statusCode: 200, body: final),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let executor = IXClosureCodexToolExecutor { call in
+            XCTAssertEqual(call.name, "get_home_state")
+            return .success(callID: call.id, message: "Healthy")
+        }
+
+        let result = try await conversation.run(
+            input: [.text("Health?")],
+            instructions: "Use tools.",
+            tools: [.init(
+                name: "get_home_state",
+                description: "Inspect state.",
+                parameters: .object(["type": .string("object")])
+            )],
+            executor: executor
+        )
+
+        XCTAssertEqual(result.turn.text, "Healthy")
+        XCTAssertEqual(result.toolCalls.map(\.id), ["call_stream"])
+    }
+
+    func testConversationRejectsSilentEmptyResponseWithEventDiagnostics() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: Data("""
+            data: {"type":"response.reasoning_summary_text.delta","delta":"Checking"}
+
+            data: {"type":"response.completed","response":{"id":"r1","status":"completed","output":[]}}
+
+            data: [DONE]
+
+            """.utf8)),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(input: [.text("Hello")], instructions: "Help.")
+            XCTFail("Expected an empty-output error")
+        } catch let error as IXCodexError {
+            XCTAssertTrue(
+                error.localizedDescription.contains("response.reasoning_summary_text.delta"),
+                "Unexpected error: \(error)"
+            )
+        }
+    }
+
+    func testConversationRejectsWhitespaceOnlyAssistantOutput() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-empty",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": " \n\t "]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(input: [.text("Hello")], instructions: "Help.")
+            XCTFail("Expected a whitespace-only output error")
+        } catch let error as IXCodexError {
+            XCTAssertTrue(
+                error.localizedDescription.contains("no usable assistant output"),
+                "Unexpected error: \(error)"
+            )
+        }
     }
 
     func testToolSchemaFallsBackToNestedInputSchema() async throws {
@@ -120,6 +264,46 @@ final class IXCodexConversationTests: XCTestCase {
         let second = try IXJSONValue.decode(try XCTUnwrap(requests[1].httpBody))
         XCTAssertNotNil(first["tools"]?.arrayValue?.first?["function"]?["parameters"])
         XCTAssertNotNil(second["tools"]?.arrayValue?.first?["function"]?["input_schema"])
+    }
+
+    func testAcceptedToolSchemaIsReusedWithoutRepeatedRejectedRequests() async throws {
+        let rejected = IXHTTPResponse.json(400, [
+            "error": [
+                "message": "Unknown parameter: tools[0].function.parameters",
+                "param": "tools[0].function.parameters",
+            ],
+        ])
+        let successfulTurn = IXHTTPResponse(statusCode: 200, body: sse(response: [
+            "id": "response",
+            "status": "completed",
+            "output": [[
+                "type": "message",
+                "content": [["type": "output_text", "text": "Ready"]],
+            ]],
+        ]))
+        let state = ResponseQueue(responses: [rejected, successfulTurn, successfulTurn])
+        let client = makeClient(state)
+        let tool = IXCodexToolDefinition(
+            name: "inspect",
+            description: "Inspect state.",
+            parameters: .object(["type": .string("object")])
+        )
+
+        _ = try await IXCodexConversation(client: client).run(
+            input: [.text("First")],
+            instructions: "Use tools.",
+            tools: [tool]
+        )
+        _ = try await IXCodexConversation(client: client).run(
+            input: [.text("Second")],
+            instructions: "Use tools.",
+            tools: [tool]
+        )
+
+        let requests = await state.requests
+        XCTAssertEqual(requests.count, 3)
+        let reused = try IXJSONValue.decode(try XCTUnwrap(requests.last?.httpBody))
+        XCTAssertNotNil(reused["tools"]?.arrayValue?.first?["function"]?["input_schema"])
     }
 
     func testUnsupportedDefaultModelFallsBackWithoutLosingInput() async throws {
@@ -177,6 +361,58 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(imageTool?["quality"]?.stringValue, "high")
         XCTAssertEqual(imageTool?["output_format"]?.stringValue, "png")
         XCTAssertNil(body["tool_choice"])
+    }
+
+    func testModelCatalogIncludesSupportedReasoningEfforts() async throws {
+        let state = ResponseQueue(responses: [
+            .json(200, ["models": [[
+                "slug": "gpt-home",
+                "display_name": "GPT Home",
+                "description": "Home reasoning model",
+                "default_reasoning_level": "medium",
+                "supported_reasoning_levels": [
+                    ["effort": "low", "description": "Fast"],
+                    ["effort": "medium", "description": "Balanced"],
+                    ["effort": "high", "description": "Deep"],
+                ],
+            ]]]),
+        ])
+        let client = makeClient(state)
+
+        let models = try await client.models()
+
+        XCTAssertEqual(models.count, 1)
+        XCTAssertEqual(models[0].id, "gpt-home")
+        XCTAssertEqual(models[0].displayName, "GPT Home")
+        XCTAssertEqual(models[0].defaultReasoningEffort, .medium)
+        XCTAssertEqual(models[0].supportedReasoningEfforts.map(\.effort), [.low, .medium, .high])
+    }
+
+    func testSelectedReasoningEffortIsSentOnEveryRequest() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-reasoning",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Ready"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        _ = try await conversation.run(
+            input: [.text("Analyze")],
+            instructions: "Help.",
+            model: "gpt-home",
+            reasoningEffort: .high
+        )
+
+        let requests = await state.requests
+        let request = try XCTUnwrap(requests.first)
+        let body = try IXJSONValue.decode(try XCTUnwrap(request.httpBody))
+        XCTAssertEqual(body["model"]?.stringValue, "gpt-home")
+        XCTAssertEqual(body["reasoning"]?["effort"]?.stringValue, "high")
     }
 
     func testResetInvalidatesInFlightTurnAndDoesNotReplayItsPrompt() async throws {
@@ -284,8 +520,8 @@ final class IXCodexConversationTests: XCTestCase {
         let requests = await state.requests
         let recoveryBody = try IXJSONValue.decode(try XCTUnwrap(requests.last?.httpBody))
         let recoveryInput = try XCTUnwrap(recoveryBody["input"]?.arrayValue)
-        XCTAssertTrue(recoveryInput.contains { $0["type"]?.stringValue == "custom_tool_call" })
-        XCTAssertTrue(recoveryInput.contains { $0["type"]?.stringValue == "custom_tool_call_output" })
+        XCTAssertTrue(recoveryInput.contains { $0["type"]?.stringValue == "function_call" })
+        XCTAssertTrue(recoveryInput.contains { $0["type"]?.stringValue == "function_call_output" })
     }
 
     private func makeClient(_ state: ResponseQueue) -> IXCodexClient {

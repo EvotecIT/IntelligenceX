@@ -16,6 +16,7 @@ public actor IXCodexClient {
     private let configuration: IXCodexConfiguration
     private let authSession: IXCodexAuthSession
     private let httpClient: any IXHTTPClient
+    private var preferredToolWireFormat: ToolWireFormat?
 
     public init(
         configuration: IXCodexConfiguration = IXCodexConfiguration(),
@@ -50,11 +51,32 @@ public actor IXCodexClient {
                 let models = items.compactMap { item -> IXCodexModel? in
                     guard let object = item.objectValue,
                           let id = object["id"]?.stringValue ?? object["slug"]?.stringValue else { return nil }
+                    let reasoningItems = object["supported_reasoning_levels"]?.arrayValue
+                        ?? object["supported_reasoning_efforts"]?.arrayValue
+                        ?? object["supportedReasoningEfforts"]?.arrayValue
+                        ?? []
+                    let reasoning = reasoningItems.compactMap { value -> IXCodexReasoningOption? in
+                        let effortValue = value["effort"]?.stringValue
+                            ?? value["reasoning_effort"]?.stringValue
+                            ?? value["reasoningEffort"]?.stringValue
+                        guard let effortValue,
+                              let effort = IXCodexReasoningEffort(rawValue: effortValue) else { return nil }
+                        return IXCodexReasoningOption(
+                            effort: effort,
+                            description: value["description"]?.stringValue
+                        )
+                    }
+                    let defaultEffortValue = object["default_reasoning_level"]?.stringValue
+                        ?? object["default_reasoning_effort"]?.stringValue
+                        ?? object["defaultReasoningEffort"]?.stringValue
                     return IXCodexModel(
                         id: id,
                         displayName: object["display_name"]?.stringValue
                             ?? object["displayName"]?.stringValue
-                            ?? object["name"]?.stringValue
+                            ?? object["name"]?.stringValue,
+                        description: object["description"]?.stringValue,
+                        supportedReasoningEfforts: reasoning,
+                        defaultReasoningEffort: defaultEffortValue.flatMap(IXCodexReasoningEffort.init(rawValue:))
                     )
                 }
                 if !models.isEmpty { return models }
@@ -72,6 +94,7 @@ public actor IXCodexClient {
         instructions: String,
         tools: [IXCodexToolDefinition],
         model: String?,
+        reasoningEffort: IXCodexReasoningEffort?,
         imageGeneration: IXCodexImageGenerationOptions?,
         retryUnauthorized: Bool = true
     ) async throws -> IXCodexTurn {
@@ -83,6 +106,7 @@ public actor IXCodexClient {
                 instructions: instructions,
                 tools: tools,
                 model: requestedModel,
+                reasoningEffort: reasoningEffort ?? configuration.defaultReasoningEffort,
                 imageGeneration: imageGeneration,
                 retryUnauthorized: retryUnauthorized
             )
@@ -95,6 +119,7 @@ public actor IXCodexClient {
                         instructions: instructions,
                         tools: tools,
                         model: fallback,
+                        reasoningEffort: reasoningEffort ?? configuration.defaultReasoningEffort,
                         imageGeneration: imageGeneration,
                         retryUnauthorized: retryUnauthorized
                     )
@@ -112,6 +137,7 @@ public actor IXCodexClient {
         instructions: String,
         tools: [IXCodexToolDefinition],
         model: String,
+        reasoningEffort: IXCodexReasoningEffort,
         imageGeneration: IXCodexImageGenerationOptions?,
         retryUnauthorized: Bool
     ) async throws -> IXCodexTurn {
@@ -119,7 +145,15 @@ public actor IXCodexClient {
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse("ChatGPT account ID is missing from the OAuth token")
         }
-        let formats: [ToolWireFormat] = tools.isEmpty ? [.functionNestedParameters] : ToolWireFormat.allCases
+        let formats: [ToolWireFormat]
+        if tools.isEmpty {
+            formats = [.functionNestedParameters]
+        } else if let preferredToolWireFormat {
+            formats = [preferredToolWireFormat]
+                + ToolWireFormat.allCases.filter { $0 != preferredToolWireFormat }
+        } else {
+            formats = ToolWireFormat.allCases
+        }
         var lastError: IXCodexError?
         for format in formats {
             let body = buildRequestBody(
@@ -128,6 +162,7 @@ public actor IXCodexClient {
                 instructions: instructions,
                 tools: tools,
                 model: model,
+                reasoningEffort: reasoningEffort,
                 imageGeneration: imageGeneration,
                 toolWireFormat: format
             )
@@ -145,6 +180,7 @@ public actor IXCodexClient {
                     instructions: instructions,
                     tools: tools,
                     model: model,
+                    reasoningEffort: reasoningEffort,
                     imageGeneration: imageGeneration,
                     retryUnauthorized: false
                 )
@@ -157,6 +193,7 @@ public actor IXCodexClient {
                 }
                 throw error
             }
+            if !tools.isEmpty { preferredToolWireFormat = format }
             return try parseTurn(response.body, imageGeneration: imageGeneration)
         }
         throw lastError ?? IXCodexError.invalidResponse("Tool schema fallback exhausted")
@@ -168,6 +205,7 @@ public actor IXCodexClient {
         instructions: String,
         tools: [IXCodexToolDefinition],
         model: String,
+        reasoningEffort: IXCodexReasoningEffort,
         imageGeneration: IXCodexImageGenerationOptions?,
         toolWireFormat: ToolWireFormat
     ) -> IXJSONValue {
@@ -178,7 +216,10 @@ public actor IXCodexClient {
             "instructions": .string(instructions),
             "input": .array(input),
             "text": .object(["verbosity": .string("medium")]),
-            "reasoning": .object(["effort": .string("low"), "summary": .string("auto")]),
+            "reasoning": .object([
+                "effort": .string(reasoningEffort.rawValue),
+                "summary": .string("auto"),
+            ]),
             "include": .array([.string("reasoning.encrypted_content")]),
             "prompt_cache_key": .string(sessionID),
         ]
@@ -289,7 +330,8 @@ public actor IXCodexClient {
     ) throws -> IXCodexTurn {
         let parsed = try IXCodexSSEParser().parse(data)
         let response = parsed.completedResponse?.objectValue
-        let responseItems = response?["output"]?.arrayValue ?? parsed.streamedItems
+        let completedItems = response?["output"]?.arrayValue ?? []
+        let responseItems = completedItems.isEmpty ? parsed.streamedItems : completedItems
         var text = parsed.text
         var calls: [IXCodexToolCall] = []
         var images: [IXCodexImage] = []
@@ -321,10 +363,35 @@ public actor IXCodexClient {
                 ))
             }
         }
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty || !calls.isEmpty || !images.isEmpty else {
+            let eventTypes = Array(Set(parsed.eventTypes)).sorted().joined(separator: ", ")
+            let itemTypes = responseItems.compactMap { $0["type"]?.stringValue }
+                .uniqued()
+                .sorted()
+                .joined(separator: ", ")
+            let eventShapes = parsed.eventKeys
+                .filter { key, _ in
+                    key.contains("output_item") || key.contains("function_call_arguments")
+                }
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key)[\($0.value.joined(separator: ","))]" }
+                .joined(separator: "; ")
+            let diagnostics = [
+                eventShapes.isEmpty ? nil : "shapes: \(eventShapes)",
+                itemTypes.isEmpty ? nil : "items: \(itemTypes)",
+                eventTypes.isEmpty ? nil : "events: \(eventTypes)",
+            ].compactMap { $0 }.joined(separator: "; ")
+            throw IXCodexError.invalidResponse(
+                diagnostics.isEmpty
+                    ? "ChatGPT returned no usable assistant output."
+                    : "ChatGPT returned no usable assistant output (\(diagnostics))."
+            )
+        }
         return IXCodexTurn(
             responseID: response?["id"]?.stringValue,
             status: response?["status"]?.stringValue ?? "completed",
-            text: text,
+            text: normalizedText,
             toolCalls: calls.uniquedByID(),
             images: images,
             replayItems: responseItems
@@ -355,7 +422,12 @@ public actor IXCodexClient {
         } else {
             arguments = raw
         }
-        return IXCodexToolCall(id: id, name: name, arguments: arguments)
+        return IXCodexToolCall(
+            id: id,
+            name: name,
+            arguments: arguments,
+            kind: object["type"]?.stringValue == "custom_tool_call" ? .custom : .function
+        )
     }
 
     private func responseError(_ response: IXHTTPResponse) -> IXCodexError {
@@ -366,6 +438,13 @@ public actor IXCodexClient {
             ?? value?["message"]?.stringValue
             ?? fallback
         return .requestFailed(status: response.statusCode, message: message)
+    }
+}
+
+private extension Array where Element: Hashable {
+    func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
     }
 }
 

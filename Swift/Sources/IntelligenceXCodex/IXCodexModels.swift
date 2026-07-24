@@ -1,5 +1,52 @@
 import Foundation
 
+public struct IXCodexReasoningEffort: RawRepresentable, Codable, Sendable, Hashable, Identifiable {
+    public let rawValue: String
+
+    public init?(rawValue: String) {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !value.isEmpty else { return nil }
+        self.rawValue = value
+    }
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch rawValue {
+        case "none": "None"
+        case "minimal": "Minimal"
+        case "low": "Low"
+        case "medium": "Medium"
+        case "high": "High"
+        case "xhigh": "Extra High"
+        case "max": "Maximum"
+        case "ultra": "Ultra"
+        default: rawValue.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    public static let none = Self(rawValue: "none")!
+    public static let minimal = Self(rawValue: "minimal")!
+    public static let low = Self(rawValue: "low")!
+    public static let medium = Self(rawValue: "medium")!
+    public static let high = Self(rawValue: "high")!
+    public static let xhigh = Self(rawValue: "xhigh")!
+    public static let max = Self(rawValue: "max")!
+    public static let ultra = Self(rawValue: "ultra")!
+}
+
+public struct IXCodexReasoningOption: Sendable, Equatable, Identifiable {
+    public let effort: IXCodexReasoningEffort
+    public let description: String?
+
+    public var id: String { effort.id }
+
+    public init(effort: IXCodexReasoningEffort, description: String? = nil) {
+        self.effort = effort
+        self.description = description
+    }
+}
+
 public enum IXImageDetail: String, Codable, Sendable {
     case low
     case high
@@ -49,15 +96,27 @@ public struct IXCodexImageGenerationOptions: Sendable, Equatable {
     }
 }
 
+public enum IXCodexToolCallKind: String, Sendable, Equatable {
+    case function
+    case custom
+}
+
 public struct IXCodexToolCall: Sendable, Equatable, Identifiable {
     public let id: String
     public let name: String
     public let arguments: IXJSONValue
+    public let kind: IXCodexToolCallKind
 
-    public init(id: String, name: String, arguments: IXJSONValue) {
+    public init(
+        id: String,
+        name: String,
+        arguments: IXJSONValue,
+        kind: IXCodexToolCallKind = .function
+    ) {
         self.id = id
         self.name = name
         self.arguments = arguments
+        self.kind = kind
     }
 }
 
@@ -151,6 +210,12 @@ public struct IXCodexRunResult: Sendable, Equatable {
     }
 }
 
+/// Executes model-requested tools.
+///
+/// Implementations that can change external state must treat `call.id` as an
+/// idempotency key and replay the original result when that ID is received
+/// again. A conversation can be reset while an awaited side effect completes,
+/// so conversation history alone is not an exactly-once boundary.
 public protocol IXCodexToolExecuting: Sendable {
     func execute(_ call: IXCodexToolCall) async -> IXCodexToolResult
 }
@@ -170,9 +235,21 @@ public struct IXClosureCodexToolExecutor: IXCodexToolExecuting {
 public struct IXCodexModel: Sendable, Equatable, Identifiable {
     public let id: String
     public let displayName: String
+    public let description: String?
+    public let supportedReasoningEfforts: [IXCodexReasoningOption]
+    public let defaultReasoningEffort: IXCodexReasoningEffort?
 
-    public init(id: String, displayName: String? = nil) {
+    public init(
+        id: String,
+        displayName: String? = nil,
+        description: String? = nil,
+        supportedReasoningEfforts: [IXCodexReasoningOption] = [],
+        defaultReasoningEffort: IXCodexReasoningEffort? = nil
+    ) {
         self.id = id
         self.displayName = displayName ?? id
+        self.description = description
+        self.supportedReasoningEfforts = supportedReasoningEfforts
+        self.defaultReasoningEffort = defaultReasoningEffort
     }
 }

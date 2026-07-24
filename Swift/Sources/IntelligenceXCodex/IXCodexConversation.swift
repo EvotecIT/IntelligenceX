@@ -24,6 +24,7 @@ public actor IXCodexConversation {
         tools: [IXCodexToolDefinition] = [],
         executor: (any IXCodexToolExecuting)? = nil,
         model: String? = nil,
+        reasoningEffort: IXCodexReasoningEffort? = nil,
         imageGeneration: IXCodexImageGenerationOptions? = nil,
         maximumToolRounds: Int = 6
     ) async throws -> IXCodexRunResult {
@@ -46,6 +47,7 @@ public actor IXCodexConversation {
                 instructions: instructions,
                 tools: tools,
                 model: model,
+                reasoningEffort: reasoningEffort,
                 imageGeneration: imageGeneration
             )
             guard generation == expectedGeneration, activeRunID == runID else {
@@ -67,7 +69,11 @@ public actor IXCodexConversation {
                 }
                 let output = try String(data: result.output.encodedData(), encoding: .utf8) ?? "{}"
                 pendingHistory.append(.object([
-                    "type": .string("custom_tool_call_output"),
+                    "type": .string(
+                        call.kind == .custom
+                            ? "custom_tool_call_output"
+                            : "function_call_output"
+                    ),
                     "call_id": .string(result.callID),
                     "output": .string(output),
                 ]))
@@ -120,12 +126,21 @@ public actor IXCodexConversation {
         } else {
             arguments = (try? String(data: rawArguments.encodedData(), encoding: .utf8)) ?? "{}"
         }
-        object = [
-            "type": .string("custom_tool_call"),
-            "call_id": .string(id),
-            "name": .string(name),
-            "input": .string(arguments),
-        ]
+        if type == "custom_tool_call" {
+            object = [
+                "type": .string("custom_tool_call"),
+                "call_id": .string(id),
+                "name": .string(name),
+                "input": .string(arguments),
+            ]
+        } else {
+            object = [
+                "type": .string("function_call"),
+                "call_id": .string(id),
+                "name": .string(name),
+                "arguments": .string(arguments),
+            ]
+        }
         return .object(object)
     }
 }

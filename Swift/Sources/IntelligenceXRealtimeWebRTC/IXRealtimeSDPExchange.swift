@@ -20,12 +20,7 @@ public struct IXOpenAIRealtimeSDPExchange: IXRealtimeSDPExchanging {
 
     public func exchange(offer: String, secret: IXRealtimeClientSecret) async throws -> String {
         let boundary = "ix-\(UUID().uuidString)"
-        var body = Data()
-        body.appendUTF8("--\(boundary)\r\n")
-        body.appendUTF8("Content-Disposition: form-data; name=\"sdp\"; filename=\"offer.sdp\"\r\n")
-        body.appendUTF8("Content-Type: application/sdp\r\n\r\n")
-        body.appendUTF8(offer)
-        body.appendUTF8("\r\n--\(boundary)--\r\n")
+        let body = IXRealtimeMultipartForm.sdpBody(offer, boundary: boundary)
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -44,6 +39,20 @@ public struct IXOpenAIRealtimeSDPExchange: IXRealtimeSDPExchanging {
             throw IXCodexError.invalidResponse("Realtime SDP answer is empty")
         }
         return answer
+    }
+}
+
+enum IXRealtimeMultipartForm {
+    static func sdpBody(_ offer: String, boundary: String) -> Data {
+        var body = Data()
+        body.appendUTF8("--\(boundary)\r\n")
+        // OpenAI expects `sdp` as a form field. Adding a filename makes multipart
+        // parsers classify it as a file upload and the endpoint reports it missing.
+        body.appendUTF8("Content-Disposition: form-data; name=\"sdp\"\r\n")
+        body.appendUTF8("Content-Type: application/sdp\r\n\r\n")
+        body.appendUTF8(offer)
+        body.appendUTF8("\r\n--\(boundary)--\r\n")
+        return body
     }
 }
 
