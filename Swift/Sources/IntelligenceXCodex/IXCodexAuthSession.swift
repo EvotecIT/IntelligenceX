@@ -1,0 +1,270 @@
+import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+public actor IXCodexAuthSession {
+    private let configuration: IXCodexConfiguration
+    private let credentialStore: any IXCodexCredentialStoring
+    private let httpClient: any IXHTTPClient
+    private let now: @Sendable () -> Date
+    private var authGeneration: UInt64 = 0
+    private var refreshTask: Task<IXCodexAuthBundle, Error>?
+
+    public init(
+        configuration: IXCodexConfiguration = IXCodexConfiguration(),
+        credentialStore: any IXCodexCredentialStoring,
+        httpClient: any IXHTTPClient = IXURLSessionHTTPClient(),
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.configuration = configuration
+        self.credentialStore = credentialStore
+        self.httpClient = httpClient
+        self.now = now
+    }
+
+    public func account() async throws -> IXCodexAccount? {
+        guard let bundle = try await credentialStore.load() else { return nil }
+        return IXJWTClaims.account(bundle: bundle)
+    }
+
+    public func currentBundle() async throws -> IXCodexAuthBundle? {
+        try await credentialStore.load()
+    }
+
+    public func signOut() async throws {
+        authGeneration &+= 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        try await credentialStore.delete()
+    }
+
+    public func beginDeviceAuthorization() async throws -> IXCodexDeviceCode {
+        var request = URLRequest(url: configuration.deviceAuthorizationURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        request.httpBody = try JSONEncoder().encode(["client_id": configuration.clientID])
+
+        let response = try await httpClient.send(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw requestError(response)
+        }
+        let payload = try IXJSONValue.decode(response.body)
+        guard let object = payload.objectValue,
+              let deviceID = object["device_auth_id"]?.stringValue,
+              let userCode = object["user_code"]?.stringValue ?? object["usercode"]?.stringValue else {
+            throw IXCodexError.invalidResponse("device authorization fields are missing")
+        }
+        let intervalSeconds = object["interval"]?.stringValue.flatMap(Double.init)
+            ?? object["interval"]?.numberValue
+            ?? 5
+        return IXCodexDeviceCode(
+            deviceAuthorizationID: deviceID,
+            userCode: userCode,
+            verificationURL: configuration.deviceVerificationURL,
+            interval: .seconds(intervalSeconds),
+            expiresAt: now().addingTimeInterval(15 * 60)
+        )
+    }
+
+    public func completeDeviceAuthorization(_ code: IXCodexDeviceCode) async throws -> IXCodexAuthBundle {
+        let expectedGeneration = authGeneration
+        while now() < code.expiresAt {
+            try Task.checkCancellation()
+            let result = try await pollDeviceAuthorization(code)
+            switch result {
+            case .pending:
+                try await Task.sleep(for: code.interval)
+            case .approved(let exchange):
+                return try await exchangeAuthorizationCode(exchange, expectedGeneration: expectedGeneration)
+            }
+        }
+        throw IXCodexError.deviceAuthorizationExpired
+    }
+
+    public func validBundle(forceRefresh: Bool = false) async throws -> IXCodexAuthBundle {
+        guard let existing = try await credentialStore.load() else {
+            throw IXCodexError.authenticationRequired
+        }
+        guard forceRefresh || existing.needsRefresh(at: now()) else {
+            return existing
+        }
+        if let refreshTask {
+            return try await refreshTask.value
+        }
+        let expectedGeneration = authGeneration
+        let task = Task {
+            try await self.refresh(
+                existing,
+                retryAfterReload: true,
+                expectedGeneration: expectedGeneration
+            )
+        }
+        refreshTask = task
+        do {
+            let bundle = try await task.value
+            if authGeneration == expectedGeneration { refreshTask = nil }
+            return bundle
+        } catch {
+            if authGeneration == expectedGeneration { refreshTask = nil }
+            throw error
+        }
+    }
+
+    private enum DevicePollResult {
+        case pending
+        case approved(DeviceExchange)
+    }
+
+    private struct DeviceExchange: Decodable {
+        let authorizationCode: String
+        let codeChallenge: String
+        let codeVerifier: String
+
+        enum CodingKeys: String, CodingKey {
+            case authorizationCode = "authorization_code"
+            case codeChallenge = "code_challenge"
+            case codeVerifier = "code_verifier"
+        }
+    }
+
+    private func pollDeviceAuthorization(_ code: IXCodexDeviceCode) async throws -> DevicePollResult {
+        let url = configuration.deviceAuthorizationURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("token")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        request.httpBody = try JSONEncoder().encode([
+            "device_auth_id": code.deviceAuthorizationID,
+            "user_code": code.userCode,
+        ])
+        let response = try await httpClient.send(request)
+        if response.statusCode == 403 || response.statusCode == 404 {
+            return .pending
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            throw requestError(response)
+        }
+        return .approved(try JSONDecoder().decode(DeviceExchange.self, from: response.body))
+    }
+
+    private func exchangeAuthorizationCode(
+        _ exchange: DeviceExchange,
+        expectedGeneration: UInt64
+    ) async throws -> IXCodexAuthBundle {
+        let fields = [
+            "grant_type": "authorization_code",
+            "client_id": configuration.clientID,
+            "code": exchange.authorizationCode,
+            "redirect_uri": configuration.deviceCallbackURL.absoluteString,
+            "code_verifier": exchange.codeVerifier,
+        ]
+        return try await requestToken(
+            fields: fields,
+            previous: nil,
+            expectedGeneration: expectedGeneration
+        )
+    }
+
+    private func refresh(
+        _ existing: IXCodexAuthBundle,
+        retryAfterReload: Bool,
+        expectedGeneration: UInt64
+    ) async throws -> IXCodexAuthBundle {
+        do {
+            return try await requestToken(fields: [
+                "grant_type": "refresh_token",
+                "client_id": configuration.clientID,
+                "refresh_token": existing.refreshToken,
+            ], previous: existing, expectedGeneration: expectedGeneration)
+        } catch let IXCodexError.requestFailed(_, message)
+            where retryAfterReload && message.localizedCaseInsensitiveContains("refresh_token_reused") {
+            guard let reloaded = try await credentialStore.load(), reloaded.refreshToken != existing.refreshToken else {
+                throw IXCodexError.requestFailed(status: 401, message: message)
+            }
+            guard authGeneration == expectedGeneration, !Task.isCancelled else {
+                throw CancellationError()
+            }
+            return try await refresh(
+                reloaded,
+                retryAfterReload: false,
+                expectedGeneration: expectedGeneration
+            )
+        }
+    }
+
+    private func requestToken(
+        fields: [String: String],
+        previous: IXCodexAuthBundle?,
+        expectedGeneration: UInt64
+    ) async throws -> IXCodexAuthBundle {
+        var request = URLRequest(url: configuration.tokenURL)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        request.httpBody = formEncoded(fields).data(using: .utf8)
+        let response = try await httpClient.send(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw requestError(response)
+        }
+        let value = try IXJSONValue.decode(response.body)
+        guard let object = value.objectValue,
+              let accessToken = object["access_token"]?.stringValue else {
+            throw IXCodexError.invalidResponse("OAuth access token is missing")
+        }
+        guard let refreshToken = object["refresh_token"]?.stringValue ?? previous?.refreshToken else {
+            throw IXCodexError.invalidResponse("OAuth refresh token is missing")
+        }
+        let expiresIn = object["expires_in"]?.numberValue
+            ?? object["expires_in"]?.stringValue.flatMap(Double.init)
+        let idToken = object["id_token"]?.stringValue ?? previous?.idToken
+        let accountID = IXJWTClaims.accountID(accessToken: accessToken, idToken: idToken)
+            ?? previous?.accountID
+        let bundle = IXCodexAuthBundle(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresAt: expiresIn.map { now().addingTimeInterval($0) },
+            accountID: accountID,
+            idToken: idToken,
+            tokenType: object["token_type"]?.stringValue ?? previous?.tokenType,
+            scope: object["scope"]?.stringValue ?? previous?.scope
+        )
+        guard authGeneration == expectedGeneration, !Task.isCancelled else {
+            throw CancellationError()
+        }
+        try await credentialStore.save(bundle)
+        return bundle
+    }
+
+    private func requestError(_ response: IXHTTPResponse) -> IXCodexError {
+        let fallback = String(data: response.body, encoding: .utf8) ?? "Unknown error"
+        let parsed = (try? IXJSONValue.decode(response.body))?.objectValue
+        let message = parsed?["error_description"]?.stringValue
+            ?? parsed?["message"]?.stringValue
+            ?? parsed?["error"]?.stringValue
+            ?? fallback
+        return .requestFailed(status: response.statusCode, message: message)
+    }
+
+    private func formEncoded(_ fields: [String: String]) -> String {
+        fields.sorted { $0.key < $1.key }.map { key, value in
+            "\(formEscape(key))=\(formEscape(value))"
+        }.joined(separator: "&")
+    }
+
+    private func formEscape(_ value: String) -> String {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "+&=")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+}
+
+private extension IXJSONValue {
+    var numberValue: Double? {
+        guard case .number(let value) = self else { return nil }
+        return value
+    }
+}

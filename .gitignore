@@ -17,6 +17,9 @@
 mono_crash.*
 
 # Build results
+.build/
+.swiftpm/
+Package.resolved
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
