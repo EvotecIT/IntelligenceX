@@ -427,7 +427,6 @@ final class IXCodexConversationTests: XCTestCase {
         let state = ResponseQueue(responses: [
             .json(400, ["error": ["message": "The model is not supported for this ChatGPT account"]]),
             .json(200, ["models": []]),
-            .json(200, ["models": []]),
             IXHTTPResponse(statusCode: 200, body: sse(response: [
                 "id": "response-2",
                 "status": "completed",
@@ -554,6 +553,7 @@ final class IXCodexConversationTests: XCTestCase {
     func testModelCatalogIncludesSupportedReasoningEfforts() async throws {
         let state = ResponseQueue(responses: [
             .json(200, ["models": [[
+                "id": "gpt-home-internal",
                 "slug": "gpt-home",
                 "display_name": "GPT Home",
                 "description": "Home reasoning model",
@@ -563,6 +563,10 @@ final class IXCodexConversationTests: XCTestCase {
                     ["effort": "medium", "description": "Balanced"],
                     ["effort": "high", "description": "Deep"],
                 ],
+            ], [
+                "slug": "codex-auto-review",
+                "display_name": "Codex Auto Review",
+                "visibility": "hide",
             ]]]),
         ])
         let client = makeClient(state)
@@ -574,6 +578,31 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(models[0].displayName, "GPT Home")
         XCTAssertEqual(models[0].defaultReasoningEffort, .medium)
         XCTAssertEqual(models[0].supportedReasoningEfforts.map(\.effort), [.low, .medium, .high])
+        let requests = await state.requests
+        let request = try XCTUnwrap(requests.first)
+        let components = try XCTUnwrap(URLComponents(
+            url: try XCTUnwrap(request.url),
+            resolvingAgainstBaseURL: false
+        ))
+        XCTAssertEqual(
+            components.queryItems?.first(where: { $0.name == "client_version" })?.value,
+            "0.146.0-alpha.3.1"
+        )
+    }
+
+    func testModelCatalogPrefersRunnableSlugOverInternalID() async throws {
+        let state = ResponseQueue(responses: [
+            .json(200, ["models": [[
+                "id": "gpt-5-5-instant",
+                "slug": "gpt-5.6-sol",
+                "display_name": "GPT-5.6-Sol",
+            ]]]),
+        ])
+
+        let models = try await makeClient(state).models()
+
+        XCTAssertEqual(models.map(\.id), ["gpt-5.6-sol"])
+        XCTAssertEqual(models.map(\.displayName), ["GPT-5.6-Sol"])
     }
 
     func testSelectedReasoningEffortIsSentOnEveryRequest() async throws {

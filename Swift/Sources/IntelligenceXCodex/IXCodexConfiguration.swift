@@ -11,6 +11,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
     public var tokenURL: URL
     public var responsesURL: URL
     public var modelURLs: [URL]
+    public var modelCatalogClientVersion: String
     public var defaultModel: String
     public var defaultReasoningEffort: IXCodexReasoningEffort
     public var fallbackModels: [String]
@@ -29,8 +30,8 @@ public struct IXCodexConfiguration: Sendable, Equatable {
         responsesURL: URL = URL(string: "https://chatgpt.com/backend-api/codex/responses")!,
         modelURLs: [URL] = [
             URL(string: "https://chatgpt.com/backend-api/codex/models")!,
-            URL(string: "https://chatgpt.com/backend-api/models")!,
         ],
+        modelCatalogClientVersion: String = "0.146.0-alpha.3.1",
         defaultModel: String = "gpt-5.6-sol",
         defaultReasoningEffort: IXCodexReasoningEffort = .low,
         fallbackModels: [String] = ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex"],
@@ -47,6 +48,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
         self.tokenURL = tokenURL
         self.responsesURL = responsesURL
         self.modelURLs = modelURLs
+        self.modelCatalogClientVersion = modelCatalogClientVersion
         self.defaultModel = defaultModel
         self.defaultReasoningEffort = defaultReasoningEffort
         self.fallbackModels = fallbackModels

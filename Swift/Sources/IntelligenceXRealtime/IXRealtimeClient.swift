@@ -24,27 +24,17 @@ public actor IXRealtimeClient {
 
     public func createClientSecret(
         options: IXRealtimeSessionOptions,
+        tools: [IXCodexToolDefinition] = [],
         retryUnauthorized: Bool = true
     ) async throws -> IXRealtimeClientSecret {
         let bundle = try await authSession.validBundle()
         let seconds = max(10, min(7_200, Int(options.clientSecretLifetime.components.seconds)))
-        var session: [String: IXJSONValue] = [
-            "type": .string("realtime"),
-            "model": .string(options.model),
-            "instructions": .string(options.instructions),
-            "output_modalities": .array([.string(options.outputModality)]),
-        ]
-        if let voice = options.voice {
-            session["audio"] = .object([
-                "output": .object(["voice": .string(voice)]),
-            ])
-        }
         let body = IXJSONValue.object([
             "expires_after": .object([
                 "anchor": .string("created_at"),
                 "seconds": .number(Double(seconds)),
             ]),
-            "session": .object(session),
+            "session": .object(options.sessionConfiguration(tools: tools)),
         ])
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -58,7 +48,11 @@ public actor IXRealtimeClient {
         let response = try await httpClient.send(request)
         if response.statusCode == 401 && retryUnauthorized {
             _ = try await authSession.validBundle(forceRefresh: true)
-            return try await createClientSecret(options: options, retryUnauthorized: false)
+            return try await createClientSecret(
+                options: options,
+                tools: tools,
+                retryUnauthorized: false
+            )
         }
         guard (200..<300).contains(response.statusCode) else {
             let message = String(data: response.body, encoding: .utf8) ?? "Unknown error"

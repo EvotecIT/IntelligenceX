@@ -26,7 +26,16 @@ final class IXRealtimeClientTests: XCTestCase {
             }
         )
 
-        let secret = try await client.createClientSecret(options: .init(instructions: "Help with the home."))
+        let secret = try await client.createClientSecret(
+            options: .init(instructions: "Help with the home."),
+            tools: [
+                IXCodexToolDefinition(
+                    name: "get_home_state",
+                    description: "Read normalized home state.",
+                    parameters: .object([:])
+                ),
+            ]
+        )
 
         XCTAssertEqual(secret.value, "ek_test")
         let recordedRequest = await recorder.request
@@ -37,6 +46,46 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertEqual(body["session"]?["model"]?.stringValue, "gpt-realtime-2.1")
         let expectedModalities: [IXJSONValue] = [.string("audio")]
         XCTAssertEqual(body["session"]?["output_modalities"]?.arrayValue, expectedModalities)
+        let turnDetection = body["session"]?["audio"]?["input"]?["turn_detection"]
+        XCTAssertEqual(turnDetection?["type"]?.stringValue, "semantic_vad")
+        XCTAssertEqual(turnDetection?["eagerness"]?.stringValue, "high")
+        XCTAssertEqual(turnDetection?["create_response"]?.boolValue, true)
+        XCTAssertEqual(turnDetection?["interrupt_response"]?.boolValue, true)
+        XCTAssertEqual(
+            body["session"]?["audio"]?["input"]?["noise_reduction"]?["type"]?.stringValue,
+            "near_field"
+        )
+        XCTAssertEqual(
+            body["session"]?["audio"]?["input"]?["transcription"]?["model"]?.stringValue,
+            "gpt-4o-mini-transcribe"
+        )
+        XCTAssertEqual(
+            body["session"]?["tools"]?.arrayValue?.first?["name"]?.stringValue,
+            "get_home_state"
+        )
+    }
+
+    func testSessionUpdatePreservesLanguageAndConversationalTurnPolicy() throws {
+        let event = IXRealtimeClientEvent.sessionUpdate(
+            options: .init(
+                instructions: "Reply in the user's language.",
+                transcriptionLanguage: "pl",
+                transcriptionPrompt: "Transcribe in the spoken language without translation.",
+                semanticVADEagerness: .high,
+                createsResponsesAutomatically: true,
+                interruptsResponseOnSpeech: true
+            )
+        )
+
+        let session = try XCTUnwrap(event["session"])
+        XCTAssertEqual(
+            session["audio"]?["input"]?["transcription"]?["language"]?.stringValue,
+            "pl"
+        )
+        XCTAssertEqual(
+            session["audio"]?["input"]?["turn_detection"]?["interrupt_response"]?.boolValue,
+            true
+        )
     }
 }
 

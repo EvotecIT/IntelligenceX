@@ -38,6 +38,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private var peerConnection: LKRTCPeerConnection?
     private var dataChannel: LKRTCDataChannel?
     private var localAudioTrack: LKRTCAudioTrack?
+    private var ownsAudioSession = false
 
     public init(
         secret: IXRealtimeClientSecret,
@@ -58,6 +59,8 @@ public final class IXRealtimeWebRTCSession: NSObject {
         }
         disconnect()
         do {
+            try await IXRealtimeAppleAudioSession.activate()
+            ownsAudioSession = true
             try await connectPeer()
         } catch {
             disconnect()
@@ -122,6 +125,10 @@ public final class IXRealtimeWebRTCSession: NSObject {
         peerConnection?.delegate = nil
         peerConnection?.close()
         peerConnection = nil
+        if ownsAudioSession {
+            IXRealtimeAppleAudioSession.deactivate()
+            ownsAudioSession = false
+        }
         onState(.idle)
     }
 

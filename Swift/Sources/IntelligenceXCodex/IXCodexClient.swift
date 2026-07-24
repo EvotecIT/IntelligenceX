@@ -36,7 +36,7 @@ public actor IXCodexClient {
         var lastError: Error?
         for url in configuration.modelURLs {
             do {
-                var request = URLRequest(url: url)
+                var request = URLRequest(url: modelCatalogURL(from: url))
                 request.httpMethod = "GET"
                 applyHeaders(to: &request, bundle: bundle, accountID: accountID, sessionID: UUID().uuidString)
                 let response = try await httpClient.send(request)
@@ -49,8 +49,17 @@ public actor IXCodexClient {
                     ?? value["data"]?.arrayValue
                     ?? []
                 let models = items.compactMap { item -> IXCodexModel? in
-                    guard let object = item.objectValue,
-                          let id = object["id"]?.stringValue ?? object["slug"]?.stringValue else { return nil }
+                    guard let object = item.objectValue else { return nil }
+                    if let visibility = object["visibility"]?.stringValue,
+                       visibility != "list" {
+                        return nil
+                    }
+                    guard
+                          // Codex catalogs can expose an internal family ID and
+                          // a request-ready slug. The Responses route accepts
+                          // the slug, while the internal ID may be rejected for
+                          // ChatGPT-backed accounts.
+                          let id = object["slug"]?.stringValue ?? object["id"]?.stringValue else { return nil }
                     let reasoningItems = object["supported_reasoning_levels"]?.arrayValue
                         ?? object["supported_reasoning_efforts"]?.arrayValue
                         ?? object["supportedReasoningEfforts"]?.arrayValue
@@ -86,6 +95,22 @@ public actor IXCodexClient {
         }
         if let lastError { throw lastError }
         return [IXCodexModel(id: configuration.defaultModel)]
+    }
+
+    private func modelCatalogURL(from url: URL) -> URL {
+        guard url.path.hasSuffix("/backend-api/codex/models"),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        var queryItems = components.queryItems ?? []
+        if !queryItems.contains(where: { $0.name == "client_version" }) {
+            queryItems.append(URLQueryItem(
+                name: "client_version",
+                value: configuration.modelCatalogClientVersion
+            ))
+        }
+        components.queryItems = queryItems
+        return components.url ?? url
     }
 
     func response(
