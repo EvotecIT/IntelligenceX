@@ -33,6 +33,28 @@ internal static class JwtDecoder {
         return NormalizeOptional(authObj?.GetString("chatgpt_plan_type"));
     }
 
+    public static DateTimeOffset? TryGetExpiry(string token) {
+        var payload = TryGetPayloadObject(token);
+        if (payload is null) {
+            return null;
+        }
+
+        var expiry = payload.GetInt64("exp");
+        if (!expiry.HasValue) {
+            var expiryText = payload.GetString("exp");
+            if (!long.TryParse(expiryText, out var parsed)) {
+                return null;
+            }
+            expiry = parsed;
+        }
+
+        try {
+            return DateTimeOffset.FromUnixTimeSeconds(expiry.Value);
+        } catch (ArgumentOutOfRangeException) {
+            return null;
+        }
+    }
+
     private static JsonObject? TryGetOpenAiAuthObject(string token) {
         var obj = TryGetPayloadObject(token);
         if (obj is null || !obj.TryGetValue(OpenAICodexDefaults.AuthClaim, out var authNode)) {

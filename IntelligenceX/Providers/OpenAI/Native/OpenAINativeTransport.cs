@@ -176,9 +176,21 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("responses.create", rpcParameters));
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
-            var turn = await SendWithModelFallbackAsync(body, requestMessages, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
-                    resolvedModel, turnId, options, cancellationToken)
-                .ConfigureAwait(false);
+            TurnInfo turn;
+            try {
+                turn = await SendWithModelFallbackAsync(body, requestMessages, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
+                        resolvedModel, turnId, options, cancellationToken)
+                    .ConfigureAwait(false);
+            } catch (OpenAIAuthenticationRequiredException) when (!string.IsNullOrWhiteSpace(bundle.RefreshToken)) {
+                bundle = await _auth.RefreshAsync(bundle, cancellationToken).ConfigureAwait(false);
+                accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
+                if (string.IsNullOrWhiteSpace(accountId)) {
+                    throw new InvalidOperationException("Failed to extract account id from refreshed access token.");
+                }
+                turn = await SendWithModelFallbackAsync(body, requestMessages, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
+                        resolvedModel, turnId, options, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, true));
             return turn;
         } catch (Exception ex) {
@@ -269,10 +281,11 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         string? status = null;
         JsonObject? completedResponse = null;
         string? streamError = null;
+        var streamedOutputs = new List<JsonObject>();
 
         using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
         await OpenAINativeSseParser.ParseAsync(stream, evt => {
-            HandleStreamEvent(evt, delta, ref status, ref completedResponse, ref streamError);
+            HandleStreamEvent(evt, delta, streamedOutputs, ref status, ref completedResponse, ref streamError);
             return Task.CompletedTask;
         }, cancellationToken).ConfigureAwait(false);
 
@@ -283,6 +296,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         var outputs = completedResponse is not null
             ? ParseOutputsFromResponse(completedResponse, state.SessionId, options)
             : BuildOutputsFromDelta(delta.ToString());
+        AppendMissingStreamedImageOutputs(outputs, streamedOutputs, state.SessionId, options);
         if (outputs.Count == 0 && delta.Length > 0) {
             outputs.Add(new JsonObject().Add("type", "text").Add("text", delta.ToString()));
         }
@@ -431,7 +445,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         throw new InvalidOperationException("Tool schema fallback exhausted without capturing an exception.");
     }
 
-    private void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,
+    private void HandleStreamEvent(JsonObject evt, StringBuilder delta, List<JsonObject> streamedOutputs,
+        ref string? status, ref JsonObject? completedResponse,
         ref string? streamError) {
         var type = evt.GetString("type");
         if (string.IsNullOrWhiteSpace(type)) {
@@ -452,6 +467,14 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             if (!string.IsNullOrWhiteSpace(piece)) {
                 delta.Append(piece);
                 DeltaReceived?.Invoke(this, piece!);
+            }
+            return;
+        }
+
+        if (string.Equals(type, "response.output_item.done", StringComparison.Ordinal)) {
+            var item = evt.GetObject("item");
+            if (item is not null) {
+                streamedOutputs.Add(item);
             }
             return;
         }

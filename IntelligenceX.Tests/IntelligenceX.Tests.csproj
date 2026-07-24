@@ -22,6 +22,10 @@
         <ProjectReference Include="..\IntelligenceX.Storage.SQLite\IntelligenceX.Storage.SQLite.csproj" />
     </ItemGroup>
 
+    <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+        <Reference Include="System.Net.Http" />
+    </ItemGroup>
+
     <PropertyGroup Condition=" '$(TargetFramework)' != 'net472' ">
         <DefineConstants>$(DefineConstants);INTELLIGENCEX_REVIEWER</DefineConstants>
     </PropertyGroup>

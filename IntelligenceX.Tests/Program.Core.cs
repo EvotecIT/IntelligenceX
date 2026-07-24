@@ -573,6 +573,37 @@ internal static partial class Program {
         AssertEqual("acct-123", result!.NativeOptions.AuthAccountId, "EasySession auth account id");
     }
 
+    private static void TestEasySessionBuildClientOptionsCarriesNativeMediaAndAuthSettings() {
+        var options = new EasySessionOptions();
+        options.NativeOptions.ChatGptApiBaseUrl = "https://chatgpt.example.test/backend-api";
+        options.NativeOptions.LoadCodexAuthJson = false;
+        options.NativeOptions.PreferCurrentCodexSession = false;
+        options.NativeOptions.EnableToolSchemaFallback = false;
+        options.NativeOptions.ImageGeneration = new ImageGenerationOptions {
+            Enabled = true,
+            Quality = "low",
+            Size = "1024x1024",
+            OutputFormat = "png",
+            OutputDirectory = @"C:\generated",
+            SaveOutputImages = true
+        };
+
+        var method = typeof(EasySession).GetMethod("BuildClientOptions", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "EasySession.BuildClientOptions native media method");
+        var result = method!.Invoke(null, new object?[] { options }) as IntelligenceXClientOptions;
+        AssertNotNull(result, "EasySession native media client options");
+        AssertEqual("https://chatgpt.example.test/backend-api", result!.NativeOptions.ChatGptApiBaseUrl,
+            "EasySession ChatGPT API base URL");
+        AssertEqual(false, result.NativeOptions.LoadCodexAuthJson, "EasySession Codex auth loading");
+        AssertEqual(false, result.NativeOptions.PreferCurrentCodexSession, "EasySession current Codex session preference");
+        AssertEqual(false, result.NativeOptions.EnableToolSchemaFallback, "EasySession tool schema fallback");
+        AssertEqual(true, result.NativeOptions.ImageGeneration.Enabled, "EasySession image generation enabled");
+        AssertEqual("low", result.NativeOptions.ImageGeneration.Quality, "EasySession image generation quality");
+        AssertEqual(@"C:\generated", result.NativeOptions.ImageGeneration.OutputDirectory,
+            "EasySession image generation output directory");
+        AssertEqual(true, result.NativeOptions.ImageGeneration.SaveOutputImages, "EasySession image generation save outputs");
+    }
+
     private static void TestEasySessionBuildClientOptionsCarriesUsageTelemetrySettings() {
         var options = new EasySessionOptions {
             EnableUsageTelemetry = true,

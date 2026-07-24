@@ -72,6 +72,42 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         return outputs;
     }
 
+    private void AppendMissingStreamedImageOutputs(
+        List<JsonObject> outputs,
+        IReadOnlyList<JsonObject> streamedOutputs,
+        string sessionId,
+        ChatOptions options) {
+        if (streamedOutputs.Count == 0 || ContainsImageOutput(outputs)) {
+            return;
+        }
+
+        var streamedArray = new JsonArray();
+        foreach (var item in streamedOutputs) {
+            if (string.Equals(item.GetString("type"), "image_generation_call", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(item.GetString("type"), "output_image", StringComparison.OrdinalIgnoreCase)) {
+                streamedArray.Add(item);
+            }
+        }
+        if (streamedArray.Count == 0) {
+            return;
+        }
+
+        var streamedResponse = new JsonObject().Add("output", streamedArray);
+        var parsed = ParseOutputsFromResponse(streamedResponse, sessionId, options);
+        foreach (var output in parsed) {
+            outputs.Add(output);
+        }
+    }
+
+    private static bool ContainsImageOutput(IReadOnlyList<JsonObject> outputs) {
+        foreach (var output in outputs) {
+            if (string.Equals(output.GetString("type"), "image", StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static void ParseContentParts(JsonArray content, List<JsonObject> outputs) {
         foreach (var partValue in content) {
             var part = partValue.AsObject();

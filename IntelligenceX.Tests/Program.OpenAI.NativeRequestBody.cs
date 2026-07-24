@@ -267,6 +267,58 @@ internal static partial class Program {
         }
     }
 
+    private static void TestNativeImageGenerationPreservesStreamedOutputItems() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+        var outputRoot = Path.Combine(Path.GetTempPath(), "ix-imagegen-stream-" + Guid.NewGuid().ToString("N"));
+        try {
+            var options = Activator.CreateInstance(optionsType);
+            AssertNotNull(options, "OpenAINativeOptions");
+            var transport = Activator.CreateInstance(transportType, options);
+            AssertNotNull(transport, "OpenAINativeTransport");
+
+            var appendMethod = transportType.GetMethod(
+                "AppendMissingStreamedImageOutputs",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            AssertNotNull(appendMethod, "AppendMissingStreamedImageOutputs method");
+
+            var outputs = new List<JsonObject> {
+                new JsonObject().Add("type", "text").Add("text", "Done.")
+            };
+            var streamedOutputs = new List<JsonObject> {
+                new JsonObject()
+                    .Add("type", "image_generation_call")
+                    .Add("id", "ig_stream")
+                    .Add("status", "completed")
+                    .Add("result", "Zm9v")
+            };
+
+            appendMethod!.Invoke(transport, new object?[] {
+                outputs,
+                streamedOutputs,
+                "session-stream",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            });
+
+            AssertEqual(3, outputs.Count, "streamed image merged output count");
+            AssertEqual("image", outputs[1].GetString("type"), "streamed image output type");
+            AssertEqual("Zm9v", outputs[1].GetString("base64"), "streamed image base64");
+            AssertEqual(true, File.Exists(outputs[1].GetString("path")!), "streamed image saved");
+            AssertEqual("text", outputs[2].GetString("type"), "streamed image fallback text");
+        } finally {
+            if (Directory.Exists(outputRoot)) {
+                Directory.Delete(outputRoot, recursive: true);
+            }
+        }
+    }
+
     private static void TestNativeRequestBodyNormalizesToolReplayInputItems() {
         var ix = typeof(IntelligenceXClient).Assembly;
         var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;

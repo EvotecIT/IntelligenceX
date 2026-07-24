@@ -618,9 +618,11 @@ internal sealed partial class ChatServiceSession {
                                         && IsLoopbackEndpoint(_options.OpenAIBaseUrl);
         var supportsSyntheticHostReplayItems = SupportsSyntheticHostReplayItems(_options.OpenAITransport);
         var replayOutputCompactionBudget = ResolveReplayOutputCompactionBudgetForTurn(resolvedModel);
+        var capturedImages = new List<ChatImageOutputDto>();
 
         var mutatingToolHints = BuildMutatingToolHintsByName(toolDefs);
         for (var round = 0; round < maxRounds; round++) {
+            CaptureChatImageOutputs(capturedImages, turn);
             var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
                 var rawAssistantDraft = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
@@ -667,7 +669,8 @@ internal sealed partial class ChatServiceSession {
                     proactiveSkipMutatingCount: proactiveSkipMutatingCount,
                     proactiveSkipReadOnlyCount: proactiveSkipReadOnlyCount,
                     proactiveSkipUnknownCount: proactiveSkipUnknownCount,
-                    interimResultSent: interimResultSent);
+                    interimResultSent: interimResultSent,
+                    capturedImages: capturedImages);
 
                 var noExtractedRecoveryOutcome = await HandleNoExtractedToolCallsRecoveryAsync(
                         client: client,

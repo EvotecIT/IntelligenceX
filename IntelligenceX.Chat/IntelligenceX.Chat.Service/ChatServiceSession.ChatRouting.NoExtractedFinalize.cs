@@ -677,6 +677,7 @@ internal sealed partial class ChatServiceSession {
                     autonomyCounters: autonomyCounters,
                     completed: true);
 
+                CaptureChatImageOutputs(state.CapturedImages, turn);
                 var result = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -685,6 +686,7 @@ internal sealed partial class ChatServiceSession {
                     Tools = toolCalls.Count == 0 && toolOutputs.Count == 0
                         ? null
                         : new ToolRunDto { Calls = toolCalls.ToArray(), Outputs = toolOutputs.ToArray() },
+                    Images = SnapshotChatImageOutputs(state.CapturedImages),
                     TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId),
                     AutonomyTelemetry = autonomyTelemetry
                 };
@@ -705,6 +707,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         void PersistState() {
+            CaptureChatImageOutputs(state.CapturedImages, turn);
             state.Turn = turn;
             state.AssistantDraft = text;
             state.ControlPayloadDetected = controlPayloadDetected;
