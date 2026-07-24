@@ -109,6 +109,16 @@ public sealed class OpenAINativeOptions {
     /// </summary>
     public bool PersistCodexAuthJson { get; set; } = true;
     /// <summary>
+    /// Whether to use the current Codex auth.json session as a fallback when the configured auth store
+    /// has no credential, or as a fresher credential for the same ChatGPT account.
+    /// </summary>
+    public bool LoadCodexAuthJson { get; set; } = true;
+    /// <summary>
+    /// Whether the current Codex session should take precedence over a stored credential when no
+    /// <see cref="AuthAccountId"/> is configured. Enable this only for user-facing ChatGPT session flows.
+    /// </summary>
+    public bool PreferCurrentCodexSession { get; set; }
+    /// <summary>
     /// Override path to the Codex home directory.
     /// </summary>
     public string? CodexHome { get; set; }

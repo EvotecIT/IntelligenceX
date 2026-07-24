@@ -166,6 +166,7 @@ public sealed class EasySession : IDisposable
             chatOptions.ToolChoice = options.ToolChoice;
             chatOptions.ParallelToolCalls = options.ParallelToolCalls;
             chatOptions.PreviousResponseId = options.PreviousResponseId;
+            chatOptions.ImageGeneration = options.ImageGeneration?.Clone();
             if (options.RequireWorkspaceForFileAccess.HasValue) {
                 chatOptions.RequireWorkspaceForFileAccess = options.RequireWorkspaceForFileAccess.Value;
             }
@@ -244,15 +245,20 @@ public sealed class EasySession : IDisposable
         clientOptions.NativeOptions.Originator = options.NativeOptions.Originator;
         clientOptions.NativeOptions.ResponsesUrl = options.NativeOptions.ResponsesUrl;
         clientOptions.NativeOptions.ModelUrls = options.NativeOptions.ModelUrls;
+        clientOptions.NativeOptions.ChatGptApiBaseUrl = options.NativeOptions.ChatGptApiBaseUrl;
         clientOptions.NativeOptions.ClientVersion = options.NativeOptions.ClientVersion;
         clientOptions.NativeOptions.Instructions = options.NativeOptions.Instructions;
         clientOptions.NativeOptions.ReasoningEffort = options.NativeOptions.ReasoningEffort;
         clientOptions.NativeOptions.ReasoningSummary = options.NativeOptions.ReasoningSummary;
         clientOptions.NativeOptions.TextVerbosity = options.NativeOptions.TextVerbosity;
         clientOptions.NativeOptions.IncludeReasoningEncryptedContent = options.NativeOptions.IncludeReasoningEncryptedContent;
+        clientOptions.NativeOptions.EnableToolSchemaFallback = options.NativeOptions.EnableToolSchemaFallback;
+        clientOptions.NativeOptions.ImageGeneration = options.NativeOptions.ImageGeneration.Clone();
         clientOptions.NativeOptions.OAuthTimeout = options.NativeOptions.OAuthTimeout;
         clientOptions.NativeOptions.UseLocalListener = options.NativeOptions.UseLocalListener;
         clientOptions.NativeOptions.PersistCodexAuthJson = options.NativeOptions.PersistCodexAuthJson;
+        clientOptions.NativeOptions.LoadCodexAuthJson = options.NativeOptions.LoadCodexAuthJson;
+        clientOptions.NativeOptions.PreferCurrentCodexSession = options.NativeOptions.PreferCurrentCodexSession;
         clientOptions.NativeOptions.CodexHome = options.NativeOptions.CodexHome;
         clientOptions.NativeOptions.UserAgent = options.NativeOptions.UserAgent;
         clientOptions.NativeOptions.OAuth.AuthorizeUrl = options.NativeOptions.OAuth.AuthorizeUrl;

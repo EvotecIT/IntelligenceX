@@ -37,7 +37,7 @@ public sealed class EasySessionOptions {
     /// <summary>
     /// Native transport options.
     /// </summary>
-    public OpenAINativeOptions NativeOptions { get; } = new();
+    public OpenAINativeOptions NativeOptions { get; } = CreateDefaultNativeOptions();
     /// <summary>
     /// OpenAI-compatible HTTP transport options (for example local providers such as Ollama/LM Studio).
     /// </summary>
@@ -222,6 +222,12 @@ public sealed class EasySessionOptions {
         return new CopilotClientOptions {
             AutoInstallCli = true,
             AutoInstallMethod = CopilotCliInstallMethod.Auto
+        };
+    }
+
+    private static OpenAINativeOptions CreateDefaultNativeOptions() {
+        return new OpenAINativeOptions {
+            PreferCurrentCodexSession = true
         };
     }
 }

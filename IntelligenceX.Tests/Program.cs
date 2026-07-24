@@ -26,6 +26,7 @@ internal static partial class Program {
         failed += Run("ChatGPT usage cache trailing separator override path",
             TestChatGptUsageCacheTrailingSeparatorOverridePath);
         failed += Run("EasySession forwards auth account id", TestEasySessionBuildClientOptionsCarriesAuthAccountId);
+        failed += Run("EasySession forwards native media and auth settings", TestEasySessionBuildClientOptionsCarriesNativeMediaAndAuthSettings);
         failed += Run("EasySession forwards usage telemetry settings", TestEasySessionBuildClientOptionsCarriesUsageTelemetrySettings);
         failed += Run("Usage telemetry stable source root id normalizes paths", TestUsageTelemetryStableSourceRootIdNormalizesPaths);
         failed += Run("Usage telemetry dedupe prefers account session turn", TestUsageTelemetryDedupePrefersAccountSessionTurn);
@@ -469,6 +470,14 @@ internal static partial class Program {
         failed += Run("Native request body normalizes tools/tool_choice", TestNativeRequestBodyNormalizesToolsAndToolChoice);
         failed += Run("Native request body includes image generation tool", TestNativeRequestBodyIncludesImageGenerationTool);
         failed += Run("Native image generation output saves base64 payload", TestNativeImageGenerationOutputSavesBase64Payload);
+        failed += Run("Native image generation preserves streamed output items", TestNativeImageGenerationPreservesStreamedOutputItems);
+        failed += Run("Realtime client secret uses ChatGPT OAuth", TestRealtimeClientSecretUsesChatGptOAuth);
+        failed += Run("Codex auth store reads current OAuth bundle", TestCodexAuthStoreReadsCurrentOAuthBundle);
+        failed += Run("Realtime session payload carries voice contract", TestRealtimeSessionPayloadCarriesVoiceContract);
+        failed += Run("Realtime session validates service contract", TestRealtimeSessionValidatesServiceContract);
+        failed += Run("Realtime events project text audio and errors", TestRealtimeEventsProjectTextAudioAndErrors);
+        failed += Run("Stored ChatGPT auth takes precedence over Codex fallback", TestStoredChatGptAuthTakesPrecedenceOverCodexFallback);
+        failed += Run("ChatGPT OAuth refresh is single-flight for shared bundles", TestChatGptOAuthRefreshIsSingleFlightForSharedBundles);
         failed += Run("Treatment prompt builder includes artifacts and contract", TestTreatmentPromptBuilderIncludesArtifactsAndContract);
         failed += Run("Treatment prompt builder rejects empty request", TestTreatmentPromptBuilderRejectsEmptyRequest);
         failed += Run("Treatment prompt builder inlines local text artifacts", TestTreatmentPromptBuilderInlinesLocalTextArtifacts);

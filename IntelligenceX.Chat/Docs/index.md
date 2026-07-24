@@ -9,6 +9,7 @@ This repo is the Windows tray chat UI for the IntelligenceX ecosystem.
 - `Docs/markdown-contract.md` - canonical markdown ownership and pipeline contract
 - `Docs/markdown-package-readiness.md` - OfficeIMO markdown package adoption checklist
 - `Docs/service-protocol.md` - NDJSON contract for `IntelligenceX.Chat.Service`
+- `Docs/realtime-media.md` - ChatGPT subscription auth, Realtime voice/WebSocket, and image boundaries for apps
 - `Docs/ui.md` - UI/UX requirements (tables, tool traces, staging)
 - `Docs/security.md` - safety model for tool execution
 - `Docs/engine-catalog.md` - canonical engines (ADPlayground/ComputerX/EventViewerX) and “thin tool” rules

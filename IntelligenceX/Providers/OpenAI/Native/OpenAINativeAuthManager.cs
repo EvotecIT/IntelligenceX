@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.Auth;
@@ -7,17 +8,26 @@ namespace IntelligenceX.OpenAI.Native;
 
 internal sealed class OpenAINativeAuthManager {
     private static readonly TimeSpan ExpirySkew = TimeSpan.FromMinutes(1);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> RefreshLocks =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private readonly OpenAINativeOptions _options;
     private readonly OAuthLoginService _oauth = new();
+    private readonly Func<OAuthConfig, AuthBundle, CancellationToken, Task<OAuthLoginResult>> _refreshOAuthAsync;
 
-    public OpenAINativeAuthManager(OpenAINativeOptions options) {
+    public OpenAINativeAuthManager(OpenAINativeOptions options)
+        : this(options, null) {
+    }
+
+    internal OpenAINativeAuthManager(
+        OpenAINativeOptions options,
+        Func<OAuthConfig, AuthBundle, CancellationToken, Task<OAuthLoginResult>>? refreshOAuthAsync) {
         _options = options;
+        _refreshOAuthAsync = refreshOAuthAsync ?? _oauth.RefreshAsync;
     }
 
     public async Task<AuthBundle?> TryGetValidBundleAsync(CancellationToken cancellationToken) {
-        var bundle = await _options.AuthStore.GetAsync(OpenAICodexDefaults.Provider, _options.AuthAccountId, cancellationToken)
-            .ConfigureAwait(false);
+        var bundle = await TryGetCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
         if (bundle is null) {
             return null;
         }
@@ -53,12 +63,35 @@ internal sealed class OpenAINativeAuthManager {
     }
 
     public async Task<AuthBundle> RefreshAsync(AuthBundle bundle, CancellationToken cancellationToken) {
-        if (string.IsNullOrWhiteSpace(bundle.RefreshToken)) {
-            throw new InvalidOperationException("Refresh token is missing. Re-run the ChatGPT login.");
+        var accessTokenBeforeLock = bundle.AccessToken;
+        var refreshLock = RefreshLocks.GetOrAdd(
+            BuildRefreshLockKey(bundle),
+            _ => new SemaphoreSlim(1, 1));
+        await refreshLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            var current = await TryGetCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
+            if (current is not null &&
+                !string.Equals(current.AccessToken, accessTokenBeforeLock, StringComparison.Ordinal) &&
+                !IsExpiring(current)) {
+                return current;
+            }
+
+            var refreshCandidate = current ?? bundle;
+            if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
+                var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
+                refreshCandidate = SelectRefreshCandidate(refreshCandidate, storedBundle);
+            }
+            if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
+                throw new InvalidOperationException("Refresh token is missing. Re-run the ChatGPT login.");
+            }
+
+            var refreshed = await _refreshOAuthAsync(_options.OAuth, refreshCandidate, cancellationToken)
+                .ConfigureAwait(false);
+            await SaveBundleAsync(refreshed.Bundle, cancellationToken).ConfigureAwait(false);
+            return refreshed.Bundle;
+        } finally {
+            refreshLock.Release();
         }
-        var refreshed = await _oauth.RefreshAsync(_options.OAuth, bundle, cancellationToken).ConfigureAwait(false);
-        await SaveBundleAsync(refreshed.Bundle, cancellationToken).ConfigureAwait(false);
-        return refreshed.Bundle;
     }
 
     private async Task SaveBundleAsync(AuthBundle bundle, CancellationToken cancellationToken) {
@@ -80,6 +113,84 @@ internal sealed class OpenAINativeAuthManager {
         }
         var now = DateTimeOffset.UtcNow;
         return now >= bundle.ExpiresAt.Value.Subtract(ExpirySkew);
+    }
+
+    private AuthBundle? TryGetCodexBundle() {
+        if (!_options.LoadCodexAuthJson) {
+            return null;
+        }
+
+        var bundle = CodexAuthStore.TryReadBundle(CodexAuthStore.ResolveAuthPath(_options.CodexHome));
+        if (bundle is null || string.IsNullOrWhiteSpace(_options.AuthAccountId)) {
+            return bundle;
+        }
+
+        return string.Equals(bundle.AccountId, _options.AuthAccountId, StringComparison.OrdinalIgnoreCase)
+            ? bundle
+            : null;
+    }
+
+    internal static AuthBundle? SelectPreferredBundle(
+        AuthBundle? storedBundle,
+        AuthBundle? codexBundle,
+        bool preferCodexSession = false) {
+        if (storedBundle is null) {
+            return codexBundle;
+        }
+        if (codexBundle is null) {
+            return storedBundle;
+        }
+        if (preferCodexSession) {
+            return codexBundle;
+        }
+        if (
+            string.IsNullOrWhiteSpace(storedBundle.AccountId) ||
+            !string.Equals(storedBundle.AccountId, codexBundle.AccountId, StringComparison.OrdinalIgnoreCase)) {
+            return storedBundle;
+        }
+
+        var storedExpiry = storedBundle.ExpiresAt ?? DateTimeOffset.MinValue;
+        var codexExpiry = codexBundle.ExpiresAt ?? DateTimeOffset.MinValue;
+        return codexExpiry >= storedExpiry ? codexBundle : storedBundle;
+    }
+
+    internal static AuthBundle SelectRefreshCandidate(AuthBundle selectedBundle, AuthBundle? storedBundle) {
+        if (!string.IsNullOrWhiteSpace(selectedBundle.RefreshToken) ||
+            storedBundle is null ||
+            string.IsNullOrWhiteSpace(storedBundle.RefreshToken)) {
+            return selectedBundle;
+        }
+
+        selectedBundle.AccountId ??= JwtDecoder.TryGetAccountId(selectedBundle.AccessToken);
+        storedBundle.AccountId ??= JwtDecoder.TryGetAccountId(storedBundle.AccessToken);
+        return !string.IsNullOrWhiteSpace(selectedBundle.AccountId) &&
+               string.Equals(selectedBundle.AccountId, storedBundle.AccountId, StringComparison.OrdinalIgnoreCase)
+            ? storedBundle
+            : selectedBundle;
+    }
+
+    private async Task<AuthBundle?> GetStoredBundleAsync(CancellationToken cancellationToken) {
+        var storedBundle = await _options.AuthStore
+            .GetAsync(OpenAICodexDefaults.Provider, _options.AuthAccountId, cancellationToken)
+            .ConfigureAwait(false);
+        if (storedBundle is not null && string.IsNullOrWhiteSpace(storedBundle.AccountId)) {
+            storedBundle.AccountId = JwtDecoder.TryGetAccountId(storedBundle.AccessToken);
+        }
+        return storedBundle;
+    }
+
+    private async Task<AuthBundle?> TryGetCurrentBundleAsync(CancellationToken cancellationToken) {
+        var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
+        return SelectPreferredBundle(
+            storedBundle,
+            TryGetCodexBundle(),
+            _options.PreferCurrentCodexSession && string.IsNullOrWhiteSpace(_options.AuthAccountId));
+    }
+
+    private string BuildRefreshLockKey(AuthBundle bundle) {
+        var accountId = (_options.AuthAccountId ?? bundle.AccountId)?.Trim();
+        return OpenAICodexDefaults.Provider + "|" +
+               (string.IsNullOrWhiteSpace(accountId) ? "default" : accountId);
     }
 
     private static Task<string> DefaultPromptAsync(string prompt, CancellationToken cancellationToken) {
