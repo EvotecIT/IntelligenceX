@@ -20,7 +20,7 @@ public sealed class OpenAIRealtimeSessionOptions {
     /// Output modalities requested from the model. Voice sessions normally use <c>audio</c>;
     /// text-only sessions can set this to <c>text</c>.
     /// </summary>
-    public string[] OutputModalities { get; set; } = { "audio" };
+    public string[] OutputModalities { get; set; } = new[] { "audio" };
 
     /// <summary>
     /// Optional Realtime voice name. When omitted, the service default is used.

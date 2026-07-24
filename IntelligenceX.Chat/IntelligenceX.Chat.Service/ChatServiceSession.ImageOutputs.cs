@@ -40,7 +40,15 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static ChatImageOutputDto[]? SnapshotChatImageOutputs(IReadOnlyList<ChatImageOutputDto> images) {
-        return images.Count == 0 ? null : images.ToArray();
+        if (images.Count == 0) {
+            return null;
+        }
+
+        var snapshot = new ChatImageOutputDto[images.Count];
+        for (var i = 0; i < images.Count; i++) {
+            snapshot[i] = images[i];
+        }
+        return snapshot;
     }
 
     private static string? NormalizeImageOutputValue(string? value) {

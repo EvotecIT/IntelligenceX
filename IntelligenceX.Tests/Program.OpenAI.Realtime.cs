@@ -137,6 +137,11 @@ internal static partial class Program {
         AssertEqual("AQID", audioEvent.AudioDelta, "Realtime audio delta");
         AssertEqual<string?>(null, audioEvent.TextDelta, "Realtime audio text delta");
 
+        var transcriptEvent = OpenAIRealtimeEvent.Parse(
+            """{"type":"response.output_audio_transcript.delta","delta":"spoken text"}""");
+        AssertEqual("spoken text", transcriptEvent.TextDelta, "Realtime audio transcript text delta");
+        AssertEqual<string?>(null, transcriptEvent.AudioDelta, "Realtime audio transcript binary delta");
+
         var errorEvent = OpenAIRealtimeEvent.Parse("""{"type":"error","error":{"message":"bad request"}}""");
         AssertEqual("bad request", errorEvent.ErrorMessage, "Realtime error message");
     }
@@ -173,6 +178,24 @@ internal static partial class Program {
             codex,
             OpenAINativeAuthManager.SelectPreferredBundle(stored, codex, preferCodexSession: true),
             "Explicit current Codex session preference");
+
+        var codexWithoutRefresh = new AuthBundle(
+            OpenAICodexDefaults.Provider,
+            "codex-without-refresh",
+            string.Empty,
+            DateTimeOffset.UtcNow.AddMinutes(-5)) {
+            AccountId = stored.AccountId
+        };
+        AssertEqual(
+            stored,
+            OpenAINativeAuthManager.SelectRefreshCandidate(codexWithoutRefresh, stored),
+            "Stored same-account refresh fallback");
+
+        stored.AccountId = "other-account";
+        AssertEqual(
+            codexWithoutRefresh,
+            OpenAINativeAuthManager.SelectRefreshCandidate(codexWithoutRefresh, stored),
+            "Different-account refresh bundle rejected");
     }
 
     private static void TestChatGptOAuthRefreshIsSingleFlightForSharedBundles() {

@@ -56,11 +56,11 @@ public sealed class OpenAIRealtimeEvent {
         string? textDelta = null;
         string? audioDelta = null;
 
-        if (type.IndexOf("audio", StringComparison.OrdinalIgnoreCase) >= 0) {
-            audioDelta = delta;
-        } else if (type.IndexOf("text", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   type.IndexOf("transcript", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (type.IndexOf("text", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            type.IndexOf("transcript", StringComparison.OrdinalIgnoreCase) >= 0) {
             textDelta = delta;
+        } else if (type.IndexOf("audio", StringComparison.OrdinalIgnoreCase) >= 0) {
+            audioDelta = delta;
         }
 
         string? errorMessage = null;

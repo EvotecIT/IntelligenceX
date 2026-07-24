@@ -312,6 +312,43 @@ internal static partial class Program {
             AssertEqual("Zm9v", outputs[1].GetString("base64"), "streamed image base64");
             AssertEqual(true, File.Exists(outputs[1].GetString("path")!), "streamed image saved");
             AssertEqual("text", outputs[2].GetString("type"), "streamed image fallback text");
+
+            var partialOutputs = new List<JsonObject> {
+                new JsonObject()
+                    .Add("type", "image")
+                    .Add("id", "ig_existing")
+                    .Add("base64", "Zm9v")
+            };
+            var partialStreamedOutputs = new List<JsonObject> {
+                new JsonObject()
+                    .Add("type", "image_generation_call")
+                    .Add("id", "ig_existing")
+                    .Add("status", "completed")
+                    .Add("result", "Zm9v"),
+                new JsonObject()
+                    .Add("type", "image_generation_call")
+                    .Add("id", "ig_stream_only")
+                    .Add("status", "completed")
+                    .Add("result", "YmFy")
+            };
+
+            appendMethod.Invoke(transport, new object?[] {
+                partialOutputs,
+                partialStreamedOutputs,
+                "session-partial-stream",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            });
+
+            AssertEqual(3, partialOutputs.Count, "partial streamed image output count");
+            AssertEqual("ig_existing", partialOutputs[0].GetString("id"), "existing streamed image retained once");
+            AssertEqual("ig_stream_only", partialOutputs[1].GetString("id"), "streamed-only image merged");
+            AssertEqual("text", partialOutputs[2].GetString("type"), "partial streamed image fallback text");
         } finally {
             if (Directory.Exists(outputRoot)) {
                 Directory.Delete(outputRoot, recursive: true);

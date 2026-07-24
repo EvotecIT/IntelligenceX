@@ -78,6 +78,10 @@ internal sealed class OpenAINativeAuthManager {
 
             var refreshCandidate = current ?? bundle;
             if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
+                var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
+                refreshCandidate = SelectRefreshCandidate(refreshCandidate, storedBundle);
+            }
+            if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
                 throw new InvalidOperationException("Refresh token is missing. Re-run the ChatGPT login.");
             }
 
@@ -150,13 +154,33 @@ internal sealed class OpenAINativeAuthManager {
         return codexExpiry >= storedExpiry ? codexBundle : storedBundle;
     }
 
-    private async Task<AuthBundle?> TryGetCurrentBundleAsync(CancellationToken cancellationToken) {
+    internal static AuthBundle SelectRefreshCandidate(AuthBundle selectedBundle, AuthBundle? storedBundle) {
+        if (!string.IsNullOrWhiteSpace(selectedBundle.RefreshToken) ||
+            storedBundle is null ||
+            string.IsNullOrWhiteSpace(storedBundle.RefreshToken)) {
+            return selectedBundle;
+        }
+
+        selectedBundle.AccountId ??= JwtDecoder.TryGetAccountId(selectedBundle.AccessToken);
+        storedBundle.AccountId ??= JwtDecoder.TryGetAccountId(storedBundle.AccessToken);
+        return !string.IsNullOrWhiteSpace(selectedBundle.AccountId) &&
+               string.Equals(selectedBundle.AccountId, storedBundle.AccountId, StringComparison.OrdinalIgnoreCase)
+            ? storedBundle
+            : selectedBundle;
+    }
+
+    private async Task<AuthBundle?> GetStoredBundleAsync(CancellationToken cancellationToken) {
         var storedBundle = await _options.AuthStore
             .GetAsync(OpenAICodexDefaults.Provider, _options.AuthAccountId, cancellationToken)
             .ConfigureAwait(false);
         if (storedBundle is not null && string.IsNullOrWhiteSpace(storedBundle.AccountId)) {
             storedBundle.AccountId = JwtDecoder.TryGetAccountId(storedBundle.AccessToken);
         }
+        return storedBundle;
+    }
+
+    private async Task<AuthBundle?> TryGetCurrentBundleAsync(CancellationToken cancellationToken) {
+        var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
         return SelectPreferredBundle(
             storedBundle,
             TryGetCodexBundle(),
