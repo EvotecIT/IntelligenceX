@@ -136,6 +136,12 @@ final class IXRealtimeClientTests: XCTestCase {
             "none"
         )
     }
+
+    func testResponseCancellationUsesRealtimeProtocolEvent() {
+        let event = IXRealtimeClientEvent.cancelResponse
+
+        XCTAssertEqual(event["type"]?.stringValue, "response.cancel")
+    }
 }
 
 private actor RealtimeRequestRecorder {

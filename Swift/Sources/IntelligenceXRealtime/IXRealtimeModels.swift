@@ -163,6 +163,12 @@ public enum IXRealtimeClientEvent {
         "type": .string("response.create"),
     ])
 
+    /// Cancels the currently generating response. Clients can use this after
+    /// classifying microphone input as a genuine barge-in rather than echo.
+    public static let cancelResponse: IXJSONValue = .object([
+        "type": .string("response.cancel"),
+    ])
+
     /// Requests one response that cannot call tools. This lets a client speak
     /// an already-completed local result without allowing the recovery
     /// response to repeat a side effect.
