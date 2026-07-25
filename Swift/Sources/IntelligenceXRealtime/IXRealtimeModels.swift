@@ -13,6 +13,14 @@ public enum IXRealtimeNoiseReduction: String, Sendable, Equatable {
     case farField = "far_field"
 }
 
+public enum IXRealtimeReasoningEffort: String, Sendable, Equatable {
+    case minimal
+    case low
+    case medium
+    case high
+    case xhigh
+}
+
 /// Controls how a Realtime session decides that the user started and finished
 /// a turn. Semantic VAD favors natural pauses; server VAD exposes acoustic
 /// thresholds that are useful in noisy environments.
@@ -33,6 +41,7 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
     public var transcriptionModel: String?
     public var transcriptionLanguage: String?
     public var transcriptionPrompt: String?
+    public var reasoningEffort: IXRealtimeReasoningEffort?
     public var turnDetection: IXRealtimeTurnDetection
     public var createsResponsesAutomatically: Bool
     public var interruptsResponseOnSpeech: Bool
@@ -47,6 +56,7 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
         transcriptionModel: String? = "gpt-4o-mini-transcribe",
         transcriptionLanguage: String? = nil,
         transcriptionPrompt: String? = nil,
+        reasoningEffort: IXRealtimeReasoningEffort? = nil,
         turnDetection: IXRealtimeTurnDetection = .semantic(eagerness: .automatic),
         createsResponsesAutomatically: Bool = true,
         interruptsResponseOnSpeech: Bool = true,
@@ -60,6 +70,7 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
         self.transcriptionModel = transcriptionModel
         self.transcriptionLanguage = transcriptionLanguage
         self.transcriptionPrompt = transcriptionPrompt
+        self.reasoningEffort = reasoningEffort
         self.turnDetection = turnDetection
         self.createsResponsesAutomatically = createsResponsesAutomatically
         self.interruptsResponseOnSpeech = interruptsResponseOnSpeech
@@ -281,7 +292,7 @@ extension IXRealtimeSessionOptions {
             audio["output"] = .object(["voice": .string(voice)])
         }
 
-        return [
+        var configuration: [String: IXJSONValue] = [
             "type": .string("realtime"),
             "model": .string(model),
             "instructions": .string(instructions),
@@ -297,5 +308,11 @@ extension IXRealtimeSessionOptions {
                 ])
             }),
         ]
+        if let reasoningEffort {
+            configuration["reasoning"] = .object([
+                "effort": .string(reasoningEffort.rawValue),
+            ])
+        }
+        return configuration
     }
 }

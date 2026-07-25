@@ -44,6 +44,7 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "ChatGPT-Account-ID"), "account-1")
         let body = try IXJSONValue.decode(try XCTUnwrap(request.httpBody))
         XCTAssertEqual(body["session"]?["model"]?.stringValue, "gpt-realtime-2.1")
+        XCTAssertNil(body["session"]?["reasoning"])
         let expectedModalities: [IXJSONValue] = [.string("audio")]
         XCTAssertEqual(body["session"]?["output_modalities"]?.arrayValue, expectedModalities)
         let turnDetection = body["session"]?["audio"]?["input"]?["turn_detection"]
@@ -85,6 +86,20 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertEqual(
             session["audio"]?["input"]?["turn_detection"]?["interrupt_response"]?.boolValue,
             true
+        )
+    }
+
+    func testSessionUpdateSupportsLatencyFirstReasoning() throws {
+        let event = IXRealtimeClientEvent.sessionUpdate(
+            options: .init(
+                instructions: "Act on a simple smart-home command.",
+                reasoningEffort: .minimal
+            )
+        )
+
+        XCTAssertEqual(
+            event["session"]?["reasoning"]?["effort"]?.stringValue,
+            "minimal"
         )
     }
 
