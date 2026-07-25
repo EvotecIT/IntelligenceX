@@ -100,17 +100,20 @@ public struct IXCodexToolDefinition: Sendable, Equatable {
     public let description: String
     public let parameters: IXJSONValue
     public let requiresConfirmation: Bool
+    public let strict: Bool
 
     public init(
         name: String,
         description: String,
         parameters: IXJSONValue,
-        requiresConfirmation: Bool = false
+        requiresConfirmation: Bool = false,
+        strict: Bool = false
     ) {
         self.name = name
         self.description = description
         self.parameters = parameters
         self.requiresConfirmation = requiresConfirmation
+        self.strict = strict
     }
 }
 

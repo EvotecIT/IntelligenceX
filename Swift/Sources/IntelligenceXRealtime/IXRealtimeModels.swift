@@ -312,12 +312,16 @@ extension IXRealtimeSessionOptions {
             "audio": .object(audio),
             "tool_choice": .string("auto"),
             "tools": .array(tools.map { tool in
-                .object([
+                var function: [String: IXJSONValue] = [
                     "type": .string("function"),
                     "name": .string(tool.name),
                     "description": .string(tool.description),
                     "parameters": tool.parameters,
-                ])
+                ]
+                if tool.strict {
+                    function["strict"] = .bool(true)
+                }
+                return .object(function)
             }),
         ]
         if let reasoningEffort {

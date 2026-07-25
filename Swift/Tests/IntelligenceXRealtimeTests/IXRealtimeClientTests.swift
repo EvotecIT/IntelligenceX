@@ -32,7 +32,8 @@ final class IXRealtimeClientTests: XCTestCase {
                 IXCodexToolDefinition(
                     name: "get_home_state",
                     description: "Read normalized home state.",
-                    parameters: .object([:])
+                    parameters: .object([:]),
+                    strict: true
                 ),
             ]
         )
@@ -63,6 +64,10 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertEqual(
             body["session"]?["tools"]?.arrayValue?.first?["name"]?.stringValue,
             "get_home_state"
+        )
+        XCTAssertEqual(
+            body["session"]?["tools"]?.arrayValue?.first?["strict"]?.boolValue,
+            true
         )
     }
 

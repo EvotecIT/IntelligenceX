@@ -371,7 +371,8 @@ final class IXCodexConversationTests: XCTestCase {
             tools: [.init(
                 name: "inspect",
                 description: "Inspect state.",
-                parameters: .object(["type": .string("object")])
+                parameters: .object(["type": .string("object")]),
+                strict: true
             )]
         )
 
@@ -381,6 +382,14 @@ final class IXCodexConversationTests: XCTestCase {
         let second = try IXJSONValue.decode(try XCTUnwrap(requests[1].httpBody))
         XCTAssertNotNil(first["tools"]?.arrayValue?.first?["function"]?["parameters"])
         XCTAssertNotNil(second["tools"]?.arrayValue?.first?["function"]?["input_schema"])
+        XCTAssertEqual(
+            first["tools"]?.arrayValue?.first?["function"]?["strict"]?.boolValue,
+            true
+        )
+        XCTAssertEqual(
+            second["tools"]?.arrayValue?.first?["function"]?["strict"]?.boolValue,
+            true
+        )
     }
 
     func testAcceptedToolSchemaIsReusedWithoutRepeatedRejectedRequests() async throws {
