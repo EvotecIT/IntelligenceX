@@ -91,6 +91,15 @@ public final class IXRealtimeWebRTCSession: NSObject {
 
         let audioSource = Self.peerFactory.audioSource(with: constraints)
         let track = Self.peerFactory.audioTrack(with: audioSource, trackId: "ix-microphone")
+        let processingResult = track.setAudioProcessingOptions(
+            .communication()
+        )
+        guard processingResult.isSuccess else {
+            throw IXCodexError.invalidResponse(
+                "WebRTC communication audio processing could not be enabled: " +
+                    processingResult.message
+            )
+        }
         localAudioTrack = track
         guard peer.add(track, streamIds: ["ix-realtime"]) != nil else {
             throw IXCodexError.invalidResponse("WebRTC microphone track could not be added")

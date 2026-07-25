@@ -88,6 +88,17 @@ final class IXRealtimeClientTests: XCTestCase {
         )
     }
 
+    func testInputTranscriptionConfigurationCanBeExplicitlyCleared() {
+        let event =
+            IXRealtimeClientEvent.clearInputTranscriptionConfiguration
+
+        XCTAssertEqual(event["type"]?.stringValue, "session.update")
+        XCTAssertEqual(
+            event["session"]?["audio"]?["input"]?["transcription"],
+            .null
+        )
+    }
+
     func testSessionUpdateSupportsNoiseResistantServerVAD() throws {
         let event = IXRealtimeClientEvent.sessionUpdate(
             options: .init(
@@ -113,6 +124,34 @@ final class IXRealtimeClientTests: XCTestCase {
         )
         XCTAssertEqual(turnDetection["create_response"]?.boolValue, true)
         XCTAssertEqual(turnDetection["interrupt_response"]?.boolValue, true)
+    }
+
+    func testOutputAudioBufferEventsExposeExactPlaybackLifecycle() throws {
+        let started = try makeRealtimeEvent([
+            "type": "output_audio_buffer.started",
+            "response_id": "response-1",
+        ])
+        let stopped = try makeRealtimeEvent([
+            "type": "output_audio_buffer.stopped",
+            "response_id": "response-1",
+        ])
+        let cleared = try makeRealtimeEvent([
+            "type": "output_audio_buffer.cleared",
+            "response_id": "response-1",
+        ])
+
+        XCTAssertEqual(
+            started.outputAudioBufferTransition,
+            .started(responseID: "response-1")
+        )
+        XCTAssertEqual(
+            stopped.outputAudioBufferTransition,
+            .stopped(responseID: "response-1")
+        )
+        XCTAssertEqual(
+            cleared.outputAudioBufferTransition,
+            .cleared(responseID: "response-1")
+        )
     }
 
     func testSystemMessageCanRestoreTrustedContinuationContext() throws {
@@ -141,6 +180,14 @@ final class IXRealtimeClientTests: XCTestCase {
         let event = IXRealtimeClientEvent.cancelResponse
 
         XCTAssertEqual(event["type"]?.stringValue, "response.cancel")
+    }
+
+    private func makeRealtimeEvent(
+        _ object: [String: Any]
+    ) throws -> IXRealtimeEvent {
+        try IXRealtimeEvent(
+            data: JSONSerialization.data(withJSONObject: object)
+        )
     }
 }
 

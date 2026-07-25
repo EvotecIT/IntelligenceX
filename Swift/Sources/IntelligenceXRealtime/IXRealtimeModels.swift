@@ -80,6 +80,14 @@ public struct IXRealtimeClientSecret: Sendable, Equatable {
     }
 }
 
+/// Exact lifecycle transitions for audio rendered by a Realtime WebRTC or SIP
+/// client. These events describe the output buffer, not model generation.
+public enum IXRealtimeOutputAudioBufferTransition: Sendable, Equatable {
+    case started(responseID: String)
+    case stopped(responseID: String)
+    case cleared(responseID: String)
+}
+
 public struct IXRealtimeEvent: Sendable, Equatable {
     public let type: String
     public let raw: IXJSONValue
@@ -98,6 +106,23 @@ public struct IXRealtimeEvent: Sendable, Equatable {
         self.transcriptDelta = type.contains("transcript") ? raw["delta"]?.stringValue : nil
         self.errorMessage = raw["error"]?["message"]?.stringValue ?? raw["message"]?.stringValue
     }
+
+    public var outputAudioBufferTransition:
+        IXRealtimeOutputAudioBufferTransition? {
+        guard let responseID = raw["response_id"]?.stringValue else {
+            return nil
+        }
+        switch type {
+        case "output_audio_buffer.started":
+            return .started(responseID: responseID)
+        case "output_audio_buffer.stopped":
+            return .stopped(responseID: responseID)
+        case "output_audio_buffer.cleared":
+            return .cleared(responseID: responseID)
+        default:
+            return nil
+        }
+    }
 }
 
 public enum IXRealtimeClientEvent {
@@ -110,6 +135,23 @@ public enum IXRealtimeClientEvent {
             "session": .object(options.sessionConfiguration(tools: tools)),
         ])
     }
+
+    /// Explicitly clears the server's nested input transcription
+    /// configuration. Omitting `language` from a later update does not clear a
+    /// previously configured language, so clients can send this first and then
+    /// re-enable transcription without a language hint.
+    public static let clearInputTranscriptionConfiguration: IXJSONValue =
+        .object([
+            "type": .string("session.update"),
+            "session": .object([
+                "type": .string("realtime"),
+                "audio": .object([
+                    "input": .object([
+                        "transcription": .null,
+                    ]),
+                ]),
+            ]),
+        ])
 
     public static func sessionUpdate(
         instructions: String,
