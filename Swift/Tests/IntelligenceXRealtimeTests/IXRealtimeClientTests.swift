@@ -87,6 +87,28 @@ final class IXRealtimeClientTests: XCTestCase {
             true
         )
     }
+
+    func testSystemMessageCanRestoreTrustedContinuationContext() throws {
+        let event = IXRealtimeClientEvent.systemMessage(
+            "Continue after a recovered local tool result."
+        )
+
+        XCTAssertEqual(event["item"]?["role"]?.stringValue, "system")
+        XCTAssertEqual(
+            event["item"]?["content"]?.arrayValue?.first?["text"]?.stringValue,
+            "Continue after a recovered local tool result."
+        )
+    }
+
+    func testToolDisabledResponseRequestUsesPerResponseOverride() {
+        let event = IXRealtimeClientEvent.createResponseWithoutTools
+
+        XCTAssertEqual(event["type"]?.stringValue, "response.create")
+        XCTAssertEqual(
+            event["response"]?["tool_choice"]?.stringValue,
+            "none"
+        )
+    }
 }
 
 private actor RealtimeRequestRecorder {

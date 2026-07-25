@@ -40,6 +40,13 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private var localAudioTrack: LKRTCAudioTrack?
     private var ownsAudioSession = false
 
+    /// Indicates whether the Realtime event channel can currently accept
+    /// session updates, tool outputs, and response requests.
+    public var isReady: Bool {
+        peerConnection?.connectionState == .connected &&
+            dataChannel?.readyState == .open
+    }
+
     public init(
         secret: IXRealtimeClientSecret,
         exchange: any IXRealtimeSDPExchanging = IXOpenAIRealtimeSDPExchange(),
@@ -109,8 +116,16 @@ public final class IXRealtimeWebRTCSession: NSObject {
 
     @discardableResult
     public func send(_ event: IXJSONValue) throws -> Bool {
-        guard let dataChannel, dataChannel.readyState == .open else {
-            throw IXCodexError.invalidResponse("Realtime data channel is not open")
+        guard let dataChannel, isReady else {
+            let channelState = dataChannel.map {
+                String(describing: $0.readyState)
+            } ?? "missing"
+            let peerState = peerConnection.map {
+                String(describing: $0.connectionState)
+            } ?? "missing"
+            throw IXCodexError.invalidResponse(
+                "Realtime data channel is not open (channel: \(channelState), peer: \(peerState))"
+            )
         }
         let data = try event.encodedData()
         return dataChannel.sendData(LKRTCDataBuffer(data: data, isBinary: false))
@@ -217,8 +232,15 @@ extension IXRealtimeWebRTCSession: LKRTCPeerConnectionDelegate {
             // A connected peer does not guarantee that the event data channel is
             // open yet. `dataChannelDidChangeState` is the readiness signal used
             // before callers send session configuration or tool events.
-            case .connected: break
-            case .disconnected, .closed: self.onState(.disconnected)
+            case .connected:
+                if self.dataChannel?.readyState == .open {
+                    self.onState(.connected)
+                }
+            // Report transport loss even when ICE may recover later. Clients
+            // need this signal to stop sending events and begin their own
+            // bounded recovery policy.
+            case .disconnected: self.onState(.disconnected)
+            case .closed: self.onState(.disconnected)
             case .failed: self.onState(.failed("WebRTC connection failed"))
             default: break
             }

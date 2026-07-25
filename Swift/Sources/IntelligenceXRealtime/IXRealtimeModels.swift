@@ -114,11 +114,19 @@ public enum IXRealtimeClientEvent {
     }
 
     public static func textMessage(_ text: String) -> IXJSONValue {
+        message(text, role: "user")
+    }
+
+    public static func systemMessage(_ text: String) -> IXJSONValue {
+        message(text, role: "system")
+    }
+
+    private static func message(_ text: String, role: String) -> IXJSONValue {
         .object([
             "type": .string("conversation.item.create"),
             "item": .object([
                 "type": .string("message"),
-                "role": .string("user"),
+                "role": .string(role),
                 "content": .array([
                     .object(["type": .string("input_text"), "text": .string(text)]),
                 ]),
@@ -141,6 +149,16 @@ public enum IXRealtimeClientEvent {
 
     public static let createResponse: IXJSONValue = .object([
         "type": .string("response.create"),
+    ])
+
+    /// Requests one response that cannot call tools. This lets a client speak
+    /// an already-completed local result without allowing the recovery
+    /// response to repeat a side effect.
+    public static let createResponseWithoutTools: IXJSONValue = .object([
+        "type": .string("response.create"),
+        "response": .object([
+            "tool_choice": .string("none"),
+        ]),
     ])
 }
 
