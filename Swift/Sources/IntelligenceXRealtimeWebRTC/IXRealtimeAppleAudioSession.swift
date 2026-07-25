@@ -13,11 +13,7 @@ enum IXRealtimeAppleAudioSession {
         case .denied:
             isAllowed = false
         case .undetermined:
-            isAllowed = await withCheckedContinuation { continuation in
-                session.requestRecordPermission { granted in
-                    continuation.resume(returning: granted)
-                }
-            }
+            isAllowed = await requestRecordPermission()
         @unknown default:
             isAllowed = false
         }
@@ -34,6 +30,17 @@ enum IXRealtimeAppleAudioSession {
             options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
         try session.setActive(true)
+    }
+
+    /// AVAudioSession deliberately invokes its permission callback on a TCC
+    /// queue under Mac Catalyst. Keeping the callback outside the @MainActor
+    /// executor prevents Swift 6 from asserting that TCC is the main queue.
+    nonisolated private static func requestRecordPermission() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                continuation.resume(returning: granted)
+            }
+        }
     }
 
     static func deactivate() {

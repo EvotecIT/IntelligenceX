@@ -48,7 +48,7 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertEqual(body["session"]?["output_modalities"]?.arrayValue, expectedModalities)
         let turnDetection = body["session"]?["audio"]?["input"]?["turn_detection"]
         XCTAssertEqual(turnDetection?["type"]?.stringValue, "semantic_vad")
-        XCTAssertEqual(turnDetection?["eagerness"]?.stringValue, "high")
+        XCTAssertEqual(turnDetection?["eagerness"]?.stringValue, "auto")
         XCTAssertEqual(turnDetection?["create_response"]?.boolValue, true)
         XCTAssertEqual(turnDetection?["interrupt_response"]?.boolValue, true)
         XCTAssertEqual(
@@ -71,7 +71,7 @@ final class IXRealtimeClientTests: XCTestCase {
                 instructions: "Reply in the user's language.",
                 transcriptionLanguage: "pl",
                 transcriptionPrompt: "Transcribe in the spoken language without translation.",
-                semanticVADEagerness: .high,
+                turnDetection: .semantic(eagerness: .high),
                 createsResponsesAutomatically: true,
                 interruptsResponseOnSpeech: true
             )
@@ -86,6 +86,33 @@ final class IXRealtimeClientTests: XCTestCase {
             session["audio"]?["input"]?["turn_detection"]?["interrupt_response"]?.boolValue,
             true
         )
+    }
+
+    func testSessionUpdateSupportsNoiseResistantServerVAD() throws {
+        let event = IXRealtimeClientEvent.sessionUpdate(
+            options: .init(
+                instructions: "Help in a noisy environment.",
+                turnDetection: .server(
+                    threshold: 0.78,
+                    prefixPaddingMilliseconds: 300,
+                    silenceDurationMilliseconds: 850
+                ),
+                noiseReduction: .farField
+            )
+        )
+
+        let input = try XCTUnwrap(event["session"]?["audio"]?["input"])
+        let turnDetection = try XCTUnwrap(input["turn_detection"])
+        XCTAssertEqual(turnDetection["type"]?.stringValue, "server_vad")
+        XCTAssertEqual(turnDetection["threshold"]?.numberValue, 0.78)
+        XCTAssertEqual(turnDetection["prefix_padding_ms"]?.numberValue, 300)
+        XCTAssertEqual(turnDetection["silence_duration_ms"]?.numberValue, 850)
+        XCTAssertEqual(
+            input["noise_reduction"]?["type"]?.stringValue,
+            "far_field"
+        )
+        XCTAssertEqual(turnDetection["create_response"]?.boolValue, true)
+        XCTAssertEqual(turnDetection["interrupt_response"]?.boolValue, true)
     }
 
     func testSystemMessageCanRestoreTrustedContinuationContext() throws {

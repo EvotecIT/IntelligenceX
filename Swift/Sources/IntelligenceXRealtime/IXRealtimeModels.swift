@@ -13,6 +13,18 @@ public enum IXRealtimeNoiseReduction: String, Sendable, Equatable {
     case farField = "far_field"
 }
 
+/// Controls how a Realtime session decides that the user started and finished
+/// a turn. Semantic VAD favors natural pauses; server VAD exposes acoustic
+/// thresholds that are useful in noisy environments.
+public enum IXRealtimeTurnDetection: Sendable, Equatable {
+    case semantic(eagerness: IXRealtimeSemanticVADEagerness)
+    case server(
+        threshold: Double,
+        prefixPaddingMilliseconds: Int,
+        silenceDurationMilliseconds: Int
+    )
+}
+
 public struct IXRealtimeSessionOptions: Sendable, Equatable {
     public var model: String
     public var instructions: String
@@ -21,7 +33,7 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
     public var transcriptionModel: String?
     public var transcriptionLanguage: String?
     public var transcriptionPrompt: String?
-    public var semanticVADEagerness: IXRealtimeSemanticVADEagerness
+    public var turnDetection: IXRealtimeTurnDetection
     public var createsResponsesAutomatically: Bool
     public var interruptsResponseOnSpeech: Bool
     public var noiseReduction: IXRealtimeNoiseReduction?
@@ -35,7 +47,7 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
         transcriptionModel: String? = "gpt-4o-mini-transcribe",
         transcriptionLanguage: String? = nil,
         transcriptionPrompt: String? = nil,
-        semanticVADEagerness: IXRealtimeSemanticVADEagerness = .high,
+        turnDetection: IXRealtimeTurnDetection = .semantic(eagerness: .automatic),
         createsResponsesAutomatically: Bool = true,
         interruptsResponseOnSpeech: Bool = true,
         noiseReduction: IXRealtimeNoiseReduction? = .nearField,
@@ -48,7 +60,7 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
         self.transcriptionModel = transcriptionModel
         self.transcriptionLanguage = transcriptionLanguage
         self.transcriptionPrompt = transcriptionPrompt
-        self.semanticVADEagerness = semanticVADEagerness
+        self.turnDetection = turnDetection
         self.createsResponsesAutomatically = createsResponsesAutomatically
         self.interruptsResponseOnSpeech = interruptsResponseOnSpeech
         self.noiseReduction = noiseReduction
@@ -177,13 +189,33 @@ extension IXRealtimeSessionOptions {
             transcription["prompt"] = .string(transcriptionPrompt)
         }
 
+        var turnDetectionConfiguration: [String: IXJSONValue] = [
+            "create_response": .bool(createsResponsesAutomatically),
+            "interrupt_response": .bool(interruptsResponseOnSpeech),
+        ]
+        switch turnDetection {
+        case .semantic(let eagerness):
+            turnDetectionConfiguration["type"] = .string("semantic_vad")
+            turnDetectionConfiguration["eagerness"] = .string(eagerness.rawValue)
+        case .server(
+            let threshold,
+            let prefixPaddingMilliseconds,
+            let silenceDurationMilliseconds
+        ):
+            turnDetectionConfiguration["type"] = .string("server_vad")
+            turnDetectionConfiguration["threshold"] = .number(
+                min(max(threshold, 0), 1)
+            )
+            turnDetectionConfiguration["prefix_padding_ms"] = .number(
+                Double(max(prefixPaddingMilliseconds, 0))
+            )
+            turnDetectionConfiguration["silence_duration_ms"] = .number(
+                Double(max(silenceDurationMilliseconds, 0))
+            )
+        }
+
         var input: [String: IXJSONValue] = [
-            "turn_detection": .object([
-                "type": .string("semantic_vad"),
-                "eagerness": .string(semanticVADEagerness.rawValue),
-                "create_response": .bool(createsResponsesAutomatically),
-                "interrupt_response": .bool(interruptsResponseOnSpeech),
-            ]),
+            "turn_detection": .object(turnDetectionConfiguration),
         ]
         if !transcription.isEmpty {
             input["transcription"] = .object(transcription)
