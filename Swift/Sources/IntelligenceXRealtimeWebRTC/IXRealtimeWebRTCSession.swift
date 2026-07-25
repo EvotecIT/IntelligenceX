@@ -47,6 +47,12 @@ public final class IXRealtimeWebRTCSession: NSObject {
             dataChannel?.readyState == .open
     }
 
+    /// Controls whether the local microphone track is sent to Realtime without
+    /// disconnecting the peer or disturbing output playback.
+    public var isMicrophoneEnabled: Bool {
+        localAudioTrack?.isEnabled == true
+    }
+
     public init(
         secret: IXRealtimeClientSecret,
         exchange: any IXRealtimeSDPExchanging = IXOpenAIRealtimeSDPExchange(),
@@ -154,6 +160,10 @@ public final class IXRealtimeWebRTCSession: NSObject {
             ownsAudioSession = false
         }
         onState(.idle)
+    }
+
+    public func setMicrophoneEnabled(_ isEnabled: Bool) {
+        localAudioTrack?.isEnabled = isEnabled
     }
 
     private func createOffer(

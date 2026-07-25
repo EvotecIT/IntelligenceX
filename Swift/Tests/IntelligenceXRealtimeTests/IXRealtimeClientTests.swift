@@ -197,6 +197,17 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertEqual(event["type"]?.stringValue, "response.cancel")
     }
 
+    func testWebRTCAudioBuffersExposeExplicitClearEvents() {
+        XCTAssertEqual(
+            IXRealtimeClientEvent.clearInputAudioBuffer["type"]?.stringValue,
+            "input_audio_buffer.clear"
+        )
+        XCTAssertEqual(
+            IXRealtimeClientEvent.clearOutputAudioBuffer["type"]?.stringValue,
+            "output_audio_buffer.clear"
+        )
+    }
+
     private func makeRealtimeEvent(
         _ object: [String: Any]
     ) throws -> IXRealtimeEvent {

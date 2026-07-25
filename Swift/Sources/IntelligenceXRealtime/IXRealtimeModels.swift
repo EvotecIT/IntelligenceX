@@ -222,6 +222,18 @@ public enum IXRealtimeClientEvent {
         "type": .string("response.cancel"),
     ])
 
+    /// Clears uncommitted microphone audio. WebRTC clients can use this when
+    /// output playback begins so acoustic leakage cannot become a later turn.
+    public static let clearInputAudioBuffer: IXJSONValue = .object([
+        "type": .string("input_audio_buffer.clear"),
+    ])
+
+    /// Immediately cuts off queued WebRTC/SIP output audio. Send
+    /// `cancelResponse` first when the response is still generating.
+    public static let clearOutputAudioBuffer: IXJSONValue = .object([
+        "type": .string("output_audio_buffer.clear"),
+    ])
+
     /// Requests one response that cannot call tools. This lets a client speak
     /// an already-completed local result without allowing the recovery
     /// response to repeat a side effect.
