@@ -1,8 +1,27 @@
 import Foundation
+import IntelligenceXRealtime
 import XCTest
 @testable import IntelligenceXRealtimeWebRTC
 
 final class IXRealtimeSDPExchangeTests: XCTestCase {
+    @MainActor
+    func testReceivedAudioCanBeMutedLocallyBeforeServerAcknowledgement() {
+        let session = IXRealtimeWebRTCSession(
+            secret: .init(
+                value: "test-secret",
+                expiresAt: .distantFuture,
+                model: "test-model"
+            ),
+            onEvent: { _ in }
+        )
+
+        XCTAssertTrue(session.isOutputPlaybackEnabled)
+        session.setOutputPlaybackEnabled(false)
+        XCTAssertFalse(session.isOutputPlaybackEnabled)
+        session.setOutputPlaybackEnabled(true)
+        XCTAssertTrue(session.isOutputPlaybackEnabled)
+    }
+
     func testSDPIsEncodedAsAFormFieldInsteadOfAFileUpload() throws {
         let body = IXRealtimeMultipartForm.sdpBody(
             "v=0\r\na=example",

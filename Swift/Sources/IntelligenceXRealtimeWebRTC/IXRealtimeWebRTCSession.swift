@@ -38,6 +38,8 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private var peerConnection: LKRTCPeerConnection?
     private var dataChannel: LKRTCDataChannel?
     private var localAudioTrack: LKRTCAudioTrack?
+    private var remoteAudioTracks: [String: LKRTCAudioTrack] = [:]
+    private var outputPlaybackEnabled = true
     private var ownsAudioSession = false
 
     /// Indicates whether the Realtime event channel can currently accept
@@ -51,6 +53,11 @@ public final class IXRealtimeWebRTCSession: NSObject {
     /// disconnecting the peer or disturbing output playback.
     public var isMicrophoneEnabled: Bool {
         localAudioTrack?.isEnabled == true
+    }
+
+    /// Indicates whether received Realtime audio is allowed to render locally.
+    public var isOutputPlaybackEnabled: Bool {
+        outputPlaybackEnabled
     }
 
     public init(
@@ -71,6 +78,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
             throw IXCodexError.authenticationRequired
         }
         disconnect()
+        outputPlaybackEnabled = true
         do {
             try await IXRealtimeAppleAudioSession.activate()
             ownsAudioSession = true
@@ -152,6 +160,10 @@ public final class IXRealtimeWebRTCSession: NSObject {
         dataChannel = nil
         localAudioTrack?.isEnabled = false
         localAudioTrack = nil
+        for track in remoteAudioTracks.values {
+            track.isEnabled = false
+        }
+        remoteAudioTracks.removeAll()
         peerConnection?.delegate = nil
         peerConnection?.close()
         peerConnection = nil
@@ -164,6 +176,15 @@ public final class IXRealtimeWebRTCSession: NSObject {
 
     public func setMicrophoneEnabled(_ isEnabled: Bool) {
         localAudioTrack?.isEnabled = isEnabled
+    }
+
+    /// Immediately mutes or restores received Realtime audio without waiting
+    /// for a server-side output-buffer acknowledgement.
+    public func setOutputPlaybackEnabled(_ isEnabled: Bool) {
+        outputPlaybackEnabled = isEnabled
+        for track in remoteAudioTracks.values {
+            track.isEnabled = isEnabled
+        }
     }
 
     private func createOffer(
@@ -240,6 +261,35 @@ extension IXRealtimeWebRTCSession: LKRTCPeerConnectionDelegate {
     nonisolated public func peerConnection(_ peerConnection: LKRTCPeerConnection, didGenerate candidate: LKRTCIceCandidate) {}
     nonisolated public func peerConnection(_ peerConnection: LKRTCPeerConnection, didRemove candidates: [LKRTCIceCandidate]) {}
     nonisolated public func peerConnection(_ peerConnection: LKRTCPeerConnection, didOpen dataChannel: LKRTCDataChannel) {}
+
+    nonisolated public func peerConnection(
+        _ peerConnection: LKRTCPeerConnection,
+        didAdd receiver: LKRTCRtpReceiver,
+        streams: [LKRTCMediaStream]
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self,
+                  peerConnection === self.peerConnection,
+                  let track = receiver.track as? LKRTCAudioTrack else {
+                return
+            }
+            self.remoteAudioTracks[receiver.receiverId] = track
+            track.isEnabled = self.outputPlaybackEnabled
+        }
+    }
+
+    nonisolated public func peerConnection(
+        _ peerConnection: LKRTCPeerConnection,
+        didRemove receiver: LKRTCRtpReceiver
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self,
+                  peerConnection === self.peerConnection else {
+                return
+            }
+            self.remoteAudioTracks.removeValue(forKey: receiver.receiverId)
+        }
+    }
 
     nonisolated public func peerConnection(
         _ peerConnection: LKRTCPeerConnection,

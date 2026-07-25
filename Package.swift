@@ -61,7 +61,10 @@ let package = Package(
         ),
         .testTarget(
             name: "IntelligenceXRealtimeWebRTCTests",
-            dependencies: ["IntelligenceXRealtimeWebRTC"],
+            dependencies: [
+                "IntelligenceXRealtime",
+                "IntelligenceXRealtimeWebRTC",
+            ],
             path: "Swift/Tests/IntelligenceXRealtimeWebRTCTests"
         ),
     ]
