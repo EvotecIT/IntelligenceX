@@ -43,6 +43,7 @@ public sealed class CmdletWatchIntelligenceXEvent : IntelligenceXCmdlet {
     /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var resolved = ResolveAppServerClient(Client);
+        var writeNotification = CapturePipelineWriter();
         void Handler(object? sender, JsonRpcNotificationEventArgs args) {
             if (Method is not null && Method.Length > 0) {
                 var matched = false;
@@ -56,7 +57,7 @@ public sealed class CmdletWatchIntelligenceXEvent : IntelligenceXCmdlet {
                     return;
                 }
             }
-            WriteObject(new RpcNotificationRecord(args.Method, args.Params));
+            writeNotification(new RpcNotificationRecord(args.Method, args.Params));
         }
 
         resolved.NotificationReceived += Handler;

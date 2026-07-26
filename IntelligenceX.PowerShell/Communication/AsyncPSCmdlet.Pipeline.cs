@@ -140,6 +140,24 @@ public abstract partial class AsyncPSCmdlet
         }
     }
 
+    /// <summary>
+    /// Captures a lifecycle-bound output writer for callbacks raised outside the current async context.
+    /// </summary>
+    /// <param name="enumerateCollection">Whether enumerable output should be expanded by PowerShell.</param>
+    /// <returns>An output writer that rejects callbacks after the originating hook ends.</returns>
+    protected Action<object?> CapturePipelineWriter(bool enumerateCollection = false)
+    {
+        var hookGeneration = _hookGeneration.Value;
+        if (hookGeneration == 0)
+        {
+            throw new InvalidOperationException(
+                "A lifecycle-bound pipeline writer can only be captured from an asynchronous PowerShell hook.");
+        }
+
+        var pipelineType = enumerateCollection ? PipelineType.OutputEnumerate : PipelineType.Output;
+        return value => _ = TryQueue(new PipelineItem(value, pipelineType, hookGeneration: hookGeneration));
+    }
+
     private bool TryQueue(PipelineItem item)
     {
         item.BindToHook(_hookGeneration.Value);
@@ -258,7 +276,9 @@ public abstract partial class AsyncPSCmdlet
                     break;
                 case PipelineType.InformationWithTags:
                     var information = ((object MessageData, string[]? Tags))item.Value!;
-                    base.WriteInformation(information.MessageData, information.Tags!);
+                    base.WriteInformation(
+                        information.MessageData,
+                        information.Tags ?? Array.Empty<string>());
                     break;
                 case PipelineType.Progress:
                     base.WriteProgress((ProgressRecord)item.Value!);
