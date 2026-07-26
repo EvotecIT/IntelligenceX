@@ -34,6 +34,9 @@ public enum IXRealtimeTurnDetection: Sendable, Equatable {
 }
 
 public struct IXRealtimeSessionOptions: Sendable, Equatable {
+    public static let defaultModel = "gpt-realtime-2.1"
+    public static let defaultTranscriptionModel = "gpt-4o-transcribe"
+
     public var model: String
     public var instructions: String
     public var voice: String?
@@ -49,11 +52,11 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
     public var clientSecretLifetime: Duration
 
     public init(
-        model: String = "gpt-realtime-2.1",
+        model: String = Self.defaultModel,
         instructions: String,
         voice: String? = "marin",
         outputModality: String = "audio",
-        transcriptionModel: String? = "gpt-4o-mini-transcribe",
+        transcriptionModel: String? = Self.defaultTranscriptionModel,
         transcriptionLanguage: String? = nil,
         transcriptionPrompt: String? = nil,
         reasoningEffort: IXRealtimeReasoningEffort? = nil,

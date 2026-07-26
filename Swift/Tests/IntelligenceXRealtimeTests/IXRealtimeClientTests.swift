@@ -59,7 +59,7 @@ final class IXRealtimeClientTests: XCTestCase {
         )
         XCTAssertEqual(
             body["session"]?["audio"]?["input"]?["transcription"]?["model"]?.stringValue,
-            "gpt-4o-mini-transcribe"
+            "gpt-4o-transcribe"
         )
         XCTAssertEqual(
             body["session"]?["tools"]?.arrayValue?.first?["name"]?.stringValue,
