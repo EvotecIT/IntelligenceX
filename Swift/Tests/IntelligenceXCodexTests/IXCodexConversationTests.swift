@@ -750,6 +750,240 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertTrue(recoveryInput.contains { $0["type"]?.stringValue == "function_call_output" })
     }
 
+    func testLongConversationUsesRemoteCompactionBeforeContinuing() async throws {
+        let retainedItem: [String: Any] = [
+            "type": "message",
+            "role": "user",
+            "content": [[
+                "type": "input_text",
+                "text": "Retained recent context",
+            ]],
+        ]
+        let compactedItem: [String: Any] = [
+            "type": "compaction",
+            "id": "compact-1",
+            "encrypted_content": "opaque-checkpoint",
+        ]
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "compaction-response",
+                "status": "completed",
+                "output": [compactedItem, retainedItem],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-after-compaction",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Continued"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(
+            client: makeClient(state),
+            maximumHistoryItemsBeforeCompaction: 8
+        )
+        await conversation.restoreTranscript((0..<8).map { index in
+            IXCodexTranscriptMessage(
+                role: index.isMultiple(of: 2) ? .user : .assistant,
+                text: "Message \(index)"
+            )
+        })
+
+        let result = try await conversation.run(
+            input: [.text("Continue")],
+            instructions: "Help."
+        )
+
+        XCTAssertEqual(result.turn.text, "Continued")
+        let requests = await state.requests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].url?.path, "/backend-api/codex/responses/compact")
+        let compactBody = try IXJSONValue.decode(
+            try XCTUnwrap(requests[0].httpBody)
+        )
+        XCTAssertEqual(compactBody["input"]?.arrayValue?.count, 9)
+        let responseBody = try IXJSONValue.decode(
+            try XCTUnwrap(requests[1].httpBody)
+        )
+        XCTAssertEqual(responseBody["input"]?.arrayValue?.count, 2)
+        XCTAssertEqual(
+            responseBody["input"]?.arrayValue?.first?["type"]?.stringValue,
+            "compaction"
+        )
+        XCTAssertEqual(
+            responseBody["input"]?.arrayValue?.last?["type"]?.stringValue,
+            "message"
+        )
+    }
+
+    func testResetDuringRemoteCompactionDoesNotSendAStaleFollowUp() async throws {
+        let gate = ConversationResponseGate(
+            first: IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "compaction-response",
+                "status": "completed",
+                "output": [[
+                    "type": "compaction",
+                    "id": "compact-reset",
+                    "encrypted_content": "opaque-reset-checkpoint",
+                ]],
+            ])),
+            later: IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "unexpected-response",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Unexpected"]],
+                ]],
+            ]))
+        )
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            )),
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        )
+        let conversation = IXCodexConversation(
+            client: IXCodexClient(
+                authSession: auth,
+                httpClient: IXClosureHTTPClient { request in
+                    try await gate.send(request)
+                }
+            ),
+            maximumHistoryItemsBeforeCompaction: 8
+        )
+        await conversation.restoreTranscript((0..<8).map { index in
+            IXCodexTranscriptMessage(
+                role: index.isMultiple(of: 2) ? .user : .assistant,
+                text: "Message \(index)"
+            )
+        })
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Continue")],
+                instructions: "Help."
+            )
+        }
+        await gate.waitUntilFirstRequest()
+        await conversation.reset()
+        await gate.releaseFirst()
+
+        do {
+            _ = try await run.value
+            XCTFail("Reset should invalidate a turn awaiting compaction")
+        } catch is CancellationError {
+        }
+        let requests = await gate.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(
+            requests.first?.url?.path,
+            "/backend-api/codex/responses/compact"
+        )
+    }
+
+    func testResetDuringContextLimitResponseDoesNotStartCompaction() async throws {
+        let gate = ConversationResponseGate(
+            first: .json(400, [
+                "error": [
+                    "message": "context_length_exceeded: maximum context length reached",
+                ],
+            ]),
+            later: IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "unexpected-compaction",
+                "status": "completed",
+                "output": [[
+                    "type": "compaction",
+                    "id": "compact-unexpected",
+                    "encrypted_content": "must-not-be-sent",
+                ]],
+            ]))
+        )
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            )),
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        )
+        let conversation = IXCodexConversation(client: IXCodexClient(
+            authSession: auth,
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        ))
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Continue")],
+                instructions: "Help."
+            )
+        }
+        await gate.waitUntilFirstRequest()
+        await conversation.reset()
+        await gate.releaseFirst()
+
+        do {
+            _ = try await run.value
+            XCTFail("Reset should prevent reactive compaction")
+        } catch is CancellationError {
+        }
+        let requests = await gate.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(
+            requests.first?.url?.path,
+            "/backend-api/codex/responses"
+        )
+    }
+
+    func testContextLimitFailureCompactsAndRetriesTheSameTurn() async throws {
+        let state = ResponseQueue(responses: [
+            .json(400, [
+                "error": [
+                    "message": "context_length_exceeded: maximum context length reached",
+                ],
+            ]),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "compaction-response",
+                "status": "completed",
+                "output": [[
+                    "type": "compaction",
+                    "id": "compact-retry",
+                    "encrypted_content": "opaque-retry-checkpoint",
+                ]],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-after-retry",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Recovered"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        let result = try await conversation.run(
+            input: [.text("Continue")],
+            instructions: "Help."
+        )
+
+        XCTAssertEqual(result.turn.text, "Recovered")
+        let requests = await state.requests
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/backend-api/codex/responses",
+            "/backend-api/codex/responses/compact",
+            "/backend-api/codex/responses",
+        ])
+    }
+
     private func makeClient(_ state: ResponseQueue) -> IXCodexClient {
         let auth = IXCodexAuthSession(
             credentialStore: IXMemoryCodexCredentialStore(bundle: .init(

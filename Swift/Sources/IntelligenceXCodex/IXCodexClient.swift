@@ -192,6 +192,52 @@ public actor IXCodexClient {
         }
     }
 
+    func compact(
+        input: [IXJSONValue],
+        sessionID: String,
+        instructions: String,
+        model: String?,
+        retryUnauthorized: Bool = true
+    ) async throws -> [IXJSONValue] {
+        let bundle = try await authSession.validBundle()
+        guard let accountID = bundle.accountID else {
+            throw IXCodexError.invalidResponse(
+                "ChatGPT account ID is missing from the OAuth token"
+            )
+        }
+        var request = URLRequest(url: configuration.compactionURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyHeaders(
+            to: &request,
+            bundle: bundle,
+            accountID: accountID,
+            sessionID: sessionID
+        )
+        request.httpBody = try IXJSONValue.object([
+            "model": .string(model ?? configuration.defaultModel),
+            "store": .bool(false),
+            "stream": .bool(true),
+            "instructions": .string(instructions),
+            "input": .array(input),
+        ]).encodedData()
+        let response = try await httpClient.send(request)
+        if response.statusCode == 401 && retryUnauthorized {
+            _ = try await authSession.validBundle(forceRefresh: true)
+            return try await compact(
+                input: input,
+                sessionID: sessionID,
+                instructions: instructions,
+                model: model,
+                retryUnauthorized: false
+            )
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            throw responseError(response)
+        }
+        return try parseCompaction(response.body)
+    }
+
     private func sendResponse(
         input: [IXJSONValue],
         sessionID: String,
@@ -466,6 +512,26 @@ public actor IXCodexClient {
             usage: response.flatMap(parseUsage),
             replayItems: responseItems
         )
+    }
+
+    private func parseCompaction(_ data: Data) throws -> [IXJSONValue] {
+        let response: [String: IXJSONValue]?
+        if let value = try? IXJSONValue.decode(data) {
+            response = value.objectValue
+        } else {
+            let parsed = try IXCodexSSEParser().parse(data)
+            response = parsed.completedResponse?.objectValue
+        }
+        let output = response?["output"]?.arrayValue ?? []
+        let compacted = output.filter {
+            $0["type"]?.stringValue == "compaction"
+        }
+        guard compacted.count == 1 else {
+            throw IXCodexError.invalidResponse(
+                "ChatGPT returned no usable conversation compaction."
+            )
+        }
+        return output
     }
 
     private func parseUsage(

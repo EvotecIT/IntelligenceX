@@ -10,6 +10,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
     public var deviceCallbackURL: URL
     public var tokenURL: URL
     public var responsesURL: URL
+    public var compactionURL: URL
     public var accountUsageURL: URL
     public var modelURLs: [URL]
     public var modelCatalogClientVersion: String
@@ -29,6 +30,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
         deviceCallbackURL: URL = URL(string: "https://auth.openai.com/deviceauth/callback")!,
         tokenURL: URL = URL(string: "https://auth.openai.com/oauth/token")!,
         responsesURL: URL = URL(string: "https://chatgpt.com/backend-api/codex/responses")!,
+        compactionURL: URL = URL(string: "https://chatgpt.com/backend-api/codex/responses/compact")!,
         accountUsageURL: URL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!,
         modelURLs: [URL] = [
             URL(string: "https://chatgpt.com/backend-api/codex/models")!,
@@ -49,6 +51,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
         self.deviceCallbackURL = deviceCallbackURL
         self.tokenURL = tokenURL
         self.responsesURL = responsesURL
+        self.compactionURL = compactionURL
         self.accountUsageURL = accountUsageURL
         self.modelURLs = modelURLs
         self.modelCatalogClientVersion = modelCatalogClientVersion
@@ -77,9 +80,9 @@ public enum IXCodexError: LocalizedError, Equatable, Sendable {
     public var requiresReauthorization: Bool {
         switch self {
         case .authenticationRequired:
-            true
+            return true
         case .requestFailed(let status, let message):
-            status == 401 || (
+            return status == 401 || (
                 status == 400 &&
                 (
                     message.localizedCaseInsensitiveContains("invalid_grant") ||
@@ -88,18 +91,26 @@ public enum IXCodexError: LocalizedError, Equatable, Sendable {
                 )
             )
         default:
-            false
+            return false
         }
     }
 
     public var isUsageLimitReached: Bool {
         switch self {
         case .requestFailed(let status, let message):
-            status == 429 ||
-                message.localizedCaseInsensitiveContains("usage limit") ||
-                message.localizedCaseInsensitiveContains("rate limit")
+            let normalized = message.lowercased()
+            return status == 402 ||
+                status == 429 ||
+                normalized.contains("usage limit") ||
+                normalized.contains("rate limit") ||
+                normalized.contains("usage cap") ||
+                normalized.contains("insufficient_quota") ||
+                normalized.contains("quota exceeded") ||
+                normalized.contains("quota exhausted") ||
+                normalized.contains("credits exhausted") ||
+                normalized.contains("credit balance")
         default:
-            false
+            return false
         }
     }
 

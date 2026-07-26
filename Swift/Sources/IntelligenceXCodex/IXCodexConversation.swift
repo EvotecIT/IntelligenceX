@@ -3,13 +3,22 @@ import Foundation
 public actor IXCodexConversation {
     private let client: IXCodexClient
     private let sessionID: String
+    private let maximumHistoryItemsBeforeCompaction: Int
     private var history: [IXJSONValue] = []
     private var generation: UInt64 = 0
     private var activeRunID: UUID?
 
-    public init(client: IXCodexClient, sessionID: String = UUID().uuidString) {
+    public init(
+        client: IXCodexClient,
+        sessionID: String = UUID().uuidString,
+        maximumHistoryItemsBeforeCompaction: Int = 96
+    ) {
         self.client = client
         self.sessionID = sessionID
+        self.maximumHistoryItemsBeforeCompaction = max(
+            8,
+            maximumHistoryItemsBeforeCompaction
+        )
     }
 
     public func reset() {
@@ -82,15 +91,59 @@ public actor IXCodexConversation {
         var aggregateUsage: IXCodexUsage?
 
         for round in 0...maximumToolRounds {
-            let turn = try await client.response(
-                input: pendingHistory,
-                sessionID: sessionID,
-                instructions: instructions,
-                tools: tools,
-                model: model,
-                reasoningEffort: reasoningEffort,
-                imageGeneration: imageGeneration
-            )
+            var compactedThisRound = false
+            if pendingHistory.count > maximumHistoryItemsBeforeCompaction,
+               let compacted = try? await client.compact(
+                   input: pendingHistory,
+                   sessionID: sessionID,
+                   instructions: instructions,
+                   model: model
+               ) {
+                pendingHistory = compacted
+                compactedThisRound = true
+            }
+            guard generation == expectedGeneration,
+                  activeRunID == runID else {
+                throw CancellationError()
+            }
+            let turn: IXCodexTurn
+            do {
+                turn = try await client.response(
+                    input: pendingHistory,
+                    sessionID: sessionID,
+                    instructions: instructions,
+                    tools: tools,
+                    model: model,
+                    reasoningEffort: reasoningEffort,
+                    imageGeneration: imageGeneration
+                )
+            } catch let error as IXCodexError where
+                !compactedThisRound && Self.isContextLimitError(error) {
+                guard generation == expectedGeneration,
+                      activeRunID == runID else {
+                    throw CancellationError()
+                }
+                let compacted = try await client.compact(
+                    input: pendingHistory,
+                    sessionID: sessionID,
+                    instructions: instructions,
+                    model: model
+                )
+                guard generation == expectedGeneration,
+                      activeRunID == runID else {
+                    throw CancellationError()
+                }
+                pendingHistory = compacted
+                turn = try await client.response(
+                    input: pendingHistory,
+                    sessionID: sessionID,
+                    instructions: instructions,
+                    tools: tools,
+                    model: model,
+                    reasoningEffort: reasoningEffort,
+                    imageGeneration: imageGeneration
+                )
+            }
             guard generation == expectedGeneration, activeRunID == runID else {
                 throw CancellationError()
             }
@@ -141,6 +194,18 @@ public actor IXCodexConversation {
             history = pendingHistory
         }
         throw IXCodexError.toolLoopLimitExceeded
+    }
+
+    private static func isContextLimitError(_ error: IXCodexError) -> Bool {
+        guard case .requestFailed(let status, let message) = error,
+              status == 400 || status == 413 else {
+            return false
+        }
+        let normalized = message.lowercased()
+        return normalized.contains("context_length_exceeded") ||
+            normalized.contains("context window") ||
+            normalized.contains("too many input tokens") ||
+            normalized.contains("maximum context length")
     }
 
     private func makeUserMessage(_ input: [IXCodexInput]) throws -> IXJSONValue {
