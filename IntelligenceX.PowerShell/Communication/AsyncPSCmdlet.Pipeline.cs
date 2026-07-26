@@ -42,14 +42,19 @@ public abstract partial class AsyncPSCmdlet
             _disposeRequested = true;
         }
 
-        CancelSource();
-
-        lock (_lifecycleLock)
+        try
         {
-            DisposeCancelSourceIfInactive();
+            CancelSource();
         }
+        finally
+        {
+            lock (_lifecycleLock)
+            {
+                DisposeCancelSourceIfInactive();
+            }
 
-        _pipelineThreadId = 0;
+            _pipelineThreadId = 0;
+        }
     }
 
     private bool IsPipelineThread
@@ -282,6 +287,9 @@ public abstract partial class AsyncPSCmdlet
                     break;
                 case PipelineType.Progress:
                     base.WriteProgress((ProgressRecord)item.Value!);
+                    break;
+                case PipelineType.CommandDetail:
+                    base.WriteCommandDetail((string)item.Value!);
                     break;
                 case PipelineType.ShouldProcessTarget:
                     item.ReplyPipe!.Publish(
