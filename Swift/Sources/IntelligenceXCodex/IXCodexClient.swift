@@ -97,6 +97,41 @@ public actor IXCodexClient {
         return [IXCodexModel(id: configuration.defaultModel)]
     }
 
+    public func accountUsage(
+        retryUnauthorized: Bool = true
+    ) async throws -> IXCodexAccountUsage {
+        let bundle = try await authSession.validBundle()
+        guard let accountID = bundle.accountID else {
+            throw IXCodexError.invalidResponse(
+                "ChatGPT account ID is missing from the OAuth token"
+            )
+        }
+        var request = URLRequest(url: configuration.accountUsageURL)
+        request.httpMethod = "GET"
+        request.setValue(
+            "Bearer \(bundle.accessToken)",
+            forHTTPHeaderField: "Authorization"
+        )
+        request.setValue(
+            accountID,
+            forHTTPHeaderField: "ChatGPT-Account-ID"
+        )
+        request.setValue(
+            configuration.userAgent,
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let response = try await httpClient.send(request)
+        if response.statusCode == 401 && retryUnauthorized {
+            _ = try await authSession.validBundle(forceRefresh: true)
+            return try await accountUsage(retryUnauthorized: false)
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            throw responseError(response)
+        }
+        return try IXCodexAccountUsage.decode(response.body)
+    }
+
     private func modelCatalogURL(from url: URL) -> URL {
         guard url.path.hasSuffix("/backend-api/codex/models"),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {

@@ -84,3 +84,19 @@ public struct IXCodexAccount: Equatable, Sendable {
         self.plan = plan
     }
 }
+
+public struct IXCodexAuthorizationSnapshot: Equatable, Sendable {
+    public let account: IXCodexAccount?
+    public let accessTokenExpiresAt: Date?
+    public let accessTokenNeedsRefresh: Bool
+
+    public init(
+        account: IXCodexAccount?,
+        accessTokenExpiresAt: Date?,
+        accessTokenNeedsRefresh: Bool
+    ) {
+        self.account = account
+        self.accessTokenExpiresAt = accessTokenExpiresAt
+        self.accessTokenNeedsRefresh = accessTokenNeedsRefresh
+    }
+}

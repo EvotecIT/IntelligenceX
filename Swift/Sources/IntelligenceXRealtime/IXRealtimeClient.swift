@@ -55,7 +55,12 @@ public actor IXRealtimeClient {
             )
         }
         guard (200..<300).contains(response.statusCode) else {
-            let message = String(data: response.body, encoding: .utf8) ?? "Unknown error"
+            let value = try? IXJSONValue.decode(response.body)
+            let message = value?["error"]?["message"]?.stringValue
+                ?? value?["detail"]?.stringValue
+                ?? value?["message"]?.stringValue
+                ?? String(data: response.body, encoding: .utf8)
+                ?? "Unknown error"
             throw IXCodexError.requestFailed(status: response.statusCode, message: message)
         }
         let value = try JSONDecoder().decode(IXJSONValue.self, from: response.body)

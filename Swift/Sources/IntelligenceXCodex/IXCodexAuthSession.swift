@@ -38,6 +38,22 @@ public actor IXCodexAuthSession {
         try await credentialStore.load()
     }
 
+    public func authorizationSnapshot() async throws
+        -> IXCodexAuthorizationSnapshot {
+        guard let bundle = try await credentialStore.load() else {
+            return IXCodexAuthorizationSnapshot(
+                account: nil,
+                accessTokenExpiresAt: nil,
+                accessTokenNeedsRefresh: false
+            )
+        }
+        return IXCodexAuthorizationSnapshot(
+            account: IXJWTClaims.account(bundle: bundle),
+            accessTokenExpiresAt: bundle.expiresAt,
+            accessTokenNeedsRefresh: bundle.needsRefresh(at: now())
+        )
+    }
+
     public var browserCallbackPorts: [UInt16] {
         configuration.browserCallbackPorts
     }

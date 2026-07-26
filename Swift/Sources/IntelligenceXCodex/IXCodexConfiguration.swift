@@ -10,6 +10,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
     public var deviceCallbackURL: URL
     public var tokenURL: URL
     public var responsesURL: URL
+    public var accountUsageURL: URL
     public var modelURLs: [URL]
     public var modelCatalogClientVersion: String
     public var defaultModel: String
@@ -28,6 +29,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
         deviceCallbackURL: URL = URL(string: "https://auth.openai.com/deviceauth/callback")!,
         tokenURL: URL = URL(string: "https://auth.openai.com/oauth/token")!,
         responsesURL: URL = URL(string: "https://chatgpt.com/backend-api/codex/responses")!,
+        accountUsageURL: URL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!,
         modelURLs: [URL] = [
             URL(string: "https://chatgpt.com/backend-api/codex/models")!,
         ],
@@ -47,6 +49,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
         self.deviceCallbackURL = deviceCallbackURL
         self.tokenURL = tokenURL
         self.responsesURL = responsesURL
+        self.accountUsageURL = accountUsageURL
         self.modelURLs = modelURLs
         self.modelCatalogClientVersion = modelCatalogClientVersion
         self.defaultModel = defaultModel
@@ -70,6 +73,35 @@ public enum IXCodexError: LocalizedError, Equatable, Sendable {
     case toolLoopLimitExceeded
     case malformedToolCall(String)
     case conversationBusy
+
+    public var requiresReauthorization: Bool {
+        switch self {
+        case .authenticationRequired:
+            true
+        case .requestFailed(let status, let message):
+            status == 401 || (
+                status == 400 &&
+                (
+                    message.localizedCaseInsensitiveContains("invalid_grant") ||
+                    message.localizedCaseInsensitiveContains("refresh token") ||
+                    message.localizedCaseInsensitiveContains("token expired")
+                )
+            )
+        default:
+            false
+        }
+    }
+
+    public var isUsageLimitReached: Bool {
+        switch self {
+        case .requestFailed(let status, let message):
+            status == 429 ||
+                message.localizedCaseInsensitiveContains("usage limit") ||
+                message.localizedCaseInsensitiveContains("rate limit")
+        default:
+            false
+        }
+    }
 
     public var errorDescription: String? {
         switch self {

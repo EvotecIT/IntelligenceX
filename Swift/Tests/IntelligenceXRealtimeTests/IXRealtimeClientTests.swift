@@ -65,10 +65,7 @@ final class IXRealtimeClientTests: XCTestCase {
             body["session"]?["tools"]?.arrayValue?.first?["name"]?.stringValue,
             "get_home_state"
         )
-        XCTAssertEqual(
-            body["session"]?["tools"]?.arrayValue?.first?["strict"]?.boolValue,
-            true
-        )
+        XCTAssertNil(body["session"]?["tools"]?.arrayValue?.first?["strict"])
     }
 
     func testSessionUpdatePreservesLanguageAndConversationalTurnPolicy() throws {
@@ -92,6 +89,41 @@ final class IXRealtimeClientTests: XCTestCase {
             session["audio"]?["input"]?["turn_detection"]?["interrupt_response"]?.boolValue,
             true
         )
+    }
+
+    func testClientSecretSurfacesStructuredServiceError() async throws {
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "oauth-access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account-1"
+            ))
+        )
+        let client = IXRealtimeClient(
+            authSession: auth,
+            httpClient: IXClosureHTTPClient { _ in
+                .json(400, [
+                    "error": [
+                        "message": "Unknown parameter: session.tools[0].strict",
+                    ],
+                ])
+            }
+        )
+
+        do {
+            _ = try await client.createClientSecret(
+                options: .init(instructions: "Help."),
+                tools: []
+            )
+            XCTFail("Expected a request failure")
+        } catch let IXCodexError.requestFailed(status, message) {
+            XCTAssertEqual(status, 400)
+            XCTAssertEqual(
+                message,
+                "Unknown parameter: session.tools[0].strict"
+            )
+        }
     }
 
     func testSessionUpdateSupportsLatencyFirstReasoning() throws {

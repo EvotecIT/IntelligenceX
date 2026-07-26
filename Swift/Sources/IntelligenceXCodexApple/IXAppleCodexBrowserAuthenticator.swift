@@ -23,7 +23,10 @@ public final class IXAppleCodexBrowserAuthenticator:
         super.init()
     }
 
-    public func signIn(authSession: IXCodexAuthSession) async throws -> IXCodexAuthBundle {
+    public func signIn(
+        authSession: IXCodexAuthSession,
+        prefersEphemeralWebBrowserSession: Bool = false
+    ) async throws -> IXCodexAuthBundle {
         guard continuation == nil else {
             throw IXCodexError.invalidResponse("a ChatGPT browser sign-in is already active")
         }
@@ -79,7 +82,8 @@ public final class IXAppleCodexBrowserAuthenticator:
                     }
                 }
                 webSession.presentationContextProvider = self
-                webSession.prefersEphemeralWebBrowserSession = false
+                webSession.prefersEphemeralWebBrowserSession =
+                    prefersEphemeralWebBrowserSession
                 self.webSession = webSession
                 guard webSession.start() else {
                     self.finish(.failure(
