@@ -7,11 +7,13 @@ let package = Package(
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
+        .watchOS(.v10),
     ],
     products: [
         .library(name: "IntelligenceXCodex", targets: ["IntelligenceXCodex"]),
         .library(name: "IntelligenceXCodexApple", targets: ["IntelligenceXCodexApple"]),
         .library(name: "IntelligenceXRealtime", targets: ["IntelligenceXRealtime"]),
+        .library(name: "IntelligenceXRealtimeWebSocket", targets: ["IntelligenceXRealtimeWebSocket"]),
         .library(name: "IntelligenceXRealtimeWebRTC", targets: ["IntelligenceXRealtimeWebRTC"]),
     ],
     dependencies: [
@@ -41,6 +43,11 @@ let package = Package(
             path: "Swift/Sources/IntelligenceXRealtime"
         ),
         .target(
+            name: "IntelligenceXRealtimeWebSocket",
+            dependencies: ["IntelligenceXCodex", "IntelligenceXRealtime"],
+            path: "Swift/Sources/IntelligenceXRealtimeWebSocket"
+        ),
+        .target(
             name: "IntelligenceXRealtimeWebRTC",
             dependencies: [
                 "IntelligenceXCodex",
@@ -66,6 +73,15 @@ let package = Package(
                 "IntelligenceXRealtimeWebRTC",
             ],
             path: "Swift/Tests/IntelligenceXRealtimeWebRTCTests"
+        ),
+        .testTarget(
+            name: "IntelligenceXRealtimeWebSocketTests",
+            dependencies: [
+                "IntelligenceXCodex",
+                "IntelligenceXRealtime",
+                "IntelligenceXRealtimeWebSocket",
+            ],
+            path: "Swift/Tests/IntelligenceXRealtimeWebSocketTests"
         ),
     ]
 )

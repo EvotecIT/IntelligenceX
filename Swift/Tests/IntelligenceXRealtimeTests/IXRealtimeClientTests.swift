@@ -206,6 +206,21 @@ final class IXRealtimeClientTests: XCTestCase {
         )
     }
 
+    func testOutputAudioDeltaExposesPlaybackIdentity() throws {
+        let event = try makeRealtimeEvent([
+            "type": "response.output_audio.delta",
+            "response_id": "response-1",
+            "item_id": "item-1",
+            "content_index": 2,
+            "delta": Data([1, 2]).base64EncodedString(),
+        ])
+
+        XCTAssertEqual(event.responseID, "response-1")
+        XCTAssertEqual(event.itemID, "item-1")
+        XCTAssertEqual(event.contentIndex, 2)
+        XCTAssertEqual(event.outputAudioData, Data([1, 2]))
+    }
+
     func testSystemMessageCanRestoreTrustedContinuationContext() throws {
         let event = IXRealtimeClientEvent.systemMessage(
             "Continue after a recovered local tool result."
@@ -243,6 +258,28 @@ final class IXRealtimeClientTests: XCTestCase {
             IXRealtimeClientEvent.clearOutputAudioBuffer["type"]?.stringValue,
             "output_audio_buffer.clear"
         )
+    }
+
+    func testWebSocketAudioEventsEncodeAppendCommitAndTruncation() throws {
+        let pcm = Data([1, 2, 3, 4])
+        let append = IXRealtimeClientEvent.appendInputAudio(pcm)
+        let truncate = IXRealtimeClientEvent.truncateConversationAudio(
+            itemID: "item-1",
+            contentIndex: 0,
+            audioEndMilliseconds: 725
+        )
+
+        XCTAssertEqual(append["type"]?.stringValue, "input_audio_buffer.append")
+        XCTAssertEqual(
+            Data(base64Encoded: try XCTUnwrap(append["audio"]?.stringValue)),
+            pcm
+        )
+        XCTAssertEqual(
+            IXRealtimeClientEvent.commitInputAudioBuffer["type"]?.stringValue,
+            "input_audio_buffer.commit"
+        )
+        XCTAssertEqual(truncate["item_id"]?.stringValue, "item-1")
+        XCTAssertEqual(truncate["audio_end_ms"]?.numberValue, 725)
     }
 
     private func makeRealtimeEvent(

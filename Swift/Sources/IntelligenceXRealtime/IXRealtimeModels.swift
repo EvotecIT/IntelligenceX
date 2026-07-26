@@ -121,6 +121,29 @@ public struct IXRealtimeEvent: Sendable, Equatable {
         self.errorMessage = raw["error"]?["message"]?.stringValue ?? raw["message"]?.stringValue
     }
 
+    /// PCM16 output carried by WebSocket Realtime sessions. WebRTC sessions
+    /// render their remote audio track directly and leave this value nil.
+    public var outputAudioData: Data? {
+        guard type == "response.output_audio.delta",
+              let encoded = raw["delta"]?.stringValue else {
+            return nil
+        }
+        return Data(base64Encoded: encoded)
+    }
+
+    public var responseID: String? {
+        raw["response_id"]?.stringValue ?? raw["response"]?["id"]?.stringValue
+    }
+
+    public var itemID: String? {
+        raw["item_id"]?.stringValue ?? raw["item"]?["id"]?.stringValue
+    }
+
+    /// The content-part index associated with an output audio delta.
+    public var contentIndex: Int? {
+        raw["content_index"]?.numberValue.map(Int.init)
+    }
+
     public var outputAudioBufferTransition:
         IXRealtimeOutputAudioBufferTransition? {
         guard let responseID = raw["response_id"]?.stringValue else {
@@ -140,6 +163,31 @@ public struct IXRealtimeEvent: Sendable, Equatable {
 }
 
 public enum IXRealtimeClientEvent {
+    public static func appendInputAudio(_ pcm16Data: Data) -> IXJSONValue {
+        .object([
+            "type": .string("input_audio_buffer.append"),
+            "audio": .string(pcm16Data.base64EncodedString()),
+        ])
+    }
+
+    public static let commitInputAudioBuffer: IXJSONValue = .object([
+        "type": .string("input_audio_buffer.commit"),
+    ])
+
+    /// Truncates unplayed assistant audio after a local barge-in. Callers must
+    /// pass the duration that was actually rendered, not the amount received.
+    public static func truncateConversationAudio(
+        itemID: String,
+        contentIndex: Int,
+        audioEndMilliseconds: Int
+    ) -> IXJSONValue {
+        .object([
+            "type": .string("conversation.item.truncate"),
+            "item_id": .string(itemID),
+            "content_index": .number(Double(max(contentIndex, 0))),
+            "audio_end_ms": .number(Double(max(audioEndMilliseconds, 0))),
+        ])
+    }
     public static func sessionUpdate(
         options: IXRealtimeSessionOptions,
         tools: [IXCodexToolDefinition] = []
