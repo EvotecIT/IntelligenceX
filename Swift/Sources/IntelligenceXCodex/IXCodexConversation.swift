@@ -74,6 +74,7 @@ public actor IXCodexConversation {
         executor: (any IXCodexToolExecuting)? = nil,
         model: String? = nil,
         reasoningEffort: IXCodexReasoningEffort? = nil,
+        webSearch: IXCodexWebSearchOptions? = nil,
         imageGeneration: IXCodexImageGenerationOptions? = nil,
         maximumToolRounds: Int = 6
     ) async throws -> IXCodexRunResult {
@@ -115,6 +116,7 @@ public actor IXCodexConversation {
                     tools: tools,
                     model: model,
                     reasoningEffort: reasoningEffort,
+                    webSearch: webSearch,
                     imageGeneration: imageGeneration
                 )
             } catch let error as IXCodexError where
@@ -141,6 +143,7 @@ public actor IXCodexConversation {
                     tools: tools,
                     model: model,
                     reasoningEffort: reasoningEffort,
+                    webSearch: webSearch,
                     imageGeneration: imageGeneration
                 )
             }

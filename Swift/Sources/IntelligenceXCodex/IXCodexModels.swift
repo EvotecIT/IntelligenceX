@@ -234,6 +234,8 @@ public struct IXCodexTurn: Sendable, Equatable {
     public let text: String
     public let toolCalls: [IXCodexToolCall]
     public let images: [IXCodexImage]
+    public let citations: [IXCodexCitation]
+    public let webSearchActivities: [IXCodexWebSearchActivity]
     public let usage: IXCodexUsage?
     let replayItems: [IXJSONValue]
 
@@ -243,6 +245,8 @@ public struct IXCodexTurn: Sendable, Equatable {
         text: String,
         toolCalls: [IXCodexToolCall] = [],
         images: [IXCodexImage] = [],
+        citations: [IXCodexCitation] = [],
+        webSearchActivities: [IXCodexWebSearchActivity] = [],
         usage: IXCodexUsage? = nil
     ) {
         self.responseID = responseID
@@ -250,6 +254,8 @@ public struct IXCodexTurn: Sendable, Equatable {
         self.text = text
         self.toolCalls = toolCalls
         self.images = images
+        self.citations = citations
+        self.webSearchActivities = webSearchActivities
         self.usage = usage
         self.replayItems = []
     }
@@ -260,6 +266,8 @@ public struct IXCodexTurn: Sendable, Equatable {
         text: String,
         toolCalls: [IXCodexToolCall],
         images: [IXCodexImage],
+        citations: [IXCodexCitation],
+        webSearchActivities: [IXCodexWebSearchActivity],
         usage: IXCodexUsage?,
         replayItems: [IXJSONValue]
     ) {
@@ -268,6 +276,8 @@ public struct IXCodexTurn: Sendable, Equatable {
         self.text = text
         self.toolCalls = toolCalls
         self.images = images
+        self.citations = citations
+        self.webSearchActivities = webSearchActivities
         self.usage = usage
         self.replayItems = replayItems
     }

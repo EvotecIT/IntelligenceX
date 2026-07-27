@@ -155,6 +155,7 @@ public actor IXCodexClient {
         tools: [IXCodexToolDefinition],
         model: String?,
         reasoningEffort: IXCodexReasoningEffort?,
+        webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
         retryUnauthorized: Bool = true
     ) async throws -> IXCodexTurn {
@@ -167,6 +168,7 @@ public actor IXCodexClient {
                 tools: tools,
                 model: requestedModel,
                 reasoningEffort: reasoningEffort ?? configuration.defaultReasoningEffort,
+                webSearch: webSearch,
                 imageGeneration: imageGeneration,
                 retryUnauthorized: retryUnauthorized
             )
@@ -181,6 +183,7 @@ public actor IXCodexClient {
                         tools: tools,
                         model: fallback,
                         reasoningEffort: reasoningEffort ?? configuration.defaultReasoningEffort,
+                        webSearch: webSearch,
                         imageGeneration: imageGeneration,
                         retryUnauthorized: retryUnauthorized
                     )
@@ -245,6 +248,7 @@ public actor IXCodexClient {
         tools: [IXCodexToolDefinition],
         model: String,
         reasoningEffort: IXCodexReasoningEffort,
+        webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
         retryUnauthorized: Bool
     ) async throws -> IXCodexTurn {
@@ -270,6 +274,7 @@ public actor IXCodexClient {
                 tools: tools,
                 model: model,
                 reasoningEffort: reasoningEffort,
+                webSearch: webSearch,
                 imageGeneration: imageGeneration,
                 toolWireFormat: format
             )
@@ -288,6 +293,7 @@ public actor IXCodexClient {
                     tools: tools,
                     model: model,
                     reasoningEffort: reasoningEffort,
+                    webSearch: webSearch,
                     imageGeneration: imageGeneration,
                     retryUnauthorized: false
                 )
@@ -313,6 +319,7 @@ public actor IXCodexClient {
         tools: [IXCodexToolDefinition],
         model: String,
         reasoningEffort: IXCodexReasoningEffort,
+        webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
         toolWireFormat: ToolWireFormat
     ) -> IXJSONValue {
@@ -327,21 +334,39 @@ public actor IXCodexClient {
                 "effort": .string(reasoningEffort.rawValue),
                 "summary": .string("auto"),
             ]),
-            "include": .array([.string("reasoning.encrypted_content")]),
             "prompt_cache_key": .string(sessionID),
         ]
+        var include: [IXJSONValue] = [.string("reasoning.encrypted_content")]
         var serializedTools = tools.map { serializeTool($0, format: toolWireFormat) }
+        if let webSearch {
+            serializedTools.insert(serializeWebSearch(webSearch), at: 0)
+            include.append(.string("web_search_call.action.sources"))
+        }
         if let imageGeneration {
             serializedTools.insert(serializeImageGeneration(imageGeneration), at: 0)
         }
+        object["include"] = .array(include)
         if !serializedTools.isEmpty {
             object["tools"] = .array(serializedTools)
         }
-        if !tools.isEmpty {
-            object["tool_choice"] = .string("auto")
+        let hasSelectableTools = !tools.isEmpty || webSearch != nil
+        if hasSelectableTools {
+            object["tool_choice"] = webSearch?.requiresSearch == true
+                ? .object(["type": .string("web_search")])
+                : .string("auto")
             object["parallel_tool_calls"] = .bool(true)
         }
         return .object(object)
+    }
+
+    private func serializeWebSearch(
+        _ options: IXCodexWebSearchOptions
+    ) -> IXJSONValue {
+        .object([
+            "type": .string("web_search"),
+            "search_context_size": .string(options.contextSize.rawValue),
+            "external_web_access": .bool(options.allowsLiveInternetAccess),
+        ])
     }
 
     private func serializeImageGeneration(_ options: IXCodexImageGenerationOptions) -> IXJSONValue {
@@ -450,6 +475,8 @@ public actor IXCodexClient {
         var text = parsed.text
         var calls: [IXCodexToolCall] = []
         var images: [IXCodexImage] = []
+        var citations: [IXCodexCitation] = []
+        var webSearchActivities: [IXCodexWebSearchActivity] = []
 
         for item in responseItems {
             guard let object = item.objectValue else { continue }
@@ -457,8 +484,11 @@ public actor IXCodexClient {
             if type == "message" {
                 for part in object["content"]?.arrayValue ?? [] {
                     let partType = part["type"]?.stringValue
-                    if partType == "output_text", let value = part["text"]?.stringValue, parsed.text.isEmpty {
-                        text += value
+                    if partType == "output_text" {
+                        citations.append(contentsOf: parseCitations(part))
+                        if let value = part["text"]?.stringValue, parsed.text.isEmpty {
+                            text += value
+                        }
                     } else if partType == "refusal", let value = part["refusal"]?.stringValue, parsed.text.isEmpty {
                         text += value
                     }
@@ -476,6 +506,8 @@ public actor IXCodexClient {
                     ),
                     revisedPrompt: object["revised_prompt"]?.stringValue
                 ))
+            } else if type == "web_search_call" {
+                webSearchActivities.append(parseWebSearchActivity(object))
             }
         }
         let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -509,8 +541,54 @@ public actor IXCodexClient {
             text: normalizedText,
             toolCalls: calls.uniquedByID(),
             images: images,
+            citations: citations.uniquedByURL(),
+            webSearchActivities: webSearchActivities,
             usage: response.flatMap(parseUsage),
             replayItems: responseItems
+        )
+    }
+
+    private func parseCitations(_ contentPart: IXJSONValue) -> [IXCodexCitation] {
+        (contentPart["annotations"]?.arrayValue ?? []).compactMap { annotation in
+            guard annotation["type"]?.stringValue == "url_citation",
+                  let rawURL = annotation["url"]?.stringValue,
+                  let url = URL(string: rawURL),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "https" || scheme == "http" else {
+                return nil
+            }
+            return IXCodexCitation(
+                title: annotation["title"]?.stringValue ?? url.host ?? rawURL,
+                url: url,
+                startIndex: annotation["start_index"]?.numberValue.map(Int.init),
+                endIndex: annotation["end_index"]?.numberValue.map(Int.init)
+            )
+        }
+    }
+
+    private func parseWebSearchActivity(
+        _ object: [String: IXJSONValue]
+    ) -> IXCodexWebSearchActivity {
+        let action = object["action"]?.objectValue
+        let query = action?["query"]?.stringValue
+        let queries = action?["queries"]?.arrayValue?.compactMap(\.stringValue)
+            ?? query.map { [$0] }
+            ?? []
+        let sourceURLs: [URL] = (action?["sources"]?.arrayValue ?? []).compactMap {
+            guard let rawURL = $0["url"]?.stringValue,
+                  let url = URL(string: rawURL),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "https" || scheme == "http" else {
+                return nil
+            }
+            return url
+        }
+        return IXCodexWebSearchActivity(
+            id: object["id"]?.stringValue ?? UUID().uuidString,
+            status: object["status"]?.stringValue,
+            action: action?["type"]?.stringValue,
+            queries: queries,
+            sourceURLs: sourceURLs
         )
     }
 
@@ -609,5 +687,12 @@ private extension Array where Element == IXCodexToolCall {
     func uniquedByID() -> [IXCodexToolCall] {
         var ids = Set<String>()
         return filter { ids.insert($0.id).inserted }
+    }
+}
+
+private extension Array where Element == IXCodexCitation {
+    func uniquedByURL() -> [IXCodexCitation] {
+        var urls = Set<URL>()
+        return filter { urls.insert($0.url).inserted }
     }
 }
