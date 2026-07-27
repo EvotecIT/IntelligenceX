@@ -102,6 +102,50 @@ public enum IXRealtimeOutputAudioBufferTransition: Sendable, Equatable {
     case cleared(responseID: String)
 }
 
+/// Provider-protocol events decoded into stable, typed semantics that can be
+/// shared by phone, watch, CarPlay, and future product hosts. Product-specific
+/// conversation state remains the responsibility of each consumer.
+public enum IXRealtimeServerEvent: Sendable, Equatable {
+    public enum TextDeltaKind: Sendable, Equatable {
+        case text
+        case audioTranscript
+    }
+
+    case outputAudioBuffer(IXRealtimeOutputAudioBufferTransition)
+    case speechStarted(itemID: String?)
+    case speechStopped(itemID: String?)
+    case inputAudioCommitted(itemID: String)
+    case inputTranscriptionCompleted(itemID: String, transcript: String?)
+    case inputTranscriptionFailed(itemID: String, message: String?)
+    case responseCreated(responseID: String)
+    case responseTextDelta(
+        responseID: String,
+        delta: String,
+        kind: TextDeltaKind
+    )
+    case responseAudioDelta(
+        responseID: String,
+        itemID: String?,
+        contentIndex: Int?,
+        data: Data?
+    )
+    case responseAudioTranscriptCompleted(
+        responseID: String,
+        transcript: String
+    )
+    case responseAudioCompleted(responseID: String)
+    case responseCompleted(
+        responseID: String,
+        response: [String: IXJSONValue]
+    )
+    case functionCallCompleted(
+        responseID: String,
+        call: IXCodexToolCall
+    )
+    case error(message: String)
+    case other(type: String)
+}
+
 public struct IXRealtimeEvent: Sendable, Equatable {
     public let type: String
     public let raw: IXJSONValue
@@ -159,6 +203,106 @@ public struct IXRealtimeEvent: Sendable, Equatable {
         default:
             return nil
         }
+    }
+
+    /// A typed view of the Realtime server protocol. Consumers should prefer
+    /// this over repeating string event names and raw JSON paths.
+    public var serverEvent: IXRealtimeServerEvent {
+        if let outputAudioBufferTransition {
+            return .outputAudioBuffer(outputAudioBufferTransition)
+        }
+        switch type {
+        case "input_audio_buffer.speech_started":
+            return .speechStarted(itemID: itemID)
+        case "input_audio_buffer.speech_stopped":
+            return .speechStopped(itemID: itemID)
+        case "input_audio_buffer.committed":
+            guard let itemID else { break }
+            return .inputAudioCommitted(itemID: itemID)
+        case "conversation.item.input_audio_transcription.completed":
+            guard let itemID else { break }
+            return .inputTranscriptionCompleted(
+                itemID: itemID,
+                transcript: raw["transcript"]?.stringValue
+            )
+        case "conversation.item.input_audio_transcription.failed":
+            guard let itemID else { break }
+            return .inputTranscriptionFailed(
+                itemID: itemID,
+                message: errorMessage
+            )
+        case "response.created":
+            guard let responseID else { break }
+            return .responseCreated(responseID: responseID)
+        case "response.output_text.delta":
+            guard let responseID else { break }
+            return .responseTextDelta(
+                responseID: responseID,
+                delta: textDelta ?? "",
+                kind: .text
+            )
+        case "response.output_audio_transcript.delta":
+            guard let responseID else { break }
+            return .responseTextDelta(
+                responseID: responseID,
+                delta: textDelta ?? "",
+                kind: .audioTranscript
+            )
+        case "response.output_audio.delta":
+            guard let responseID else { break }
+            return .responseAudioDelta(
+                responseID: responseID,
+                itemID: itemID,
+                contentIndex: contentIndex,
+                data: outputAudioData
+            )
+        case "response.output_audio_transcript.done":
+            guard let responseID,
+                  let transcript = raw["transcript"]?.stringValue else {
+                break
+            }
+            return .responseAudioTranscriptCompleted(
+                responseID: responseID,
+                transcript: transcript
+            )
+        case "response.output_audio.done":
+            guard let responseID else { break }
+            return .responseAudioCompleted(responseID: responseID)
+        case "response.done":
+            guard let response = raw["response"]?.objectValue,
+                  let responseID = response["id"]?.stringValue else {
+                break
+            }
+            return .responseCompleted(
+                responseID: responseID,
+                response: response
+            )
+        case "response.output_item.done":
+            guard let responseID,
+                  let item = raw["item"]?.objectValue,
+                  item["type"]?.stringValue == "function_call",
+                  let callID = item["call_id"]?.stringValue,
+                  let name = item["name"]?.stringValue else {
+                break
+            }
+            let rawArguments = item["arguments"]?.stringValue ?? "{}"
+            let arguments = rawArguments.data(using: .utf8)
+                .flatMap { try? IXJSONValue.decode($0) } ?? .object([:])
+            return .functionCallCompleted(
+                responseID: responseID,
+                call: IXCodexToolCall(
+                    id: callID,
+                    name: name,
+                    arguments: arguments
+                )
+            )
+        default:
+            break
+        }
+        if let errorMessage {
+            return .error(message: errorMessage)
+        }
+        return .other(type: type)
     }
 }
 

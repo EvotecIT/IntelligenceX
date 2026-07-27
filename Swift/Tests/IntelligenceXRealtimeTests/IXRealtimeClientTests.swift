@@ -219,6 +219,86 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertEqual(event.itemID, "item-1")
         XCTAssertEqual(event.contentIndex, 2)
         XCTAssertEqual(event.outputAudioData, Data([1, 2]))
+        XCTAssertEqual(
+            event.serverEvent,
+            .responseAudioDelta(
+                responseID: "response-1",
+                itemID: "item-1",
+                contentIndex: 2,
+                data: Data([1, 2])
+            )
+        )
+    }
+
+    func testServerEventsExposeTypedConversationLifecycle() throws {
+        let speech = try makeRealtimeEvent([
+            "type": "input_audio_buffer.speech_started",
+            "item_id": "item-1",
+        ])
+        let transcription = try makeRealtimeEvent([
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "item-1",
+            "transcript": "Dzień dobry",
+        ])
+        let created = try makeRealtimeEvent([
+            "type": "response.created",
+            "response": ["id": "response-1"],
+        ])
+        let completed = try makeRealtimeEvent([
+            "type": "response.done",
+            "response": [
+                "id": "response-1",
+                "status": "completed",
+            ],
+        ])
+
+        XCTAssertEqual(speech.serverEvent, .speechStarted(itemID: "item-1"))
+        XCTAssertEqual(
+            transcription.serverEvent,
+            .inputTranscriptionCompleted(
+                itemID: "item-1",
+                transcript: "Dzień dobry"
+            )
+        )
+        XCTAssertEqual(
+            created.serverEvent,
+            .responseCreated(responseID: "response-1")
+        )
+        guard case .responseCompleted(
+            let responseID,
+            let response
+        ) = completed.serverEvent else {
+            return XCTFail("Expected a typed response completion")
+        }
+        XCTAssertEqual(responseID, "response-1")
+        XCTAssertEqual(response["status"]?.stringValue, "completed")
+    }
+
+    func testServerEventDecodesFunctionCallOnce() throws {
+        let event = try makeRealtimeEvent([
+            "type": "response.output_item.done",
+            "response_id": "response-1",
+            "item": [
+                "type": "function_call",
+                "call_id": "call-1",
+                "name": "get_home_state",
+                "arguments": "{\"scope\":\"summary\"}",
+            ],
+        ])
+
+        XCTAssertEqual(
+            event.serverEvent,
+            .functionCallCompleted(
+                responseID: "response-1",
+                call: IXCodexToolCall(
+                    id: "call-1",
+                    name: "get_home_state",
+                    arguments: .object([
+                        "scope": .string("summary"),
+                    ])
+                )
+            )
+        )
     }
 
     func testSystemMessageCanRestoreTrustedContinuationContext() throws {
