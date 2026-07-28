@@ -1,10 +1,15 @@
+import Foundation
+
 #if os(iOS)
 import AVFAudio
 import IntelligenceXCodex
 
-@MainActor
-enum IXRealtimeAppleAudioSession {
-    static func activate() async throws {
+actor IXRealtimeAppleAudioSession {
+    static let shared = IXRealtimeAppleAudioSession()
+
+    private var activeOwnerID: UUID?
+
+    func activate(ownerID: UUID) async throws {
         let session = AVAudioSession.sharedInstance()
         let isAllowed: Bool
         switch session.recordPermission {
@@ -13,7 +18,7 @@ enum IXRealtimeAppleAudioSession {
         case .denied:
             isAllowed = false
         case .undetermined:
-            isAllowed = await requestRecordPermission()
+            isAllowed = await Self.requestRecordPermission()
         @unknown default:
             isAllowed = false
         }
@@ -30,6 +35,7 @@ enum IXRealtimeAppleAudioSession {
             options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
         try session.setActive(true)
+        activeOwnerID = ownerID
     }
 
     /// AVAudioSession deliberately invokes its permission callback on a TCC
@@ -43,17 +49,20 @@ enum IXRealtimeAppleAudioSession {
         }
     }
 
-    static func deactivate() {
+    func deactivate(ownerID: UUID) {
+        guard activeOwnerID == ownerID else { return }
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
         )
+        activeOwnerID = nil
     }
 }
 #else
-@MainActor
-enum IXRealtimeAppleAudioSession {
-    static func activate() async throws {}
-    static func deactivate() {}
+actor IXRealtimeAppleAudioSession {
+    static let shared = IXRealtimeAppleAudioSession()
+
+    func activate(ownerID: UUID) async throws {}
+    func deactivate(ownerID: UUID) {}
 }
 #endif

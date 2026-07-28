@@ -41,6 +41,8 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private var remoteAudioTracks: [String: LKRTCAudioTrack] = [:]
     private var outputPlaybackEnabled = true
     private var ownsAudioSession = false
+    private var audioSessionOwnerID: UUID?
+    private var lifecycleGeneration: UInt64 = 0
 
     /// Indicates whether the Realtime event channel can currently accept
     /// session updates, tool outputs, and response requests.
@@ -78,18 +80,38 @@ public final class IXRealtimeWebRTCSession: NSObject {
             throw IXCodexError.authenticationRequired
         }
         disconnect()
+        let expectedGeneration = lifecycleGeneration
+        let audioSessionOwnerID = UUID()
         outputPlaybackEnabled = true
         do {
-            try await IXRealtimeAppleAudioSession.activate()
+            try await IXRealtimeAppleAudioSession.shared.activate(
+                ownerID: audioSessionOwnerID
+            )
+            guard lifecycleGeneration == expectedGeneration else {
+                await IXRealtimeAppleAudioSession.shared.deactivate(
+                    ownerID: audioSessionOwnerID
+                )
+                throw CancellationError()
+            }
             ownsAudioSession = true
-            try await connectPeer()
+            self.audioSessionOwnerID = audioSessionOwnerID
+            try await connectPeer(generation: expectedGeneration)
         } catch {
-            disconnect()
+            if lifecycleGeneration == expectedGeneration {
+                disconnect()
+            } else {
+                await IXRealtimeAppleAudioSession.shared.deactivate(
+                    ownerID: audioSessionOwnerID
+                )
+            }
             throw error
         }
     }
 
-    private func connectPeer() async throws {
+    private func connectPeer(generation: UInt64) async throws {
+        guard lifecycleGeneration == generation else {
+            throw CancellationError()
+        }
         onState(.connecting)
         let configuration = LKRTCConfiguration()
         configuration.sdpSemantics = .unifiedPlan
@@ -131,10 +153,22 @@ public final class IXRealtimeWebRTCSession: NSObject {
             optionalConstraints: nil
         )
         let offer = try await createOffer(peer: peer, constraints: offerConstraints)
+        guard lifecycleGeneration == generation else {
+            throw CancellationError()
+        }
         try await setLocalDescription(offer, peer: peer)
+        guard lifecycleGeneration == generation else {
+            throw CancellationError()
+        }
         let answerSDP = try await exchange.exchange(offer: offer.sdp, secret: secret)
+        guard lifecycleGeneration == generation else {
+            throw CancellationError()
+        }
         let answer = LKRTCSessionDescription(type: .answer, sdp: answerSDP)
         try await setRemoteDescription(answer, peer: peer)
+        guard lifecycleGeneration == generation else {
+            throw CancellationError()
+        }
     }
 
     @discardableResult
@@ -155,23 +189,38 @@ public final class IXRealtimeWebRTCSession: NSObject {
     }
 
     public func disconnect() {
-        dataChannel?.delegate = nil
-        dataChannel?.close()
+        lifecycleGeneration &+= 1
+        let detachedDataChannel = dataChannel
+        detachedDataChannel?.delegate = nil
         dataChannel = nil
-        localAudioTrack?.isEnabled = false
+        let detachedLocalAudioTrack = localAudioTrack
         localAudioTrack = nil
-        for track in remoteAudioTracks.values {
-            track.isEnabled = false
-        }
+        let detachedRemoteAudioTracks = Array(remoteAudioTracks.values)
         remoteAudioTracks.removeAll()
-        peerConnection?.delegate = nil
-        peerConnection?.close()
+        let detachedPeerConnection = peerConnection
+        detachedPeerConnection?.delegate = nil
         peerConnection = nil
-        if ownsAudioSession {
-            IXRealtimeAppleAudioSession.deactivate()
-            ownsAudioSession = false
-        }
+        let shouldDeactivateAudioSession = ownsAudioSession
+        let detachedAudioSessionOwnerID = audioSessionOwnerID
+        ownsAudioSession = false
+        audioSessionOwnerID = nil
         onState(.idle)
+
+        let teardown = IXRealtimeWebRTCTeardown(
+            dataChannel: detachedDataChannel,
+            localAudioTrack: detachedLocalAudioTrack,
+            remoteAudioTracks: detachedRemoteAudioTracks,
+            peerConnection: detachedPeerConnection
+        )
+        Task.detached(priority: .utility) {
+            teardown.perform()
+            if shouldDeactivateAudioSession,
+               let detachedAudioSessionOwnerID {
+                await IXRealtimeAppleAudioSession.shared.deactivate(
+                    ownerID: detachedAudioSessionOwnerID
+                )
+            }
+        }
     }
 
     public func setMicrophoneEnabled(_ isEnabled: Bool) {
@@ -226,6 +275,37 @@ public final class IXRealtimeWebRTCSession: NSObject {
                 else { continuation.resume() }
             }
         }
+    }
+}
+
+/// LiveKit/WebRTC close and AVAudioSession deactivation can synchronously wait
+/// on media and XPC queues. Detaching the already-disowned objects keeps those
+/// waits off the UI actor while retaining them until teardown is complete.
+private final class IXRealtimeWebRTCTeardown: @unchecked Sendable {
+    private let dataChannel: LKRTCDataChannel?
+    private let localAudioTrack: LKRTCAudioTrack?
+    private let remoteAudioTracks: [LKRTCAudioTrack]
+    private let peerConnection: LKRTCPeerConnection?
+
+    init(
+        dataChannel: LKRTCDataChannel?,
+        localAudioTrack: LKRTCAudioTrack?,
+        remoteAudioTracks: [LKRTCAudioTrack],
+        peerConnection: LKRTCPeerConnection?
+    ) {
+        self.dataChannel = dataChannel
+        self.localAudioTrack = localAudioTrack
+        self.remoteAudioTracks = remoteAudioTracks
+        self.peerConnection = peerConnection
+    }
+
+    func perform() {
+        dataChannel?.close()
+        localAudioTrack?.isEnabled = false
+        for track in remoteAudioTracks {
+            track.isEnabled = false
+        }
+        peerConnection?.close()
     }
 }
 
