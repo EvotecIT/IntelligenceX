@@ -3,6 +3,105 @@ import Foundation
 import XCTest
 
 final class IXCodexConversationTests: XCTestCase {
+    func testConfirmationRequiredToolFailsClosedWithoutApprovalHandler() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-tool",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-risky",
+                    "name": "open_gate",
+                    "arguments": "{}",
+                ]],
+            ])),
+        ])
+        let counter = ToolExecutionCounter()
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(
+                input: [.text("Open it")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "open_gate",
+                    description: "Open a gate.",
+                    parameters: .object(["type": .string("object")]),
+                    requiresConfirmation: true
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    await counter.record()
+                    return .success(callID: call.id, message: "Opened")
+                }
+            )
+            XCTFail("A confirmation-required tool must fail closed")
+        } catch let IXCodexError.toolConfirmationRequired(names) {
+            XCTAssertEqual(names, ["open_gate"])
+        }
+        let executionCount = await counter.count
+        XCTAssertEqual(executionCount, 0)
+    }
+
+    func testNegativeToolRoundLimitIsRejectedWithoutRequest() async throws {
+        let state = ResponseQueue(responses: [])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(
+                input: [.text("Hello")],
+                instructions: "Help.",
+                maximumToolRounds: -1
+            )
+            XCTFail("A negative limit must be rejected")
+        } catch let IXCodexError.invalidResponse(message) {
+            XCTAssertTrue(message.contains("maximumToolRounds"))
+        }
+        let requests = await state.requests
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    func testStreamingTransportDeliversTextDeltasInOrder() async throws {
+        let body = Data("""
+        data: {"type":"response.output_text.delta","delta":"Hello "}
+
+        data: {"type":"response.refusal.delta","delta":"home"}
+
+        data: {"type":"response.completed","response":{"id":"streamed","status":"completed","output":[]}}
+
+        data: [DONE]
+
+        """.utf8)
+        let http = StreamingHTTPClient(chunks: [
+            Data(body.prefix(37)),
+            Data(body.dropFirst(37).prefix(51)),
+            Data(body.dropFirst(88)),
+        ])
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            )),
+            httpClient: http
+        )
+        let deltas = TextDeltaRecorder()
+        let conversation = IXCodexConversation(client: IXCodexClient(
+            authSession: auth,
+            httpClient: http
+        ))
+
+        let result = try await conversation.run(
+            input: [.text("Hello")],
+            instructions: "Help.",
+            onTextDelta: { delta in await deltas.append(delta) }
+        )
+
+        XCTAssertEqual(result.turn.text, "Hello home")
+        let recordedDeltas = await deltas.values
+        XCTAssertEqual(recordedDeltas, ["Hello ", "home"])
+    }
+
     func testRestoredTranscriptIsReplayedBeforeTheNewPrompt() async throws {
         let state = ResponseQueue(responses: [
             IXHTTPResponse(statusCode: 200, body: sse(response: [
@@ -750,6 +849,71 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertTrue(recoveryInput.contains { $0["type"]?.stringValue == "function_call_output" })
     }
 
+    func testCallerCancellationCheckpointsAnAlreadyExecutedToolBeforeStopping() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "tool-response",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-side-effect",
+                    "name": "toggle_light",
+                    "arguments": "{}",
+                ]],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "recovered-response",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Still changed once."]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let executor = CancellationIgnoringToolGate()
+        let firstRun = Task {
+            try await conversation.run(
+                input: [.text("Toggle")],
+                instructions: "Help.",
+                tools: [IXCodexToolDefinition(
+                    name: "toggle_light",
+                    description: "Toggle",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: executor
+            )
+        }
+
+        await executor.waitUntilStarted()
+        firstRun.cancel()
+        await executor.release()
+        do {
+            _ = try await firstRun.value
+            XCTFail("Caller cancellation should stop the model continuation")
+        } catch is CancellationError {
+        }
+
+        let recovered = try await conversation.run(
+            input: [.text("What happened?")],
+            instructions: "Help."
+        )
+
+        XCTAssertEqual(recovered.turn.text, "Still changed once.")
+        let executionCount = await executor.executionCount
+        XCTAssertEqual(executionCount, 1)
+        let requests = await state.requests
+        XCTAssertEqual(requests.count, 2)
+        let recoveredBody = try IXJSONValue.decode(
+            try XCTUnwrap(requests.last?.httpBody)
+        )
+        let replay = try XCTUnwrap(recoveredBody["input"]?.arrayValue)
+        XCTAssertTrue(replay.contains { item in
+            item["type"]?.stringValue == "function_call_output" &&
+                item["call_id"]?.stringValue == "call-side-effect"
+        })
+    }
+
     func testLongConversationUsesRemoteCompactionBeforeContinuing() async throws {
         let retainedItem: [String: Any] = [
             "type": "message",
@@ -1015,6 +1179,39 @@ actor ToolExecutionCounter {
     }
 }
 
+actor TextDeltaRecorder {
+    private(set) var values: [String] = []
+
+    func append(_ value: String) {
+        values.append(value)
+    }
+}
+
+final class StreamingHTTPClient: IXHTTPStreamingClient, @unchecked Sendable {
+    private let chunks: [Data]
+
+    init(chunks: [Data]) {
+        self.chunks = chunks
+    }
+
+    func send(_ request: URLRequest) async throws -> IXHTTPResponse {
+        IXHTTPResponse(statusCode: 200, body: chunks.reduce(into: Data()) {
+            $0.append($1)
+        })
+    }
+
+    func stream(_ request: URLRequest) async throws -> IXHTTPStreamingResponse {
+        let chunks = chunks
+        return IXHTTPStreamingResponse(
+            statusCode: 200,
+            body: AsyncThrowingStream { continuation in
+                for chunk in chunks { continuation.yield(chunk) }
+                continuation.finish()
+            }
+        )
+    }
+}
+
 actor BatchRecordingToolExecutor: IXCodexToolExecuting {
     private(set) var batches: [[String]] = []
 
@@ -1025,6 +1222,30 @@ actor BatchRecordingToolExecutor: IXCodexToolExecuting {
     func execute(_ calls: [IXCodexToolCall]) async -> [IXCodexToolResult] {
         batches.append(calls.map(\.id))
         return calls.map { .success(callID: $0.id, message: "Done") }
+    }
+}
+
+actor CancellationIgnoringToolGate: IXCodexToolExecuting {
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+    private(set) var executionCount = 0
+
+    func execute(_ call: IXCodexToolCall) async -> IXCodexToolResult {
+        executionCount += 1
+        startedContinuation?.resume()
+        startedContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+        return .success(callID: call.id, message: "Changed")
+    }
+
+    func waitUntilStarted() async {
+        guard executionCount == 0 else { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
     }
 }
 

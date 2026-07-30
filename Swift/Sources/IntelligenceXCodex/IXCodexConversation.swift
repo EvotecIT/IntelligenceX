@@ -7,6 +7,10 @@ public actor IXCodexConversation {
     private var history: [IXJSONValue] = []
     private var generation: UInt64 = 0
     private var activeRunID: UUID?
+    private var activeRunTask: (
+        id: UUID,
+        task: Task<IXCodexRunResult, Error>
+    )?
 
     public init(
         client: IXCodexClient,
@@ -23,6 +27,8 @@ public actor IXCodexConversation {
 
     public func reset() {
         generation &+= 1
+        activeRunTask?.task.cancel()
+        activeRunTask = nil
         activeRunID = nil
         history.removeAll(keepingCapacity: true)
     }
@@ -31,6 +37,8 @@ public actor IXCodexConversation {
         _ messages: [IXCodexTranscriptMessage]
     ) {
         generation &+= 1
+        activeRunTask?.task.cancel()
+        activeRunTask = nil
         activeRunID = nil
         history = messages.compactMap { message in
             let text = message.text.trimmingCharacters(
@@ -76,9 +84,62 @@ public actor IXCodexConversation {
         reasoningEffort: IXCodexReasoningEffort? = nil,
         webSearch: IXCodexWebSearchOptions? = nil,
         imageGeneration: IXCodexImageGenerationOptions? = nil,
-        maximumToolRounds: Int = 6
+        maximumToolRounds: Int = 6,
+        approveTools: IXCodexToolApprovalHandler? = nil,
+        onTextDelta: IXCodexTextDeltaHandler? = nil
+    ) async throws -> IXCodexRunResult {
+        guard activeRunTask == nil else {
+            throw IXCodexError.conversationBusy
+        }
+        let taskID = UUID()
+        let task = Task { [self] in
+            try await runImpl(
+                input: input,
+                instructions: instructions,
+                tools: tools,
+                executor: executor,
+                model: model,
+                reasoningEffort: reasoningEffort,
+                webSearch: webSearch,
+                imageGeneration: imageGeneration,
+                maximumToolRounds: maximumToolRounds,
+                approveTools: approveTools,
+                onTextDelta: onTextDelta
+            )
+        }
+        activeRunTask = (taskID, task)
+        defer {
+            if activeRunTask?.id == taskID {
+                activeRunTask = nil
+            }
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func runImpl(
+        input: [IXCodexInput],
+        instructions: String,
+        tools: [IXCodexToolDefinition],
+        executor: (any IXCodexToolExecuting)?,
+        model: String?,
+        reasoningEffort: IXCodexReasoningEffort?,
+        webSearch: IXCodexWebSearchOptions?,
+        imageGeneration: IXCodexImageGenerationOptions?,
+        maximumToolRounds: Int,
+        approveTools: IXCodexToolApprovalHandler?,
+        onTextDelta: IXCodexTextDeltaHandler?
     ) async throws -> IXCodexRunResult {
         guard activeRunID == nil else { throw IXCodexError.conversationBusy }
+        guard maximumToolRounds >= 0 else {
+            throw IXCodexError.invalidResponse(
+                "maximumToolRounds must be zero or greater"
+            )
+        }
+        try Task.checkCancellation()
         let runID = UUID()
         let expectedGeneration = generation
         activeRunID = runID
@@ -93,16 +154,23 @@ public actor IXCodexConversation {
 
         for round in 0...maximumToolRounds {
             var compactedThisRound = false
-            if pendingHistory.count > maximumHistoryItemsBeforeCompaction,
-               let compacted = try? await client.compact(
-                   input: pendingHistory,
-                   sessionID: sessionID,
-                   instructions: instructions,
-                   model: model
-               ) {
-                pendingHistory = compacted
-                compactedThisRound = true
+            if pendingHistory.count > maximumHistoryItemsBeforeCompaction {
+                do {
+                    pendingHistory = try await client.compact(
+                        input: pendingHistory,
+                        sessionID: sessionID,
+                        instructions: instructions,
+                        model: model
+                    )
+                    compactedThisRound = true
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // Proactive compaction is optional. A context-limit error
+                    // still uses the authoritative recovery path below.
+                }
             }
+            try Task.checkCancellation()
             guard generation == expectedGeneration,
                   activeRunID == runID else {
                 throw CancellationError()
@@ -117,7 +185,8 @@ public actor IXCodexConversation {
                     model: model,
                     reasoningEffort: reasoningEffort,
                     webSearch: webSearch,
-                    imageGeneration: imageGeneration
+                    imageGeneration: imageGeneration,
+                    onTextDelta: onTextDelta
                 )
             } catch let error as IXCodexError where
                 !compactedThisRound && Self.isContextLimitError(error) {
@@ -144,9 +213,11 @@ public actor IXCodexConversation {
                     model: model,
                     reasoningEffort: reasoningEffort,
                     webSearch: webSearch,
-                    imageGeneration: imageGeneration
+                    imageGeneration: imageGeneration,
+                    onTextDelta: onTextDelta
                 )
             }
+            try Task.checkCancellation()
             guard generation == expectedGeneration, activeRunID == runID else {
                 throw CancellationError()
             }
@@ -165,7 +236,34 @@ public actor IXCodexConversation {
             guard round < maximumToolRounds, let executor else {
                 throw IXCodexError.toolLoopLimitExceeded
             }
+            try Task.checkCancellation()
+            let confirmationDefinitions = tools.filter { definition in
+                definition.requiresConfirmation && turn.toolCalls.contains {
+                    $0.name == definition.name
+                }
+            }
+            if !confirmationDefinitions.isEmpty {
+                guard let approveTools else {
+                    throw IXCodexError.toolConfirmationRequired(
+                        confirmationDefinitions.map(\.name)
+                    )
+                }
+                let names = Set(confirmationDefinitions.map(\.name))
+                let calls = turn.toolCalls.filter {
+                    names.contains($0.name)
+                }
+                guard try await approveTools(calls, confirmationDefinitions)
+                else {
+                    throw IXCodexError.toolConfirmationDenied
+                }
+                try Task.checkCancellation()
+                guard generation == expectedGeneration,
+                      activeRunID == runID else {
+                    throw CancellationError()
+                }
+            }
             allCalls.append(contentsOf: turn.toolCalls)
+            try Task.checkCancellation()
             let results = await executor.execute(turn.toolCalls)
             var resultsByCallID: [String: IXCodexToolResult] = [:]
             for result in results {
@@ -173,6 +271,7 @@ public actor IXCodexConversation {
             }
             for call in turn.toolCalls {
                 guard let result = resultsByCallID[call.id] else {
+                    if Task.isCancelled { throw CancellationError() }
                     throw IXCodexError.invalidResponse(
                         "Tool executor returned no result for \(call.id)"
                     )
@@ -195,6 +294,7 @@ public actor IXCodexConversation {
             // canonical call/result checkpoint before asking the model to
             // continue so a transient follow-up failure cannot replay it.
             history = pendingHistory
+            try Task.checkCancellation()
         }
         throw IXCodexError.toolLoopLimitExceeded
     }

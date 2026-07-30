@@ -4,6 +4,8 @@ import FoundationNetworking
 #endif
 
 public actor IXCodexClient {
+    static let maximumBufferedStreamingResponseBytes = 32 * 1_024 * 1_024
+
     private enum ToolWireFormat: CaseIterable {
         case functionNestedParameters
         case functionNestedInputSchema
@@ -157,6 +159,7 @@ public actor IXCodexClient {
         reasoningEffort: IXCodexReasoningEffort?,
         webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
+        onTextDelta: IXCodexTextDeltaHandler? = nil,
         retryUnauthorized: Bool = true
     ) async throws -> IXCodexTurn {
         let requestedModel = model ?? configuration.defaultModel
@@ -170,6 +173,7 @@ public actor IXCodexClient {
                 reasoningEffort: reasoningEffort ?? configuration.defaultReasoningEffort,
                 webSearch: webSearch,
                 imageGeneration: imageGeneration,
+                onTextDelta: onTextDelta,
                 retryUnauthorized: retryUnauthorized
             )
         } catch let error as IXCodexError where
@@ -185,6 +189,7 @@ public actor IXCodexClient {
                         reasoningEffort: reasoningEffort ?? configuration.defaultReasoningEffort,
                         webSearch: webSearch,
                         imageGeneration: imageGeneration,
+                        onTextDelta: onTextDelta,
                         retryUnauthorized: retryUnauthorized
                     )
                 } catch let retryError as IXCodexError where isUnsupportedModel(retryError) {
@@ -250,6 +255,7 @@ public actor IXCodexClient {
         reasoningEffort: IXCodexReasoningEffort,
         webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
+        onTextDelta: IXCodexTextDeltaHandler?,
         retryUnauthorized: Bool
     ) async throws -> IXCodexTurn {
         let bundle = try await authSession.validBundle()
@@ -283,7 +289,18 @@ public actor IXCodexClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             applyHeaders(to: &request, bundle: bundle, accountID: accountID, sessionID: sessionID)
             request.httpBody = try body.encodedData()
-            let response = try await httpClient.send(request)
+            let response: IXHTTPResponse
+            if let onTextDelta,
+               let streamingClient = httpClient as?
+                    any IXHTTPStreamingClient {
+                response = try await bufferedStreamingResponse(
+                    request,
+                    client: streamingClient,
+                    onTextDelta: onTextDelta
+                )
+            } else {
+                response = try await httpClient.send(request)
+            }
             if response.statusCode == 401 && retryUnauthorized {
                 _ = try await authSession.validBundle(forceRefresh: true)
                 return try await sendResponse(
@@ -295,6 +312,7 @@ public actor IXCodexClient {
                     reasoningEffort: reasoningEffort,
                     webSearch: webSearch,
                     imageGeneration: imageGeneration,
+                    onTextDelta: onTextDelta,
                     retryUnauthorized: false
                 )
             }
@@ -310,6 +328,70 @@ public actor IXCodexClient {
             return try parseTurn(response.body, imageGeneration: imageGeneration)
         }
         throw lastError ?? IXCodexError.invalidResponse("Tool schema fallback exhausted")
+    }
+
+    private func bufferedStreamingResponse(
+        _ request: URLRequest,
+        client: any IXHTTPStreamingClient,
+        onTextDelta: IXCodexTextDeltaHandler
+    ) async throws -> IXHTTPResponse {
+        let response = try await client.stream(request)
+        var body = Data()
+        var lineBuffer = Data()
+        for try await chunk in response.body {
+            try Task.checkCancellation()
+            guard body.count <= Self.maximumBufferedStreamingResponseBytes - chunk.count else {
+                throw IXCodexError.invalidResponse(
+                    "The streaming response exceeded the local safety limit"
+                )
+            }
+            body.append(chunk)
+            lineBuffer.append(chunk)
+            while let newline = lineBuffer.firstIndex(of: 0x0A) {
+                let lineData = Data(lineBuffer[..<newline])
+                lineBuffer.removeSubrange(...newline)
+                await emitTextDelta(
+                    fromSSELine: lineData,
+                    handler: onTextDelta
+                )
+            }
+        }
+        if !lineBuffer.isEmpty {
+            await emitTextDelta(
+                fromSSELine: lineBuffer,
+                handler: onTextDelta
+            )
+        }
+        return IXHTTPResponse(
+            statusCode: response.statusCode,
+            headers: response.headers,
+            body: body
+        )
+    }
+
+    private func emitTextDelta(
+        fromSSELine lineData: Data,
+        handler: IXCodexTextDeltaHandler
+    ) async {
+        guard var line = String(data: lineData, encoding: .utf8) else {
+            return
+        }
+        line = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard line.hasPrefix("data:") else { return }
+        let payload = line.dropFirst(5).trimmingCharacters(
+            in: .whitespaces
+        )
+        guard payload != "[DONE]",
+              let data = payload.data(using: .utf8),
+              let event = try? IXJSONValue.decode(data),
+              let eventType = event["type"]?.stringValue,
+              eventType == "response.output_text.delta" ||
+                  eventType == "response.refusal.delta",
+              let delta = event["delta"]?.stringValue,
+              !delta.isEmpty else {
+            return
+        }
+        await handler(delta)
     }
 
     private func buildRequestBody(
@@ -541,7 +623,7 @@ public actor IXCodexClient {
             text: normalizedText,
             toolCalls: calls.uniquedByID(),
             images: images,
-            citations: citations.uniquedByURL(),
+            citations: citations.uniqued(),
             webSearchActivities: webSearchActivities,
             usage: response.flatMap(parseUsage),
             replayItems: responseItems
@@ -687,12 +769,5 @@ private extension Array where Element == IXCodexToolCall {
     func uniquedByID() -> [IXCodexToolCall] {
         var ids = Set<String>()
         return filter { ids.insert($0.id).inserted }
-    }
-}
-
-private extension Array where Element == IXCodexCitation {
-    func uniquedByURL() -> [IXCodexCitation] {
-        var urls = Set<URL>()
-        return filter { urls.insert($0.url).inserted }
     }
 }

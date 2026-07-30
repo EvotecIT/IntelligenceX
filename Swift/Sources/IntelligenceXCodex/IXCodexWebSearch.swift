@@ -35,7 +35,9 @@ public struct IXCodexCitation: Sendable, Equatable, Hashable, Identifiable {
     public let startIndex: Int?
     public let endIndex: Int?
 
-    public var id: String { url.absoluteString }
+    public var id: String {
+        "\(url.absoluteString)#\(startIndex.map(String.init) ?? "-"):\(endIndex.map(String.init) ?? "-")"
+    }
 
     public init(
         title: String,

@@ -76,6 +76,8 @@ public enum IXCodexError: LocalizedError, Equatable, Sendable {
     case toolLoopLimitExceeded
     case malformedToolCall(String)
     case conversationBusy
+    case toolConfirmationRequired([String])
+    case toolConfirmationDenied
 
     public var requiresReauthorization: Bool {
         switch self {
@@ -140,6 +142,10 @@ public enum IXCodexError: LocalizedError, Equatable, Sendable {
             "The assistant returned an invalid action request: \(detail)"
         case .conversationBusy:
             "This conversation is already processing another request."
+        case .toolConfirmationRequired(let names):
+            "Confirmation is required before running: \(names.joined(separator: ", "))."
+        case .toolConfirmationDenied:
+            "The requested tool action was not approved."
         }
     }
 }

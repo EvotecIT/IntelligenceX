@@ -117,6 +117,16 @@ public struct IXCodexToolDefinition: Sendable, Equatable {
     }
 }
 
+/// Product-owned approval for the exact tool calls IX is about to execute.
+/// Definitions marked `requiresConfirmation` fail closed when this handler is
+/// absent, so safety metadata cannot silently become documentation-only.
+public typealias IXCodexToolApprovalHandler = @Sendable (
+    [IXCodexToolCall],
+    [IXCodexToolDefinition]
+) async throws -> Bool
+
+public typealias IXCodexTextDeltaHandler = @Sendable (String) async -> Void
+
 public struct IXCodexImageGenerationOptions: Sendable, Equatable {
     public var quality: String?
     public var size: String?
