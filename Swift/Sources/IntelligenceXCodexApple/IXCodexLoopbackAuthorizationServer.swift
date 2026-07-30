@@ -86,10 +86,17 @@ final class IXCodexLoopbackAuthorizationServer: @unchecked Sendable {
 
     private func handle(_ connection: NWConnection) {
         connection.start(queue: queue)
+        receiveRequest(on: connection, accumulated: Data())
+    }
+
+    private func receiveRequest(
+        on connection: NWConnection,
+        accumulated: Data
+    ) {
         connection.receive(
             minimumIncompleteLength: 1,
             maximumLength: 16 * 1024
-        ) { [weak self] data, _, _, error in
+        ) { [weak self] data, _, isComplete, error in
             guard let self else {
                 connection.cancel()
                 return
@@ -99,8 +106,27 @@ final class IXCodexLoopbackAuthorizationServer: @unchecked Sendable {
                 completeCallback(.failure(error))
                 return
             }
-            guard let data,
-                  let request = String(data: data, encoding: .utf8),
+            var requestData = accumulated
+            if let data { requestData.append(data) }
+            guard requestData.count <= 16 * 1024 else {
+                respond(
+                    connection,
+                    status: "431 Request Header Fields Too Large",
+                    body: "Authorization callback headers are too large."
+                )
+                return
+            }
+            let headerComplete = requestData.range(
+                of: Data("\r\n\r\n".utf8)
+            ) != nil
+            guard headerComplete || isComplete else {
+                receiveRequest(
+                    on: connection,
+                    accumulated: requestData
+                )
+                return
+            }
+            guard let request = String(data: requestData, encoding: .utf8),
                   let requestLine = request.components(separatedBy: "\r\n").first else {
                 respond(connection, status: "400 Bad Request", body: "Invalid authorization callback.")
                 return

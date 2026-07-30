@@ -57,19 +57,22 @@ public struct IXCodexDeviceCode: Equatable, Sendable {
     public let verificationURL: URL
     public let interval: Duration
     public let expiresAt: Date
+    let expectedAuthGeneration: UInt64
 
     public init(
         deviceAuthorizationID: String,
         userCode: String,
         verificationURL: URL,
         interval: Duration,
-        expiresAt: Date
+        expiresAt: Date,
+        expectedAuthGeneration: UInt64 = 0
     ) {
         self.deviceAuthorizationID = deviceAuthorizationID
         self.userCode = userCode
         self.verificationURL = verificationURL
         self.interval = interval
         self.expiresAt = expiresAt
+        self.expectedAuthGeneration = expectedAuthGeneration
     }
 }
 

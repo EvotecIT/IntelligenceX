@@ -5,7 +5,7 @@ import FoundationNetworking
 
 public actor IXCodexAuthSession {
     private let configuration: IXCodexConfiguration
-    private let credentialStore: any IXCodexCredentialStoring
+    private let credentialAccess: IXCodexCredentialAccess
     private let httpClient: any IXHTTPClient
     private let now: @Sendable () -> Date
     private let randomBytes: @Sendable (Int) -> [UInt8]
@@ -23,24 +23,24 @@ public actor IXCodexAuthSession {
         }
     ) {
         self.configuration = configuration
-        self.credentialStore = credentialStore
+        credentialAccess = IXCodexCredentialAccess(store: credentialStore)
         self.httpClient = httpClient
         self.now = now
         self.randomBytes = randomBytes
     }
 
     public func account() async throws -> IXCodexAccount? {
-        guard let bundle = try await credentialStore.load() else { return nil }
+        guard let bundle = try await credentialAccess.load() else { return nil }
         return IXJWTClaims.account(bundle: bundle)
     }
 
     public func currentBundle() async throws -> IXCodexAuthBundle? {
-        try await credentialStore.load()
+        try await credentialAccess.load()
     }
 
     public func authorizationSnapshot() async throws
         -> IXCodexAuthorizationSnapshot {
-        guard let bundle = try await credentialStore.load() else {
+        guard let bundle = try await credentialAccess.load() else {
             return IXCodexAuthorizationSnapshot(
                 account: nil,
                 accessTokenExpiresAt: nil,
@@ -62,7 +62,7 @@ public actor IXCodexAuthSession {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
-        try await credentialStore.delete()
+        try await credentialAccess.delete()
     }
 
     /// Starts the normal Codex ChatGPT browser flow for a temporary localhost callback.
@@ -74,6 +74,10 @@ public actor IXCodexAuthSession {
               configuration.browserCallbackPorts.contains(UInt16(port)) else {
             throw IXCodexError.invalidBrowserCallback("the redirect must use an allowed localhost callback")
         }
+        authGeneration &+= 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        let expectedGeneration = authGeneration
         let verifier = IXCodexPKCE.verifier(randomBytes: randomBytes(32))
         let state = IXCodexPKCE.state(randomBytes: randomBytes(32))
         var components = URLComponents(
@@ -101,7 +105,7 @@ public actor IXCodexAuthSession {
             expiresAt: now().addingTimeInterval(10 * 60),
             state: state,
             codeVerifier: verifier,
-            expectedAuthGeneration: authGeneration
+            expectedAuthGeneration: expectedGeneration
         )
     }
 
@@ -146,6 +150,10 @@ public actor IXCodexAuthSession {
     }
 
     public func beginDeviceAuthorization() async throws -> IXCodexDeviceCode {
+        authGeneration &+= 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        let expectedGeneration = authGeneration
         var request = URLRequest(url: configuration.deviceAuthorizationURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -170,14 +178,18 @@ public actor IXCodexAuthSession {
             userCode: userCode,
             verificationURL: configuration.deviceVerificationURL,
             interval: .seconds(intervalSeconds),
-            expiresAt: now().addingTimeInterval(15 * 60)
+            expiresAt: now().addingTimeInterval(15 * 60),
+            expectedAuthGeneration: expectedGeneration
         )
     }
 
     public func completeDeviceAuthorization(_ code: IXCodexDeviceCode) async throws -> IXCodexAuthBundle {
-        let expectedGeneration = authGeneration
+        let expectedGeneration = code.expectedAuthGeneration
         while now() < code.expiresAt {
             try Task.checkCancellation()
+            guard authGeneration == expectedGeneration else {
+                throw CancellationError()
+            }
             let result = try await pollDeviceAuthorization(code)
             switch result {
             case .pending:
@@ -190,8 +202,12 @@ public actor IXCodexAuthSession {
     }
 
     public func validBundle(forceRefresh: Bool = false) async throws -> IXCodexAuthBundle {
-        guard let existing = try await credentialStore.load() else {
+        let expectedGeneration = authGeneration
+        guard let existing = try await credentialAccess.load() else {
             throw IXCodexError.authenticationRequired
+        }
+        guard authGeneration == expectedGeneration, !Task.isCancelled else {
+            throw CancellationError()
         }
         guard forceRefresh || existing.needsRefresh(at: now()) else {
             return existing
@@ -199,7 +215,6 @@ public actor IXCodexAuthSession {
         if let refreshTask {
             return try await refreshTask.value
         }
-        let expectedGeneration = authGeneration
         let task = Task {
             try await self.refresh(
                 existing,
@@ -249,6 +264,21 @@ public actor IXCodexAuthSession {
         ])
         let response = try await httpClient.send(request)
         if response.statusCode == 403 || response.statusCode == 404 {
+            let object = (try? IXJSONValue.decode(response.body))?.objectValue
+            let errorValue = object?["error"]?.stringValue ?? ""
+            let description = object?["error_description"]?.stringValue ??
+                object?["message"]?.stringValue ?? ""
+            let normalized = "\(errorValue) \(description)".lowercased()
+            if normalized.contains("access_denied") ||
+                normalized.contains("authorization_denied") ||
+                normalized.contains("declined") ||
+                normalized.contains("denied") {
+                throw IXCodexError.deviceAuthorizationDenied
+            }
+            if normalized.contains("expired") ||
+                normalized.contains("invalid_device") {
+                throw IXCodexError.deviceAuthorizationExpired
+            }
             return .pending
         }
         guard (200..<300).contains(response.statusCode) else {
@@ -288,7 +318,7 @@ public actor IXCodexAuthSession {
             ], previous: existing, expectedGeneration: expectedGeneration)
         } catch let IXCodexError.requestFailed(_, message)
             where retryAfterReload && message.localizedCaseInsensitiveContains("refresh_token_reused") {
-            guard let reloaded = try await credentialStore.load(), reloaded.refreshToken != existing.refreshToken else {
+            guard let reloaded = try await credentialAccess.load(), reloaded.refreshToken != existing.refreshToken else {
                 throw IXCodexError.requestFailed(status: 401, message: message)
             }
             guard authGeneration == expectedGeneration, !Task.isCancelled else {
@@ -341,7 +371,10 @@ public actor IXCodexAuthSession {
         guard authGeneration == expectedGeneration, !Task.isCancelled else {
             throw CancellationError()
         }
-        try await credentialStore.save(bundle)
+        try await credentialAccess.save(bundle)
+        guard authGeneration == expectedGeneration, !Task.isCancelled else {
+            throw CancellationError()
+        }
         return bundle
     }
 
