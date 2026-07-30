@@ -286,8 +286,13 @@ public struct IXRealtimeEvent: Sendable, Equatable {
                 break
             }
             let rawArguments = item["arguments"]?.stringValue ?? "{}"
-            let arguments = rawArguments.data(using: .utf8)
-                .flatMap { try? IXJSONValue.decode($0) } ?? .object([:])
+            guard let argumentData = rawArguments.data(using: .utf8),
+                  let arguments = try? IXJSONValue.decode(argumentData) else {
+                return .error(
+                    message:
+                        "Realtime returned malformed arguments for \(name); the tool was not executed."
+                )
+            }
             return .functionCallCompleted(
                 responseID: responseID,
                 call: IXCodexToolCall(

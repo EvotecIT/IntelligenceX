@@ -301,6 +301,25 @@ final class IXRealtimeClientTests: XCTestCase {
         )
     }
 
+    func testMalformedFunctionArgumentsNeverBecomeAnEmptyToolCall() throws {
+        let event = try makeRealtimeEvent([
+            "type": "response.output_item.done",
+            "response_id": "response-1",
+            "item": [
+                "type": "function_call",
+                "call_id": "call-1",
+                "name": "open_gate",
+                "arguments": "{not-json",
+            ],
+        ])
+
+        guard case .error(let message) = event.serverEvent else {
+            return XCTFail("Malformed arguments must fail before execution")
+        }
+        XCTAssertTrue(message.contains("malformed arguments"))
+        XCTAssertTrue(message.contains("open_gate"))
+    }
+
     func testSystemMessageCanRestoreTrustedContinuationContext() throws {
         let event = IXRealtimeClientEvent.systemMessage(
             "Continue after a recovered local tool result."

@@ -48,4 +48,18 @@ final class IXRealtimeResponseCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.isBusy)
         XCTAssertTrue(coordinator.pendingRequests.isEmpty)
     }
+
+    func testRejectedCreateSettlesOnlyTheAwaitingRequest() {
+        var coordinator = IXRealtimeResponseCoordinator()
+
+        XCTAssertEqual(coordinator.submit(.standard), .send(.standard))
+        XCTAssertEqual(coordinator.submit(.withoutTools), .queued)
+        coordinator.didRejectAwaitingRequest()
+
+        XCTAssertEqual(
+            coordinator.takePendingRequestIfReady(),
+            .withoutTools
+        )
+        XCTAssertTrue(coordinator.isAwaitingResponseCreated)
+    }
 }

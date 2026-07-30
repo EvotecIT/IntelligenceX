@@ -49,7 +49,7 @@ public struct IXRealtimeResponseCoordinator: Sendable, Equatable {
     }
 
     public mutating func didFinishResponse(_ responseID: String) {
-        isAwaitingResponseCreated = false
+        guard activeResponseIDs.contains(responseID) else { return }
         activeResponseIDs.remove(responseID)
     }
 
@@ -62,6 +62,12 @@ public struct IXRealtimeResponseCoordinator: Sendable, Equatable {
     }
 
     public mutating func didFailToSend() {
+        isAwaitingResponseCreated = false
+    }
+
+    /// Settles a response.create that reached the server but was rejected
+    /// before response.created supplied an identity.
+    public mutating func didRejectAwaitingRequest() {
         isAwaitingResponseCreated = false
     }
 

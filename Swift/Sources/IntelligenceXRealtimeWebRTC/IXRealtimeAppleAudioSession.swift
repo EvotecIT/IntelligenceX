@@ -7,7 +7,7 @@ import IntelligenceXCodex
 actor IXRealtimeAppleAudioSession {
     static let shared = IXRealtimeAppleAudioSession()
 
-    private var activeOwnerID: UUID?
+    private var activeOwnerIDs: Set<UUID> = []
 
     func activate(ownerID: UUID) async throws {
         let session = AVAudioSession.sharedInstance()
@@ -35,7 +35,7 @@ actor IXRealtimeAppleAudioSession {
             options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
         try session.setActive(true)
-        activeOwnerID = ownerID
+        activeOwnerIDs.insert(ownerID)
     }
 
     /// AVAudioSession deliberately invokes its permission callback on a TCC
@@ -50,12 +50,25 @@ actor IXRealtimeAppleAudioSession {
     }
 
     func deactivate(ownerID: UUID) {
-        guard activeOwnerID == ownerID else { return }
+        guard activeOwnerIDs.remove(ownerID) != nil,
+              activeOwnerIDs.isEmpty else { return }
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
         )
-        activeOwnerID = nil
+    }
+
+    /// Reapplies the shared voice-chat configuration after an interruption,
+    /// route change, or media-services reset without changing ownership.
+    func recover(ownerID: UUID) throws {
+        guard activeOwnerIDs.contains(ownerID) else { return }
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
+            .playAndRecord,
+            mode: .voiceChat,
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
+        )
+        try session.setActive(true)
     }
 }
 #else
@@ -64,5 +77,6 @@ actor IXRealtimeAppleAudioSession {
 
     func activate(ownerID: UUID) async throws {}
     func deactivate(ownerID: UUID) {}
+    func recover(ownerID: UUID) throws {}
 }
 #endif

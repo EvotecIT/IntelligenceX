@@ -24,6 +24,7 @@ public final class IXRealtimeWebSocketSession {
     private let onState: StateHandler
     private var connection: (any IXRealtimeWebSocketConnection)?
     private var receiveTask: Task<Void, Never>?
+    private var lifecycleGeneration: UInt64 = 0
 
     public private(set) var state: IXRealtimeWebSocketConnectionState = .idle
 
@@ -49,6 +50,8 @@ public final class IXRealtimeWebSocketSession {
             throw IXCodexError.authenticationRequired
         }
         await disconnect()
+        lifecycleGeneration &+= 1
+        let generation = lifecycleGeneration
         transition(to: .connecting)
 
         var components = URLComponents(
@@ -74,19 +77,58 @@ public final class IXRealtimeWebSocketSession {
                     "openai-insecure-api-key.\(secret.value)",
                 ]
             )
+            guard generation == lifecycleGeneration else {
+                await connection.close()
+                throw CancellationError()
+            }
             self.connection = connection
             // A successful protocol event proves the socket is writable. The
             // API queues the clear until the opening handshake completes.
-            try await connection.send(
-                IXRealtimeClientEvent.clearInputAudioBuffer.encodedData()
-            )
+            do {
+                try await connection.send(
+                    IXRealtimeClientEvent.clearInputAudioBuffer.encodedData()
+                )
+            } catch {
+                await connection.close()
+                if generation == lifecycleGeneration {
+                    self.connection = nil
+                }
+                throw error
+            }
+            guard generation == lifecycleGeneration else {
+                await connection.close()
+                throw CancellationError()
+            }
             transition(to: .connected)
-            receiveTask = Task { [weak self] in
-                await self?.receiveEvents(from: connection)
+            let onEvent = onEvent
+            receiveTask = Task { [weak self, connection] in
+                do {
+                    while !Task.isCancelled {
+                        let data = try await connection.receive()
+                        guard self?.lifecycleGeneration == generation else {
+                            return
+                        }
+                        let event = try IXRealtimeEvent(data: data)
+                        await onEvent(event)
+                    }
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    await connection.close()
+                    guard let self,
+                          generation == self.lifecycleGeneration else {
+                        return
+                    }
+                    self.transition(to: .failed(error.localizedDescription))
+                    self.connection = nil
+                }
             }
         } catch {
-            transition(to: .failed(error.localizedDescription))
-            self.connection = nil
+            if generation == lifecycleGeneration {
+                transition(to: .failed(error.localizedDescription))
+                self.connection = nil
+            }
             throw error
         }
     }
@@ -99,6 +141,7 @@ public final class IXRealtimeWebSocketSession {
     }
 
     public func disconnect() async {
+        lifecycleGeneration &+= 1
         receiveTask?.cancel()
         receiveTask = nil
         if let connection {
@@ -106,25 +149,6 @@ public final class IXRealtimeWebSocketSession {
         }
         connection = nil
         transition(to: .idle)
-    }
-
-    private func receiveEvents(
-        from connection: any IXRealtimeWebSocketConnection
-    ) async {
-        do {
-            while !Task.isCancelled {
-                let data = try await connection.receive()
-                let event = try IXRealtimeEvent(data: data)
-                await onEvent(event)
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            guard !Task.isCancelled else { return }
-            await connection.close()
-            transition(to: .failed(error.localizedDescription))
-            self.connection = nil
-        }
     }
 
     private func transition(to state: IXRealtimeWebSocketConnectionState) {

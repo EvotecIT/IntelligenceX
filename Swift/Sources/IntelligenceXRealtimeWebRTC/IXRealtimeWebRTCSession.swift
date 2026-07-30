@@ -2,6 +2,9 @@ import Foundation
 import IntelligenceXCodex
 import IntelligenceXRealtime
 @preconcurrency import LiveKitWebRTC
+#if os(iOS)
+import AVFAudio
+#endif
 
 public enum IXRealtimeConnectionState: Sendable, Equatable {
     case idle
@@ -35,6 +38,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private let exchange: any IXRealtimeSDPExchanging
     private let onEvent: EventHandler
     private let onState: StateHandler
+    private nonisolated let delegateEventBridge = IXRealtimeDelegateEventBridge()
     private var peerConnection: LKRTCPeerConnection?
     private var dataChannel: LKRTCDataChannel?
     private var localAudioTrack: LKRTCAudioTrack?
@@ -43,6 +47,10 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private var ownsAudioSession = false
     private var audioSessionOwnerID: UUID?
     private var lifecycleGeneration: UInt64 = 0
+    private var pendingEventData: [(generation: UInt64, data: Data)] = []
+    private var isDeliveringEvents = false
+    private var audioSessionObserverTokens: [NSObjectProtocol] = []
+    private var microphoneWasEnabledBeforeInterruption = false
 
     /// Indicates whether the Realtime event channel can currently accept
     /// session updates, tool outputs, and response requests.
@@ -95,6 +103,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
             }
             ownsAudioSession = true
             self.audioSessionOwnerID = audioSessionOwnerID
+            installAudioSessionObservers(generation: expectedGeneration)
             try await connectPeer(generation: expectedGeneration)
         } catch {
             if lifecycleGeneration == expectedGeneration {
@@ -190,6 +199,8 @@ public final class IXRealtimeWebRTCSession: NSObject {
 
     public func disconnect() {
         lifecycleGeneration &+= 1
+        removeAudioSessionObservers()
+        pendingEventData.removeAll(keepingCapacity: true)
         let detachedDataChannel = dataChannel
         detachedDataChannel?.delegate = nil
         dataChannel = nil
@@ -223,6 +234,28 @@ public final class IXRealtimeWebRTCSession: NSObject {
         }
     }
 
+    private func enqueueEventData(_ data: Data) {
+        pendingEventData.append((lifecycleGeneration, data))
+        guard !isDeliveringEvents else { return }
+        isDeliveringEvents = true
+        Task { @MainActor [weak self] in
+            await self?.drainEventData()
+        }
+    }
+
+    private func drainEventData() async {
+        defer { isDeliveringEvents = false }
+        while !pendingEventData.isEmpty {
+            let pending = pendingEventData.removeFirst()
+            guard pending.generation == lifecycleGeneration else { continue }
+            guard let event = try? IXRealtimeEvent(data: pending.data) else {
+                continue
+            }
+            await onEvent(event)
+            guard pending.generation == lifecycleGeneration else { return }
+        }
+    }
+
     public func setMicrophoneEnabled(_ isEnabled: Bool) {
         localAudioTrack?.isEnabled = isEnabled
     }
@@ -233,6 +266,109 @@ public final class IXRealtimeWebRTCSession: NSObject {
         outputPlaybackEnabled = isEnabled
         for track in remoteAudioTracks.values {
             track.isEnabled = isEnabled
+        }
+    }
+
+    private func installAudioSessionObservers(generation: UInt64) {
+#if os(iOS)
+        removeAudioSessionObservers()
+        let center = NotificationCenter.default
+        audioSessionObserverTokens = [
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] notification in
+                let rawType = notification.userInfo?[
+                    AVAudioSessionInterruptionTypeKey
+                ] as? UInt
+                let rawOptions = notification.userInfo?[
+                    AVAudioSessionInterruptionOptionKey
+                ] as? UInt
+                Task { @MainActor [weak self] in
+                    await self?.handleAudioInterruption(
+                        rawType: rawType,
+                        rawOptions: rawOptions,
+                        generation: generation
+                    )
+                }
+            },
+            center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.recoverAudioSession(generation: generation)
+                }
+            },
+            center.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.recoverAudioSession(generation: generation)
+                }
+            },
+        ]
+#endif
+    }
+
+    private func removeAudioSessionObservers() {
+        let center = NotificationCenter.default
+        for token in audioSessionObserverTokens {
+            center.removeObserver(token)
+        }
+        audioSessionObserverTokens = []
+        microphoneWasEnabledBeforeInterruption = false
+    }
+
+#if os(iOS)
+    private func handleAudioInterruption(
+        rawType: UInt?,
+        rawOptions: UInt?,
+        generation: UInt64
+    ) async {
+        guard generation == lifecycleGeneration,
+              let rawType,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
+        switch type {
+        case .began:
+            microphoneWasEnabledBeforeInterruption = isMicrophoneEnabled
+            setMicrophoneEnabled(false)
+            onState(.disconnected)
+        case .ended:
+            let options = AVAudioSession.InterruptionOptions(
+                rawValue: rawOptions ?? 0
+            )
+            guard options.contains(.shouldResume) else {
+                onState(.failed("Audio interruption did not allow the voice session to resume"))
+                return
+            }
+            await recoverAudioSession(generation: generation)
+            if generation == lifecycleGeneration, microphoneWasEnabledBeforeInterruption {
+                setMicrophoneEnabled(true)
+            }
+        @unknown default:
+            onState(.failed("Unknown audio interruption state"))
+        }
+    }
+#endif
+
+    private func recoverAudioSession(generation: UInt64) async {
+        guard generation == lifecycleGeneration,
+              let audioSessionOwnerID,
+              ownsAudioSession else { return }
+        do {
+            try await IXRealtimeAppleAudioSession.shared.recover(ownerID: audioSessionOwnerID)
+            guard generation == lifecycleGeneration else { return }
+            if isReady {
+                onState(.connected)
+            }
+        } catch {
+            guard generation == lifecycleGeneration else { return }
+            onState(.failed(error.localizedDescription))
         }
     }
 
@@ -323,11 +459,54 @@ extension IXRealtimeWebRTCSession: LKRTCDataChannelDelegate {
         didReceiveMessageWith buffer: LKRTCDataBuffer
     ) {
         let data = buffer.data
-        Task { @MainActor [weak self] in
-            guard let self, dataChannel === self.dataChannel,
-                  let event = try? IXRealtimeEvent(data: data) else { return }
-            await self.onEvent(event)
+        delegateEventBridge.enqueue { @MainActor [weak self] in
+            guard let self, dataChannel === self.dataChannel else { return }
+            self.enqueueEventData(data)
         }
+    }
+}
+
+/// Preserves callback order while crossing from WebRTC's delegate queue to
+/// the main actor. Creating one unstructured task per callback can reorder two
+/// adjacent Realtime events under load, which is especially harmful for tool
+/// arguments and response-completion events.
+private final class IXRealtimeDelegateEventBridge: @unchecked Sendable {
+    typealias Delivery = @MainActor @Sendable () async -> Void
+
+    private let lock = NSLock()
+    private var deliveries: [Delivery] = []
+    private var isDraining = false
+
+    func enqueue(_ delivery: @escaping Delivery) {
+        lock.lock()
+        deliveries.append(delivery)
+        let shouldStart = !isDraining
+        if shouldStart {
+            isDraining = true
+        }
+        lock.unlock()
+
+        guard shouldStart else { return }
+        Task { @MainActor [self] in
+            await drain()
+        }
+    }
+
+    @MainActor
+    private func drain() async {
+        while let delivery = next() {
+            await delivery()
+        }
+    }
+
+    private func next() -> Delivery? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !deliveries.isEmpty else {
+            isDraining = false
+            return nil
+        }
+        return deliveries.removeFirst()
     }
 }
 
