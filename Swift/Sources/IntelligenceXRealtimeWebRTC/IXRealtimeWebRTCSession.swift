@@ -14,6 +14,20 @@ public enum IXRealtimeConnectionState: Sendable, Equatable {
     case failed(String)
 }
 
+/// Coalesces the several delegate and audio-lifecycle callbacks that can all
+/// describe the same transport state. Realtime clients configure a session
+/// when it first becomes connected, so forwarding duplicate `.connected`
+/// callbacks can create a session-update feedback loop.
+struct IXRealtimeConnectionStateGate {
+    private(set) var state: IXRealtimeConnectionState = .idle
+
+    mutating func accepts(_ next: IXRealtimeConnectionState) -> Bool {
+        guard next != state else { return false }
+        state = next
+        return true
+    }
+}
+
 @MainActor
 public final class IXRealtimeWebRTCSession: NSObject {
     public typealias EventHandler = @MainActor @Sendable (IXRealtimeEvent) async -> Void
@@ -51,6 +65,8 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private var isDeliveringEvents = false
     private var audioSessionObserverTokens: [NSObjectProtocol] = []
     private var microphoneWasEnabledBeforeInterruption = false
+    private var isRecoveringAudioSession = false
+    private var connectionStateGate = IXRealtimeConnectionStateGate()
 
     /// Indicates whether the Realtime event channel can currently accept
     /// session updates, tool outputs, and response requests.
@@ -121,7 +137,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
         guard lifecycleGeneration == generation else {
             throw CancellationError()
         }
-        onState(.connecting)
+        reportState(.connecting)
         let configuration = LKRTCConfiguration()
         configuration.sdpSemantics = .unifiedPlan
         let constraints = LKRTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
@@ -215,7 +231,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
         let detachedAudioSessionOwnerID = audioSessionOwnerID
         ownsAudioSession = false
         audioSessionOwnerID = nil
-        onState(.idle)
+        reportState(.idle)
 
         let teardown = IXRealtimeWebRTCTeardown(
             dataChannel: detachedDataChannel,
@@ -297,9 +313,15 @@ public final class IXRealtimeWebRTCSession: NSObject {
                 forName: AVAudioSession.routeChangeNotification,
                 object: AVAudioSession.sharedInstance(),
                 queue: .main
-            ) { [weak self] _ in
+            ) { [weak self] notification in
+                let rawReason = notification.userInfo?[
+                    AVAudioSessionRouteChangeReasonKey
+                ] as? UInt
                 Task { @MainActor [weak self] in
-                    await self?.recoverAudioSession(generation: generation)
+                    await self?.handleAudioRouteChange(
+                        rawReason: rawReason,
+                        generation: generation
+                    )
                 }
             },
             center.addObserver(
@@ -322,6 +344,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
         }
         audioSessionObserverTokens = []
         microphoneWasEnabledBeforeInterruption = false
+        isRecoveringAudioSession = false
     }
 
 #if os(iOS)
@@ -337,13 +360,13 @@ public final class IXRealtimeWebRTCSession: NSObject {
         case .began:
             microphoneWasEnabledBeforeInterruption = isMicrophoneEnabled
             setMicrophoneEnabled(false)
-            onState(.disconnected)
+            reportState(.disconnected)
         case .ended:
             let options = AVAudioSession.InterruptionOptions(
                 rawValue: rawOptions ?? 0
             )
             guard options.contains(.shouldResume) else {
-                onState(.failed("Audio interruption did not allow the voice session to resume"))
+                reportState(.failed("Audio interruption did not allow the voice session to resume"))
                 return
             }
             await recoverAudioSession(generation: generation)
@@ -351,7 +374,36 @@ public final class IXRealtimeWebRTCSession: NSObject {
                 setMicrophoneEnabled(true)
             }
         @unknown default:
-            onState(.failed("Unknown audio interruption state"))
+            reportState(.failed("Unknown audio interruption state"))
+        }
+    }
+
+    private func handleAudioRouteChange(
+        rawReason: UInt?,
+        generation: UInt64
+    ) async {
+        guard generation == lifecycleGeneration,
+              let rawReason,
+              let reason = AVAudioSession.RouteChangeReason(
+                rawValue: rawReason
+              ) else { return }
+
+        switch reason {
+        case .newDeviceAvailable,
+             .oldDeviceUnavailable,
+             .noSuitableRouteForCategory,
+             .wakeFromSleep:
+            await recoverAudioSession(generation: generation)
+        case .unknown,
+             .categoryChange,
+             .override,
+             .routeConfigurationChange:
+            // Reapplying `.playAndRecord` produces a category-change
+            // notification itself. Recovering from that notification creates
+            // an unbounded AVAudioSession loop and blocks the UI thread.
+            break
+        @unknown default:
+            break
         }
     }
 #endif
@@ -359,17 +411,25 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private func recoverAudioSession(generation: UInt64) async {
         guard generation == lifecycleGeneration,
               let audioSessionOwnerID,
-              ownsAudioSession else { return }
+              ownsAudioSession,
+              !isRecoveringAudioSession else { return }
+        isRecoveringAudioSession = true
+        defer { isRecoveringAudioSession = false }
         do {
             try await IXRealtimeAppleAudioSession.shared.recover(ownerID: audioSessionOwnerID)
             guard generation == lifecycleGeneration else { return }
             if isReady {
-                onState(.connected)
+                reportState(.connected)
             }
         } catch {
             guard generation == lifecycleGeneration else { return }
-            onState(.failed(error.localizedDescription))
+            reportState(.failed(error.localizedDescription))
         }
+    }
+
+    private func reportState(_ state: IXRealtimeConnectionState) {
+        guard connectionStateGate.accepts(state) else { return }
+        onState(state)
     }
 
     private func createOffer(
@@ -449,8 +509,8 @@ extension IXRealtimeWebRTCSession: LKRTCDataChannelDelegate {
     nonisolated public func dataChannelDidChangeState(_ dataChannel: LKRTCDataChannel) {
         Task { @MainActor [weak self] in
             guard let self, dataChannel === self.dataChannel else { return }
-            if dataChannel.readyState == .open { self.onState(.connected) }
-            if dataChannel.readyState == .closed { self.onState(.disconnected) }
+            if dataChannel.readyState == .open { self.reportState(.connected) }
+            if dataChannel.readyState == .closed { self.reportState(.disconnected) }
         }
     }
 
@@ -562,14 +622,14 @@ extension IXRealtimeWebRTCSession: LKRTCPeerConnectionDelegate {
             // before callers send session configuration or tool events.
             case .connected:
                 if self.dataChannel?.readyState == .open {
-                    self.onState(.connected)
+                    self.reportState(.connected)
                 }
             // Report transport loss even when ICE may recover later. Clients
             // need this signal to stop sending events and begin their own
             // bounded recovery policy.
-            case .disconnected: self.onState(.disconnected)
-            case .closed: self.onState(.disconnected)
-            case .failed: self.onState(.failed("WebRTC connection failed"))
+            case .disconnected: self.reportState(.disconnected)
+            case .closed: self.reportState(.disconnected)
+            case .failed: self.reportState(.failed("WebRTC connection failed"))
             default: break
             }
         }

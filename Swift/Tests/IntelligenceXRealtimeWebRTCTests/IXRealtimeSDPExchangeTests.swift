@@ -4,6 +4,18 @@ import XCTest
 @testable import IntelligenceXRealtimeWebRTC
 
 final class IXRealtimeSDPExchangeTests: XCTestCase {
+    func testConnectionStateGateCoalescesDuplicateReadyCallbacks() {
+        var gate = IXRealtimeConnectionStateGate()
+
+        XCTAssertTrue(gate.accepts(.connecting))
+        XCTAssertFalse(gate.accepts(.connecting))
+        XCTAssertTrue(gate.accepts(.connected))
+        XCTAssertFalse(gate.accepts(.connected))
+        XCTAssertTrue(gate.accepts(.disconnected))
+        XCTAssertFalse(gate.accepts(.disconnected))
+        XCTAssertTrue(gate.accepts(.connected))
+    }
+
     @MainActor
     func testReceivedAudioCanBeMutedLocallyBeforeServerAcknowledgement() {
         let session = IXRealtimeWebRTCSession(
