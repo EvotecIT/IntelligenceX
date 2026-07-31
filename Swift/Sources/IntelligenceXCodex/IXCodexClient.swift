@@ -162,6 +162,7 @@ public actor IXCodexClient {
         onTextDelta: IXCodexTextDeltaHandler? = nil,
         retryUnauthorized: Bool = true
     ) async throws -> IXCodexTurn {
+        try IXCodexToolSchemaValidator.validate(tools)
         let requestedModel = model ?? configuration.defaultModel
         do {
             return try await sendResponse(

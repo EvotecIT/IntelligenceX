@@ -34,6 +34,21 @@ final class IXRealtimeSDPExchangeTests: XCTestCase {
         XCTAssertTrue(session.isOutputPlaybackEnabled)
     }
 
+    @MainActor
+    func testCarPlayAudioProfileCanBeSelectedExplicitly() {
+        let session = IXRealtimeWebRTCSession(
+            secret: .init(
+                value: "test-secret",
+                expiresAt: .distantFuture,
+                model: "test-model"
+            ),
+            audioSessionProfile: .carPlayConversation,
+            onEvent: { _ in }
+        )
+
+        XCTAssertFalse(session.isReady)
+    }
+
     func testSDPIsEncodedAsAFormFieldInsteadOfAFileUpload() throws {
         let body = IXRealtimeMultipartForm.sdpBody(
             "v=0\r\na=example",

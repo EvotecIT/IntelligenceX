@@ -27,6 +27,7 @@ public actor IXRealtimeClient {
         tools: [IXCodexToolDefinition] = [],
         retryUnauthorized: Bool = true
     ) async throws -> IXRealtimeClientSecret {
+        try IXCodexToolSchemaValidator.validate(tools)
         let bundle = try await authSession.validBundle()
         let seconds = max(10, min(7_200, Int(options.clientSecretLifetime.components.seconds)))
         let body = IXJSONValue.object([

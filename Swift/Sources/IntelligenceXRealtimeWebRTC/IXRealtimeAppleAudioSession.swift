@@ -7,9 +7,13 @@ import IntelligenceXCodex
 actor IXRealtimeAppleAudioSession {
     static let shared = IXRealtimeAppleAudioSession()
 
-    private var activeOwnerIDs: Set<UUID> = []
+    private var profilesByOwnerID: [UUID: IXRealtimeAudioSessionProfile] = [:]
+    private var ownerActivationOrder: [UUID] = []
 
-    func activate(ownerID: UUID) async throws {
+    func activate(
+        ownerID: UUID,
+        profile: IXRealtimeAudioSessionProfile
+    ) async throws {
         let session = AVAudioSession.sharedInstance()
         let isAllowed: Bool
         switch session.recordPermission {
@@ -29,8 +33,10 @@ actor IXRealtimeAppleAudioSession {
             )
         }
 
-        try await Self.configureVoiceSession()
-        activeOwnerIDs.insert(ownerID)
+        try Self.configureVoiceSession(profile: profile)
+        profilesByOwnerID[ownerID] = profile
+        ownerActivationOrder.removeAll(where: { $0 == ownerID })
+        ownerActivationOrder.append(ownerID)
     }
 
     /// AVAudioSession deliberately invokes its permission callback on a TCC
@@ -44,43 +50,64 @@ actor IXRealtimeAppleAudioSession {
         }
     }
 
-    func deactivate(ownerID: UUID) {
-        guard activeOwnerIDs.remove(ownerID) != nil,
-              activeOwnerIDs.isEmpty else { return }
-        try? AVAudioSession.sharedInstance().setActive(
-            false,
-            options: .notifyOthersOnDeactivation
-        )
+    func deactivate(ownerID: UUID) async {
+        guard profilesByOwnerID.removeValue(forKey: ownerID) != nil else {
+            return
+        }
+        ownerActivationOrder.removeAll(where: { $0 == ownerID })
+        guard let remainingOwnerID = ownerActivationOrder.last,
+              let remainingProfile = profilesByOwnerID[remainingOwnerID]
+        else {
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+            return
+        }
+        try? Self.configureVoiceSession(profile: remainingProfile)
     }
 
     /// Reapplies the shared voice-chat configuration after an interruption,
     /// route change, or media-services reset without changing ownership.
     func recover(ownerID: UUID) async throws {
-        guard activeOwnerIDs.contains(ownerID) else { return }
-        try await Self.configureVoiceSession()
+        guard ownerActivationOrder.last == ownerID,
+              let profile = profilesByOwnerID[ownerID] else { return }
+        try Self.configureVoiceSession(profile: profile)
     }
 
-    /// AVAudioSession category changes can synchronously wait on its XPC
-    /// service for hundreds of milliseconds. Keep that system wait off the UI
-    /// actor even when recovery was initiated by a main-queue notification.
-    nonisolated private static func configureVoiceSession() async throws {
-        try await Task.detached(priority: .userInitiated) {
-            let session = AVAudioSession.sharedInstance()
+    /// Keep category changes synchronous on this actor's serial executor. An
+    /// awaited detached configuration would make the actor reentrant and let
+    /// a superseded recovery finish after a newer owner became active.
+    nonisolated private static func configureVoiceSession(
+        profile: IXRealtimeAudioSessionProfile
+    ) throws {
+        let session = AVAudioSession.sharedInstance()
+        switch profile {
+        case .voiceConversation:
             try session.setCategory(
                 .playAndRecord,
                 mode: .voiceChat,
                 options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
-            try session.setActive(true)
-        }.value
+        case .carPlayConversation:
+            try session.setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: []
+            )
+        }
+        try session.setActive(true)
     }
 }
 #else
 actor IXRealtimeAppleAudioSession {
     static let shared = IXRealtimeAppleAudioSession()
 
-    func activate(ownerID: UUID) async throws {}
-    func deactivate(ownerID: UUID) {}
+    func activate(
+        ownerID: UUID,
+        profile: IXRealtimeAudioSessionProfile
+    ) async throws {}
+    func deactivate(ownerID: UUID) async {}
     func recover(ownerID: UUID) async throws {}
 }
 #endif

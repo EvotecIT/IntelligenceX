@@ -470,7 +470,12 @@ final class IXCodexConversationTests: XCTestCase {
             tools: [.init(
                 name: "inspect",
                 description: "Inspect state.",
-                parameters: .object(["type": .string("object")]),
+                parameters: .object([
+                    "type": .string("object"),
+                    "properties": .object([:]),
+                    "required": .array([]),
+                    "additionalProperties": .bool(false),
+                ]),
                 strict: true
             )]
         )

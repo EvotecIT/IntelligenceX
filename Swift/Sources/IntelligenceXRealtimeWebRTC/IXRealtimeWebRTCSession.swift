@@ -14,6 +14,20 @@ public enum IXRealtimeConnectionState: Sendable, Equatable {
     case failed(String)
 }
 
+/// Selects the platform audio-session policy for a Realtime conversation.
+///
+/// Products must opt in to the CarPlay policy because AVAudioSession cannot
+/// reliably infer whether a shared Realtime client is currently presented on
+/// the phone, Watch, or vehicle display.
+public enum IXRealtimeAudioSessionProfile: Sendable, Equatable {
+    /// Voice processing and speaker routing suitable for a handheld device.
+    case voiceConversation
+
+    /// Apple's voice-based CarPlay conversation policy: `.playAndRecord`, the
+    /// default mode, and no mixing or forced speaker-route options.
+    case carPlayConversation
+}
+
 /// Coalesces the several delegate and audio-lifecycle callbacks that can all
 /// describe the same transport state. Realtime clients configure a session
 /// when it first becomes connected, so forwarding duplicate `.connected`
@@ -50,6 +64,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
 
     private let secret: IXRealtimeClientSecret
     private let exchange: any IXRealtimeSDPExchanging
+    private let audioSessionProfile: IXRealtimeAudioSessionProfile
     private let onEvent: EventHandler
     private let onState: StateHandler
     private nonisolated let delegateEventBridge = IXRealtimeDelegateEventBridge()
@@ -89,11 +104,13 @@ public final class IXRealtimeWebRTCSession: NSObject {
     public init(
         secret: IXRealtimeClientSecret,
         exchange: any IXRealtimeSDPExchanging = IXOpenAIRealtimeSDPExchange(),
+        audioSessionProfile: IXRealtimeAudioSessionProfile = .voiceConversation,
         onEvent: @escaping EventHandler,
         onState: @escaping StateHandler = { _ in }
     ) {
         self.secret = secret
         self.exchange = exchange
+        self.audioSessionProfile = audioSessionProfile
         self.onEvent = onEvent
         self.onState = onState
         super.init()
@@ -109,7 +126,8 @@ public final class IXRealtimeWebRTCSession: NSObject {
         outputPlaybackEnabled = true
         do {
             try await IXRealtimeAppleAudioSession.shared.activate(
-                ownerID: audioSessionOwnerID
+                ownerID: audioSessionOwnerID,
+                profile: audioSessionProfile
             )
             guard lifecycleGeneration == expectedGeneration else {
                 await IXRealtimeAppleAudioSession.shared.deactivate(
