@@ -62,6 +62,11 @@ let package = Package(
             path: "Swift/Tests/IntelligenceXCodexTests"
         ),
         .testTarget(
+            name: "IntelligenceXCodexAppleTests",
+            dependencies: ["IntelligenceXCodexApple"],
+            path: "Swift/Tests/IntelligenceXCodexAppleTests"
+        ),
+        .testTarget(
             name: "IntelligenceXRealtimeTests",
             dependencies: ["IntelligenceXCodex", "IntelligenceXRealtime"],
             path: "Swift/Tests/IntelligenceXRealtimeTests"
