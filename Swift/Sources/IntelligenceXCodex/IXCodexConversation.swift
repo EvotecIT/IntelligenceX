@@ -86,6 +86,7 @@ public actor IXCodexConversation {
         imageGeneration: IXCodexImageGenerationOptions? = nil,
         maximumToolRounds: Int = 6,
         approveTools: IXCodexToolApprovalHandler? = nil,
+        continuationTools: IXCodexContinuationToolProvider? = nil,
         onTextDelta: IXCodexTextDeltaHandler? = nil
     ) async throws -> IXCodexRunResult {
         guard activeRunTask == nil else {
@@ -104,6 +105,7 @@ public actor IXCodexConversation {
                 imageGeneration: imageGeneration,
                 maximumToolRounds: maximumToolRounds,
                 approveTools: approveTools,
+                continuationTools: continuationTools,
                 onTextDelta: onTextDelta
             )
         }
@@ -131,6 +133,7 @@ public actor IXCodexConversation {
         imageGeneration: IXCodexImageGenerationOptions?,
         maximumToolRounds: Int,
         approveTools: IXCodexToolApprovalHandler?,
+        continuationTools: IXCodexContinuationToolProvider?,
         onTextDelta: IXCodexTextDeltaHandler?
     ) async throws -> IXCodexRunResult {
         guard activeRunID == nil else { throw IXCodexError.conversationBusy }
@@ -151,6 +154,7 @@ public actor IXCodexConversation {
         pendingHistory.append(userMessage)
         var allCalls: [IXCodexToolCall] = []
         var aggregateUsage: IXCodexUsage?
+        var availableTools = tools
 
         for round in 0...maximumToolRounds {
             var compactedThisRound = false
@@ -181,7 +185,7 @@ public actor IXCodexConversation {
                     input: pendingHistory,
                     sessionID: sessionID,
                     instructions: instructions,
-                    tools: tools,
+                    tools: availableTools,
                     model: model,
                     reasoningEffort: reasoningEffort,
                     webSearch: webSearch,
@@ -209,7 +213,7 @@ public actor IXCodexConversation {
                     input: pendingHistory,
                     sessionID: sessionID,
                     instructions: instructions,
-                    tools: tools,
+                    tools: availableTools,
                     model: model,
                     reasoningEffort: reasoningEffort,
                     webSearch: webSearch,
@@ -237,7 +241,7 @@ public actor IXCodexConversation {
                 throw IXCodexError.toolLoopLimitExceeded
             }
             try Task.checkCancellation()
-            let confirmationDefinitions = tools.filter { definition in
+            let confirmationDefinitions = availableTools.filter { definition in
                 definition.requiresConfirmation && turn.toolCalls.contains {
                     $0.name == definition.name
                 }
@@ -294,9 +298,40 @@ public actor IXCodexConversation {
             // canonical call/result checkpoint before asking the model to
             // continue so a transient follow-up failure cannot replay it.
             history = pendingHistory
+            if let continuationTools {
+                let selectedTools = try await continuationTools(
+                    turn.toolCalls,
+                    results,
+                    availableTools
+                )
+                try Self.validateContinuationTools(
+                    selectedTools,
+                    areSubsetOf: availableTools
+                )
+                availableTools = selectedTools
+            }
             try Task.checkCancellation()
         }
         throw IXCodexError.toolLoopLimitExceeded
+    }
+
+    private static func validateContinuationTools(
+        _ selectedTools: [IXCodexToolDefinition],
+        areSubsetOf availableTools: [IXCodexToolDefinition]
+    ) throws {
+        var names = Set<String>()
+        for definition in selectedTools {
+            guard names.insert(definition.name).inserted else {
+                throw IXCodexError.invalidResponse(
+                    "Continuation tools contain duplicate definition \(definition.name)"
+                )
+            }
+            guard availableTools.contains(definition) else {
+                throw IXCodexError.invalidResponse(
+                    "Continuation tool \(definition.name) was not offered in the preceding round"
+                )
+            }
+        }
     }
 
     private static func isContextLimitError(_ error: IXCodexError) -> Bool {

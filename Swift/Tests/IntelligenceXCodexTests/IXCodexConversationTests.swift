@@ -365,6 +365,111 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertNil(secondBody["previous_response_id"])
     }
 
+    func testConversationCanNarrowToolsAfterCompletedRound() async throws {
+        let first = sse(response: [
+            "id": "response-query",
+            "status": "completed",
+            "output": [[
+                "type": "function_call",
+                "call_id": "call-query",
+                "name": "query_home",
+                "arguments": "{}",
+            ]],
+        ])
+        let second = sse(response: [
+            "id": "response-answer",
+            "status": "completed",
+            "output": [[
+                "type": "message",
+                "content": [["type": "output_text", "text": "The light is off"]],
+            ]],
+        ])
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: first),
+            IXHTTPResponse(statusCode: 200, body: second),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let query = IXCodexToolDefinition(
+            name: "query_home",
+            description: "Read state.",
+            parameters: .object(["type": .string("object")])
+        )
+        let control = IXCodexToolDefinition(
+            name: "control_home",
+            description: "Change state.",
+            parameters: .object(["type": .string("object")])
+        )
+
+        let result = try await conversation.run(
+            input: [.text("Is the light on?")],
+            instructions: "Use tools.",
+            tools: [query, control],
+            executor: IXClosureCodexToolExecutor { call in
+                .success(callID: call.id, message: "Off")
+            },
+            continuationTools: { calls, results, availableTools in
+                XCTAssertEqual(calls.map(\.name), ["query_home"])
+                XCTAssertEqual(results.map(\.callID), ["call-query"])
+                XCTAssertEqual(availableTools, [query, control])
+                return []
+            }
+        )
+
+        XCTAssertEqual(result.turn.text, "The light is off")
+        let requests = await state.requests
+        XCTAssertEqual(requests.count, 2)
+        let firstBody = try IXJSONValue.decode(
+            try XCTUnwrap(requests.first?.httpBody)
+        )
+        let secondBody = try IXJSONValue.decode(
+            try XCTUnwrap(requests.last?.httpBody)
+        )
+        XCTAssertEqual(firstBody["tools"]?.arrayValue?.count, 2)
+        XCTAssertNil(secondBody["tools"])
+    }
+
+    func testConversationRejectsContinuationToolThatWasNotOffered() async throws {
+        let first = sse(response: [
+            "id": "response-query",
+            "status": "completed",
+            "output": [[
+                "type": "function_call",
+                "call_id": "call-query",
+                "name": "query_home",
+                "arguments": "{}",
+            ]],
+        ])
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: first),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(
+                input: [.text("Inspect")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "query_home",
+                    description: "Read state.",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    .success(callID: call.id, message: "Ready")
+                },
+                continuationTools: { _, _, _ in
+                    [.init(
+                        name: "open_gate",
+                        description: "Open a gate.",
+                        parameters: .object(["type": .string("object")])
+                    )]
+                }
+            )
+            XCTFail("A continuation provider must not add new capabilities")
+        } catch let IXCodexError.invalidResponse(message) {
+            XCTAssertTrue(message.contains("was not offered"))
+        }
+    }
+
     func testSSEParserReadsDeltaAndCompletedOutput() throws {
         let data = Data("""
         data: {"type":"response.output_text.delta","delta":"Hello "}

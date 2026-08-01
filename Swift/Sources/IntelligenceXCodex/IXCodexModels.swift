@@ -125,6 +125,16 @@ public typealias IXCodexToolApprovalHandler = @Sendable (
     [IXCodexToolDefinition]
 ) async throws -> Bool
 
+/// Product-owned selection of the tools offered after one completed tool
+/// round. The returned definitions must be an unchanged subset of
+/// `availableTools`. This lets a product remove capabilities that are no
+/// longer relevant without duplicating IX's conversation loop.
+public typealias IXCodexContinuationToolProvider = @Sendable (
+    _ calls: [IXCodexToolCall],
+    _ results: [IXCodexToolResult],
+    _ availableTools: [IXCodexToolDefinition]
+) async throws -> [IXCodexToolDefinition]
+
 public typealias IXCodexTextDeltaHandler = @Sendable (String) async -> Void
 
 public struct IXCodexImageGenerationOptions: Sendable, Equatable {
