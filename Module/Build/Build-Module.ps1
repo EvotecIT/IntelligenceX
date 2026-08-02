@@ -59,13 +59,13 @@ Build-Module -ModuleName 'IntelligenceX' {
     New-ConfigurationFormat -ApplyTo 'DefaultPSD1', 'OnMergePSD1' -PSD1Style 'Minimal'
 
     # configuration for documentation, at the same time it enables documentation processing
-    New-ConfigurationDocumentation -Enable:$false -StartClean -UpdateWhenNew -PathReadme 'Docs\Readme.md' -Path 'Docs'
+    New-ConfigurationDocumentation -Enable -PathReadme 'Docs\Readme.md' -Path 'Docs' -SyncExternalHelpToProjectRoot
 
     New-ConfigurationImportModule -ImportSelf -ImportRequiredModules
 
     $newConfigurationBuildSplat = @{
         Enable                            = $true
-        SignModule                        = $true
+        SignModule                        = if ([string]::IsNullOrWhiteSpace($Env:SignModule)) { $true } else { [bool]::Parse($Env:SignModule) }
         MergeModuleOnBuild                = $true
         MergeFunctionsFromApprovedModules = $true
         CertificateThumbprint             = '483292C9E317AA13B07BB7A96AE9D1A5ED9E7703'
@@ -79,7 +79,7 @@ Build-Module -ModuleName 'IntelligenceX' {
         DotSourceLibraries                = $true
         NETSearchClass                    = 'IntelligenceX.PowerShell.CmdletConnectIntelligenceX'
         NETBinaryModuleDocumentation      = $true
-        RefreshPSD1Only                   = $true
+        RefreshPSD1Only                   = if ([string]::IsNullOrWhiteSpace($Env:RefreshPSD1Only)) { $false } else { [bool]::Parse($Env:RefreshPSD1Only) }
     }
 
     New-ConfigurationBuild @newConfigurationBuildSplat
