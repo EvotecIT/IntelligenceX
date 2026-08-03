@@ -13,7 +13,7 @@ Runs a process via the app-server with optional sandbox settings and timeout.
 ## SYNTAX
 ### __AllParameterSets
 ```powershell
-Invoke-IntelligenceXCommand -Command <string[]> [-Client <IntelligenceXClient>] [-WorkingDirectory <string>] [-SandboxType <string>] [-NetworkAccess] [-WritableRoot <string[]>] [-TimeoutMs <int>] [-Raw] [<CommonParameters>]
+Invoke-IntelligenceXCommand -Command <string[]> [-Client <IntelligenceXClient>] [-WorkingDirectory <string>] [-SandboxType <string>] [-NetworkAccess] [-WritableRoot <string[]>] [-TimeoutMs <Int32>] [-Raw] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -115,7 +115,7 @@ Accept wildcard characters: False
 Command timeout in milliseconds.
 
 ```yaml
-Type: Nullable`1
+Type: Int32
 Parameter Sets: __AllParameterSets
 Aliases: None
 Possible values:

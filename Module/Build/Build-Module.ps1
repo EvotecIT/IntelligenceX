@@ -1,6 +1,20 @@
 Import-Module "PSPublishModule" -Force
 
 Build-Module -ModuleName 'IntelligenceX' {
+    $convertToBuildBoolean = {
+        param([string] $Value, [bool] $Default)
+
+        if ([string]::IsNullOrWhiteSpace($Value)) {
+            return $Default
+        }
+
+        switch ($Value.Trim().ToLowerInvariant()) {
+            { $_ -in '1', 'true', 'yes', 'on' } { return $true }
+            { $_ -in '0', 'false', 'no', 'off' } { return $false }
+            default { throw "Unsupported boolean value '$Value'. Use true/false, 1/0, yes/no, or on/off." }
+        }
+    }
+
     # Usual defaults as per standard module
     $Manifest = [ordered] @{
         ModuleVersion        = '0.1.0'
@@ -65,7 +79,7 @@ Build-Module -ModuleName 'IntelligenceX' {
 
     $newConfigurationBuildSplat = @{
         Enable                            = $true
-        SignModule                        = if ([string]::IsNullOrWhiteSpace($Env:SignModule)) { $true } else { [bool]::Parse($Env:SignModule) }
+        SignModule                        = & $convertToBuildBoolean $Env:SignModule $false
         MergeModuleOnBuild                = $true
         MergeFunctionsFromApprovedModules = $true
         CertificateThumbprint             = '483292C9E317AA13B07BB7A96AE9D1A5ED9E7703'
@@ -79,7 +93,7 @@ Build-Module -ModuleName 'IntelligenceX' {
         DotSourceLibraries                = $true
         NETSearchClass                    = 'IntelligenceX.PowerShell.CmdletConnectIntelligenceX'
         NETBinaryModuleDocumentation      = $true
-        RefreshPSD1Only                   = if ([string]::IsNullOrWhiteSpace($Env:RefreshPSD1Only)) { $false } else { [bool]::Parse($Env:RefreshPSD1Only) }
+        RefreshPSD1Only                   = & $convertToBuildBoolean $Env:RefreshPSD1Only $false
     }
 
     New-ConfigurationBuild @newConfigurationBuildSplat

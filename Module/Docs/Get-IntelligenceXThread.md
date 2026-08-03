@@ -13,7 +13,7 @@ Returns paged threads with optional filtering by model provider.
 ## SYNTAX
 ### __AllParameterSets
 ```powershell
-Get-IntelligenceXThread [-Client <IntelligenceXClient>] [-Cursor <string>] [-Limit <int>] [-SortKey <string>] [-ModelProvider <string[]>] [-Raw] [<CommonParameters>]
+Get-IntelligenceXThread [-Client <IntelligenceXClient>] [-Cursor <string>] [-Limit <Int32>] [-SortKey <string>] [-ModelProvider <string[]>] [-Raw] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -67,7 +67,7 @@ Accept wildcard characters: False
 Maximum number of threads to return.
 
 ```yaml
-Type: Nullable`1
+Type: Int32
 Parameter Sets: __AllParameterSets
 Aliases: None
 Possible values:

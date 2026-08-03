@@ -1340,9 +1340,9 @@ Servers (current page) and NextCursor (for pagination).</maml:para>
           <maml:description>
             <maml:para>Maximum number of server entries to return in this page.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Int32</command:parameterValue>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>Int32</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -1391,9 +1391,9 @@ Servers (current page) and NextCursor (for pagination).</maml:para>
         <maml:description>
           <maml:para>Maximum number of server entries to return in this page.</maml:para>
         </maml:description>
-        <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+        <command:parameterValue required="false" variableLength="false">Int32</command:parameterValue>
         <dev:type>
-          <maml:name>Nullable`1</maml:name>
+          <maml:name>Int32</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>
@@ -1750,9 +1750,9 @@ transport because native transport returns strongly typed models directly.</maml
           <maml:description>
             <maml:para>Maximum number of threads to return.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Int32</command:parameterValue>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>Int32</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -1825,9 +1825,9 @@ transport because native transport returns strongly typed models directly.</maml
         <maml:description>
           <maml:para>Maximum number of threads to return.</maml:para>
         </maml:description>
-        <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+        <command:parameterValue required="false" variableLength="false">Int32</command:parameterValue>
         <dev:type>
-          <maml:name>Nullable`1</maml:name>
+          <maml:name>Int32</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>
@@ -2724,9 +2724,16 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Reasoning effort level.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">ReasoningEffort</command:parameterValue>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Minimal</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">XHigh</command:parameterValue>
+          </command:parameterValueGroup>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>ReasoningEffort</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -2736,9 +2743,15 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Reasoning summary level.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">ReasoningSummary</command:parameterValue>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Concise</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Detailed</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Off</command:parameterValue>
+          </command:parameterValueGroup>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>ReasoningSummary</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -2772,9 +2785,9 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Sampling temperature.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Double</command:parameterValue>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>Double</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -2796,9 +2809,14 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Response verbosity level.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">TextVerbosity</command:parameterValue>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+          </command:parameterValueGroup>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>TextVerbosity</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -3104,9 +3122,16 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Reasoning effort level.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">ReasoningEffort</command:parameterValue>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Minimal</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">XHigh</command:parameterValue>
+          </command:parameterValueGroup>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>ReasoningEffort</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -3116,9 +3141,15 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Reasoning summary level.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">ReasoningSummary</command:parameterValue>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Concise</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Detailed</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Off</command:parameterValue>
+          </command:parameterValueGroup>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>ReasoningSummary</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -3152,9 +3183,9 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Sampling temperature.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Double</command:parameterValue>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>Double</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -3164,9 +3195,14 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Response verbosity level.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">TextVerbosity</command:parameterValue>
+          <command:parameterValueGroup>
+            <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+          </command:parameterValueGroup>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>TextVerbosity</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -3472,9 +3508,16 @@ a simple DSL for text/image inputs.</maml:para>
         <maml:description>
           <maml:para>Reasoning effort level.</maml:para>
         </maml:description>
-        <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+        <command:parameterValue required="false" variableLength="false">ReasoningEffort</command:parameterValue>
+        <command:parameterValueGroup>
+          <command:parameterValue required="false" variableLength="false">Minimal</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">XHigh</command:parameterValue>
+        </command:parameterValueGroup>
         <dev:type>
-          <maml:name>Nullable`1</maml:name>
+          <maml:name>ReasoningEffort</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>
@@ -3484,9 +3527,15 @@ a simple DSL for text/image inputs.</maml:para>
         <maml:description>
           <maml:para>Reasoning summary level.</maml:para>
         </maml:description>
-        <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+        <command:parameterValue required="false" variableLength="false">ReasoningSummary</command:parameterValue>
+        <command:parameterValueGroup>
+          <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Concise</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Detailed</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Off</command:parameterValue>
+        </command:parameterValueGroup>
         <dev:type>
-          <maml:name>Nullable`1</maml:name>
+          <maml:name>ReasoningSummary</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>
@@ -3520,9 +3569,9 @@ a simple DSL for text/image inputs.</maml:para>
         <maml:description>
           <maml:para>Sampling temperature.</maml:para>
         </maml:description>
-        <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+        <command:parameterValue required="false" variableLength="false">Double</command:parameterValue>
         <dev:type>
-          <maml:name>Nullable`1</maml:name>
+          <maml:name>Double</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>
@@ -3544,9 +3593,14 @@ a simple DSL for text/image inputs.</maml:para>
         <maml:description>
           <maml:para>Response verbosity level.</maml:para>
         </maml:description>
-        <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+        <command:parameterValue required="false" variableLength="false">TextVerbosity</command:parameterValue>
+        <command:parameterValueGroup>
+          <command:parameterValue required="false" variableLength="false">Low</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Medium</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">High</command:parameterValue>
+        </command:parameterValueGroup>
         <dev:type>
-          <maml:name>Nullable`1</maml:name>
+          <maml:name>TextVerbosity</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>
@@ -3705,9 +3759,9 @@ a simple DSL for text/image inputs.</maml:para>
           <maml:description>
             <maml:para>Command timeout in milliseconds.</maml:para>
           </maml:description>
-          <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">Int32</command:parameterValue>
           <dev:type>
-            <maml:name>Nullable`1</maml:name>
+            <maml:name>Int32</maml:name>
             <maml:uri />
           </dev:type>
           <dev:defaultValue>None</dev:defaultValue>
@@ -3804,9 +3858,9 @@ a simple DSL for text/image inputs.</maml:para>
         <maml:description>
           <maml:para>Command timeout in milliseconds.</maml:para>
         </maml:description>
-        <command:parameterValue required="false" variableLength="false">Nullable`1</command:parameterValue>
+        <command:parameterValue required="false" variableLength="false">Int32</command:parameterValue>
         <dev:type>
-          <maml:name>Nullable`1</maml:name>
+          <maml:name>Int32</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>

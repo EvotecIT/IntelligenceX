@@ -14,7 +14,7 @@ Servers (current page) and NextCursor (for pagination).
 ## SYNTAX
 ### __AllParameterSets
 ```powershell
-Get-IntelligenceXMcpServerStatus [-Client <IntelligenceXClient>] [-Cursor <string>] [-Limit <int>] [-Raw] [<CommonParameters>]
+Get-IntelligenceXMcpServerStatus [-Client <IntelligenceXClient>] [-Cursor <string>] [-Limit <Int32>] [-Raw] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -69,7 +69,7 @@ Accept wildcard characters: False
 Maximum number of server entries to return in this page.
 
 ```yaml
-Type: Nullable`1
+Type: Int32
 Parameter Sets: __AllParameterSets
 Aliases: None
 Possible values:

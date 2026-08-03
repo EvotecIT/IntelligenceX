@@ -15,12 +15,12 @@ a simple DSL for text/image inputs.
 ## SYNTAX
 ### Text (Default)
 ```powershell
-Invoke-IntelligenceXChat [-Text] <string> [-Dsl] [-Model <string>] [-Login <string>] [-ApiKey <string>] [-OpenBrowser] [-Stream] [-WaitSeconds <int>] [-NewThread] [-ClientName <string>] [-ClientTitle <string>] [-ClientVersion <string>] [-ExecutablePath <string>] [-Arguments <string>] [-WorkingDirectory <string>] [-Workspace <string>] [-AllowNetwork] [-ApprovalPolicy <string>] [-ImagePath <string>] [-ImageUrl <string>] [-Instructions <string>] [-ReasoningEffort <ReasoningEffort>] [-ReasoningSummary <ReasoningSummary>] [-TextVerbosity <TextVerbosity>] [-Temperature <double>] [-SaveImagesTo <string>] [-DownloadImageUrls] [-OverwriteImages] [-ImageFileNamePrefix <string>] [-Raw] [<CommonParameters>]
+Invoke-IntelligenceXChat [-Text] <string> [-Dsl] [-Model <string>] [-Login <string>] [-ApiKey <string>] [-OpenBrowser] [-Stream] [-WaitSeconds <int>] [-NewThread] [-ClientName <string>] [-ClientTitle <string>] [-ClientVersion <string>] [-ExecutablePath <string>] [-Arguments <string>] [-WorkingDirectory <string>] [-Workspace <string>] [-AllowNetwork] [-ApprovalPolicy <string>] [-ImagePath <string>] [-ImageUrl <string>] [-Instructions <string>] [-ReasoningEffort <ReasoningEffort>] [-ReasoningSummary <ReasoningSummary>] [-TextVerbosity <TextVerbosity>] [-Temperature <Double>] [-SaveImagesTo <string>] [-DownloadImageUrls] [-OverwriteImages] [-ImageFileNamePrefix <string>] [-Raw] [<CommonParameters>]
 ```
 
 ### Pipeline
 ```powershell
-Invoke-IntelligenceXChat [-InputObject <string>] [-Dsl] [-Model <string>] [-Login <string>] [-ApiKey <string>] [-OpenBrowser] [-Stream] [-WaitSeconds <int>] [-NewThread] [-ClientName <string>] [-ClientTitle <string>] [-ClientVersion <string>] [-ExecutablePath <string>] [-Arguments <string>] [-WorkingDirectory <string>] [-Workspace <string>] [-AllowNetwork] [-ApprovalPolicy <string>] [-ImagePath <string>] [-ImageUrl <string>] [-Instructions <string>] [-ReasoningEffort <ReasoningEffort>] [-ReasoningSummary <ReasoningSummary>] [-TextVerbosity <TextVerbosity>] [-Temperature <double>] [-SaveImagesTo <string>] [-DownloadImageUrls] [-OverwriteImages] [-ImageFileNamePrefix <string>] [-Raw] [<CommonParameters>]
+Invoke-IntelligenceXChat [-InputObject <string>] [-Dsl] [-Model <string>] [-Login <string>] [-ApiKey <string>] [-OpenBrowser] [-Stream] [-WaitSeconds <int>] [-NewThread] [-ClientName <string>] [-ClientTitle <string>] [-ClientVersion <string>] [-ExecutablePath <string>] [-Arguments <string>] [-WorkingDirectory <string>] [-Workspace <string>] [-AllowNetwork] [-ApprovalPolicy <string>] [-ImagePath <string>] [-ImageUrl <string>] [-Instructions <string>] [-ReasoningEffort <ReasoningEffort>] [-ReasoningSummary <ReasoningSummary>] [-TextVerbosity <TextVerbosity>] [-Temperature <Double>] [-SaveImagesTo <string>] [-DownloadImageUrls] [-OverwriteImages] [-ImageFileNamePrefix <string>] [-Raw] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -380,10 +380,10 @@ Accept wildcard characters: False
 Reasoning effort level.
 
 ```yaml
-Type: Nullable`1
+Type: ReasoningEffort
 Parameter Sets: Text, Pipeline
 Aliases: None
-Possible values:
+Possible values: Minimal, Low, Medium, High, XHigh
 
 Required: False
 Position: named
@@ -396,10 +396,10 @@ Accept wildcard characters: False
 Reasoning summary level.
 
 ```yaml
-Type: Nullable`1
+Type: ReasoningSummary
 Parameter Sets: Text, Pipeline
 Aliases: None
-Possible values:
+Possible values: Auto, Concise, Detailed, Off
 
 Required: False
 Position: named
@@ -444,7 +444,7 @@ Accept wildcard characters: False
 Sampling temperature.
 
 ```yaml
-Type: Nullable`1
+Type: Double
 Parameter Sets: Text, Pipeline
 Aliases: None
 Possible values:
@@ -476,10 +476,10 @@ Accept wildcard characters: False
 Response verbosity level.
 
 ```yaml
-Type: Nullable`1
+Type: TextVerbosity
 Parameter Sets: Text, Pipeline
 Aliases: None
-Possible values:
+Possible values: Low, Medium, High
 
 Required: False
 Position: named
