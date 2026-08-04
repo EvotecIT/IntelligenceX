@@ -86,6 +86,7 @@ public actor IXCodexConversation {
         imageGeneration: IXCodexImageGenerationOptions? = nil,
         maximumToolRounds: Int = 6,
         approveTools: IXCodexToolApprovalHandler? = nil,
+        completeToolRound: IXCodexToolRoundCompletionProvider? = nil,
         continuationTools: IXCodexContinuationToolProvider? = nil,
         onTextDelta: IXCodexTextDeltaHandler? = nil
     ) async throws -> IXCodexRunResult {
@@ -105,6 +106,7 @@ public actor IXCodexConversation {
                 imageGeneration: imageGeneration,
                 maximumToolRounds: maximumToolRounds,
                 approveTools: approveTools,
+                completeToolRound: completeToolRound,
                 continuationTools: continuationTools,
                 onTextDelta: onTextDelta
             )
@@ -133,6 +135,7 @@ public actor IXCodexConversation {
         imageGeneration: IXCodexImageGenerationOptions?,
         maximumToolRounds: Int,
         approveTools: IXCodexToolApprovalHandler?,
+        completeToolRound: IXCodexToolRoundCompletionProvider?,
         continuationTools: IXCodexContinuationToolProvider?,
         onTextDelta: IXCodexTextDeltaHandler?
     ) async throws -> IXCodexRunResult {
@@ -302,6 +305,24 @@ public actor IXCodexConversation {
             // canonical call/result checkpoint before asking the model to
             // continue so a transient follow-up failure cannot replay it.
             history = pendingHistory
+            if let completionText = try await completeToolRound?(
+                turn.toolCalls,
+                results
+            )?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !completionText.isEmpty {
+                pendingHistory.append(
+                    Self.assistantMessage(text: completionText)
+                )
+                history = pendingHistory
+                if let onTextDelta {
+                    await onTextDelta(completionText)
+                }
+                return IXCodexRunResult(
+                    turn: IXCodexTurn(text: completionText),
+                    toolCalls: allCalls,
+                    usage: aggregateUsage
+                )
+            }
             if let continuationTools {
                 let selectedTools = try await continuationTools(
                     turn.toolCalls,
@@ -379,6 +400,19 @@ public actor IXCodexConversation {
             "type": .string("message"),
             "role": .string("user"),
             "content": .array(content),
+        ])
+    }
+
+    private static func assistantMessage(text: String) -> IXJSONValue {
+        .object([
+            "type": .string("message"),
+            "role": .string("assistant"),
+            "content": .array([
+                .object([
+                    "type": .string("output_text"),
+                    "text": .string(text),
+                ]),
+            ]),
         ])
     }
 

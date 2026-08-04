@@ -437,6 +437,75 @@ final class IXCodexConversationTests: XCTestCase {
         )
     }
 
+    func testConversationCanCompleteAHostedToolRoundLocally() async throws {
+        let first = sse(response: [
+            "id": "response-action",
+            "status": "completed",
+            "output": [[
+                "type": "function_call",
+                "call_id": "call-action",
+                "name": "control_home",
+                "arguments": "{}",
+            ]],
+        ])
+        let second = sse(response: [
+            "id": "response-follow-up",
+            "status": "completed",
+            "output": [[
+                "type": "message",
+                "content": [["type": "output_text", "text": "Still on"]],
+            ]],
+        ])
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: first),
+            IXHTTPResponse(statusCode: 200, body: second),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let result = try await conversation.run(
+            input: [.text("Turn on both rooms")],
+            instructions: "Act first.",
+            tools: [.init(
+                name: "control_home",
+                description: "Change state.",
+                parameters: .object(["type": .string("object")])
+            )],
+            executor: IXClosureCodexToolExecutor { call in
+                .success(callID: call.id, message: "Confirmed")
+            },
+            completeToolRound: { calls, results in
+                XCTAssertEqual(calls.map(\.name), ["control_home"])
+                XCTAssertEqual(results.map(\.callID), ["call-action"])
+                return "  ✓ 2  "
+            }
+        )
+
+        XCTAssertEqual(result.turn.text, "✓ 2")
+        XCTAssertEqual(result.toolCalls.map(\.id), ["call-action"])
+        let firstRequestCount = await state.requests.count
+        XCTAssertEqual(firstRequestCount, 1)
+
+        _ = try await conversation.run(
+            input: [.text("Are they still on?")],
+            instructions: "Act first."
+        )
+        let requests = await state.requests
+        XCTAssertEqual(requests.count, 2)
+        let body = try IXJSONValue.decode(
+            try XCTUnwrap(requests.last?.httpBody)
+        )
+        let input = try XCTUnwrap(body["input"]?.arrayValue)
+        XCTAssertEqual(input.count, 5)
+        XCTAssertEqual(input[3]["role"]?.stringValue, "assistant")
+        XCTAssertEqual(
+            input[3]["content"]?.arrayValue?.first?["text"]?.stringValue,
+            "✓ 2"
+        )
+        XCTAssertEqual(
+            input[4]["content"]?.arrayValue?.first?["text"]?.stringValue,
+            "Are they still on?"
+        )
+    }
+
     func testConversationRejectsContinuationToolThatWasNotOffered() async throws {
         let first = sse(response: [
             "id": "response-query",

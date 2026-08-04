@@ -135,6 +135,15 @@ public typealias IXCodexContinuationToolProvider = @Sendable (
     _ availableTools: [IXCodexToolDefinition]
 ) async throws -> [IXCodexToolDefinition]
 
+/// Product-owned local completion after a finished tool round. Returning
+/// non-empty text commits that assistant reply to conversation history and
+/// skips the next hosted response. This is useful when the product already
+/// has an authoritative, user-facing result for a completed side effect.
+public typealias IXCodexToolRoundCompletionProvider = @Sendable (
+    _ calls: [IXCodexToolCall],
+    _ results: [IXCodexToolResult]
+) async throws -> String?
+
 public typealias IXCodexTextDeltaHandler = @Sendable (String) async -> Void
 
 public struct IXCodexImageGenerationOptions: Sendable, Equatable {
