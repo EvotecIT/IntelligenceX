@@ -305,17 +305,26 @@ public actor IXCodexConversation {
             // canonical call/result checkpoint before asking the model to
             // continue so a transient follow-up failure cannot replay it.
             history = pendingHistory
-            if let completionText = try await completeToolRound?(
+            let completionText = try await completeToolRound?(
                 turn.toolCalls,
                 results
-            )?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !completionText.isEmpty {
+            )?.trimmingCharacters(in: .whitespacesAndNewlines)
+            try Task.checkCancellation()
+            guard generation == expectedGeneration, activeRunID == runID else {
+                throw CancellationError()
+            }
+            if let completionText, !completionText.isEmpty {
                 pendingHistory.append(
                     Self.assistantMessage(text: completionText)
                 )
                 history = pendingHistory
                 if let onTextDelta {
                     await onTextDelta(completionText)
+                    try Task.checkCancellation()
+                    guard generation == expectedGeneration,
+                          activeRunID == runID else {
+                        throw CancellationError()
+                    }
                 }
                 return IXCodexRunResult(
                     turn: IXCodexTurn(text: completionText),

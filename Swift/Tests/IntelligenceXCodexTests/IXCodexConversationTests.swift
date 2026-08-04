@@ -506,6 +506,140 @@ final class IXCodexConversationTests: XCTestCase {
         )
     }
 
+    func testResetInvalidatesCancellationIgnoringLocalCompletion() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-tool",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-reset-completion",
+                    "name": "control_home",
+                    "arguments": "{}",
+                ]],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-new",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "New"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let completion = CancellationIgnoringTextGate(value: "Stale")
+        let oldRun = Task {
+            try await conversation.run(
+                input: [.text("Old")],
+                instructions: "Act first.",
+                tools: [.init(
+                    name: "control_home",
+                    description: "Change state.",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    .success(callID: call.id, message: "Changed")
+                },
+                completeToolRound: { _, _ in
+                    await completion.waitAndReturn()
+                }
+            )
+        }
+
+        await completion.waitUntilStarted()
+        await conversation.reset()
+        await completion.release()
+        do {
+            _ = try await oldRun.value
+            XCTFail("Reset should invalidate the local completion")
+        } catch is CancellationError {
+        }
+
+        let result = try await conversation.run(
+            input: [.text("New prompt")],
+            instructions: "Help."
+        )
+        XCTAssertEqual(result.turn.text, "New")
+        let requests = await state.requests
+        let body = try IXJSONValue.decode(
+            try XCTUnwrap(requests.last?.httpBody)
+        )
+        let input = try XCTUnwrap(body["input"]?.arrayValue)
+        XCTAssertEqual(input.count, 1)
+        XCTAssertEqual(
+            input.first?["content"]?.arrayValue?.first?["text"]?.stringValue,
+            "New prompt"
+        )
+    }
+
+    func testResetDuringLocalCompletionDeltaDoesNotReturnStaleSuccess()
+        async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-tool",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-reset-delta",
+                    "name": "control_home",
+                    "arguments": "{}",
+                ]],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-new",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "New"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let delta = CancellationIgnoringVoidGate()
+        let oldRun = Task {
+            try await conversation.run(
+                input: [.text("Old")],
+                instructions: "Act first.",
+                tools: [.init(
+                    name: "control_home",
+                    description: "Change state.",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    .success(callID: call.id, message: "Changed")
+                },
+                completeToolRound: { _, _ in "Stale" },
+                onTextDelta: { _ in await delta.wait() }
+            )
+        }
+
+        await delta.waitUntilStarted()
+        await conversation.reset()
+        await delta.release()
+        do {
+            _ = try await oldRun.value
+            XCTFail("Reset during the delta callback should invalidate the run")
+        } catch is CancellationError {
+        }
+
+        let result = try await conversation.run(
+            input: [.text("New prompt")],
+            instructions: "Help."
+        )
+        XCTAssertEqual(result.turn.text, "New")
+        let requests = await state.requests
+        let body = try IXJSONValue.decode(
+            try XCTUnwrap(requests.last?.httpBody)
+        )
+        let input = try XCTUnwrap(body["input"]?.arrayValue)
+        XCTAssertEqual(input.count, 1)
+        XCTAssertEqual(
+            input.first?["content"]?.arrayValue?.first?["text"]?.stringValue,
+            "New prompt"
+        )
+    }
+
     func testConversationRejectsContinuationToolThatWasNotOffered() async throws {
         let first = sse(response: [
             "id": "response-query",
@@ -1614,6 +1748,58 @@ actor CancellationIgnoringToolGate: IXCodexToolExecuting {
 
     func waitUntilStarted() async {
         guard executionCount == 0 else { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+actor CancellationIgnoringTextGate {
+    private let value: String
+    private var started = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    init(value: String) {
+        self.value = value
+    }
+
+    func waitAndReturn() async -> String {
+        started = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+        return value
+    }
+
+    func waitUntilStarted() async {
+        guard !started else { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+actor CancellationIgnoringVoidGate {
+    private var started = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        started = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+    }
+
+    func waitUntilStarted() async {
+        guard !started else { return }
         await withCheckedContinuation { startedContinuation = $0 }
     }
 
