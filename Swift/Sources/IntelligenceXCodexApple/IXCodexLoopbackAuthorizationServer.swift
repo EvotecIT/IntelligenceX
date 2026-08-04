@@ -41,13 +41,17 @@ final class IXCodexLoopbackAuthorizationServer: @unchecked Sendable {
     }
 
     func receiveCallback(_ handler: @escaping @Sendable (Result<URL, Error>) -> Void) {
-        lock.withLock {
+        let pending: Result<URL, Error>? = lock.withLock {
             if let pendingCallback {
                 self.pendingCallback = nil
-                handler(pendingCallback)
+                return pendingCallback
             } else {
                 callbackHandler = handler
+                return nil
             }
+        }
+        if let pending {
+            handler(pending)
         }
     }
 

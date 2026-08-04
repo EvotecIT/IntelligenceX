@@ -1,0 +1,64 @@
+name: Test Swift Package
+
+on:
+    push:
+        branches:
+            - master
+        paths:
+            - 'Package.swift'
+            - 'Package.resolved'
+            - 'Swift/**'
+            - '.github/workflows/test-swift.yml'
+    pull_request:
+        paths:
+            - 'Package.swift'
+            - 'Package.resolved'
+            - 'Swift/**'
+            - '.github/workflows/test-swift.yml'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    test-swift:
+        name: 'Swift and watchOS'
+        if: ${{ !github.event.repository.private || vars.IX_ENABLE_MACOS_SELF_HOSTED == 'true' || vars.IX_FORCE_GITHUB_HOSTED == 'true' }}
+        runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_MACOS_SELF_HOSTED == 'true' && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","macOS"]' || '["macos-latest"]') }}
+        timeout-minutes: 20
+        env:
+            SWIFT_SCRATCH: ${{ runner.temp }}/IntelligenceXSwift-${{ github.run_id }}-${{ github.run_attempt }}
+            WATCH_DERIVED_DATA: ${{ runner.temp }}/IntelligenceXWatch-${{ github.run_id }}-${{ github.run_attempt }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+            - name: Verify build volume
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  available_kb="$(df -Pk "$RUNNER_TEMP" | awk 'NR == 2 { print $4 }')"
+                  minimum_kb="$((20 * 1024 * 1024))"
+                  df -h "$RUNNER_TEMP"
+                  if (( available_kb < minimum_kb )); then
+                    echo "At least 20 GiB of free Swift build space is required." >&2
+                    exit 1
+                  fi
+
+            - name: Run Swift contracts
+              run: swift test --scratch-path "$SWIFT_SCRATCH"
+
+            - name: Compile Codex Apple product for watchOS
+              run: >-
+                  xcodebuild
+                  -scheme IntelligenceXCodexApple
+                  -destination 'generic/platform=watchOS'
+                  -derivedDataPath "$WATCH_DERIVED_DATA"
+                  CODE_SIGNING_ALLOWED=NO
+                  build
+
+            - name: Remove build artifacts
+              if: always()
+              shell: bash
+              run: |
+                  rm -rf -- "$SWIFT_SCRATCH" "$WATCH_DERIVED_DATA"

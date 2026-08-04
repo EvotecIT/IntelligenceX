@@ -11,6 +11,9 @@ public actor IXCodexAuthSession {
     private let randomBytes: @Sendable (Int) -> [UInt8]
     private var authGeneration: UInt64 = 0
     private var refreshTask: Task<IXCodexAuthBundle, Error>?
+    private var credentialWriteAuthorizations:
+        [UUID: IXCodexCredentialWriteAuthorization] = [:]
+    private var credentialMutationDepth = 0
 
     public init(
         configuration: IXCodexConfiguration = IXCodexConfiguration(),
@@ -30,16 +33,19 @@ public actor IXCodexAuthSession {
     }
 
     public func account() async throws -> IXCodexAccount? {
+        try validateCredentialRead()
         guard let bundle = try await credentialAccess.load() else { return nil }
         return IXJWTClaims.account(bundle: bundle)
     }
 
     public func currentBundle() async throws -> IXCodexAuthBundle? {
-        try await credentialAccess.load()
+        try validateCredentialRead()
+        return try await credentialAccess.load()
     }
 
     public func authorizationSnapshot() async throws
         -> IXCodexAuthorizationSnapshot {
+        try validateCredentialRead()
         guard let bundle = try await credentialAccess.load() else {
             return IXCodexAuthorizationSnapshot(
                 account: nil,
@@ -62,11 +68,16 @@ public actor IXCodexAuthSession {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
+        invalidateCredentialWrites()
+        credentialMutationDepth += 1
+        defer { credentialMutationDepth -= 1 }
         try await credentialAccess.delete()
     }
 
     /// Starts the normal Codex ChatGPT browser flow for a temporary localhost callback.
-    public func beginBrowserAuthorization(redirectURL: URL) throws -> IXCodexBrowserAuthorization {
+    public func beginBrowserAuthorization(
+        redirectURL: URL
+    ) async throws -> IXCodexBrowserAuthorization {
         guard redirectURL.scheme == "http",
               redirectURL.host == "localhost",
               redirectURL.path == "/auth/callback",
@@ -77,6 +88,7 @@ public actor IXCodexAuthSession {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
+        try await revokeCredentialWrites()
         let expectedGeneration = authGeneration
         let verifier = IXCodexPKCE.verifier(randomBytes: randomBytes(32))
         let state = IXCodexPKCE.state(randomBytes: randomBytes(32))
@@ -153,6 +165,7 @@ public actor IXCodexAuthSession {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
+        try await revokeCredentialWrites()
         let expectedGeneration = authGeneration
         var request = URLRequest(url: configuration.deviceAuthorizationURL)
         request.httpMethod = "POST"
@@ -203,6 +216,7 @@ public actor IXCodexAuthSession {
 
     public func validBundle(forceRefresh: Bool = false) async throws -> IXCodexAuthBundle {
         let expectedGeneration = authGeneration
+        try validateCredentialRead()
         guard let existing = try await credentialAccess.load() else {
             throw IXCodexError.authenticationRequired
         }
@@ -371,11 +385,50 @@ public actor IXCodexAuthSession {
         guard authGeneration == expectedGeneration, !Task.isCancelled else {
             throw CancellationError()
         }
-        try await credentialAccess.save(bundle)
-        guard authGeneration == expectedGeneration, !Task.isCancelled else {
+        let authorization = IXCodexCredentialWriteAuthorization()
+        credentialWriteAuthorizations[authorization.id] = authorization
+        credentialMutationDepth += 1
+        defer {
+            credentialWriteAuthorizations.removeValue(forKey: authorization.id)
+            credentialMutationDepth -= 1
+        }
+        let committed = try await withTaskCancellationHandler {
+            try await credentialAccess.save(
+                bundle,
+                authorizedBy: authorization
+            )
+        } onCancel: {
+            authorization.invalidate()
+        }
+        guard committed,
+              authGeneration == expectedGeneration,
+              !Task.isCancelled else {
+            authorization.invalidate()
+            try await credentialAccess.revoke([authorization.id])
             throw CancellationError()
         }
         return bundle
+    }
+
+    private func invalidateCredentialWrites() {
+        for authorization in credentialWriteAuthorizations.values {
+            authorization.invalidate()
+        }
+        credentialWriteAuthorizations.removeAll()
+    }
+
+    private func revokeCredentialWrites() async throws {
+        let authorizations = credentialWriteAuthorizations
+        invalidateCredentialWrites()
+        credentialMutationDepth += 1
+        defer { credentialMutationDepth -= 1 }
+        try await credentialAccess.revoke(Set(authorizations.keys))
+    }
+
+    private func validateCredentialRead() throws {
+        guard credentialMutationDepth == 0 else {
+            throw CancellationError()
+        }
     }
 
     private func requestError(_ response: IXHTTPResponse) -> IXCodexError {

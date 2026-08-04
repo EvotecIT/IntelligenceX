@@ -116,6 +116,10 @@ public final class IXRealtimeWebRTCSession: NSObject {
         super.init()
     }
 
+    isolated deinit {
+        releaseResources(reportIdle: false)
+    }
+
     public func connect() async throws {
         guard secret.expiresAt > Date() else {
             throw IXCodexError.authenticationRequired
@@ -124,37 +128,48 @@ public final class IXRealtimeWebRTCSession: NSObject {
         let expectedGeneration = lifecycleGeneration
         let audioSessionOwnerID = UUID()
         outputPlaybackEnabled = true
-        do {
-            try await IXRealtimeAppleAudioSession.shared.activate(
-                ownerID: audioSessionOwnerID,
-                profile: audioSessionProfile
-            )
-            guard lifecycleGeneration == expectedGeneration else {
-                await IXRealtimeAppleAudioSession.shared.deactivate(
-                    ownerID: audioSessionOwnerID
+        try await withTaskCancellationHandler {
+            do {
+                try await IXRealtimeAppleAudioSession.shared.activate(
+                    ownerID: audioSessionOwnerID,
+                    profile: audioSessionProfile
                 )
-                throw CancellationError()
+                try validateConnection(generation: expectedGeneration)
+                ownsAudioSession = true
+                self.audioSessionOwnerID = audioSessionOwnerID
+                installAudioSessionObservers(generation: expectedGeneration)
+                try await connectPeer(generation: expectedGeneration)
+                try validateConnection(generation: expectedGeneration)
+            } catch {
+                if lifecycleGeneration == expectedGeneration {
+                    disconnect()
+                } else {
+                    await IXRealtimeAppleAudioSession.shared.deactivate(
+                        ownerID: audioSessionOwnerID
+                    )
+                }
+                throw error
             }
-            ownsAudioSession = true
-            self.audioSessionOwnerID = audioSessionOwnerID
-            installAudioSessionObservers(generation: expectedGeneration)
-            try await connectPeer(generation: expectedGeneration)
-        } catch {
-            if lifecycleGeneration == expectedGeneration {
-                disconnect()
-            } else {
-                await IXRealtimeAppleAudioSession.shared.deactivate(
-                    ownerID: audioSessionOwnerID
-                )
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.lifecycleGeneration == expectedGeneration else {
+                    return
+                }
+                self.disconnect()
             }
-            throw error
+        }
+    }
+
+    private func validateConnection(generation: UInt64) throws {
+        try Task.checkCancellation()
+        guard lifecycleGeneration == generation else {
+            throw CancellationError()
         }
     }
 
     private func connectPeer(generation: UInt64) async throws {
-        guard lifecycleGeneration == generation else {
-            throw CancellationError()
-        }
+        try validateConnection(generation: generation)
         reportState(.connecting)
         let configuration = LKRTCConfiguration()
         configuration.sdpSemantics = .unifiedPlan
@@ -196,22 +211,14 @@ public final class IXRealtimeWebRTCSession: NSObject {
             optionalConstraints: nil
         )
         let offer = try await createOffer(peer: peer, constraints: offerConstraints)
-        guard lifecycleGeneration == generation else {
-            throw CancellationError()
-        }
+        try validateConnection(generation: generation)
         try await setLocalDescription(offer, peer: peer)
-        guard lifecycleGeneration == generation else {
-            throw CancellationError()
-        }
+        try validateConnection(generation: generation)
         let answerSDP = try await exchange.exchange(offer: offer.sdp, secret: secret)
-        guard lifecycleGeneration == generation else {
-            throw CancellationError()
-        }
+        try validateConnection(generation: generation)
         let answer = LKRTCSessionDescription(type: .answer, sdp: answerSDP)
         try await setRemoteDescription(answer, peer: peer)
-        guard lifecycleGeneration == generation else {
-            throw CancellationError()
-        }
+        try validateConnection(generation: generation)
     }
 
     @discardableResult
@@ -232,6 +239,10 @@ public final class IXRealtimeWebRTCSession: NSObject {
     }
 
     public func disconnect() {
+        releaseResources(reportIdle: true)
+    }
+
+    private func releaseResources(reportIdle: Bool) {
         lifecycleGeneration &+= 1
         removeAudioSessionObservers()
         pendingEventData.removeAll(keepingCapacity: true)
@@ -249,7 +260,9 @@ public final class IXRealtimeWebRTCSession: NSObject {
         let detachedAudioSessionOwnerID = audioSessionOwnerID
         ownsAudioSession = false
         audioSessionOwnerID = nil
-        reportState(.idle)
+        if reportIdle {
+            reportState(.idle)
+        }
 
         let teardown = IXRealtimeWebRTCTeardown(
             dataChannel: detachedDataChannel,

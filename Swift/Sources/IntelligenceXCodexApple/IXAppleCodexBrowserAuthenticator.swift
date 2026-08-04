@@ -1,7 +1,8 @@
-import AuthenticationServices
 import Foundation
 import IntelligenceXCodex
 
+#if !os(watchOS)
+import AuthenticationServices
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -148,3 +149,4 @@ public final class IXAppleCodexBrowserAuthenticator:
         continuation.resume(with: result)
     }
 }
+#endif

@@ -733,10 +733,26 @@ public actor IXCodexClient {
               let name = object["name"]?.stringValue ?? function?["name"]?.stringValue else {
             return nil
         }
+        let kind: IXCodexToolCallKind =
+            object["type"]?.stringValue == "custom_tool_call"
+                ? .custom
+                : .function
         let raw = object["input"] ?? object["arguments"] ?? function?["arguments"] ?? .object([:])
         let arguments: IXJSONValue
         if let value = raw.stringValue, let data = value.data(using: .utf8) {
-            arguments = (try? IXJSONValue.decode(data)) ?? .object(["raw": .string(value)])
+            if kind == .custom {
+                arguments = (try? IXJSONValue.decode(data)) ?? .object([
+                    "raw": .string(value),
+                ])
+            } else {
+                do {
+                    arguments = try IXJSONValue.decode(data)
+                } catch {
+                    throw IXCodexError.malformedToolCall(
+                        "ChatGPT returned malformed JSON arguments for \(name)."
+                    )
+                }
+            }
         } else {
             arguments = raw
         }
@@ -744,7 +760,7 @@ public actor IXCodexClient {
             id: id,
             name: name,
             arguments: arguments,
-            kind: object["type"]?.stringValue == "custom_tool_call" ? .custom : .function
+            kind: kind
         )
     }
 

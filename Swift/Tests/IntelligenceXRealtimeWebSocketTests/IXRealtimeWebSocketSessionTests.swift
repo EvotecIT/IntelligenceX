@@ -23,7 +23,7 @@ final class IXRealtimeWebSocketSessionTests: XCTestCase {
 
         let request = await connector.request
         XCTAssertEqual(
-            request?.url.query(),
+            request?.url.query,
             "model=gpt-realtime-2.1"
         )
         XCTAssertEqual(
@@ -100,6 +100,63 @@ final class IXRealtimeWebSocketSessionTests: XCTestCase {
         XCTAssertTrue(isClosed)
         XCTAssertFalse(session.isReady)
     }
+
+    func testCanceledConnectClosesCancellationIgnoringTransport() async throws {
+        let connection = RealtimeWebSocketConnection()
+        let connector = SuspendedRealtimeWebSocketConnector(
+            connection: connection
+        )
+        let session = IXRealtimeWebSocketSession(
+            secret: .init(
+                value: "ek-cancel",
+                expiresAt: .distantFuture,
+                model: "gpt-realtime-2.1"
+            ),
+            connector: connector,
+            onEvent: { _ in }
+        )
+        let connect = Task { try await session.connect() }
+        await connector.waitUntilStarted()
+
+        connect.cancel()
+        await connector.release()
+
+        do {
+            try await connect.value
+            XCTFail("Canceled connection must not become ready")
+        } catch is CancellationError {
+        }
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertFalse(session.isReady)
+        let isClosed = await connection.isClosed
+        XCTAssertTrue(isClosed)
+    }
+
+    func testDeinitClosesConnectedTransport() async throws {
+        let connection = RealtimeWebSocketConnection()
+        let connector = RealtimeWebSocketConnector(connection: connection)
+        var session: IXRealtimeWebSocketSession? = IXRealtimeWebSocketSession(
+            secret: .init(
+                value: "ek-deinit",
+                expiresAt: .distantFuture,
+                model: "gpt-realtime-2.1"
+            ),
+            connector: connector,
+            onEvent: { _ in }
+        )
+        try await session?.connect()
+        weak let weakSession = session
+
+        session = nil
+        for _ in 0..<100 {
+            if await connection.isClosed { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        XCTAssertNil(weakSession)
+        let isClosed = await connection.isClosed
+        XCTAssertTrue(isClosed)
+    }
 }
 
 private actor RealtimeWebSocketConnection: IXRealtimeWebSocketConnection {
@@ -150,6 +207,39 @@ private actor RealtimeWebSocketConnector: IXRealtimeWebSocketConnecting {
     ) -> any IXRealtimeWebSocketConnection {
         request = Request(url: url, protocols: protocols)
         return connection
+    }
+}
+
+private actor SuspendedRealtimeWebSocketConnector:
+    IXRealtimeWebSocketConnecting {
+    private let connection: RealtimeWebSocketConnection
+    private var started = false
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    init(connection: RealtimeWebSocketConnection) {
+        self.connection = connection
+    }
+
+    func connect(
+        to url: URL,
+        protocols: [String]
+    ) async -> any IXRealtimeWebSocketConnection {
+        started = true
+        startContinuation?.resume()
+        startContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+        return connection
+    }
+
+    func waitUntilStarted() async {
+        guard !started else { return }
+        await withCheckedContinuation { startContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
     }
 }
 

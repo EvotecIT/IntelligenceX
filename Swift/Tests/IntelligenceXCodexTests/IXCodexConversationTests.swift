@@ -3,6 +3,88 @@ import Foundation
 import XCTest
 
 final class IXCodexConversationTests: XCTestCase {
+    func testMalformedHostedFunctionArgumentsNeverReachTheExecutor() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-malformed-tool",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-malformed",
+                    "name": "control_home",
+                    "arguments": "{\"entity_id\":",
+                ]],
+            ])),
+        ])
+        let counter = ToolExecutionCounter()
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(
+                input: [.text("Turn it on")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "control_home",
+                    description: "Control a device.",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    await counter.record()
+                    return .success(callID: call.id, message: "Changed")
+                }
+            )
+            XCTFail("Malformed function arguments must fail closed")
+        } catch let IXCodexError.malformedToolCall(detail) {
+            XCTAssertTrue(detail.contains("control_home"))
+        }
+        let executionCount = await counter.count
+        XCTAssertEqual(executionCount, 0)
+    }
+
+    func testCustomToolPreservesArbitraryRawInput() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-custom-tool",
+                "status": "completed",
+                "output": [[
+                    "type": "custom_tool_call",
+                    "call_id": "call-custom",
+                    "name": "freeform",
+                    "input": "plain text, not JSON",
+                ]],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-custom-finished",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Done"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        let result = try await conversation.run(
+            input: [.text("Use the freeform tool")],
+            instructions: "Use tools.",
+            tools: [.init(
+                name: "freeform",
+                description: "Accept free-form input.",
+                parameters: .object(["type": .string("object")])
+            )],
+            executor: IXClosureCodexToolExecutor { call in
+                XCTAssertEqual(call.kind, .custom)
+                XCTAssertEqual(
+                    call.arguments["raw"]?.stringValue,
+                    "plain text, not JSON"
+                )
+                return .success(callID: call.id, message: "Accepted")
+            }
+        )
+
+        XCTAssertEqual(result.turn.text, "Done")
+    }
+
     func testConfirmationRequiredToolFailsClosedWithoutApprovalHandler() async throws {
         let state = ResponseQueue(responses: [
             IXHTTPResponse(statusCode: 200, body: sse(response: [

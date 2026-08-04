@@ -67,6 +67,10 @@ actor IXRealtimeAppleAudioSession {
         try? Self.configureVoiceSession(profile: remainingProfile)
     }
 
+    var activeOwnerCount: Int {
+        profilesByOwnerID.count
+    }
+
     /// Reapplies the shared voice-chat configuration after an interruption,
     /// route change, or media-services reset without changing ownership.
     func recover(ownerID: UUID) async throws {
@@ -103,11 +107,18 @@ actor IXRealtimeAppleAudioSession {
 actor IXRealtimeAppleAudioSession {
     static let shared = IXRealtimeAppleAudioSession()
 
+    private var ownerIDs: Set<UUID> = []
+
     func activate(
         ownerID: UUID,
         profile: IXRealtimeAudioSessionProfile
-    ) async throws {}
-    func deactivate(ownerID: UUID) async {}
+    ) async throws {
+        ownerIDs.insert(ownerID)
+    }
+    func deactivate(ownerID: UUID) async {
+        ownerIDs.remove(ownerID)
+    }
     func recover(ownerID: UUID) async throws {}
+    var activeOwnerCount: Int { ownerIDs.count }
 }
 #endif

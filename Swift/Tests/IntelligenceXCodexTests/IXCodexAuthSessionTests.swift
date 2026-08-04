@@ -169,6 +169,104 @@ final class IXCodexAuthSessionTests: XCTestCase {
         XCTAssertNil(persisted)
     }
 
+    func testCancellationDuringCredentialSaveRemovesTheCanceledBundle() async throws {
+        let store = SuspendedCredentialStore(
+            bundle: nil,
+            suspendSaveOnce: true
+        )
+        let session = IXCodexAuthSession(
+            credentialStore: store,
+            httpClient: IXClosureHTTPClient { _ in
+                .json(200, [
+                    "access_token": "canceled-access",
+                    "refresh_token": "canceled-refresh",
+                    "expires_in": 3_600,
+                ])
+            }
+        )
+        let callbackPorts = await session.browserCallbackPorts
+        let callbackPort = try XCTUnwrap(callbackPorts.first)
+        let redirectURL = try XCTUnwrap(URL(
+            string: "http://localhost:\(callbackPort)/auth/callback"
+        ))
+        let authorization = try await session.beginBrowserAuthorization(
+            redirectURL: redirectURL
+        )
+        let callbackURL = try XCTUnwrap(URL(
+            string: "\(redirectURL.absoluteString)?code=code&state=\(authorization.state)"
+        ))
+
+        let completion = Task {
+            try await session.completeBrowserAuthorization(
+                authorization,
+                callbackURL: callbackURL
+            )
+        }
+        await store.waitUntilSaveStarted()
+        completion.cancel()
+        await store.releaseSave()
+
+        do {
+            _ = try await completion.value
+            XCTFail("A canceled authorization must not return credentials")
+        } catch is CancellationError {
+        }
+        let persisted = await store.currentBundle()
+        XCTAssertNil(persisted)
+    }
+
+    func testNewAuthorizationDuringCredentialSaveRemovesTheSupersededBundle() async throws {
+        let store = SuspendedCredentialStore(
+            bundle: nil,
+            suspendSaveOnce: true
+        )
+        let session = IXCodexAuthSession(
+            credentialStore: store,
+            httpClient: IXClosureHTTPClient { _ in
+                .json(200, [
+                    "access_token": "superseded-access",
+                    "refresh_token": "superseded-refresh",
+                    "expires_in": 3_600,
+                ])
+            }
+        )
+        let callbackPorts = await session.browserCallbackPorts
+        let callbackPort = try XCTUnwrap(callbackPorts.first)
+        let redirectURL = try XCTUnwrap(URL(
+            string: "http://localhost:\(callbackPort)/auth/callback"
+        ))
+        let authorization = try await session.beginBrowserAuthorization(
+            redirectURL: redirectURL
+        )
+        let callbackURL = try XCTUnwrap(URL(
+            string: "\(redirectURL.absoluteString)?code=code&state=\(authorization.state)"
+        ))
+        let completion = Task {
+            try await session.completeBrowserAuthorization(
+                authorization,
+                callbackURL: callbackURL
+            )
+        }
+        await store.waitUntilSaveStarted()
+
+        let replacement = Task {
+            try await session.beginBrowserAuthorization(
+                redirectURL: redirectURL
+            )
+        }
+        for _ in 0..<10 { await Task.yield() }
+        await store.releaseSave()
+        _ = try await replacement.value
+
+        do {
+            _ = try await completion.value
+            XCTFail("A superseded authorization must not return credentials")
+        } catch is CancellationError {
+        }
+        let persisted = await store.currentBundle()
+        XCTAssertNil(persisted)
+    }
+
     func testConcurrentRefreshUsesOneNetworkRequest() async throws {
         let store = IXMemoryCodexCredentialStore(bundle: .init(
             accessToken: "expired",
