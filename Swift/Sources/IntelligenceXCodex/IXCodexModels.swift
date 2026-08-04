@@ -136,7 +136,7 @@ public typealias IXCodexContinuationToolProvider = @Sendable (
 ) async throws -> [IXCodexToolDefinition]
 
 /// Product-owned local completion after a finished tool round. Returning
-/// non-empty text commits that assistant reply to conversation history and
+/// non-empty text commits the assistant reply to conversation history and
 /// skips the next hosted response. This is useful when the product already
 /// has an authoritative, user-facing result for a completed side effect.
 public typealias IXCodexToolRoundCompletionProvider = @Sendable (
