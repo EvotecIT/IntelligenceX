@@ -305,6 +305,10 @@ public actor IXCodexConversation {
             // canonical call/result checkpoint before asking the model to
             // continue so a transient follow-up failure cannot replay it.
             history = pendingHistory
+            try Task.checkCancellation()
+            guard generation == expectedGeneration, activeRunID == runID else {
+                throw CancellationError()
+            }
             let completionText = try await completeToolRound?(
                 turn.toolCalls,
                 results

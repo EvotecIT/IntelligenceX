@@ -1372,6 +1372,7 @@ final class IXCodexConversationTests: XCTestCase {
         ])
         let conversation = IXCodexConversation(client: makeClient(state))
         let executor = CancellationIgnoringToolGate()
+        let completionCounter = ToolExecutionCounter()
         let firstRun = Task {
             try await conversation.run(
                 input: [.text("Toggle")],
@@ -1381,7 +1382,11 @@ final class IXCodexConversationTests: XCTestCase {
                     description: "Toggle",
                     parameters: .object(["type": .string("object")])
                 )],
-                executor: executor
+                executor: executor,
+                completeToolRound: { _, _ in
+                    await completionCounter.record()
+                    return "Must not run"
+                }
             )
         }
 
@@ -1402,6 +1407,8 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(recovered.turn.text, "Still changed once.")
         let executionCount = await executor.executionCount
         XCTAssertEqual(executionCount, 1)
+        let completionCount = await completionCounter.count
+        XCTAssertEqual(completionCount, 0)
         let requests = await state.requests
         XCTAssertEqual(requests.count, 2)
         let recoveredBody = try IXJSONValue.decode(
