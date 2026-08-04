@@ -143,6 +143,12 @@ public final class IXRealtimeWebSocketSession {
             }
             throw CancellationError()
         } catch {
+            if Task.isCancelled || generation != lifecycleGeneration {
+                if generation == lifecycleGeneration {
+                    await disconnect()
+                }
+                throw CancellationError()
+            }
             if generation == lifecycleGeneration {
                 transition(to: .failed(error.localizedDescription))
                 self.connection = nil

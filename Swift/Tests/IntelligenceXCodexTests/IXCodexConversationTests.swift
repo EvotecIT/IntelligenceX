@@ -800,6 +800,34 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(models.map(\.displayName), ["GPT-5.6-Sol"])
     }
 
+    func testModelCatalogDoesNotRetryFallbackURLsAfterCancellation()
+        async throws {
+        let requestCounter = RequestCountRecorder()
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            ))
+        )
+        let client = IXCodexClient(
+            authSession: auth,
+            httpClient: IXClosureHTTPClient { _ in
+                await requestCounter.record()
+                throw CancellationError()
+            }
+        )
+
+        do {
+            _ = try await client.models()
+            XCTFail("Cancellation must stop model endpoint fallback")
+        } catch is CancellationError {
+        }
+        let requestCount = await requestCounter.count
+        XCTAssertEqual(requestCount, 1)
+    }
+
     func testSelectedReasoningEffortIsSentOnEveryRequest() async throws {
         let state = ResponseQueue(responses: [
             IXHTTPResponse(statusCode: 200, body: sse(response: [
@@ -1259,6 +1287,14 @@ final class IXCodexConversationTests: XCTestCase {
 }
 
 actor ToolExecutionCounter {
+    private(set) var count = 0
+
+    func record() {
+        count += 1
+    }
+}
+
+actor RequestCountRecorder {
     private(set) var count = 0
 
     func record() {

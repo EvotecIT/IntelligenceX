@@ -33,20 +33,29 @@ public actor IXCodexAuthSession {
     }
 
     public func account() async throws -> IXCodexAccount? {
+        let expectedGeneration = authGeneration
         try validateCredentialRead()
-        guard let bundle = try await credentialAccess.load() else { return nil }
+        guard let bundle = try await loadCredentialBundle(
+            expectedGeneration: expectedGeneration
+        ) else { return nil }
         return IXJWTClaims.account(bundle: bundle)
     }
 
     public func currentBundle() async throws -> IXCodexAuthBundle? {
+        let expectedGeneration = authGeneration
         try validateCredentialRead()
-        return try await credentialAccess.load()
+        return try await loadCredentialBundle(
+            expectedGeneration: expectedGeneration
+        )
     }
 
     public func authorizationSnapshot() async throws
         -> IXCodexAuthorizationSnapshot {
+        let expectedGeneration = authGeneration
         try validateCredentialRead()
-        guard let bundle = try await credentialAccess.load() else {
+        guard let bundle = try await loadCredentialBundle(
+            expectedGeneration: expectedGeneration
+        ) else {
             return IXCodexAuthorizationSnapshot(
                 account: nil,
                 accessTokenExpiresAt: nil,
@@ -173,16 +182,32 @@ public actor IXCodexAuthSession {
         request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONEncoder().encode(["client_id": configuration.clientID])
 
-        let response = try await httpClient.send(request)
+        let response: IXHTTPResponse
+        do {
+            response = try await httpClient.send(request)
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
+        }
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         guard (200..<300).contains(response.statusCode) else {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             throw requestError(response)
         }
-        let payload = try IXJSONValue.decode(response.body)
+        let payload: IXJSONValue
+        do {
+            payload = try IXJSONValue.decode(response.body)
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
+        }
         guard let object = payload.objectValue,
               let deviceID = object["device_auth_id"]?.stringValue,
               let userCode = object["user_code"]?.stringValue ?? object["usercode"]?.stringValue else {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             throw IXCodexError.invalidResponse("device authorization fields are missing")
         }
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         let intervalSeconds = object["interval"]?.stringValue.flatMap(Double.init)
             ?? object["interval"]?.numberValue
             ?? 5
@@ -203,7 +228,10 @@ public actor IXCodexAuthSession {
             guard authGeneration == expectedGeneration else {
                 throw CancellationError()
             }
-            let result = try await pollDeviceAuthorization(code)
+            let result = try await pollDeviceAuthorization(
+                code,
+                expectedGeneration: expectedGeneration
+            )
             switch result {
             case .pending:
                 try await Task.sleep(for: code.interval)
@@ -217,7 +245,9 @@ public actor IXCodexAuthSession {
     public func validBundle(forceRefresh: Bool = false) async throws -> IXCodexAuthBundle {
         let expectedGeneration = authGeneration
         try validateCredentialRead()
-        guard let existing = try await credentialAccess.load() else {
+        guard let existing = try await loadCredentialBundle(
+            expectedGeneration: expectedGeneration
+        ) else {
             throw IXCodexError.authenticationRequired
         }
         guard authGeneration == expectedGeneration, !Task.isCancelled else {
@@ -227,7 +257,18 @@ public actor IXCodexAuthSession {
             return existing
         }
         if let refreshTask {
-            return try await refreshTask.value
+            do {
+                let bundle = try await refreshTask.value
+                try validateAuthorization(
+                    expectedGeneration: expectedGeneration
+                )
+                return bundle
+            } catch {
+                try validateAuthorization(
+                    expectedGeneration: expectedGeneration
+                )
+                throw error
+            }
         }
         let task = Task {
             try await self.refresh(
@@ -240,9 +281,11 @@ public actor IXCodexAuthSession {
         do {
             let bundle = try await task.value
             if authGeneration == expectedGeneration { refreshTask = nil }
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             return bundle
         } catch {
             if authGeneration == expectedGeneration { refreshTask = nil }
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             throw error
         }
     }
@@ -264,7 +307,10 @@ public actor IXCodexAuthSession {
         }
     }
 
-    private func pollDeviceAuthorization(_ code: IXCodexDeviceCode) async throws -> DevicePollResult {
+    private func pollDeviceAuthorization(
+        _ code: IXCodexDeviceCode,
+        expectedGeneration: UInt64
+    ) async throws -> DevicePollResult {
         let url = configuration.deviceAuthorizationURL
             .deletingLastPathComponent()
             .appendingPathComponent("token")
@@ -276,7 +322,14 @@ public actor IXCodexAuthSession {
             "device_auth_id": code.deviceAuthorizationID,
             "user_code": code.userCode,
         ])
-        let response = try await httpClient.send(request)
+        let response: IXHTTPResponse
+        do {
+            response = try await httpClient.send(request)
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
+        }
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         if response.statusCode == 403 || response.statusCode == 404 {
             let object = (try? IXJSONValue.decode(response.body))?.objectValue
             let errorValue = object?["error"]?.stringValue ?? ""
@@ -287,18 +340,37 @@ public actor IXCodexAuthSession {
                 normalized.contains("authorization_denied") ||
                 normalized.contains("declined") ||
                 normalized.contains("denied") {
+                try validateAuthorization(
+                    expectedGeneration: expectedGeneration
+                )
                 throw IXCodexError.deviceAuthorizationDenied
             }
             if normalized.contains("expired") ||
                 normalized.contains("invalid_device") {
+                try validateAuthorization(
+                    expectedGeneration: expectedGeneration
+                )
                 throw IXCodexError.deviceAuthorizationExpired
             }
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             return .pending
         }
         guard (200..<300).contains(response.statusCode) else {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             throw requestError(response)
         }
-        return .approved(try JSONDecoder().decode(DeviceExchange.self, from: response.body))
+        let exchange: DeviceExchange
+        do {
+            exchange = try JSONDecoder().decode(
+                DeviceExchange.self,
+                from: response.body
+            )
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
+        }
+        try validateAuthorization(expectedGeneration: expectedGeneration)
+        return .approved(exchange)
     }
 
     private func exchangeAuthorizationCode(
@@ -332,7 +404,9 @@ public actor IXCodexAuthSession {
             ], previous: existing, expectedGeneration: expectedGeneration)
         } catch let IXCodexError.requestFailed(_, message)
             where retryAfterReload && message.localizedCaseInsensitiveContains("refresh_token_reused") {
-            guard let reloaded = try await credentialAccess.load(), reloaded.refreshToken != existing.refreshToken else {
+            guard let reloaded = try await loadCredentialBundle(
+                expectedGeneration: expectedGeneration
+            ), reloaded.refreshToken != existing.refreshToken else {
                 throw IXCodexError.requestFailed(status: 401, message: message)
             }
             guard authGeneration == expectedGeneration, !Task.isCancelled else {
@@ -356,16 +430,32 @@ public actor IXCodexAuthSession {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = formEncoded(fields).data(using: .utf8)
-        let response = try await httpClient.send(request)
+        let response: IXHTTPResponse
+        do {
+            response = try await httpClient.send(request)
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
+        }
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         guard (200..<300).contains(response.statusCode) else {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             throw requestError(response)
         }
-        let value = try IXJSONValue.decode(response.body)
+        let value: IXJSONValue
+        do {
+            value = try IXJSONValue.decode(response.body)
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
+        }
         guard let object = value.objectValue,
               let accessToken = object["access_token"]?.stringValue else {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             throw IXCodexError.invalidResponse("OAuth access token is missing")
         }
         guard let refreshToken = object["refresh_token"]?.stringValue ?? previous?.refreshToken else {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
             throw IXCodexError.invalidResponse("OAuth refresh token is missing")
         }
         let expiresIn = object["expires_in"]?.numberValue
@@ -382,9 +472,7 @@ public actor IXCodexAuthSession {
             tokenType: object["token_type"]?.stringValue ?? previous?.tokenType,
             scope: object["scope"]?.stringValue ?? previous?.scope
         )
-        guard authGeneration == expectedGeneration, !Task.isCancelled else {
-            throw CancellationError()
-        }
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         let authorization = IXCodexCredentialWriteAuthorization()
         credentialWriteAuthorizations[authorization.id] = authorization
         credentialMutationDepth += 1
@@ -392,21 +480,35 @@ public actor IXCodexAuthSession {
             credentialWriteAuthorizations.removeValue(forKey: authorization.id)
             credentialMutationDepth -= 1
         }
-        let committed = try await withTaskCancellationHandler {
-            try await credentialAccess.save(
-                bundle,
-                authorizedBy: authorization
-            )
-        } onCancel: {
-            authorization.invalidate()
+        let committed: Bool
+        do {
+            committed = try await withTaskCancellationHandler {
+                try await credentialAccess.save(
+                    bundle,
+                    authorizedBy: authorization
+                )
+            } onCancel: {
+                authorization.invalidate()
+            }
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
         }
         guard committed,
               authGeneration == expectedGeneration,
               !Task.isCancelled else {
             authorization.invalidate()
-            try await credentialAccess.revoke([authorization.id])
+            do {
+                try await credentialAccess.revoke([authorization.id])
+            } catch {
+                try validateAuthorization(
+                    expectedGeneration: expectedGeneration
+                )
+                throw error
+            }
             throw CancellationError()
         }
+        await credentialAccess.finalize(authorization.id)
         return bundle
     }
 
@@ -427,6 +529,28 @@ public actor IXCodexAuthSession {
 
     private func validateCredentialRead() throws {
         guard credentialMutationDepth == 0 else {
+            throw CancellationError()
+        }
+    }
+
+    private func loadCredentialBundle(
+        expectedGeneration: UInt64
+    ) async throws -> IXCodexAuthBundle? {
+        do {
+            let bundle = try await credentialAccess.load()
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            return bundle
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
+        }
+    }
+
+    private func validateAuthorization(
+        expectedGeneration: UInt64
+    ) throws {
+        try Task.checkCancellation()
+        guard authGeneration == expectedGeneration else {
             throw CancellationError()
         }
     }

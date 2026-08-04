@@ -132,6 +132,75 @@ final class IXRealtimeWebSocketSessionTests: XCTestCase {
         XCTAssertTrue(isClosed)
     }
 
+    func testCanceledConnectPrefersCancellationOverLateConnectorFailure()
+        async throws {
+        let connector = SuspendedFailingRealtimeWebSocketConnector()
+        var states: [IXRealtimeWebSocketConnectionState] = []
+        let session = IXRealtimeWebSocketSession(
+            secret: .init(
+                value: "ek-cancel",
+                expiresAt: .distantFuture,
+                model: "gpt-realtime-2.1"
+            ),
+            connector: connector,
+            onEvent: { _ in },
+            onState: { states.append($0) }
+        )
+        let connect = Task { try await session.connect() }
+        await connector.waitUntilStarted()
+
+        connect.cancel()
+        await connector.release()
+
+        do {
+            try await connect.value
+            XCTFail("Cancellation must supersede a late connector failure")
+        } catch is CancellationError {
+        }
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertFalse(states.contains { state in
+            if case .failed = state { return true }
+            return false
+        })
+    }
+
+    func testCanceledConnectPrefersCancellationOverLateInitialSendFailure()
+        async throws {
+        let connection = SuspendedFailingSendConnection()
+        let connector = FailingSendRealtimeWebSocketConnector(
+            connection: connection
+        )
+        var states: [IXRealtimeWebSocketConnectionState] = []
+        let session = IXRealtimeWebSocketSession(
+            secret: .init(
+                value: "ek-cancel",
+                expiresAt: .distantFuture,
+                model: "gpt-realtime-2.1"
+            ),
+            connector: connector,
+            onEvent: { _ in },
+            onState: { states.append($0) }
+        )
+        let connect = Task { try await session.connect() }
+        await connection.waitUntilSendStarted()
+
+        connect.cancel()
+        await connection.releaseSend()
+
+        do {
+            try await connect.value
+            XCTFail("Cancellation must supersede a late initial-send failure")
+        } catch is CancellationError {
+        }
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertFalse(states.contains { state in
+            if case .failed = state { return true }
+            return false
+        })
+        let isClosed = await connection.isClosed
+        XCTAssertTrue(isClosed)
+    }
+
     func testDeinitClosesConnectedTransport() async throws {
         let connection = RealtimeWebSocketConnection()
         let connector = RealtimeWebSocketConnector(connection: connection)
@@ -240,6 +309,89 @@ private actor SuspendedRealtimeWebSocketConnector:
     func release() {
         releaseContinuation?.resume()
         releaseContinuation = nil
+    }
+}
+
+private enum RealtimeWebSocketSetupFailure: Error {
+    case lateFailure
+}
+
+private actor SuspendedFailingRealtimeWebSocketConnector:
+    IXRealtimeWebSocketConnecting {
+    private var started = false
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func connect(
+        to url: URL,
+        protocols: [String]
+    ) async throws -> any IXRealtimeWebSocketConnection {
+        started = true
+        startContinuation?.resume()
+        startContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+        throw RealtimeWebSocketSetupFailure.lateFailure
+    }
+
+    func waitUntilStarted() async {
+        guard !started else { return }
+        await withCheckedContinuation { startContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+private actor SuspendedFailingSendConnection:
+    IXRealtimeWebSocketConnection {
+    private var sendStarted = false
+    private var sendContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+    private(set) var isClosed = false
+
+    func send(_ data: Data) async throws {
+        sendStarted = true
+        sendContinuation?.resume()
+        sendContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+        throw RealtimeWebSocketSetupFailure.lateFailure
+    }
+
+    func receive() async throws -> Data {
+        while !Task.isCancelled {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        throw CancellationError()
+    }
+
+    func close() { isClosed = true }
+
+    func waitUntilSendStarted() async {
+        guard !sendStarted else { return }
+        await withCheckedContinuation { sendContinuation = $0 }
+    }
+
+    func releaseSend() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+private actor FailingSendRealtimeWebSocketConnector:
+    IXRealtimeWebSocketConnecting {
+    private let connection: SuspendedFailingSendConnection
+
+    init(connection: SuspendedFailingSendConnection) {
+        self.connection = connection
+    }
+
+    func connect(
+        to url: URL,
+        protocols: [String]
+    ) -> any IXRealtimeWebSocketConnection {
+        connection
     }
 }
 

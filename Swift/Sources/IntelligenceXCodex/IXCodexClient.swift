@@ -38,10 +38,12 @@ public actor IXCodexClient {
         var lastError: Error?
         for url in configuration.modelURLs {
             do {
+                try Task.checkCancellation()
                 var request = URLRequest(url: modelCatalogURL(from: url))
                 request.httpMethod = "GET"
                 applyHeaders(to: &request, bundle: bundle, accountID: accountID, sessionID: UUID().uuidString)
                 let response = try await httpClient.send(request)
+                try Task.checkCancellation()
                 guard (200..<300).contains(response.statusCode) else {
                     throw responseError(response)
                 }
@@ -90,12 +92,18 @@ public actor IXCodexClient {
                         defaultReasoningEffort: defaultEffortValue.flatMap(IXCodexReasoningEffort.init(rawValue:))
                     )
                 }
+                try Task.checkCancellation()
                 if !models.isEmpty { return models }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
+                try Task.checkCancellation()
                 lastError = error
             }
         }
+        try Task.checkCancellation()
         if let lastError { throw lastError }
+        try Task.checkCancellation()
         return [IXCodexModel(id: configuration.defaultModel)]
     }
 

@@ -127,6 +127,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
         disconnect()
         let expectedGeneration = lifecycleGeneration
         let audioSessionOwnerID = UUID()
+        var activatedAudioSession = false
         outputPlaybackEnabled = true
         try await withTaskCancellationHandler {
             do {
@@ -134,6 +135,7 @@ public final class IXRealtimeWebRTCSession: NSObject {
                     ownerID: audioSessionOwnerID,
                     profile: audioSessionProfile
                 )
+                activatedAudioSession = true
                 try validateConnection(generation: expectedGeneration)
                 ownsAudioSession = true
                 self.audioSessionOwnerID = audioSessionOwnerID
@@ -141,12 +143,20 @@ public final class IXRealtimeWebRTCSession: NSObject {
                 try await connectPeer(generation: expectedGeneration)
                 try validateConnection(generation: expectedGeneration)
             } catch {
+                let wasInvalidated = Task.isCancelled ||
+                    lifecycleGeneration != expectedGeneration
+                let ownershipWasAttached = ownsAudioSession &&
+                    self.audioSessionOwnerID == audioSessionOwnerID
                 if lifecycleGeneration == expectedGeneration {
                     disconnect()
-                } else {
+                }
+                if activatedAudioSession && !ownershipWasAttached {
                     await IXRealtimeAppleAudioSession.shared.deactivate(
                         ownerID: audioSessionOwnerID
                     )
+                }
+                if wasInvalidated {
+                    throw CancellationError()
                 }
                 throw error
             }
