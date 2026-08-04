@@ -225,6 +225,10 @@ public actor IXCodexConversation {
             guard generation == expectedGeneration, activeRunID == runID else {
                 throw CancellationError()
             }
+            try Self.validateToolCalls(
+                turn.toolCalls,
+                areOfferedBy: availableTools
+            )
             if let usage = turn.usage {
                 aggregateUsage = aggregateUsage?.adding(usage) ?? usage
             }
@@ -331,6 +335,18 @@ public actor IXCodexConversation {
                     "Continuation tool \(definition.name) was not offered in the preceding round"
                 )
             }
+        }
+    }
+
+    private static func validateToolCalls(
+        _ calls: [IXCodexToolCall],
+        areOfferedBy availableTools: [IXCodexToolDefinition]
+    ) throws {
+        let availableNames = Set(availableTools.map(\.name))
+        for call in calls where !availableNames.contains(call.name) {
+            throw IXCodexError.malformedToolCall(
+                "ChatGPT requested \(call.name), which was not offered in this tool round."
+            )
         }
     }
 

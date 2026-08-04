@@ -470,6 +470,74 @@ final class IXCodexConversationTests: XCTestCase {
         }
     }
 
+    func testRemovedContinuationToolNeverReachesApprovalOrExecution() async throws {
+        let first = sse(response: [
+            "id": "response-query",
+            "status": "completed",
+            "output": [[
+                "type": "function_call",
+                "call_id": "call-query",
+                "name": "query_home",
+                "arguments": "{}",
+            ]],
+        ])
+        let second = sse(response: [
+            "id": "response-removed-control",
+            "status": "completed",
+            "output": [[
+                "type": "function_call",
+                "call_id": "call-open-gate",
+                "name": "open_gate",
+                "arguments": "{}",
+            ]],
+        ])
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: first),
+            IXHTTPResponse(statusCode: 200, body: second),
+        ])
+        let executionCounter = ToolExecutionCounter()
+        let approvalCounter = ToolExecutionCounter()
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(
+                input: [.text("Inspect, then open it if needed")],
+                instructions: "Use tools.",
+                tools: [
+                    .init(
+                        name: "query_home",
+                        description: "Read state.",
+                        parameters: .object(["type": .string("object")])
+                    ),
+                    .init(
+                        name: "open_gate",
+                        description: "Open a gate.",
+                        parameters: .object(["type": .string("object")]),
+                        requiresConfirmation: true
+                    ),
+                ],
+                executor: IXClosureCodexToolExecutor { call in
+                    await executionCounter.record()
+                    return .success(callID: call.id, message: "Ready")
+                },
+                approveTools: { _, _ in
+                    await approvalCounter.record()
+                    return true
+                },
+                continuationTools: { _, _, _ in [] }
+            )
+            XCTFail("A removed continuation tool must fail closed")
+        } catch let IXCodexError.malformedToolCall(detail) {
+            XCTAssertTrue(detail.contains("open_gate"))
+            XCTAssertTrue(detail.contains("not offered"))
+        }
+
+        let executionCount = await executionCounter.count
+        let approvalCount = await approvalCounter.count
+        XCTAssertEqual(executionCount, 1)
+        XCTAssertEqual(approvalCount, 0)
+    }
+
     func testSSEParserReadsDeltaAndCompletedOutput() throws {
         let data = Data("""
         data: {"type":"response.output_text.delta","delta":"Hello "}
