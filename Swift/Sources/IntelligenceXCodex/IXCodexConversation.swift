@@ -158,6 +158,19 @@ public actor IXCodexConversation {
         var allCalls: [IXCodexToolCall] = []
         var aggregateUsage: IXCodexUsage?
         var availableTools = tools
+        let guardedTextDelta: IXCodexTextDeltaHandler?
+        if let onTextDelta {
+            guardedTextDelta = { delta in
+                guard !Task<Never, Never>.isCancelled else { return }
+                guard await self.isActiveRun(
+                    runID,
+                    expectedGeneration: expectedGeneration
+                ) else { return }
+                await onTextDelta(delta)
+            }
+        } else {
+            guardedTextDelta = nil
+        }
 
         for round in 0...maximumToolRounds {
             var compactedThisRound = false
@@ -177,11 +190,7 @@ public actor IXCodexConversation {
                     // still uses the authoritative recovery path below.
                 }
             }
-            try Task.checkCancellation()
-            guard generation == expectedGeneration,
-                  activeRunID == runID else {
-                throw CancellationError()
-            }
+            try validateActiveRun(runID, expectedGeneration: expectedGeneration)
             let turn: IXCodexTurn
             do {
                 turn = try await client.response(
@@ -193,41 +202,59 @@ public actor IXCodexConversation {
                     reasoningEffort: reasoningEffort,
                     webSearch: webSearch,
                     imageGeneration: imageGeneration,
-                    onTextDelta: onTextDelta
+                    onTextDelta: guardedTextDelta
                 )
-            } catch let error as IXCodexError where
-                !compactedThisRound && Self.isContextLimitError(error) {
-                guard generation == expectedGeneration,
-                      activeRunID == runID else {
-                    throw CancellationError()
-                }
-                let compacted = try await client.compact(
-                    input: pendingHistory,
-                    sessionID: sessionID,
-                    instructions: instructions,
-                    model: model
+            } catch {
+                try validateActiveRun(
+                    runID,
+                    expectedGeneration: expectedGeneration
                 )
-                guard generation == expectedGeneration,
-                      activeRunID == runID else {
-                    throw CancellationError()
+                guard let codexError = error as? IXCodexError,
+                      !compactedThisRound,
+                      Self.isContextLimitError(codexError) else {
+                    throw error
                 }
+                let compacted: [IXJSONValue]
+                do {
+                    compacted = try await client.compact(
+                        input: pendingHistory,
+                        sessionID: sessionID,
+                        instructions: instructions,
+                        model: model
+                    )
+                } catch {
+                    try validateActiveRun(
+                        runID,
+                        expectedGeneration: expectedGeneration
+                    )
+                    throw error
+                }
+                try validateActiveRun(
+                    runID,
+                    expectedGeneration: expectedGeneration
+                )
                 pendingHistory = compacted
-                turn = try await client.response(
-                    input: pendingHistory,
-                    sessionID: sessionID,
-                    instructions: instructions,
-                    tools: availableTools,
-                    model: model,
-                    reasoningEffort: reasoningEffort,
-                    webSearch: webSearch,
-                    imageGeneration: imageGeneration,
-                    onTextDelta: onTextDelta
-                )
+                do {
+                    turn = try await client.response(
+                        input: pendingHistory,
+                        sessionID: sessionID,
+                        instructions: instructions,
+                        tools: availableTools,
+                        model: model,
+                        reasoningEffort: reasoningEffort,
+                        webSearch: webSearch,
+                        imageGeneration: imageGeneration,
+                        onTextDelta: guardedTextDelta
+                    )
+                } catch {
+                    try validateActiveRun(
+                        runID,
+                        expectedGeneration: expectedGeneration
+                    )
+                    throw error
+                }
             }
-            try Task.checkCancellation()
-            guard generation == expectedGeneration, activeRunID == runID else {
-                throw CancellationError()
-            }
+            try validateActiveRun(runID, expectedGeneration: expectedGeneration)
             try Self.validateToolCalls(
                 turn.toolCalls,
                 areOfferedBy: availableTools
@@ -263,14 +290,25 @@ public actor IXCodexConversation {
                 let calls = turn.toolCalls.filter {
                     names.contains($0.name)
                 }
-                guard try await approveTools(calls, confirmationDefinitions)
-                else {
-                    throw IXCodexError.toolConfirmationDenied
+                let approved: Bool
+                do {
+                    approved = try await approveTools(
+                        calls,
+                        confirmationDefinitions
+                    )
+                } catch {
+                    try validateActiveRun(
+                        runID,
+                        expectedGeneration: expectedGeneration
+                    )
+                    throw error
                 }
-                try Task.checkCancellation()
-                guard generation == expectedGeneration,
-                      activeRunID == runID else {
-                    throw CancellationError()
+                try validateActiveRun(
+                    runID,
+                    expectedGeneration: expectedGeneration
+                )
+                guard approved else {
+                    throw IXCodexError.toolConfirmationDenied
                 }
             }
             allCalls.append(contentsOf: turn.toolCalls)
@@ -280,24 +318,36 @@ public actor IXCodexConversation {
             for result in results {
                 resultsByCallID[result.callID] = result
             }
+            var checkpointError: (any Error)?
             for call in turn.toolCalls {
-                guard let result = resultsByCallID[call.id] else {
-                    if Task.isCancelled { throw CancellationError() }
-                    throw IXCodexError.invalidResponse(
-                        "Tool executor returned no result for \(call.id)"
-                    )
-                }
-                guard generation == expectedGeneration, activeRunID == runID else {
+                guard generation == expectedGeneration,
+                      activeRunID == runID else {
                     throw CancellationError()
                 }
-                let output = try String(data: result.output.encodedData(), encoding: .utf8) ?? "{}"
+                let output: String
+                if let result = resultsByCallID[call.id] {
+                    do {
+                        output = String(
+                            decoding: try result.output.encodedData(),
+                            as: UTF8.self
+                        )
+                    } catch {
+                        checkpointError = checkpointError ?? error
+                        output = Self.unencodableToolResultOutput
+                    }
+                } else {
+                    checkpointError = checkpointError ?? IXCodexError.invalidResponse(
+                        "Tool executor returned no result for \(call.id)"
+                    )
+                    output = Self.missingToolResultOutput
+                }
                 pendingHistory.append(.object([
                     "type": .string(
                         call.kind == .custom
                             ? "custom_tool_call_output"
                             : "function_call_output"
                     ),
-                    "call_id": .string(result.callID),
+                    "call_id": .string(call.id),
                     "output": .string(output),
                 ]))
             }
@@ -305,31 +355,36 @@ public actor IXCodexConversation {
             // canonical call/result checkpoint before asking the model to
             // continue so a transient follow-up failure cannot replay it.
             history = pendingHistory
-            try Task.checkCancellation()
-            guard generation == expectedGeneration, activeRunID == runID else {
-                throw CancellationError()
+            try validateActiveRun(runID, expectedGeneration: expectedGeneration)
+            if let checkpointError {
+                throw checkpointError
             }
-            let completionText = try await completeToolRound?(
-                turn.toolCalls,
-                results
-            )?.trimmingCharacters(in: .whitespacesAndNewlines)
-            try Task.checkCancellation()
-            guard generation == expectedGeneration, activeRunID == runID else {
-                throw CancellationError()
+            let completionText: String?
+            do {
+                completionText = try await completeToolRound?(
+                    turn.toolCalls,
+                    results
+                )?.trimmingCharacters(in: .whitespacesAndNewlines)
+            } catch {
+                try validateActiveRun(
+                    runID,
+                    expectedGeneration: expectedGeneration
+                )
+                throw error
             }
+            try validateActiveRun(runID, expectedGeneration: expectedGeneration)
             if let completionText, !completionText.isEmpty {
                 pendingHistory.append(
                     Self.assistantMessage(text: completionText)
                 )
-                history = pendingHistory
-                if let onTextDelta {
-                    await onTextDelta(completionText)
-                    try Task.checkCancellation()
-                    guard generation == expectedGeneration,
-                          activeRunID == runID else {
-                        throw CancellationError()
-                    }
+                if let guardedTextDelta {
+                    await guardedTextDelta(completionText)
+                    try validateActiveRun(
+                        runID,
+                        expectedGeneration: expectedGeneration
+                    )
                 }
+                history = pendingHistory
                 return IXCodexRunResult(
                     turn: IXCodexTurn(text: completionText),
                     toolCalls: allCalls,
@@ -337,10 +392,23 @@ public actor IXCodexConversation {
                 )
             }
             if let continuationTools {
-                let selectedTools = try await continuationTools(
-                    turn.toolCalls,
-                    results,
-                    availableTools
+                let selectedTools: [IXCodexToolDefinition]
+                do {
+                    selectedTools = try await continuationTools(
+                        turn.toolCalls,
+                        results,
+                        availableTools
+                    )
+                } catch {
+                    try validateActiveRun(
+                        runID,
+                        expectedGeneration: expectedGeneration
+                    )
+                    throw error
+                }
+                try validateActiveRun(
+                    runID,
+                    expectedGeneration: expectedGeneration
                 )
                 try Self.validateContinuationTools(
                     selectedTools,
@@ -351,6 +419,31 @@ public actor IXCodexConversation {
             try Task.checkCancellation()
         }
         throw IXCodexError.toolLoopLimitExceeded
+    }
+
+    private static let missingToolResultOutput =
+        #"{"ok":false,"error":"Tool executor returned no result; the outcome is unknown. Do not retry automatically."}"#
+    private static let unencodableToolResultOutput =
+        #"{"ok":false,"error":"Tool result could not be encoded; the outcome is unknown. Do not retry automatically."}"#
+
+    private func isActiveRun(
+        _ runID: UUID,
+        expectedGeneration: UInt64
+    ) -> Bool {
+        generation == expectedGeneration && activeRunID == runID
+    }
+
+    private func validateActiveRun(
+        _ runID: UUID,
+        expectedGeneration: UInt64
+    ) throws {
+        try Task.checkCancellation()
+        guard isActiveRun(
+            runID,
+            expectedGeneration: expectedGeneration
+        ) else {
+            throw CancellationError()
+        }
     }
 
     private static func validateContinuationTools(

@@ -124,6 +124,101 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(executionCount, 0)
     }
 
+    func testCallerCancellationWinsOverCancellationIgnoringApproval()
+        async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-risky-tool",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-risky-cancel",
+                    "name": "open_gate",
+                    "arguments": "{}",
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let approval = CancellationIgnoringBoolGate(value: false)
+        let executionCounter = ToolExecutionCounter()
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Open it")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "open_gate",
+                    description: "Open a gate.",
+                    parameters: .object(["type": .string("object")]),
+                    requiresConfirmation: true
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    await executionCounter.record()
+                    return .success(callID: call.id, message: "Opened")
+                },
+                approveTools: { _, _ in
+                    await approval.waitAndReturn()
+                }
+            )
+        }
+
+        await approval.waitUntilStarted()
+        run.cancel()
+        await approval.release()
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should supersede approval denial")
+        } catch is CancellationError {
+        }
+        let executionCount = await executionCounter.count
+        XCTAssertEqual(executionCount, 0)
+    }
+
+    func testCallerCancellationWinsOverCancellationIgnoringApprovalError()
+        async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-risky-tool-error",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-risky-error",
+                    "name": "open_gate",
+                    "arguments": "{}",
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let approval = CancellationIgnoringVoidGate()
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Open it")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "open_gate",
+                    description: "Open a gate.",
+                    parameters: .object(["type": .string("object")]),
+                    requiresConfirmation: true
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    .success(callID: call.id, message: "Opened")
+                },
+                approveTools: { _, _ in
+                    await approval.wait()
+                    throw ConversationTestError.callbackFailed
+                }
+            )
+        }
+
+        await approval.waitUntilStarted()
+        run.cancel()
+        await approval.release()
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should supersede approval errors")
+        } catch is CancellationError {
+        }
+    }
+
     func testNegativeToolRoundLimitIsRejectedWithoutRequest() async throws {
         let state = ResponseQueue(responses: [])
         let conversation = IXCodexConversation(client: makeClient(state))
@@ -182,6 +277,90 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(result.turn.text, "Hello home")
         let recordedDeltas = await deltas.values
         XCTAssertEqual(recordedDeltas, ["Hello ", "home"])
+    }
+
+    func testResetSuppressesLaterHostedDeltasFromTheSameChunk() async throws {
+        let body = Data("""
+        data: {"type":"response.output_text.delta","delta":"First"}
+        data: {"type":"response.output_text.delta","delta":"Stale"}
+        data: {"type":"response.completed","response":{"id":"streamed","status":"completed","output":[]}}
+        data: [DONE]
+
+        """.utf8)
+        let http = StreamingHTTPClient(chunks: [body])
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            )),
+            httpClient: http
+        )
+        let gate = CancellationIgnoringVoidGate()
+        let deltas = TextDeltaRecorder()
+        let conversation = IXCodexConversation(client: IXCodexClient(
+            authSession: auth,
+            httpClient: http
+        ))
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Hello")],
+                instructions: "Help.",
+                onTextDelta: { delta in
+                    await deltas.append(delta)
+                    if delta == "First" { await gate.wait() }
+                }
+            )
+        }
+
+        await gate.waitUntilStarted()
+        await conversation.reset()
+        await gate.release()
+        do {
+            _ = try await run.value
+            XCTFail("Reset should invalidate the hosted stream")
+        } catch is CancellationError {
+        }
+        let recordedDeltas = await deltas.values
+        XCTAssertEqual(recordedDeltas, ["First"])
+    }
+
+    func testCallerCancellationWinsOverCancellationIgnoringResponseError()
+        async throws {
+        let gate = CancellationIgnoringVoidGate()
+        let http = IXClosureHTTPClient { _ in
+            await gate.wait()
+            throw ConversationTestError.transportFailed
+        }
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            )),
+            httpClient: http
+        )
+        let conversation = IXCodexConversation(client: IXCodexClient(
+            authSession: auth,
+            httpClient: http
+        ))
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Hello")],
+                instructions: "Help."
+            )
+        }
+
+        await gate.waitUntilStarted()
+        run.cancel()
+        await gate.release()
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should supersede transport errors")
+        } catch is CancellationError {
+        }
     }
 
     func testRestoredTranscriptIsReplayedBeforeTheNewPrompt() async throws {
@@ -640,6 +819,125 @@ final class IXCodexConversationTests: XCTestCase {
         )
     }
 
+    func testCallerCancellationDuringLocalCompletionDeltaKeepsToolCheckpoint()
+        async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-tool",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-cancel-delta",
+                    "name": "control_home",
+                    "arguments": "{}",
+                ]],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-recovered",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [[
+                        "type": "output_text",
+                        "text": "The action completed",
+                    ]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let delta = CancellationIgnoringVoidGate()
+        let oldRun = Task {
+            try await conversation.run(
+                input: [.text("Change it")],
+                instructions: "Act first.",
+                tools: [.init(
+                    name: "control_home",
+                    description: "Change state.",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    .success(callID: call.id, message: "Changed")
+                },
+                completeToolRound: { _, _ in "Unseen completion" },
+                onTextDelta: { _ in await delta.wait() }
+            )
+        }
+
+        await delta.waitUntilStarted()
+        oldRun.cancel()
+        await delta.release()
+        do {
+            _ = try await oldRun.value
+            XCTFail("Caller cancellation should discard the unseen reply")
+        } catch is CancellationError {
+        }
+
+        let recovered = try await conversation.run(
+            input: [.text("What happened?")],
+            instructions: "Help."
+        )
+        XCTAssertEqual(recovered.turn.text, "The action completed")
+        let requests = await state.requests
+        let body = try IXJSONValue.decode(
+            try XCTUnwrap(requests.last?.httpBody)
+        )
+        let replay = try XCTUnwrap(body["input"]?.arrayValue)
+        XCTAssertTrue(replay.contains { item in
+            item["type"]?.stringValue == "function_call_output" &&
+                item["call_id"]?.stringValue == "call-cancel-delta"
+        })
+        XCTAssertFalse(replay.contains { item in
+            item["role"]?.stringValue == "assistant" &&
+                item["content"]?.arrayValue?.contains { content in
+                    content["text"]?.stringValue == "Unseen completion"
+                } == true
+        })
+    }
+
+    func testCallerCancellationWinsOverLocalCompletionError() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-tool",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-completion-error",
+                    "name": "control_home",
+                    "arguments": "{}",
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let completion = CancellationIgnoringVoidGate()
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Change it")],
+                instructions: "Act first.",
+                tools: [.init(
+                    name: "control_home",
+                    description: "Change state.",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    .success(callID: call.id, message: "Changed")
+                },
+                completeToolRound: { _, _ in
+                    await completion.wait()
+                    throw ConversationTestError.callbackFailed
+                }
+            )
+        }
+
+        await completion.waitUntilStarted()
+        run.cancel()
+        await completion.release()
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should supersede completion errors")
+        } catch is CancellationError {
+        }
+    }
+
     func testConversationRejectsContinuationToolThatWasNotOffered() async throws {
         let first = sse(response: [
             "id": "response-query",
@@ -748,6 +1046,103 @@ final class IXCodexConversationTests: XCTestCase {
         let approvalCount = await approvalCounter.count
         XCTAssertEqual(executionCount, 1)
         XCTAssertEqual(approvalCount, 0)
+    }
+
+    func testCallerCancellationWinsOverInvalidContinuationSelection()
+        async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-query",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-cancel-continuation",
+                    "name": "query_home",
+                    "arguments": "{}",
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let continuation = CancellationIgnoringContinuationGate(
+            value: [.init(
+                name: "open_gate",
+                description: "Open a gate.",
+                parameters: .object(["type": .string("object")])
+            )]
+        )
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Inspect")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "query_home",
+                    description: "Read state.",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    .success(callID: call.id, message: "Ready")
+                },
+                continuationTools: { _, _, _ in
+                    await continuation.waitAndReturn()
+                }
+            )
+        }
+
+        await continuation.waitUntilStarted()
+        run.cancel()
+        await continuation.release()
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should supersede invalid selection")
+        } catch is CancellationError {
+        }
+        let requests = await state.requests
+        XCTAssertEqual(requests.count, 1)
+    }
+
+    func testCallerCancellationWinsOverContinuationProviderError()
+        async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-query",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-continuation-error",
+                    "name": "query_home",
+                    "arguments": "{}",
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let continuation = CancellationIgnoringVoidGate()
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Inspect")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "query_home",
+                    description: "Read state.",
+                    parameters: .object(["type": .string("object")])
+                )],
+                executor: IXClosureCodexToolExecutor { call in
+                    .success(callID: call.id, message: "Ready")
+                },
+                continuationTools: { _, _, _ in
+                    await continuation.wait()
+                    throw ConversationTestError.callbackFailed
+                }
+            )
+        }
+
+        await continuation.waitUntilStarted()
+        run.cancel()
+        await continuation.release()
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should supersede continuation errors")
+        } catch is CancellationError {
+        }
     }
 
     func testSSEParserReadsDeltaAndCompletedOutput() throws {
@@ -1349,6 +1744,132 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertTrue(recoveryInput.contains { $0["type"]?.stringValue == "function_call_output" })
     }
 
+    func testMissingToolResultIsCheckpointedBeforeExecutorError() async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "tool-response",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-missing-result",
+                    "name": "toggle_light",
+                    "arguments": "{}",
+                ]],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "recovered-response",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Recovered"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+
+        do {
+            _ = try await conversation.run(
+                input: [.text("Toggle the lamp")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "toggle_light",
+                    description: "Toggle a light.",
+                    parameters: .object([:])
+                )],
+                executor: FixedBatchToolExecutor(results: [])
+            )
+            XCTFail("A missing tool result should fail the run")
+        } catch let IXCodexError.invalidResponse(message) {
+            XCTAssertTrue(message.contains("call-missing-result"))
+        }
+
+        _ = try await conversation.run(
+            input: [.text("What happened?")],
+            instructions: "Answer."
+        )
+        let requests = await state.requests
+        let recoveryBody = try IXJSONValue.decode(
+            try XCTUnwrap(requests.last?.httpBody)
+        )
+        let recoveryInput = try XCTUnwrap(recoveryBody["input"]?.arrayValue)
+        let checkpoint = try XCTUnwrap(recoveryInput.first { item in
+            item["type"]?.stringValue == "function_call_output" &&
+                item["call_id"]?.stringValue == "call-missing-result"
+        })
+        XCTAssertTrue(
+            checkpoint["output"]?.stringValue?.contains(
+                "Tool executor returned no result"
+            ) == true
+        )
+    }
+
+    func testUnencodableToolResultIsCheckpointedBeforeEncodingError()
+        async throws {
+        let state = ResponseQueue(responses: [
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "tool-response",
+                "status": "completed",
+                "output": [[
+                    "type": "function_call",
+                    "call_id": "call-unencodable-result",
+                    "name": "toggle_light",
+                    "arguments": "{}",
+                ]],
+            ])),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "recovered-response",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Recovered"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(client: makeClient(state))
+        let executor = FixedBatchToolExecutor(results: [
+            IXCodexToolResult(
+                callID: "call-unencodable-result",
+                output: .number(.nan)
+            ),
+        ])
+
+        do {
+            _ = try await conversation.run(
+                input: [.text("Toggle the lamp")],
+                instructions: "Use tools.",
+                tools: [.init(
+                    name: "toggle_light",
+                    description: "Toggle a light.",
+                    parameters: .object([:])
+                )],
+                executor: executor
+            )
+            XCTFail("An unencodable result should fail the run")
+        } catch is CancellationError {
+            XCTFail("Encoding failure is not cancellation")
+        } catch {
+        }
+
+        _ = try await conversation.run(
+            input: [.text("What happened?")],
+            instructions: "Answer."
+        )
+        let requests = await state.requests
+        let recoveryBody = try IXJSONValue.decode(
+            try XCTUnwrap(requests.last?.httpBody)
+        )
+        let recoveryInput = try XCTUnwrap(recoveryBody["input"]?.arrayValue)
+        let checkpoint = try XCTUnwrap(recoveryInput.first { item in
+            item["type"]?.stringValue == "function_call_output" &&
+                item["call_id"]?.stringValue == "call-unencodable-result"
+        })
+        XCTAssertTrue(
+            checkpoint["output"]?.stringValue?.contains(
+                "Tool result could not be encoded"
+            ) == true
+        )
+    }
+
     func testCallerCancellationCheckpointsAnAlreadyExecutedToolBeforeStopping() async throws {
         let state = ResponseQueue(responses: [
             IXHTTPResponse(statusCode: 200, body: sse(response: [
@@ -1614,6 +2135,171 @@ final class IXCodexConversationTests: XCTestCase {
         )
     }
 
+    func testCallerCancellationDuringContextLimitResponseDoesNotStartCompaction()
+        async throws {
+        let gate = ConversationResponseGate(
+            first: .json(400, [
+                "error": [
+                    "message": "context_length_exceeded: maximum context length reached",
+                ],
+            ]),
+            later: IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "unexpected-compaction",
+                "status": "completed",
+                "output": [[
+                    "type": "compaction",
+                    "id": "compact-unexpected",
+                    "encrypted_content": "must-not-be-sent",
+                ]],
+            ]))
+        )
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            )),
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        )
+        let conversation = IXCodexConversation(client: IXCodexClient(
+            authSession: auth,
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        ))
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Continue")],
+                instructions: "Help."
+            )
+        }
+        await gate.waitUntilFirstRequest()
+        run.cancel()
+        await gate.releaseFirst()
+
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should prevent reactive compaction")
+        } catch is CancellationError {
+        }
+        let requests = await gate.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(
+            requests.first?.url?.path,
+            "/backend-api/codex/responses"
+        )
+    }
+
+    func testCallerCancellationWinsOverReactiveCompactionError()
+        async throws {
+        let gate = CancellationIgnoringStagedHTTPErrorGate(responses: [
+            .json(400, [
+                "error": [
+                    "message": "context_length_exceeded: maximum context length reached",
+                ],
+            ]),
+        ])
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            )),
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        )
+        let conversation = IXCodexConversation(client: IXCodexClient(
+            authSession: auth,
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        ))
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Continue")],
+                instructions: "Help."
+            )
+        }
+
+        await gate.waitUntilErrorRequest()
+        run.cancel()
+        await gate.releaseError()
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should supersede compaction errors")
+        } catch is CancellationError {
+        }
+        let requests = await gate.requests
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/backend-api/codex/responses",
+            "/backend-api/codex/responses/compact",
+        ])
+    }
+
+    func testCallerCancellationWinsOverPostCompactionResponseError()
+        async throws {
+        let compacted = IXHTTPResponse(statusCode: 200, body: sse(response: [
+            "id": "compaction-response",
+            "status": "completed",
+            "output": [[
+                "type": "compaction",
+                "id": "compact-retry",
+                "encrypted_content": "opaque-retry-checkpoint",
+            ]],
+        ]))
+        let gate = CancellationIgnoringStagedHTTPErrorGate(responses: [
+            .json(400, [
+                "error": [
+                    "message": "context_length_exceeded: maximum context length reached",
+                ],
+            ]),
+            compacted,
+        ])
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account"
+            )),
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        )
+        let conversation = IXCodexConversation(client: IXCodexClient(
+            authSession: auth,
+            httpClient: IXClosureHTTPClient { request in
+                try await gate.send(request)
+            }
+        ))
+        let run = Task {
+            try await conversation.run(
+                input: [.text("Continue")],
+                instructions: "Help."
+            )
+        }
+
+        await gate.waitUntilErrorRequest()
+        run.cancel()
+        await gate.releaseError()
+        do {
+            _ = try await run.value
+            XCTFail("Caller cancellation should supersede retry errors")
+        } catch is CancellationError {
+        }
+        let requests = await gate.requests
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/backend-api/codex/responses",
+            "/backend-api/codex/responses/compact",
+            "/backend-api/codex/responses",
+        ])
+    }
+
     func testContextLimitFailureCompactsAndRetriesTheSameTurn() async throws {
         let state = ResponseQueue(responses: [
             .json(400, [
@@ -1740,6 +2426,21 @@ actor BatchRecordingToolExecutor: IXCodexToolExecuting {
     }
 }
 
+struct FixedBatchToolExecutor: IXCodexToolExecuting {
+    let results: [IXCodexToolResult]
+
+    func execute(_ call: IXCodexToolCall) async -> IXCodexToolResult {
+        results.first(where: { $0.callID == call.id }) ?? .failure(
+            callID: call.id,
+            message: "Missing result"
+        )
+    }
+
+    func execute(_ calls: [IXCodexToolCall]) async -> [IXCodexToolResult] {
+        results
+    }
+}
+
 actor CancellationIgnoringToolGate: IXCodexToolExecuting {
     private var startedContinuation: CheckedContinuation<Void, Never>?
     private var releaseContinuation: CheckedContinuation<Void, Never>?
@@ -1788,6 +2489,102 @@ actor CancellationIgnoringTextGate {
     }
 
     func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+actor CancellationIgnoringBoolGate {
+    private let value: Bool
+    private var started = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    init(value: Bool) {
+        self.value = value
+    }
+
+    func waitAndReturn() async -> Bool {
+        started = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+        return value
+    }
+
+    func waitUntilStarted() async {
+        guard !started else { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+actor CancellationIgnoringContinuationGate {
+    private let value: [IXCodexToolDefinition]
+    private var started = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    init(value: [IXCodexToolDefinition]) {
+        self.value = value
+    }
+
+    func waitAndReturn() async -> [IXCodexToolDefinition] {
+        started = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+        return value
+    }
+
+    func waitUntilStarted() async {
+        guard !started else { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+enum ConversationTestError: Error {
+    case callbackFailed
+    case transportFailed
+}
+
+actor CancellationIgnoringStagedHTTPErrorGate {
+    private let responses: [IXHTTPResponse]
+    private var errorRequestStarted = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+    private(set) var requests: [URLRequest] = []
+
+    init(responses: [IXHTTPResponse]) {
+        self.responses = responses
+    }
+
+    func send(_ request: URLRequest) async throws -> IXHTTPResponse {
+        requests.append(request)
+        let index = requests.count - 1
+        if index < responses.count { return responses[index] }
+        errorRequestStarted = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+        await withCheckedContinuation { releaseContinuation = $0 }
+        throw ConversationTestError.transportFailed
+    }
+
+    func waitUntilErrorRequest() async {
+        guard !errorRequestStarted else { return }
+        await withCheckedContinuation { startedContinuation = $0 }
+    }
+
+    func releaseError() {
         releaseContinuation?.resume()
         releaseContinuation = nil
     }
