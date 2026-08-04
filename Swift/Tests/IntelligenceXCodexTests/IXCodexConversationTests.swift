@@ -411,7 +411,7 @@ final class IXCodexConversationTests: XCTestCase {
                 XCTAssertEqual(calls.map(\.name), ["query_home"])
                 XCTAssertEqual(results.map(\.callID), ["call-query"])
                 XCTAssertEqual(availableTools, [query, control])
-                return []
+                return [query]
             }
         )
 
@@ -425,7 +425,16 @@ final class IXCodexConversationTests: XCTestCase {
             try XCTUnwrap(requests.last?.httpBody)
         )
         XCTAssertEqual(firstBody["tools"]?.arrayValue?.count, 2)
-        XCTAssertNil(secondBody["tools"])
+        let continuationTools = try XCTUnwrap(
+            secondBody["tools"]?.arrayValue
+        )
+        XCTAssertEqual(continuationTools.count, 1)
+        let continuationTool = try XCTUnwrap(continuationTools.first)
+        XCTAssertEqual(
+            continuationTool["name"]?.stringValue ??
+                continuationTool["function"]?["name"]?.stringValue,
+            "query_home"
+        )
     }
 
     func testConversationRejectsContinuationToolThatWasNotOffered() async throws {
