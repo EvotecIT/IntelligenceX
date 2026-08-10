@@ -202,6 +202,55 @@ final class IXRealtimeClientTests: XCTestCase {
         )
     }
 
+    func testLegacyStringTranscriptionAPIKeepsUnknownSnapshotsSingular() throws {
+        var options = IXRealtimeSessionOptions(
+            instructions: "Transcribe the user.",
+            transcriptionModel: "gpt-4o-transcribe-2026-07-01",
+            transcriptionLanguage: "pl"
+        )
+
+        var event = IXRealtimeClientEvent.sessionUpdate(options: options)
+        var transcription = try XCTUnwrap(
+            event["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertEqual(transcription["language"]?.stringValue, "pl")
+        XCTAssertNil(transcription["languages"])
+
+        options.transcriptionModel = "custom-legacy-transcriber"
+        event = IXRealtimeClientEvent.sessionUpdate(options: options)
+        transcription = try XCTUnwrap(
+            event["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertEqual(transcription["language"]?.stringValue, "pl")
+        XCTAssertNil(transcription["languages"])
+    }
+
+    func testSessionUpdateSequenceClearsTranscriptionBeforeApplyingProfile() throws {
+        let events = IXRealtimeClientEvent.sessionUpdatesReplacingInputTranscription(
+            options: .init(
+                instructions: "Transcribe a committed turn.",
+                inputTranscription: .init(
+                    model: .gptTranscribe,
+                    languageHints: ["pl"]
+                )
+            )
+        )
+
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(
+            events[0]["session"]?["audio"]?["input"]?["transcription"],
+            .null
+        )
+        let replacement = try XCTUnwrap(
+            events[1]["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertEqual(replacement["model"]?.stringValue, "gpt-transcribe")
+        XCTAssertEqual(replacement["languages"]?.arrayValue, [.string("pl")])
+        XCTAssertNil(replacement["prompt"])
+        XCTAssertNil(replacement["keywords"])
+        XCTAssertNil(replacement["delay"])
+    }
+
     func testClientSecretSurfacesStructuredServiceError() async throws {
         let auth = IXCodexAuthSession(
             credentialStore: IXMemoryCodexCredentialStore(bundle: .init(

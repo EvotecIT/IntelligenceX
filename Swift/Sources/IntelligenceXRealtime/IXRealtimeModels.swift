@@ -52,10 +52,10 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
             }
             if inputTranscription == nil {
                 inputTranscription = .init(
-                    model: .resolving(newValue)
+                    model: .resolvingLegacyIdentifier(newValue)
                 )
             } else {
-                inputTranscription?.model = .resolving(newValue)
+                inputTranscription?.model = .resolvingLegacyIdentifier(newValue)
             }
         }
     }
@@ -108,7 +108,7 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
         self.outputModality = outputModality
         self.inputTranscription = inputTranscription ?? transcriptionModel.map {
             IXRealtimeInputTranscriptionOptions(
-                model: .resolving($0),
+                model: .resolvingLegacyIdentifier($0),
                 prompt: transcriptionPrompt,
                 languageHints: transcriptionLanguage.map { [$0] } ?? []
             )
@@ -401,10 +401,28 @@ public enum IXRealtimeClientEvent {
         ])
     }
 
+    /// Builds the ordered events required to replace the complete nested input
+    /// transcription configuration during an active session.
+    ///
+    /// Realtime session updates patch nested objects, so fields omitted by a
+    /// new model profile can otherwise retain values from the previous one.
+    /// Send both returned events in order to clear the old object before the
+    /// requested session configuration is applied.
+    public static func sessionUpdatesReplacingInputTranscription(
+        options: IXRealtimeSessionOptions,
+        tools: [IXCodexToolDefinition] = []
+    ) -> [IXJSONValue] {
+        [
+            clearInputTranscriptionConfiguration,
+            sessionUpdate(options: options, tools: tools),
+        ]
+    }
+
     /// Explicitly clears the server's nested input transcription
-    /// configuration. Omitting `language` from a later update does not clear a
-    /// previously configured language, so clients can send this first and then
-    /// re-enable transcription without a language hint.
+    /// configuration. Omitting nested fields from a later update does not clear
+    /// previously configured prompt, language, keyword, or delay values. Prefer
+    /// `sessionUpdatesReplacingInputTranscription(options:tools:)` when applying
+    /// a complete replacement profile.
     public static let clearInputTranscriptionConfiguration: IXJSONValue =
         .object([
             "type": .string("session.update"),

@@ -78,6 +78,8 @@ public static class OpenAIRealtimeTranscriptionModels {
 /// Configures transcription of microphone input in a Realtime session.
 /// </summary>
 public sealed class OpenAIRealtimeTranscriptionOptions {
+    private static readonly char[] InvalidKeywordCharacters = { '<', '>', '\r', '\n' };
+
     /// <summary>Gets or sets the transcription model identifier.</summary>
     public string Model { get; set; } = OpenAIRealtimeTranscriptionModels.GptLiveTranscribe;
 
@@ -115,7 +117,7 @@ public sealed class OpenAIRealtimeTranscriptionOptions {
         Keywords = NormalizeItems(Keywords, nameof(Keywords));
 
         for (var i = 0; i < Keywords.Length; i++) {
-            if (Keywords[i].IndexOfAny(new[] { '<', '>', '\r', '\n' }) >= 0) {
+            if (Keywords[i].IndexOfAny(InvalidKeywordCharacters) >= 0) {
                 throw new ArgumentException(
                     "Transcription keywords cannot contain angle brackets or line breaks.",
                     nameof(Keywords));

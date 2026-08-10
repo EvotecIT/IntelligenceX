@@ -72,6 +72,16 @@ public struct IXRealtimeTranscriptionModel: Sendable, Equatable, Hashable {
     /// Resolves the request schema for a known model identifier.
     /// Unknown identifiers use the current contextual schema.
     public static func resolving(_ id: String) -> Self {
+        knownModel(id) ?? Self(id, contextStyle: .contextual)
+    }
+
+    /// Preserves the singular-language behavior of the original string API
+    /// for unlisted snapshots while still recognizing current model IDs.
+    static func resolvingLegacyIdentifier(_ id: String) -> Self {
+        knownModel(id) ?? Self(id, contextStyle: .legacy)
+    }
+
+    private static func knownModel(_ id: String) -> Self? {
         switch id {
         case gptLiveTranscribe.id:
             return .gptLiveTranscribe
@@ -88,7 +98,7 @@ public struct IXRealtimeTranscriptionModel: Sendable, Equatable, Hashable {
         case whisper1.id:
             return .whisper1
         default:
-            return Self(id, contextStyle: .contextual)
+            return nil
         }
     }
 }
