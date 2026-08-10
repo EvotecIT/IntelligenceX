@@ -28,6 +28,12 @@ public sealed class OpenAIRealtimeSessionOptions {
     public string? Voice { get; set; }
 
     /// <summary>
+    /// Gets or sets input transcription. Leave null when the client does not
+    /// need user-audio transcript events.
+    /// </summary>
+    public OpenAIRealtimeTranscriptionOptions? InputTranscription { get; set; }
+
+    /// <summary>
     /// Lifetime requested for the short-lived client credential.
     /// </summary>
     public TimeSpan ClientSecretLifetime { get; set; } = TimeSpan.FromMinutes(2);
@@ -36,6 +42,7 @@ public sealed class OpenAIRealtimeSessionOptions {
         Model = NormalizeRequired(Model, nameof(Model));
         Instructions = NormalizeOptional(Instructions);
         Voice = NormalizeOptional(Voice);
+        InputTranscription?.Validate();
 
         if (OutputModalities is null || OutputModalities.Length != 1) {
             throw new ArgumentException(

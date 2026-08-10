@@ -32,6 +32,13 @@ using var session = await realtime.ConnectAsync(
         Model = "gpt-realtime-2.1",
         OutputModalities = new[] { "audio" },
         Voice = "marin",
+        InputTranscription = new OpenAIRealtimeTranscriptionOptions {
+            Model = OpenAIRealtimeTranscriptionModels.GptLiveTranscribe,
+            Prompt = "Transcribe the spoken language without translation.",
+            LanguageHints = new[] { "en", "pl" },
+            Keywords = new[] { "CasaRay", "Home Assistant" },
+            Delay = OpenAIRealtimeTranscriptionDelay.High
+        },
         ClientSecretLifetime = TimeSpan.FromMinutes(2)
     },
     cancellationToken);
@@ -57,6 +64,18 @@ integrations can use the existing Codex auth store; other hosts should provide a
 platform's protected credential storage.
 
 The same session can accept microphone buffers through `AppendAudioAsync` and `CommitAudioAsync`. `SendImageAsync` sends a public URL or data URL as Realtime image input.
+
+Use `gpt-live-transcribe` for a continuously open microphone. Use `gpt-transcribe` for completed audio or
+committed WebSocket turns when maximum accuracy matters more than immediate partial text. IX also exposes
+the documented alternatives: `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`,
+`gpt-4o-mini-transcribe-2025-12-15`, `gpt-realtime-whisper`, and `whisper-1`. The diarization model remains a
+file-transcription choice rather than a Realtime input model.
+
+IX models language, prompt, keyword, and delay support independently: `gpt-live-transcribe` accepts the full
+live context, `gpt-transcribe` accepts plural languages and keywords without delay, and
+`gpt-realtime-whisper` accepts singular language plus delay without a prompt. Custom model ids can override
+each capability explicitly. Completion events expose the final transcript and detected languages, while
+transcription delta events flow through `TextDelta` for live captions.
 
 WebSocket is available for native .NET clients and lower-level integrations. OpenAI recommends WebRTC for
 mobile clients because it handles media and changing network conditions more robustly. Native mobile hosts

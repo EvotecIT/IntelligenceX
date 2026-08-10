@@ -83,6 +83,13 @@ internal static partial class Program {
             Instructions = "Speak briefly.",
             OutputModalities = new[] { "audio" },
             Voice = "marin",
+            InputTranscription = new OpenAIRealtimeTranscriptionOptions {
+                Model = OpenAIRealtimeTranscriptionModels.GptLiveTranscribe,
+                Prompt = "Transcribe smart-home commands without translation.",
+                LanguageHints = new[] { "pl", "en" },
+                Keywords = new[] { "CasaRay", "Home Assistant" },
+                Delay = OpenAIRealtimeTranscriptionDelay.High
+            },
             ClientSecretLifetime = TimeSpan.FromSeconds(75)
         };
         options.Validate();
@@ -98,6 +105,17 @@ internal static partial class Program {
         AssertEqual("audio", session.GetProperty("output_modalities")[0].GetString(), "Realtime voice modality");
         AssertEqual("marin", session.GetProperty("audio").GetProperty("output").GetProperty("voice").GetString(),
             "Realtime voice");
+        var transcription = session.GetProperty("audio").GetProperty("input").GetProperty("transcription");
+        AssertEqual(OpenAIRealtimeTranscriptionModels.GptLiveTranscribe,
+            transcription.GetProperty("model").GetString(), "Realtime transcription model");
+        AssertEqual("pl", transcription.GetProperty("languages")[0].GetString(),
+            "Realtime first language hint");
+        AssertEqual("en", transcription.GetProperty("languages")[1].GetString(),
+            "Realtime second language hint");
+        AssertEqual("CasaRay", transcription.GetProperty("keywords")[0].GetString(),
+            "Realtime transcription keyword");
+        AssertEqual("high", transcription.GetProperty("delay").GetString(),
+            "Realtime transcription delay");
     }
 
     private static void TestRealtimeSessionValidatesServiceContract() {
@@ -116,6 +134,80 @@ internal static partial class Program {
                 ClientSecretLifetime = TimeSpan.FromSeconds(7201)
             }.Validate(),
             "Realtime rejects too-long client secret lifetime");
+        AssertThrows<ArgumentException>(
+            () => new OpenAIRealtimeSessionOptions {
+                InputTranscription = new OpenAIRealtimeTranscriptionOptions {
+                    Model = OpenAIRealtimeTranscriptionModels.Gpt4oTranscribe,
+                    LanguageHints = new[] { "pl", "en" }
+                }
+            }.Validate(),
+            "Realtime legacy transcription rejects multiple language hints");
+        AssertThrows<ArgumentException>(
+            () => new OpenAIRealtimeSessionOptions {
+                InputTranscription = new OpenAIRealtimeTranscriptionOptions {
+                    Model = OpenAIRealtimeTranscriptionModels.Whisper1,
+                    Keywords = new[] { "CasaRay" }
+                }
+            }.Validate(),
+            "Realtime legacy transcription rejects contextual hints");
+        AssertThrows<ArgumentException>(
+            () => new OpenAIRealtimeSessionOptions {
+                InputTranscription = new OpenAIRealtimeTranscriptionOptions {
+                    Model = OpenAIRealtimeTranscriptionModels.GptTranscribe,
+                    Delay = OpenAIRealtimeTranscriptionDelay.High
+                }
+            }.Validate(),
+            "Realtime committed transcription rejects live delay");
+        AssertThrows<ArgumentException>(
+            () => new OpenAIRealtimeSessionOptions {
+                InputTranscription = new OpenAIRealtimeTranscriptionOptions {
+                    Model = OpenAIRealtimeTranscriptionModels.GptRealtimeWhisper,
+                    Prompt = "Unsupported context"
+                }
+            }.Validate(),
+            "Realtime streaming Whisper rejects prompt");
+
+        var legacy = new OpenAIRealtimeSessionOptions {
+            InputTranscription = new OpenAIRealtimeTranscriptionOptions {
+                Model = OpenAIRealtimeTranscriptionModels.GptRealtimeWhisper,
+                LanguageHints = new[] { "pl" },
+                Delay = OpenAIRealtimeTranscriptionDelay.Medium
+            }
+        };
+        legacy.Validate();
+        using (var document = JsonDocument.Parse(OpenAIRealtimeClient.BuildClientSecretPayload(legacy))) {
+            var transcription = document.RootElement.GetProperty("session")
+                .GetProperty("audio").GetProperty("input").GetProperty("transcription");
+            AssertEqual("pl", transcription.GetProperty("language").GetString(),
+                "Realtime legacy language hint");
+            AssertEqual(false, transcription.TryGetProperty("languages", out _),
+                "Realtime legacy omits contextual language hints");
+            AssertEqual("medium", transcription.GetProperty("delay").GetString(),
+                "Realtime streaming Whisper delay");
+        }
+
+        foreach (var model in new[] {
+                     OpenAIRealtimeTranscriptionModels.Gpt4oTranscribe,
+                     OpenAIRealtimeTranscriptionModels.Gpt4oMiniTranscribe,
+                     OpenAIRealtimeTranscriptionModels.Gpt4oMiniTranscribe2025_12_15,
+                     OpenAIRealtimeTranscriptionModels.Whisper1
+                 }) {
+            var modelOptions = new OpenAIRealtimeSessionOptions {
+                InputTranscription = new OpenAIRealtimeTranscriptionOptions {
+                    Model = model,
+                    LanguageHints = new[] { "pl" }
+                }
+            };
+            modelOptions.Validate();
+            using var document = JsonDocument.Parse(
+                OpenAIRealtimeClient.BuildClientSecretPayload(modelOptions));
+            var transcription = document.RootElement.GetProperty("session")
+                .GetProperty("audio").GetProperty("input").GetProperty("transcription");
+            AssertEqual(model, transcription.GetProperty("model").GetString(),
+                "Realtime selectable transcription model");
+            AssertEqual("pl", transcription.GetProperty("language").GetString(),
+                "Realtime selectable transcription language");
+        }
 
         var minimum = new OpenAIRealtimeSessionOptions {
             ClientSecretLifetime = TimeSpan.FromSeconds(10)
@@ -141,6 +233,20 @@ internal static partial class Program {
             """{"type":"response.output_audio_transcript.delta","delta":"spoken text"}""");
         AssertEqual("spoken text", transcriptEvent.TextDelta, "Realtime audio transcript text delta");
         AssertEqual<string?>(null, transcriptEvent.AudioDelta, "Realtime audio transcript binary delta");
+
+        var inputTranscriptDelta = OpenAIRealtimeEvent.Parse(
+            """{"type":"conversation.item.input_audio_transcription.delta","item_id":"item-1","delta":"Dzień"}""");
+        AssertEqual("Dzień", inputTranscriptDelta.TextDelta, "Realtime input transcription delta");
+        AssertEqual("item-1", inputTranscriptDelta.ItemId, "Realtime input transcription item");
+
+        var inputTranscriptCompleted = OpenAIRealtimeEvent.Parse(
+            """{"type":"conversation.item.input_audio_transcription.completed","item_id":"item-1","transcript":"Dzień dobry","languages":[{"code":"pl","confidence":0.98},{"code":"en","confidence":0.02}]}""");
+        AssertEqual("Dzień dobry", inputTranscriptCompleted.Transcript,
+            "Realtime completed input transcript");
+        AssertEqual("pl", inputTranscriptCompleted.TranscriptionLanguages[0],
+            "Realtime detected primary language");
+        AssertEqual("en", inputTranscriptCompleted.TranscriptionLanguages[1],
+            "Realtime detected secondary language");
 
         var errorEvent = OpenAIRealtimeEvent.Parse("""{"type":"error","error":{"message":"bad request"}}""");
         AssertEqual("bad request", errorEvent.ErrorMessage, "Realtime error message");
