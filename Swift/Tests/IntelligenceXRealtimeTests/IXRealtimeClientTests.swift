@@ -64,7 +64,7 @@ final class IXRealtimeClientTests: XCTestCase {
         )
         XCTAssertEqual(
             body["session"]?["audio"]?["input"]?["transcription"]?["model"]?.stringValue,
-            "gpt-4o-transcribe"
+            "gpt-live-transcribe"
         )
         XCTAssertEqual(
             body["session"]?["tools"]?.arrayValue?.first?["name"]?.stringValue,
@@ -73,27 +73,182 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertNil(body["session"]?["tools"]?.arrayValue?.first?["strict"])
     }
 
-    func testSessionUpdatePreservesLanguageAndConversationalTurnPolicy() throws {
+    func testSessionUpdateCarriesContextualTranscriptionHintsAndTurnPolicy() throws {
         let event = IXRealtimeClientEvent.sessionUpdate(
             options: .init(
                 instructions: "Reply in the user's language.",
-                transcriptionLanguage: "pl",
-                transcriptionPrompt: "Transcribe in the spoken language without translation.",
                 turnDetection: .semantic(eagerness: .high),
                 createsResponsesAutomatically: true,
-                interruptsResponseOnSpeech: true
+                interruptsResponseOnSpeech: true,
+                inputTranscription: .init(
+                    model: .gptLiveTranscribe,
+                    prompt: "Transcribe in the spoken language without translation.",
+                    languageHints: ["pl", "en"],
+                    keywords: ["CasaRay", "Home Assistant"],
+                    delay: .high
+                )
             )
         )
 
         let session = try XCTUnwrap(event["session"])
         XCTAssertEqual(
-            session["audio"]?["input"]?["transcription"]?["language"]?.stringValue,
-            "pl"
+            session["audio"]?["input"]?["transcription"]?["languages"]?.arrayValue,
+            [.string("pl"), .string("en")]
+        )
+        XCTAssertEqual(
+            session["audio"]?["input"]?["transcription"]?["keywords"]?.arrayValue,
+            [.string("CasaRay"), .string("Home Assistant")]
+        )
+        XCTAssertEqual(
+            session["audio"]?["input"]?["transcription"]?["delay"]?.stringValue,
+            "high"
         )
         XCTAssertEqual(
             session["audio"]?["input"]?["turn_detection"]?["interrupt_response"]?.boolValue,
             true
         )
+    }
+
+    func testLegacyTranscriptionModelsUseSingularLanguageSchema() throws {
+        let event = IXRealtimeClientEvent.sessionUpdate(
+            options: .init(
+                instructions: "Transcribe the user.",
+                inputTranscription: .init(
+                    model: .gpt4oMiniTranscribe,
+                    prompt: "Smart-home controls.",
+                    languageHints: ["pl", "en"],
+                    keywords: ["CasaRay"],
+                    delay: .minimal
+                )
+            )
+        )
+
+        let transcription = try XCTUnwrap(
+            event["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertEqual(transcription["model"]?.stringValue, "gpt-4o-mini-transcribe")
+        XCTAssertEqual(transcription["language"]?.stringValue, "pl")
+        XCTAssertNil(transcription["languages"])
+        XCTAssertNil(transcription["keywords"])
+        XCTAssertNil(transcription["delay"])
+    }
+
+    func testModelSpecificTranscriptionCapabilitiesShapePayloads() throws {
+        let committed = IXRealtimeClientEvent.sessionUpdate(
+            options: .init(
+                instructions: "Transcribe a committed turn.",
+                inputTranscription: .init(
+                    model: .gptTranscribe,
+                    prompt: "Smart-home controls.",
+                    languageHints: ["pl", "en"],
+                    keywords: ["CasaRay"],
+                    delay: .high
+                )
+            )
+        )
+        let committedTranscription = try XCTUnwrap(
+            committed["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertEqual(
+            committedTranscription["languages"]?.arrayValue,
+            [.string("pl"), .string("en")]
+        )
+        XCTAssertEqual(
+            committedTranscription["keywords"]?.arrayValue,
+            [.string("CasaRay")]
+        )
+        XCTAssertNil(committedTranscription["delay"])
+
+        let streamingWhisper = IXRealtimeClientEvent.sessionUpdate(
+            options: .init(
+                instructions: "Transcribe a streaming turn.",
+                inputTranscription: .init(
+                    model: .gptRealtimeWhisper,
+                    prompt: "This must be omitted.",
+                    languageHints: ["pl"],
+                    delay: .medium
+                )
+            )
+        )
+        let whisperTranscription = try XCTUnwrap(
+            streamingWhisper["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertNil(whisperTranscription["prompt"])
+        XCTAssertEqual(whisperTranscription["language"]?.stringValue, "pl")
+        XCTAssertEqual(whisperTranscription["delay"]?.stringValue, "medium")
+    }
+
+    func testTranscriptionModelCatalogResolvesEveryRealtimeSchema() {
+        let contextual: [IXRealtimeTranscriptionModel] = [
+            .gptLiveTranscribe,
+            .gptTranscribe,
+        ]
+        let legacy: [IXRealtimeTranscriptionModel] = [
+            .gpt4oTranscribe,
+            .gpt4oMiniTranscribe,
+            .gpt4oMiniTranscribe2025_12_15,
+            .gptRealtimeWhisper,
+            .whisper1,
+        ]
+
+        XCTAssertTrue(contextual.allSatisfy { $0.contextStyle == .contextual })
+        XCTAssertTrue(legacy.allSatisfy { $0.contextStyle == .legacy })
+        for model in contextual + legacy {
+            XCTAssertEqual(IXRealtimeTranscriptionModel.resolving(model.id), model)
+        }
+        XCTAssertEqual(
+            IXRealtimeTranscriptionModel.resolving("gpt-transcribe-snapshot").contextStyle,
+            .contextual
+        )
+    }
+
+    func testLegacyStringTranscriptionAPIKeepsUnknownSnapshotsSingular() throws {
+        var options = IXRealtimeSessionOptions(
+            instructions: "Transcribe the user.",
+            transcriptionModel: "gpt-4o-transcribe-2026-07-01",
+            transcriptionLanguage: "pl"
+        )
+
+        var event = IXRealtimeClientEvent.sessionUpdate(options: options)
+        var transcription = try XCTUnwrap(
+            event["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertEqual(transcription["language"]?.stringValue, "pl")
+        XCTAssertNil(transcription["languages"])
+
+        options.transcriptionModel = "custom-legacy-transcriber"
+        event = IXRealtimeClientEvent.sessionUpdate(options: options)
+        transcription = try XCTUnwrap(
+            event["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertEqual(transcription["language"]?.stringValue, "pl")
+        XCTAssertNil(transcription["languages"])
+    }
+
+    func testSessionUpdateSequenceClearsTranscriptionBeforeApplyingProfile() throws {
+        let events = IXRealtimeClientEvent.sessionUpdatesReplacingInputTranscription(
+            options: .init(
+                instructions: "Transcribe a committed turn.",
+                inputTranscription: .init(
+                    model: .gptTranscribe,
+                    languageHints: ["pl"]
+                )
+            )
+        )
+
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(
+            events[0]["session"]?["audio"]?["input"]?["transcription"],
+            .null
+        )
+        let replacement = try XCTUnwrap(
+            events[1]["session"]?["audio"]?["input"]?["transcription"]
+        )
+        XCTAssertEqual(replacement["model"]?.stringValue, "gpt-transcribe")
+        XCTAssertEqual(replacement["languages"]?.arrayValue, [.string("pl")])
+        XCTAssertNil(replacement["prompt"])
+        XCTAssertNil(replacement["keywords"])
+        XCTAssertNil(replacement["delay"])
     }
 
     func testClientSecretSurfacesStructuredServiceError() async throws {
@@ -244,6 +399,15 @@ final class IXRealtimeClientTests: XCTestCase {
             "type": "conversation.item.input_audio_transcription.completed",
             "item_id": "item-1",
             "transcript": "Dzień dobry",
+            "languages": [
+                ["code": "pl", "confidence": 0.98],
+                ["code": "en", "confidence": 0.02],
+            ],
+        ])
+        let transcriptionDelta = try makeRealtimeEvent([
+            "type": "conversation.item.input_audio_transcription.delta",
+            "item_id": "item-1",
+            "delta": "Dzień",
         ])
         let created = try makeRealtimeEvent([
             "type": "response.created",
@@ -259,12 +423,17 @@ final class IXRealtimeClientTests: XCTestCase {
 
         XCTAssertEqual(speech.serverEvent, .speechStarted(itemID: "item-1"))
         XCTAssertEqual(
+            transcriptionDelta.serverEvent,
+            .inputTranscriptionDelta(itemID: "item-1", delta: "Dzień")
+        )
+        XCTAssertEqual(
             transcription.serverEvent,
             .inputTranscriptionCompleted(
                 itemID: "item-1",
                 transcript: "Dzień dobry"
             )
         )
+        XCTAssertEqual(transcription.transcriptionLanguages, ["pl", "en"])
         XCTAssertEqual(
             created.serverEvent,
             .responseCreated(responseID: "response-1")

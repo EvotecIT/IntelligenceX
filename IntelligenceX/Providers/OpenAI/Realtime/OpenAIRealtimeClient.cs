@@ -145,10 +145,17 @@ public sealed class OpenAIRealtimeClient : IDisposable {
         if (!string.IsNullOrWhiteSpace(session.Instructions)) {
             sessionPayload.Add("instructions", session.Instructions);
         }
-        if (!string.IsNullOrWhiteSpace(session.Voice)) {
-            sessionPayload.Add("audio", new JsonObject()
-                .Add("output", new JsonObject()
-                    .Add("voice", session.Voice)));
+        if (!string.IsNullOrWhiteSpace(session.Voice) || session.InputTranscription is not null) {
+            var audio = new JsonObject();
+            if (session.InputTranscription is not null) {
+                audio.Add("input", new JsonObject()
+                    .Add("transcription", session.InputTranscription.ToJson()));
+            }
+            if (!string.IsNullOrWhiteSpace(session.Voice)) {
+                audio.Add("output", new JsonObject()
+                    .Add("voice", session.Voice));
+            }
+            sessionPayload.Add("audio", audio);
         }
 
         var lifetimeSeconds = Math.Max(1, (int)Math.Ceiling(session.ClientSecretLifetime.TotalSeconds));

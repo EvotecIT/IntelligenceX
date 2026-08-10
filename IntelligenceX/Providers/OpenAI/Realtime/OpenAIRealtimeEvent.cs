@@ -7,11 +7,22 @@ namespace IntelligenceX.OpenAI.Realtime;
 /// Represents one server event received from an OpenAI Realtime WebSocket.
 /// </summary>
 public sealed class OpenAIRealtimeEvent {
-    private OpenAIRealtimeEvent(string type, string rawJson, string? textDelta, string? audioDelta, string? errorMessage) {
+    private OpenAIRealtimeEvent(
+        string type,
+        string rawJson,
+        string? textDelta,
+        string? audioDelta,
+        string? transcript,
+        string? itemId,
+        string[] transcriptionLanguages,
+        string? errorMessage) {
         Type = type;
         RawJson = rawJson;
         TextDelta = textDelta;
         AudioDelta = audioDelta;
+        Transcript = transcript;
+        ItemId = itemId;
+        TranscriptionLanguages = transcriptionLanguages;
         ErrorMessage = errorMessage;
     }
 
@@ -34,6 +45,15 @@ public sealed class OpenAIRealtimeEvent {
     /// Gets a base64-encoded streamed audio delta when the event contains one.
     /// </summary>
     public string? AudioDelta { get; }
+
+    /// <summary>Gets the final transcript carried by a completion event.</summary>
+    public string? Transcript { get; }
+
+    /// <summary>Gets the input item identifier associated with the event.</summary>
+    public string? ItemId { get; }
+
+    /// <summary>Gets languages detected by a completed <c>gpt-transcribe</c> turn.</summary>
+    public string[] TranscriptionLanguages { get; }
 
     /// <summary>
     /// Gets the server error message when the event represents an error.
@@ -69,7 +89,34 @@ public sealed class OpenAIRealtimeEvent {
         }
         errorMessage ??= ReadString(root, "message");
 
-        return new OpenAIRealtimeEvent(type, json, textDelta, audioDelta, errorMessage);
+        return new OpenAIRealtimeEvent(
+            type,
+            json,
+            textDelta,
+            audioDelta,
+            ReadString(root, "transcript"),
+            ReadString(root, "item_id"),
+            ReadTranscriptionLanguages(root),
+            errorMessage);
+    }
+
+    private static string[] ReadTranscriptionLanguages(JsonElement root) {
+        if (!root.TryGetProperty("languages", out var languages) ||
+            languages.ValueKind != JsonValueKind.Array) {
+            return Array.Empty<string>();
+        }
+        var result = new System.Collections.Generic.List<string>();
+        foreach (var language in languages.EnumerateArray()) {
+            var code = language.ValueKind == JsonValueKind.String
+                ? language.GetString()
+                : language.ValueKind == JsonValueKind.Object
+                    ? ReadString(language, "code")
+                    : null;
+            if (!string.IsNullOrWhiteSpace(code)) {
+                result.Add(code!);
+            }
+        }
+        return result.ToArray();
     }
 
     private static string? ReadString(JsonElement element, string propertyName) {

@@ -35,15 +35,50 @@ public enum IXRealtimeTurnDetection: Sendable, Equatable {
 
 public struct IXRealtimeSessionOptions: Sendable, Equatable {
     public static let defaultModel = "gpt-realtime-2.1"
-    public static let defaultTranscriptionModel = "gpt-4o-transcribe"
+    public static let defaultTranscriptionModel =
+        IXRealtimeTranscriptionModel.gptLiveTranscribe.id
 
     public var model: String
     public var instructions: String
     public var voice: String?
     public var outputModality: String
-    public var transcriptionModel: String?
-    public var transcriptionLanguage: String?
-    public var transcriptionPrompt: String?
+    public var inputTranscription: IXRealtimeInputTranscriptionOptions?
+    public var transcriptionModel: String? {
+        get { inputTranscription?.model.id }
+        set {
+            guard let newValue else {
+                inputTranscription = nil
+                return
+            }
+            if inputTranscription == nil {
+                inputTranscription = .init(
+                    model: .resolvingLegacyIdentifier(newValue)
+                )
+            } else {
+                inputTranscription?.model = .resolvingLegacyIdentifier(newValue)
+            }
+        }
+    }
+    public var transcriptionLanguage: String? {
+        get { inputTranscription?.languageHints.first }
+        set {
+            guard inputTranscription != nil || newValue != nil else { return }
+            if inputTranscription == nil {
+                inputTranscription = .init()
+            }
+            inputTranscription?.languageHints = newValue.map { [$0] } ?? []
+        }
+    }
+    public var transcriptionPrompt: String? {
+        get { inputTranscription?.prompt }
+        set {
+            guard inputTranscription != nil || newValue != nil else { return }
+            if inputTranscription == nil {
+                inputTranscription = .init()
+            }
+            inputTranscription?.prompt = newValue
+        }
+    }
     public var reasoningEffort: IXRealtimeReasoningEffort?
     public var turnDetection: IXRealtimeTurnDetection
     public var createsResponsesAutomatically: Bool
@@ -64,15 +99,20 @@ public struct IXRealtimeSessionOptions: Sendable, Equatable {
         createsResponsesAutomatically: Bool = true,
         interruptsResponseOnSpeech: Bool = true,
         noiseReduction: IXRealtimeNoiseReduction? = .nearField,
-        clientSecretLifetime: Duration = .seconds(120)
+        clientSecretLifetime: Duration = .seconds(120),
+        inputTranscription: IXRealtimeInputTranscriptionOptions? = nil
     ) {
         self.model = model
         self.instructions = instructions
         self.voice = voice
         self.outputModality = outputModality
-        self.transcriptionModel = transcriptionModel
-        self.transcriptionLanguage = transcriptionLanguage
-        self.transcriptionPrompt = transcriptionPrompt
+        self.inputTranscription = inputTranscription ?? transcriptionModel.map {
+            IXRealtimeInputTranscriptionOptions(
+                model: .resolvingLegacyIdentifier($0),
+                prompt: transcriptionPrompt,
+                languageHints: transcriptionLanguage.map { [$0] } ?? []
+            )
+        }
         self.reasoningEffort = reasoningEffort
         self.turnDetection = turnDetection
         self.createsResponsesAutomatically = createsResponsesAutomatically
@@ -115,6 +155,7 @@ public enum IXRealtimeServerEvent: Sendable, Equatable {
     case speechStarted(itemID: String?)
     case speechStopped(itemID: String?)
     case inputAudioCommitted(itemID: String)
+    case inputTranscriptionDelta(itemID: String, delta: String)
     case inputTranscriptionCompleted(itemID: String, transcript: String?)
     case inputTranscriptionFailed(itemID: String, message: String?)
     case responseCreated(responseID: String)
@@ -188,6 +229,13 @@ public struct IXRealtimeEvent: Sendable, Equatable {
         raw["content_index"]?.numberValue.map(Int.init)
     }
 
+    /// Languages detected for a completed `gpt-transcribe` input item.
+    public var transcriptionLanguages: [String] {
+        raw["languages"]?.arrayValue?.compactMap { value in
+            value["code"]?.stringValue ?? value.stringValue
+        } ?? []
+    }
+
     public var outputAudioBufferTransition:
         IXRealtimeOutputAudioBufferTransition? {
         guard let responseID = raw["response_id"]?.stringValue else {
@@ -219,6 +267,12 @@ public struct IXRealtimeEvent: Sendable, Equatable {
         case "input_audio_buffer.committed":
             guard let itemID else { break }
             return .inputAudioCommitted(itemID: itemID)
+        case "conversation.item.input_audio_transcription.delta":
+            guard let itemID else { break }
+            return .inputTranscriptionDelta(
+                itemID: itemID,
+                delta: raw["delta"]?.stringValue ?? ""
+            )
         case "conversation.item.input_audio_transcription.completed":
             guard let itemID else { break }
             return .inputTranscriptionCompleted(
@@ -347,10 +401,28 @@ public enum IXRealtimeClientEvent {
         ])
     }
 
+    /// Builds the ordered events required to replace the complete nested input
+    /// transcription configuration during an active session.
+    ///
+    /// Realtime session updates patch nested objects, so fields omitted by a
+    /// new model profile can otherwise retain values from the previous one.
+    /// Send both returned events in order to clear the old object before the
+    /// requested session configuration is applied.
+    public static func sessionUpdatesReplacingInputTranscription(
+        options: IXRealtimeSessionOptions,
+        tools: [IXCodexToolDefinition] = []
+    ) -> [IXJSONValue] {
+        [
+            clearInputTranscriptionConfiguration,
+            sessionUpdate(options: options, tools: tools),
+        ]
+    }
+
     /// Explicitly clears the server's nested input transcription
-    /// configuration. Omitting `language` from a later update does not clear a
-    /// previously configured language, so clients can send this first and then
-    /// re-enable transcription without a language hint.
+    /// configuration. Omitting nested fields from a later update does not clear
+    /// previously configured prompt, language, keyword, or delay values. Prefer
+    /// `sessionUpdatesReplacingInputTranscription(options:tools:)` when applying
+    /// a complete replacement profile.
     public static let clearInputTranscriptionConfiguration: IXJSONValue =
         .object([
             "type": .string("session.update"),
@@ -449,17 +521,6 @@ extension IXRealtimeSessionOptions {
     func sessionConfiguration(
         tools: [IXCodexToolDefinition] = []
     ) -> [String: IXJSONValue] {
-        var transcription: [String: IXJSONValue] = [:]
-        if let transcriptionModel {
-            transcription["model"] = .string(transcriptionModel)
-        }
-        if let transcriptionLanguage {
-            transcription["language"] = .string(transcriptionLanguage)
-        }
-        if let transcriptionPrompt {
-            transcription["prompt"] = .string(transcriptionPrompt)
-        }
-
         var turnDetectionConfiguration: [String: IXJSONValue] = [
             "create_response": .bool(createsResponsesAutomatically),
             "interrupt_response": .bool(interruptsResponseOnSpeech),
@@ -488,8 +549,10 @@ extension IXRealtimeSessionOptions {
         var input: [String: IXJSONValue] = [
             "turn_detection": .object(turnDetectionConfiguration),
         ]
-        if !transcription.isEmpty {
-            input["transcription"] = .object(transcription)
+        if let inputTranscription {
+            input["transcription"] = .object(
+                inputTranscription.sessionConfiguration
+            )
         }
         if let noiseReduction {
             input["noise_reduction"] = .object([
