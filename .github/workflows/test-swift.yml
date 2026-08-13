@@ -26,9 +26,6 @@ jobs:
         if: ${{ !github.event.repository.private || vars.IX_ENABLE_MACOS_SELF_HOSTED == 'true' || vars.IX_FORCE_GITHUB_HOSTED == 'true' }}
         runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_MACOS_SELF_HOSTED == 'true' && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","macOS"]' || '["macos-latest"]') }}
         timeout-minutes: 20
-        env:
-            SWIFT_SCRATCH: ${{ runner.temp }}/IntelligenceXSwift-${{ github.run_id }}-${{ github.run_attempt }}
-            WATCH_DERIVED_DATA: ${{ runner.temp }}/IntelligenceXWatch-${{ github.run_id }}-${{ github.run_attempt }}
         steps:
             - name: Checkout code
               uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -46,9 +43,13 @@ jobs:
                   fi
 
             - name: Run Swift contracts
+              env:
+                  SWIFT_SCRATCH: ${{ runner.temp }}/IntelligenceXSwift-${{ github.run_id }}-${{ github.run_attempt }}
               run: swift test --scratch-path "$SWIFT_SCRATCH"
 
             - name: Compile Codex Apple product for watchOS
+              env:
+                  WATCH_DERIVED_DATA: ${{ runner.temp }}/IntelligenceXWatch-${{ github.run_id }}-${{ github.run_attempt }}
               run: >-
                   xcodebuild
                   -scheme IntelligenceXCodexApple
@@ -60,5 +61,8 @@ jobs:
             - name: Remove build artifacts
               if: always()
               shell: bash
+              env:
+                  SWIFT_SCRATCH: ${{ runner.temp }}/IntelligenceXSwift-${{ github.run_id }}-${{ github.run_attempt }}
+                  WATCH_DERIVED_DATA: ${{ runner.temp }}/IntelligenceXWatch-${{ github.run_id }}-${{ github.run_attempt }}
               run: |
                   rm -rf -- "$SWIFT_SCRATCH" "$WATCH_DERIVED_DATA"
