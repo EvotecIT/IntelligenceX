@@ -201,7 +201,7 @@
       "Enabled": false
     },
     "WebMcp": false,
-    "MarkdownNegotiation": true
+    "MarkdownNegotiation": false
   },
   "Cloudflare": {
     "Cache": {
