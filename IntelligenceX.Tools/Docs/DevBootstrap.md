@@ -30,16 +30,13 @@ This will clone missing sibling repos under the parent folder of this repo.
 If your checkouts live elsewhere, set MSBuild properties via environment variables:
 
 - `TestimoXRoot` : folder containing `ADPlayground\ADPlayground.csproj` and `ComputerX\ComputerX.csproj`
-- `PSEventViewerRoot` : folder containing `Sources\EventViewerX\EventViewerX.csproj`
 - `MailozaurrRoot` : folder containing `Sources\Mailozaurr\Mailozaurr.csproj`
 
 Example:
 
 ```powershell
 setx TestimoXRoot "C:\Support\GitHub\TestimoX-master\"
-setx PSEventViewerRoot "C:\Support\GitHub\PSEventViewer\"
 setx MailozaurrRoot "C:\Support\GitHub\Mailozaurr\"
 ```
 
 Then restart your terminal/IDE so MSBuild picks up the updated environment variables.
-

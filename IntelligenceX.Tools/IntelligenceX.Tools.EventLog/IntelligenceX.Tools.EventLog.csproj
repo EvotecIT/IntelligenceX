@@ -25,11 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Prefer local EventViewerX sources; fall back to package for CI/consumers. -->
-    <ProjectReference Include="$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)"
-                      Condition="Exists('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)')" />
-    <PackageReference Include="EventViewerX" Version="$(EventViewerXNuGetVersion)"
-                      Condition="!Exists('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)')" />
+    <!-- This tool surface targets the published 3.x API until its v4 contract migration. -->
+    <PackageReference Include="EventViewerX" Version="$(EventViewerXNuGetVersion)" />
   </ItemGroup>
 
   <ItemGroup>
