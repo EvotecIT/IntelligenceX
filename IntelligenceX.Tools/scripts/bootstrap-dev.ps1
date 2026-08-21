@@ -46,7 +46,6 @@ Write-Host "Bootstrap root: $Root"
 
 Ensure-Repo -Path (Join-Path $Root "IntelligenceX") -Url "https://github.com/EvotecIT/IntelligenceX.git"
 Ensure-Repo -Path (Join-Path $Root "TestimoX-master") -Url "https://github.com/EvotecIT/TestimoX.git"
-Ensure-Repo -Path (Join-Path $Root "PSEventViewer") -Url "https://github.com/EvotecIT/PSEventViewer.git"
 
 if ($IncludeOptional) {
     Ensure-Repo -Path (Join-Path $Root "Mailozaurr") -Url "https://github.com/EvotecIT/Mailozaurr.git"

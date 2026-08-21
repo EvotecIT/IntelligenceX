@@ -32,7 +32,6 @@
     <!-- Minimum markers for private engine contracts. -->
     <IxToolsComputerXApiMarker>ComputerX\\Features\\FeatureInventoryQuery.cs</IxToolsComputerXApiMarker>
     <IxToolsComputerXPowerShellApiMarker>ComputerX\\PowerShellRuntime\\PowerShellCommandQuery.cs</IxToolsComputerXPowerShellApiMarker>
-    <IxToolsEventViewerProjectMarker>Sources\\EventViewerX\\EventViewerX.csproj</IxToolsEventViewerProjectMarker>
     <IxToolsMailozaurrProjectMarker>Sources\\Mailozaurr\\Mailozaurr.csproj</IxToolsMailozaurrProjectMarker>
     <IxToolsDnsClientXProjectMarker>DnsClientX\\DnsClientX.csproj</IxToolsDnsClientXProjectMarker>
     <IxToolsDomainDetectiveProjectMarker>DomainDetective\\DomainDetective.csproj</IxToolsDomainDetectiveProjectMarker>
@@ -51,12 +50,6 @@
   <PropertyGroup Condition="'$(TestimoXRoot)'!=''">
     <TestimoXRoot>$([MSBuild]::EnsureTrailingSlash('$(TestimoXRoot)'))</TestimoXRoot>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(PSEventViewerRoot)'!=''">
-    <PSEventViewerRoot>$([MSBuild]::EnsureTrailingSlash('$(PSEventViewerRoot)'))</PSEventViewerRoot>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(EventViewerXProjectPath)'=='' AND '$(PSEventViewerRoot)'!='' AND Exists('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)')">
-    <EventViewerXProjectPath>$([System.IO.Path]::GetFullPath('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)'))</EventViewerXProjectPath>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(MailozaurrRoot)'!=''">
     <MailozaurrRoot>$([MSBuild]::EnsureTrailingSlash('$(MailozaurrRoot)'))</MailozaurrRoot>
   </PropertyGroup>
@@ -71,9 +64,6 @@
   <PropertyGroup Condition="'$(TestimoXRoot)'!='' AND (!Exists('$(TestimoXRoot)$(IxToolsComputerXApiMarker)') OR !Exists('$(TestimoXRoot)$(IxToolsComputerXPowerShellApiMarker)'))">
     <TestimoXRoot></TestimoXRoot>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(PSEventViewerRoot)'!='' AND !Exists('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)')">
-    <PSEventViewerRoot></PSEventViewerRoot>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(MailozaurrRoot)'!='' AND !Exists('$(MailozaurrRoot)$(IxToolsMailozaurrProjectMarker)')">
     <MailozaurrRoot></MailozaurrRoot>
   </PropertyGroup>
@@ -85,13 +75,13 @@
   </PropertyGroup>
 
   <!-- Pick the best sibling root for local discovery (prefer broader parent roots when in worktrees). -->
-  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot2)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj') OR Exists('$(IxToolsSiblingsRoot2)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot2)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot2)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
+  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot2)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot2)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot2)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
     <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot2)</IxToolsSiblingsRoot>
   </PropertyGroup>
-  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot3)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot3)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot3)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj') OR Exists('$(IxToolsSiblingsRoot3)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot3)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot3)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
+  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot3)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot3)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot3)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot3)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot3)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
     <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot3)</IxToolsSiblingsRoot>
   </PropertyGroup>
-  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot4)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot4)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot4)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj') OR Exists('$(IxToolsSiblingsRoot4)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot4)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot4)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
+  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot4)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot4)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot4)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot4)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot4)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
     <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot4)</IxToolsSiblingsRoot>
   </PropertyGroup>
   <PropertyGroup Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(IxToolsSiblingsRoot)OfficeIMO\\OfficeIMO.Reader\\OfficeIMO.Reader.csproj')">
@@ -106,9 +96,6 @@
     <TestimoXRoot>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)TestimoX-master\\'))</TestimoXRoot>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(PSEventViewerRoot)'=='' AND Exists('$(IxToolsSiblingsRoot)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj')">
-    <PSEventViewerRoot>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)PSEventViewer\\'))</PSEventViewerRoot>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(MailozaurrRoot)'=='' AND Exists('$(IxToolsSiblingsRoot)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj')">
     <MailozaurrRoot>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)Mailozaurr\\'))</MailozaurrRoot>
   </PropertyGroup>
