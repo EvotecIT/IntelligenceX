@@ -9,11 +9,10 @@ By default, MSBuild tries to resolve these as sibling folders next to this repo:
 
 - `IntelligenceX` (tool contract + JSON types)
 - `TestimoX-master` (ADPlayground + ComputerX)
-- `PSEventViewer` (EventViewerX)
-- `Mailozaurr`
 
 Optional (used only when you want to build against local sources instead of NuGet):
-- None. All currently supported public engines can resolve from NuGet fallback.
+
+- `Mailozaurr`
 
 ## One-Time Setup Script
 
