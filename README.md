@@ -182,6 +182,41 @@ HTML can be inlined into the model prompt with a per-file character limit. This
 keeps private evidence available to the AI writer without making the evidence a
 public website contract.
 
+### GitHub notification inbox
+
+The .NET library can project the authenticated user's GitHub inbox without
+making a UI or companion application implement pagination, conditional polling,
+rate-limit metadata or notification URL conversion itself.
+
+```csharp
+using IntelligenceX.Telemetry.GitHub;
+
+var token = Environment.GetEnvironmentVariable("GITHUB_NOTIFICATIONS_TOKEN")
+    ?? throw new InvalidOperationException("Configure a GitHub notifications token.");
+
+using var inbox = new GitHubNotificationService(token);
+GitHubNotificationSnapshot snapshot = await inbox.FetchAsync(new GitHubNotificationQuery {
+    Limit = 20
+});
+
+foreach (GitHubNotificationThread thread in snapshot.Threads) {
+    Console.WriteLine($"{thread.RepositoryNameWithOwner}: {thread.Title}");
+}
+
+// Mutations are explicit. A display-only consumer does not need to call them.
+if (snapshot.Threads.Count > 0) {
+    await inbox.MarkReadAsync(snapshot.Threads[0].Id);
+}
+```
+
+GitHub's notification endpoints currently require a personal access token
+(classic) with `notifications` or `repo`; fine-grained and GitHub App tokens do
+not support this API. Keep the token in the consuming process's secret store or
+environment, never in widget properties, URLs, logs or committed configuration.
+The service honors GitHub's polling interval and `Last-Modified` response,
+bounds optional result counts, validates mutation thread IDs, and never includes
+response bodies or credentials in its exceptions.
+
 ## Quick Start 🚀
 
 Recommended onboarding:
