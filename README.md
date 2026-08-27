@@ -182,6 +182,53 @@ HTML can be inlined into the model prompt with a per-file character limit. This
 keeps private evidence available to the AI writer without making the evidence a
 public website contract.
 
+### GitHub notification inbox
+
+The .NET library can project the authenticated user's GitHub inbox without
+making a UI or companion application implement pagination, conditional polling,
+rate-limit metadata or notification URL conversion itself.
+
+```csharp
+using IntelligenceX.Telemetry.GitHub;
+
+var token = Environment.GetEnvironmentVariable("GITHUB_NOTIFICATIONS_TOKEN")
+    ?? throw new InvalidOperationException("Configure a GitHub notifications token.");
+
+using var inbox = new GitHubNotificationService(token);
+GitHubNotificationSnapshot snapshot = await inbox.FetchAsync(new GitHubNotificationQuery {
+    Limit = 20
+});
+
+foreach (GitHubNotificationThread thread in snapshot.Threads) {
+    Console.WriteLine($"{thread.RepositoryNameWithOwner}: {thread.Title}");
+}
+
+// Mutations are explicit. A display-only consumer does not need to call them.
+if (snapshot.Threads.Count > 0) {
+    await inbox.MarkReadAsync(snapshot.Threads[0].Id);
+}
+
+```
+
+The inbox-wide action is intentionally kept out of the runnable example because
+it changes every notification. Invoke it only after an explicit user choice:
+
+```csharp
+// This line is intentionally commented out.
+// await inbox.MarkAllReadAsync();
+```
+
+Use a fine-grained personal access token or GitHub App token with the
+Notifications permission supported by the target GitHub host. Reading the inbox
+requires read access; marking threads or the inbox as read requires write access.
+A classic personal access token can use `notifications`, with `repo` needed when
+the consumer must also access private-repository resources. Keep the token in the
+consuming process's secret store or environment, never in widget properties,
+URLs, logs or committed configuration.
+The service honors GitHub's polling interval and `Last-Modified` response,
+bounds optional result counts, validates mutation thread IDs, and never includes
+response bodies or credentials in its exceptions.
+
 ## Quick Start 🚀
 
 Recommended onboarding:
