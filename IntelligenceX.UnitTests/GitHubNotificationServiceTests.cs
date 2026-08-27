@@ -133,7 +133,57 @@ public sealed class GitHubNotificationServiceTests {
         Assert.Equal(60, snapshot.Threads.Count);
         Assert.Equal("1", snapshot.Threads[0].Id);
         Assert.Equal("60", snapshot.Threads[59].Id);
+        Assert.True(snapshot.HasMore);
         Assert.All(handler.Requests, request => Assert.Contains("per_page=50", request.RequestUri?.Query));
+    }
+
+    [Fact]
+    public async Task FetchAsync_UsesConditionalRequestAndPreservesSnapshotOnNotModified() {
+        var requestCount = 0;
+        var lastModified = new DateTimeOffset(2026, 8, 26, 10, 0, 0, TimeSpan.Zero);
+        var handler = new RecordingHandler((request, _) => {
+            requestCount++;
+            if (requestCount == 1) {
+                var first = Json(HttpStatusCode.OK, NotificationJson("101", "EvotecIT/OfficeIMO"));
+                first.Headers.Add("X-Poll-Interval", "1");
+                first.Content.Headers.LastModified = lastModified;
+                return Task.FromResult(first);
+            }
+
+            Assert.Equal(lastModified, request.Headers.IfModifiedSince);
+            var notModified = new HttpResponseMessage(HttpStatusCode.NotModified);
+            notModified.Headers.Add("X-Poll-Interval", "5");
+            return Task.FromResult(notModified);
+        });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
+        using var service = new GitHubNotificationService(http, disposeHttpClient: false);
+
+        var firstSnapshot = await service.FetchAsync();
+        await Task.Delay(TimeSpan.FromMilliseconds(1100));
+        var secondSnapshot = await service.FetchAsync();
+
+        Assert.Single(secondSnapshot.Threads);
+        Assert.Equal(firstSnapshot.Threads[0].Id, secondSnapshot.Threads[0].Id);
+        Assert.True(secondSnapshot.CheckedAtUtc > firstSnapshot.CheckedAtUtc);
+        Assert.Equal(TimeSpan.FromSeconds(5), secondSnapshot.RecommendedPollInterval);
+    }
+
+    [Fact]
+    public async Task FetchAsync_MapsEnterpriseSubjectUrlToRepositoryHost() {
+        var handler = new RecordingHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK, """
+            [{
+              "id":"101",
+              "repository":{"full_name":"EvotecIT/OfficeIMO","html_url":"https://github.example.test/EvotecIT/OfficeIMO"},
+              "subject":{"title":"Review","url":"https://github.example.test/api/v3/repos/EvotecIT/OfficeIMO/pulls/44","type":"PullRequest"},
+              "reason":"review_requested","unread":true,"updated_at":"2026-08-26T10:58:00Z"
+            }]
+            """)));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://github.example.test/api/v3/") };
+        using var service = new GitHubNotificationService(http, disposeHttpClient: false);
+
+        var snapshot = await service.FetchAsync();
+
+        Assert.Equal("https://github.example.test/EvotecIT/OfficeIMO/pull/44", snapshot.Threads[0].OpenUrl);
     }
 
     [Fact]
@@ -160,6 +210,59 @@ public sealed class GitHubNotificationServiceTests {
 
         Assert.Same(snapshots[0], snapshots[1]);
         Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task FetchAsync_HonorsPollIntervalAcrossQueryVariants() {
+        var handler = new RecordingHandler((_, _) => {
+            var response = Json(HttpStatusCode.OK, "[]");
+            response.Headers.Add("X-Poll-Interval", "1");
+            return Task.FromResult(response);
+        });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
+        using var service = new GitHubNotificationService(http, disposeHttpClient: false);
+
+        await service.FetchAsync(new GitHubNotificationQuery { Limit = 10 });
+        var differentQuery = service.FetchAsync(new GitHubNotificationQuery { Limit = 20 });
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+        Assert.Single(handler.Requests);
+        await differentQuery;
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task FetchAsync_SnapshotsMutableQueryBeforeWaiting() {
+        var requestStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRequest = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var getCount = 0;
+        var handler = new RecordingHandler(async (_, _) => {
+            if (Interlocked.Increment(ref getCount) == 1) {
+                requestStarted.TrySetResult(true);
+                await releaseRequest.Task.ConfigureAwait(false);
+            }
+
+            var response = Json(HttpStatusCode.OK, "[]");
+            response.Headers.Add("X-Poll-Interval", "1");
+            return response;
+        });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
+        using var service = new GitHubNotificationService(http, disposeHttpClient: false);
+
+        var first = service.FetchAsync();
+        await requestStarted.Task;
+        var query = new GitHubNotificationQuery { IncludeRead = true, ParticipatingOnly = true, Limit = 12 };
+        var second = service.FetchAsync(query);
+        query.IncludeRead = false;
+        query.ParticipatingOnly = false;
+        query.Limit = 1;
+        releaseRequest.TrySetResult(true);
+
+        await Task.WhenAll(first, second);
+        var secondRequest = handler.Requests[1];
+        Assert.Contains("all=true", secondRequest.RequestUri?.Query);
+        Assert.Contains("participating=true", secondRequest.RequestUri?.Query);
+        Assert.Contains("per_page=12", secondRequest.RequestUri?.Query);
     }
 
     [Fact]
@@ -212,12 +315,14 @@ public sealed class GitHubNotificationServiceTests {
         await service.FetchAsync();
         await service.MarkReadAsync("123");
         await service.MarkDoneAsync("456");
+        await service.MarkAllReadAsync();
         await service.FetchAsync();
 
         Assert.Collection(handler.Requests,
             request => Assert.Equal("GET", request.Method.Method),
             request => { Assert.Equal("PATCH", request.Method.Method); Assert.Equal("/notifications/threads/123", request.RequestUri?.AbsolutePath); },
             request => { Assert.Equal("DELETE", request.Method.Method); Assert.Equal("/notifications/threads/456", request.RequestUri?.AbsolutePath); },
+            request => { Assert.Equal("PUT", request.Method.Method); Assert.Equal("/notifications", request.RequestUri?.AbsolutePath); },
             request => Assert.Equal("GET", request.Method.Method));
         await Assert.ThrowsAsync<ArgumentException>(() => service.MarkReadAsync("../../user"));
     }

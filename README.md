@@ -207,12 +207,18 @@ foreach (GitHubNotificationThread thread in snapshot.Threads) {
 if (snapshot.Threads.Count > 0) {
     await inbox.MarkReadAsync(snapshot.Threads[0].Id);
 }
+
+// The inbox-wide action is also explicit.
+await inbox.MarkAllReadAsync();
 ```
 
-GitHub's notification endpoints currently require a personal access token
-(classic) with `notifications` or `repo`; fine-grained and GitHub App tokens do
-not support this API. Keep the token in the consuming process's secret store or
-environment, never in widget properties, URLs, logs or committed configuration.
+Use a fine-grained personal access token or GitHub App token with the
+Notifications permission supported by the target GitHub host. Reading the inbox
+requires read access; marking threads or the inbox as read requires write access.
+A classic personal access token can use `notifications`, with `repo` needed when
+the consumer must also access private-repository resources. Keep the token in the
+consuming process's secret store or environment, never in widget properties,
+URLs, logs or committed configuration.
 The service honors GitHub's polling interval and `Last-Modified` response,
 bounds optional result counts, validates mutation thread IDs, and never includes
 response bodies or credentials in its exceptions.

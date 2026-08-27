@@ -16,17 +16,20 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// </summary>
 public sealed class GitHubNotificationService : IDisposable {
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(60);
+    private const int MaximumCacheEntries = 16;
     private static readonly HttpMethod PatchMethod = new("PATCH");
+    private static readonly HttpMethod PutMethod = new("PUT");
     private readonly object _cacheGate = new();
     private readonly Dictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly HttpClient _http;
     private readonly bool _disposeHttpClient;
+    private DateTimeOffset _nextPollAtUtc;
 
     /// <summary>
-    /// Initializes a notification service using a GitHub personal access token (classic).
+    /// Initializes a notification service using a GitHub token with Notifications access.
     /// </summary>
-    /// <param name="token">A classic personal access token with notifications or repo scope.</param>
+    /// <param name="token">A fine-grained token, GitHub App token, or classic token with the Notifications permission required by the requested operations.</param>
     /// <param name="apiBaseUrl">Optional GitHub-compatible API base URL.</param>
     public GitHubNotificationService(string token, string? apiBaseUrl = null)
         : this(CreateHttpClient(token, apiBaseUrl), disposeHttpClient: true) {
@@ -44,75 +47,98 @@ public sealed class GitHubNotificationService : IDisposable {
         GitHubNotificationQuery? query = null,
         CancellationToken cancellationToken = default) {
         query ??= new GitHubNotificationQuery();
+        var includeRead = query.IncludeRead;
+        var participatingOnly = query.ParticipatingOnly;
         var limit = Math.Max(0, query.Limit);
-        var cacheKey = BuildCacheKey(query.IncludeRead, query.ParticipatingOnly, limit);
+        var cacheKey = BuildCacheKey(includeRead, participatingOnly, limit);
         var now = DateTimeOffset.UtcNow;
         var cached = ReadCache(cacheKey);
         if (cached is not null && now < cached.NextPollAtUtc) {
             return cached.Snapshot;
         }
 
-        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try {
-            now = DateTimeOffset.UtcNow;
-            cached = ReadCache(cacheKey);
-            if (cached is not null && now < cached.NextPollAtUtc) {
-                return cached.Snapshot;
+        while (true) {
+            TimeSpan pollDelay;
+            await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try {
+                now = DateTimeOffset.UtcNow;
+                cached = ReadCache(cacheKey);
+                if (cached is not null && now < cached.NextPollAtUtc) {
+                    return cached.Snapshot;
+                }
+
+                pollDelay = ReadNextPollDelay(now);
+                if (pollDelay <= TimeSpan.Zero) {
+                    return await FetchCoreAsync(includeRead, participatingOnly, limit, cacheKey, cached, cancellationToken).ConfigureAwait(false);
+                }
+            } finally {
+                _operationGate.Release();
             }
 
-            var threads = new List<GitHubNotificationThread>();
-            var page = 1;
-            var pageSize = limit == 0 ? 50 : Math.Min(50, limit);
-            var checkedAtUtc = DateTimeOffset.UtcNow;
-            var pollInterval = cached?.Snapshot.RecommendedPollInterval ?? DefaultPollInterval;
-            var rateLimitRemaining = cached?.Snapshot.RateLimitRemaining;
-            DateTimeOffset? lastModifiedUtc = null;
-            while (limit == 0 || threads.Count < limit) {
-                using var request = new HttpRequestMessage(HttpMethod.Get, BuildNotificationsUrl(query, pageSize, page));
-                if (page == 1 && cached?.LastModifiedUtc is DateTimeOffset cachedLastModifiedUtc) {
-                    request.Headers.IfModifiedSince = cachedLastModifiedUtc;
-                }
-
-                using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-                checkedAtUtc = DateTimeOffset.UtcNow;
-                pollInterval = ReadPollInterval(response) ?? pollInterval;
-                rateLimitRemaining = ReadIntHeader(response, "X-RateLimit-Remaining") ?? rateLimitRemaining;
-
-                if (page == 1 && response.StatusCode == HttpStatusCode.NotModified && cached is not null) {
-                    var unchanged = new GitHubNotificationSnapshot(cached.Snapshot.Threads, checkedAtUtc, pollInterval, rateLimitRemaining);
-                    Store(cacheKey, unchanged, checkedAtUtc + pollInterval, cached.LastModifiedUtc);
-                    return unchanged;
-                }
-
-                if (!response.IsSuccessStatusCode) {
-                    throw new GitHubNotificationApiException(
-                        (int)response.StatusCode,
-                        "GitHub notifications request failed with HTTP " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + ".");
-                }
-
-                if (page == 1) {
-                    lastModifiedUtc = ReadLastModified(response);
-                }
-
-                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                using var document = JsonDocument.Parse(json);
-                threads.AddRange(ParseThreads(document.RootElement));
-                if (!HasNextPage(response) || (limit > 0 && threads.Count >= limit)) {
-                    break;
-                }
-
-                page++;
-            }
-
-            IReadOnlyList<GitHubNotificationThread> resultThreads = limit > 0 && threads.Count > limit
-                ? threads.Take(limit).ToArray()
-                : threads;
-            var snapshot = new GitHubNotificationSnapshot(resultThreads, checkedAtUtc, pollInterval, rateLimitRemaining);
-            Store(cacheKey, snapshot, checkedAtUtc + pollInterval, lastModifiedUtc);
-            return snapshot;
-        } finally {
-            _operationGate.Release();
+            await Task.Delay(pollDelay, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private async Task<GitHubNotificationSnapshot> FetchCoreAsync(
+        bool includeRead,
+        bool participatingOnly,
+        int limit,
+        string cacheKey,
+        CacheEntry? cached,
+        CancellationToken cancellationToken) {
+        var threads = new List<GitHubNotificationThread>();
+        var page = 1;
+        var pageSize = limit == 0 ? 50 : Math.Min(50, limit);
+        var checkedAtUtc = DateTimeOffset.UtcNow;
+        var pollInterval = cached?.Snapshot.RecommendedPollInterval ?? DefaultPollInterval;
+        var rateLimitRemaining = cached?.Snapshot.RateLimitRemaining;
+        DateTimeOffset? lastModifiedUtc = null;
+        var hasMore = false;
+        while (limit == 0 || threads.Count < limit) {
+            using var request = new HttpRequestMessage(HttpMethod.Get, BuildNotificationsUrl(includeRead, participatingOnly, pageSize, page));
+            if (page == 1 && cached?.LastModifiedUtc is DateTimeOffset cachedLastModifiedUtc) {
+                request.Headers.IfModifiedSince = cachedLastModifiedUtc;
+            }
+
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            checkedAtUtc = DateTimeOffset.UtcNow;
+            pollInterval = ReadPollInterval(response) ?? pollInterval;
+            rateLimitRemaining = ReadIntHeader(response, "X-RateLimit-Remaining") ?? rateLimitRemaining;
+
+            if (page == 1 && response.StatusCode == HttpStatusCode.NotModified && cached is not null) {
+                var unchanged = new GitHubNotificationSnapshot(cached.Snapshot.Threads, checkedAtUtc, pollInterval, rateLimitRemaining, cached.Snapshot.HasMore);
+                Store(cacheKey, unchanged, checkedAtUtc + pollInterval, cached.LastModifiedUtc);
+                return unchanged;
+            }
+
+            if (!response.IsSuccessStatusCode) {
+                throw new GitHubNotificationApiException(
+                    (int)response.StatusCode,
+                    "GitHub notifications request failed with HTTP " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + ".");
+            }
+
+            if (page == 1) {
+                lastModifiedUtc = ReadLastModified(response);
+            }
+
+            using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            threads.AddRange(ParseThreads(document.RootElement));
+            var providerHasNextPage = HasNextPage(response);
+            hasMore = providerHasNextPage || (limit > 0 && threads.Count > limit);
+            if (!providerHasNextPage || (limit > 0 && threads.Count >= limit)) {
+                break;
+            }
+
+            page++;
+        }
+
+        IReadOnlyList<GitHubNotificationThread> resultThreads = limit > 0 && threads.Count > limit
+            ? threads.Take(limit).ToArray()
+            : threads;
+        var snapshot = new GitHubNotificationSnapshot(resultThreads, checkedAtUtc, pollInterval, rateLimitRemaining, hasMore);
+        Store(cacheKey, snapshot, checkedAtUtc + pollInterval, lastModifiedUtc);
+        return snapshot;
     }
 
     /// <summary>
@@ -129,6 +155,21 @@ public sealed class GitHubNotificationService : IDisposable {
         await SendThreadActionAsync(HttpMethod.Delete, threadId, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Marks every notification in the authenticated user's inbox as read and invalidates cached snapshots.
+    /// </summary>
+    public async Task MarkAllReadAsync(CancellationToken cancellationToken = default) {
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            using var request = new HttpRequestMessage(PutMethod, "notifications");
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            EnsureActionSucceeded(response);
+            ClearCache();
+        } finally {
+            _operationGate.Release();
+        }
+    }
+
     /// <inheritdoc />
     public void Dispose() {
         _operationGate.Dispose();
@@ -143,15 +184,8 @@ public sealed class GitHubNotificationService : IDisposable {
         try {
             using var request = new HttpRequestMessage(method, "notifications/threads/" + normalizedId);
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) {
-                throw new GitHubNotificationApiException(
-                    (int)response.StatusCode,
-                    "GitHub notification action failed with HTTP " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + ".");
-            }
-
-            lock (_cacheGate) {
-                _cache.Clear();
-            }
+            EnsureActionSucceeded(response);
+            ClearCache();
         } finally {
             _operationGate.Release();
         }
@@ -164,9 +198,9 @@ public sealed class GitHubNotificationService : IDisposable {
         }
     }
 
-    private static string BuildNotificationsUrl(GitHubNotificationQuery query, int pageSize, int page) {
-        return "notifications?all=" + query.IncludeRead.ToString().ToLowerInvariant()
-               + "&participating=" + query.ParticipatingOnly.ToString().ToLowerInvariant()
+    private static string BuildNotificationsUrl(bool includeRead, bool participatingOnly, int pageSize, int page) {
+        return "notifications?all=" + includeRead.ToString().ToLowerInvariant()
+               + "&participating=" + participatingOnly.ToString().ToLowerInvariant()
                + "&per_page=" + pageSize.ToString(CultureInfo.InvariantCulture)
                + "&page=" + page.ToString(CultureInfo.InvariantCulture);
     }
@@ -189,7 +223,7 @@ public sealed class GitHubNotificationService : IDisposable {
         return normalized!;
     }
 
-    private static IReadOnlyList<GitHubNotificationThread> ParseThreads(JsonElement root) {
+    private IReadOnlyList<GitHubNotificationThread> ParseThreads(JsonElement root) {
         if (root.ValueKind != JsonValueKind.Array) {
             return Array.Empty<GitHubNotificationThread>();
         }
@@ -232,32 +266,43 @@ public sealed class GitHubNotificationService : IDisposable {
         return threads;
     }
 
-    private static string BuildOpenUrl(string? subjectApiUrl, string repositoryUrl) {
+    private string BuildOpenUrl(string? subjectApiUrl, string repositoryUrl) {
         if (string.IsNullOrWhiteSpace(subjectApiUrl)
             || !Uri.TryCreate(subjectApiUrl, UriKind.Absolute, out var apiUri)
-            || !string.Equals(apiUri.Host, "api.github.com", StringComparison.OrdinalIgnoreCase)) {
+            || _http.BaseAddress is null
+            || !string.Equals(apiUri.Host, _http.BaseAddress.Host, StringComparison.OrdinalIgnoreCase)
+            || !Uri.TryCreate(repositoryUrl, UriKind.Absolute, out var repositoryUri)) {
             return repositoryUrl;
         }
 
         var segments = apiUri.AbsolutePath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length < 5 || !string.Equals(segments[0], "repos", StringComparison.OrdinalIgnoreCase)) {
+        var reposIndex = Array.FindIndex(segments, static segment => string.Equals(segment, "repos", StringComparison.OrdinalIgnoreCase));
+        if (reposIndex < 0 || segments.Length < reposIndex + 5) {
             return repositoryUrl;
         }
 
-        var owner = Uri.EscapeDataString(Uri.UnescapeDataString(segments[1]));
-        var repository = Uri.EscapeDataString(Uri.UnescapeDataString(segments[2]));
-        var kind = segments[3];
-        var value = Uri.EscapeDataString(Uri.UnescapeDataString(segments[4]));
+        var owner = Uri.UnescapeDataString(segments[reposIndex + 1]);
+        var repository = Uri.UnescapeDataString(segments[reposIndex + 2]);
+        var repositorySegments = repositoryUri.AbsolutePath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (repositorySegments.Length < 2
+            || !string.Equals(Uri.UnescapeDataString(repositorySegments[repositorySegments.Length - 2]), owner, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Uri.UnescapeDataString(repositorySegments[repositorySegments.Length - 1]), repository, StringComparison.OrdinalIgnoreCase)) {
+            return repositoryUrl;
+        }
+
+        var kind = segments[reposIndex + 3];
+        var value = Uri.EscapeDataString(Uri.UnescapeDataString(segments[reposIndex + 4]));
+        var baseUrl = repositoryUri.GetLeftPart(UriPartial.Path).TrimEnd('/');
         if (string.Equals(kind, "pulls", StringComparison.OrdinalIgnoreCase)) {
-            return "https://github.com/" + owner + "/" + repository + "/pull/" + value;
+            return baseUrl + "/pull/" + value;
         }
 
         if (string.Equals(kind, "issues", StringComparison.OrdinalIgnoreCase)) {
-            return "https://github.com/" + owner + "/" + repository + "/issues/" + value;
+            return baseUrl + "/issues/" + value;
         }
 
         if (string.Equals(kind, "commits", StringComparison.OrdinalIgnoreCase)) {
-            return "https://github.com/" + owner + "/" + repository + "/commit/" + value;
+            return baseUrl + "/commit/" + value;
         }
 
         return repositoryUrl;
@@ -265,7 +310,35 @@ public sealed class GitHubNotificationService : IDisposable {
 
     private void Store(string cacheKey, GitHubNotificationSnapshot snapshot, DateTimeOffset nextPollAtUtc, DateTimeOffset? lastModifiedUtc) {
         lock (_cacheGate) {
+            if (!_cache.ContainsKey(cacheKey) && _cache.Count >= MaximumCacheEntries) {
+                var oldestKey = _cache.OrderBy(static pair => pair.Value.NextPollAtUtc).First().Key;
+                _cache.Remove(oldestKey);
+            }
             _cache[cacheKey] = new CacheEntry(snapshot, nextPollAtUtc, lastModifiedUtc);
+            if (nextPollAtUtc > _nextPollAtUtc) {
+                _nextPollAtUtc = nextPollAtUtc;
+            }
+        }
+    }
+
+    private TimeSpan ReadNextPollDelay(DateTimeOffset now) {
+        lock (_cacheGate) {
+            return _nextPollAtUtc > now ? _nextPollAtUtc - now : TimeSpan.Zero;
+        }
+    }
+
+    private void ClearCache() {
+        lock (_cacheGate) {
+            _cache.Clear();
+            _nextPollAtUtc = default;
+        }
+    }
+
+    private static void EnsureActionSucceeded(HttpResponseMessage response) {
+        if (!response.IsSuccessStatusCode) {
+            throw new GitHubNotificationApiException(
+                (int)response.StatusCode,
+                "GitHub notification action failed with HTTP " + ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + ".");
         }
     }
 

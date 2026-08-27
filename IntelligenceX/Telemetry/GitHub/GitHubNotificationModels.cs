@@ -99,11 +99,13 @@ public sealed class GitHubNotificationSnapshot {
         IReadOnlyList<GitHubNotificationThread> threads,
         DateTimeOffset checkedAtUtc,
         TimeSpan recommendedPollInterval,
-        int? rateLimitRemaining) {
+        int? rateLimitRemaining,
+        bool hasMore = false) {
         Threads = threads ?? throw new ArgumentNullException(nameof(threads));
         CheckedAtUtc = checkedAtUtc;
         RecommendedPollInterval = recommendedPollInterval;
         RateLimitRemaining = rateLimitRemaining;
+        HasMore = hasMore;
     }
 
     /// <summary>Gets notification threads ordered by GitHub.</summary>
@@ -117,6 +119,9 @@ public sealed class GitHubNotificationSnapshot {
 
     /// <summary>Gets the remaining REST rate limit reported by GitHub, when available.</summary>
     public int? RateLimitRemaining { get; }
+
+    /// <summary>Gets whether GitHub reported another page beyond the returned finite result.</summary>
+    public bool HasMore { get; }
 }
 
 /// <summary>
