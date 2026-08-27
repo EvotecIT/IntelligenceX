@@ -51,18 +51,13 @@ public sealed class GitHubNotificationService : IDisposable {
         var participatingOnly = query.ParticipatingOnly;
         var limit = Math.Max(0, query.Limit);
         var cacheKey = BuildCacheKey(includeRead, participatingOnly, limit);
-        var now = DateTimeOffset.UtcNow;
-        var cached = ReadCache(cacheKey);
-        if (cached is not null && now < cached.NextPollAtUtc) {
-            return cached.Snapshot;
-        }
 
         while (true) {
             TimeSpan pollDelay;
             await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try {
-                now = DateTimeOffset.UtcNow;
-                cached = ReadCache(cacheKey);
+                var now = DateTimeOffset.UtcNow;
+                var cached = ReadCache(cacheKey);
                 if (cached is not null && now < cached.NextPollAtUtc) {
                     return cached.Snapshot;
                 }
@@ -94,6 +89,7 @@ public sealed class GitHubNotificationService : IDisposable {
         var rateLimitRemaining = cached?.Snapshot.RateLimitRemaining;
         DateTimeOffset? lastModifiedUtc = null;
         var hasMore = false;
+        var spansMultiplePages = false;
         while (limit == 0 || threads.Count < limit) {
             using var request = new HttpRequestMessage(HttpMethod.Get, BuildNotificationsUrl(includeRead, participatingOnly, pageSize, page));
             if (page == 1 && cached?.LastModifiedUtc is DateTimeOffset cachedLastModifiedUtc) {
@@ -125,6 +121,7 @@ public sealed class GitHubNotificationService : IDisposable {
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
             threads.AddRange(ParseThreads(document.RootElement));
             var providerHasNextPage = HasNextPage(response);
+            spansMultiplePages |= providerHasNextPage || page > 1;
             hasMore = providerHasNextPage || (limit > 0 && threads.Count > limit);
             if (!providerHasNextPage || (limit > 0 && threads.Count >= limit)) {
                 break;
@@ -137,7 +134,7 @@ public sealed class GitHubNotificationService : IDisposable {
             ? threads.Take(limit).ToArray()
             : threads;
         var snapshot = new GitHubNotificationSnapshot(resultThreads, checkedAtUtc, pollInterval, rateLimitRemaining, hasMore);
-        Store(cacheKey, snapshot, checkedAtUtc + pollInterval, lastModifiedUtc);
+        Store(cacheKey, snapshot, checkedAtUtc + pollInterval, spansMultiplePages ? null : lastModifiedUtc);
         return snapshot;
     }
 
@@ -299,6 +296,10 @@ public sealed class GitHubNotificationService : IDisposable {
 
         if (string.Equals(kind, "issues", StringComparison.OrdinalIgnoreCase)) {
             return baseUrl + "/issues/" + value;
+        }
+
+        if (string.Equals(kind, "discussions", StringComparison.OrdinalIgnoreCase)) {
+            return baseUrl + "/discussions/" + value;
         }
 
         if (string.Equals(kind, "commits", StringComparison.OrdinalIgnoreCase)) {

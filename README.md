@@ -208,8 +208,14 @@ if (snapshot.Threads.Count > 0) {
     await inbox.MarkReadAsync(snapshot.Threads[0].Id);
 }
 
-// The inbox-wide action is also explicit.
-await inbox.MarkAllReadAsync();
+```
+
+The inbox-wide action is intentionally kept out of the runnable example because
+it changes every notification. Invoke it only after an explicit user choice:
+
+```csharp
+// This line is intentionally commented out.
+// await inbox.MarkAllReadAsync();
 ```
 
 Use a fine-grained personal access token or GitHub App token with the

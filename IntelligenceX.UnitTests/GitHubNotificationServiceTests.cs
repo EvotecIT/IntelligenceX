@@ -138,6 +138,30 @@ public sealed class GitHubNotificationServiceTests {
     }
 
     [Fact]
+    public async Task FetchAsync_DoesNotReusePageOneValidatorForMultipageSnapshot() {
+        var handler = new RecordingHandler((request, _) => {
+            var secondPage = request.RequestUri?.Query.Contains("page=2", StringComparison.Ordinal) == true;
+            var response = Json(HttpStatusCode.OK, NotificationJson(secondPage ? "2" : "1", "EvotecIT/Repo"));
+            if (!secondPage) {
+                response.Headers.Add("Link", "<https://api.github.com/notifications?all=false&participating=false&per_page=50&page=2>; rel=\"next\"");
+                response.Headers.Add("X-Poll-Interval", "1");
+                response.Content.Headers.LastModified = new DateTimeOffset(2026, 8, 26, 10, 0, 0, TimeSpan.Zero);
+            }
+
+            return Task.FromResult(response);
+        });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
+        using var service = new GitHubNotificationService(http, disposeHttpClient: false);
+
+        await service.FetchAsync();
+        await Task.Delay(TimeSpan.FromMilliseconds(1100));
+        await service.FetchAsync();
+
+        Assert.Equal(4, handler.Requests.Count);
+        Assert.Null(handler.Requests[2].Headers.IfModifiedSince);
+    }
+
+    [Fact]
     public async Task FetchAsync_UsesConditionalRequestAndPreservesSnapshotOnNotModified() {
         var requestCount = 0;
         var lastModified = new DateTimeOffset(2026, 8, 26, 10, 0, 0, TimeSpan.Zero);
@@ -184,6 +208,24 @@ public sealed class GitHubNotificationServiceTests {
         var snapshot = await service.FetchAsync();
 
         Assert.Equal("https://github.example.test/EvotecIT/OfficeIMO/pull/44", snapshot.Threads[0].OpenUrl);
+    }
+
+    [Fact]
+    public async Task FetchAsync_MapsDiscussionSubjectUrl() {
+        var handler = new RecordingHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK, """
+            [{
+              "id":"101",
+              "repository":{"full_name":"EvotecIT/OfficeIMO","html_url":"https://github.com/EvotecIT/OfficeIMO"},
+              "subject":{"title":"Design","url":"https://api.github.com/repos/EvotecIT/OfficeIMO/discussions/44","type":"Discussion"},
+              "reason":"subscribed","unread":true,"updated_at":"2026-08-26T10:58:00Z"
+            }]
+            """)));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
+        using var service = new GitHubNotificationService(http, disposeHttpClient: false);
+
+        var snapshot = await service.FetchAsync();
+
+        Assert.Equal("https://github.com/EvotecIT/OfficeIMO/discussions/44", snapshot.Threads[0].OpenUrl);
     }
 
     [Fact]
@@ -296,6 +338,44 @@ public sealed class GitHubNotificationServiceTests {
         Assert.Equal("GET", handler.Requests[0].Method.Method);
         Assert.Equal("PATCH", handler.Requests[1].Method.Method);
         Assert.Equal("GET", handler.Requests[2].Method.Method);
+    }
+
+    [Fact]
+    public async Task CachedFetch_WaitsForMutationAndDoesNotReturnInvalidatedSnapshot() {
+        var mutationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseMutation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var getCount = 0;
+        var handler = new RecordingHandler(async (request, _) => {
+            if (request.Method == HttpMethod.Patch) {
+                mutationStarted.TrySetResult(true);
+                await releaseMutation.Task.ConfigureAwait(false);
+                return new HttpResponseMessage(HttpStatusCode.ResetContent);
+            }
+
+            var id = Interlocked.Increment(ref getCount).ToString();
+            var response = Json(HttpStatusCode.OK, NotificationJson(id, "EvotecIT/Repo"));
+            response.Headers.Add("X-Poll-Interval", "60");
+            return response;
+        });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
+        using var service = new GitHubNotificationService(http, disposeHttpClient: false);
+
+        var initial = await service.FetchAsync();
+        var mutation = service.MarkReadAsync("123");
+        await mutationStarted.Task;
+        var fetchAfterMutation = service.FetchAsync();
+        Assert.False(fetchAfterMutation.IsCompleted);
+
+        releaseMutation.TrySetResult(true);
+        await mutation;
+        var refreshed = await fetchAfterMutation;
+
+        Assert.Equal("1", initial.Threads[0].Id);
+        Assert.Equal("2", refreshed.Threads[0].Id);
+        Assert.Collection(handler.Requests,
+            request => Assert.Equal("GET", request.Method.Method),
+            request => Assert.Equal("PATCH", request.Method.Method),
+            request => Assert.Equal("GET", request.Method.Method));
     }
 
     [Fact]
