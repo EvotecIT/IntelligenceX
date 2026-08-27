@@ -318,9 +318,13 @@ public sealed class GitHubNotificationServiceTests {
                 await releaseRequest.Task.ConfigureAwait(false);
             }
 
-            return request.Method == HttpMethod.Get
-                ? Json(HttpStatusCode.OK, "[]")
-                : new HttpResponseMessage(HttpStatusCode.ResetContent);
+            if (request.Method != HttpMethod.Get) {
+                return new HttpResponseMessage(HttpStatusCode.ResetContent);
+            }
+
+            var response = Json(HttpStatusCode.OK, "[]");
+            response.Headers.Add("X-Poll-Interval", "1");
+            return response;
         });
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
         using var service = new GitHubNotificationService(http, disposeHttpClient: false);
@@ -354,7 +358,7 @@ public sealed class GitHubNotificationServiceTests {
 
             var id = Interlocked.Increment(ref getCount).ToString();
             var response = Json(HttpStatusCode.OK, NotificationJson(id, "EvotecIT/Repo"));
-            response.Headers.Add("X-Poll-Interval", "60");
+            response.Headers.Add("X-Poll-Interval", "1");
             return response;
         });
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
@@ -368,6 +372,9 @@ public sealed class GitHubNotificationServiceTests {
 
         releaseMutation.TrySetResult(true);
         await mutation;
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+        Assert.False(fetchAfterMutation.IsCompleted);
+        Assert.Equal(2, handler.Requests.Count);
         var refreshed = await fetchAfterMutation;
 
         Assert.Equal("1", initial.Threads[0].Id);
@@ -385,10 +392,15 @@ public sealed class GitHubNotificationServiceTests {
 
     [Fact]
     public async Task ThreadActions_UseSafeGitHubMethodsAndInvalidateCache() {
-        var handler = new RecordingHandler((request, _) => Task.FromResult(
-            request.Method == HttpMethod.Get
-                ? Json(HttpStatusCode.OK, "[]")
-                : new HttpResponseMessage(request.Method.Method == "PATCH" ? HttpStatusCode.ResetContent : HttpStatusCode.NoContent)));
+        var handler = new RecordingHandler((request, _) => {
+            if (request.Method != HttpMethod.Get) {
+                return Task.FromResult(new HttpResponseMessage(request.Method.Method == "PATCH" ? HttpStatusCode.ResetContent : HttpStatusCode.NoContent));
+            }
+
+            var response = Json(HttpStatusCode.OK, "[]");
+            response.Headers.Add("X-Poll-Interval", "1");
+            return Task.FromResult(response);
+        });
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
         using var service = new GitHubNotificationService(http, disposeHttpClient: false);
 
@@ -396,6 +408,7 @@ public sealed class GitHubNotificationServiceTests {
         await service.MarkReadAsync("123");
         await service.MarkDoneAsync("456");
         await service.MarkAllReadAsync();
+        await Task.Delay(TimeSpan.FromMilliseconds(1100));
         await service.FetchAsync();
 
         Assert.Collection(handler.Requests,

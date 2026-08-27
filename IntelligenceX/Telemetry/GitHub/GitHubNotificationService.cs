@@ -331,7 +331,6 @@ public sealed class GitHubNotificationService : IDisposable {
     private void ClearCache() {
         lock (_cacheGate) {
             _cache.Clear();
-            _nextPollAtUtc = default;
         }
     }
 
