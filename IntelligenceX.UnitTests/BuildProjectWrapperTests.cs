@@ -14,7 +14,7 @@ public sealed class BuildProjectWrapperTests {
         var repoRoot = FindRepoRoot();
         using var harness = ProjectBuildCaptureHarness.Create();
 
-        RunPackageBuildProject(repoRoot, harness, "-Plan", "-PackagesOnly");
+        RunPackageBuildProject(repoRoot, harness);
 
         var invocation = harness.ReadInvocation();
         Assert.Equal(Path.Combine(repoRoot, "Build", "project.build.json"), invocation.GetProperty("ConfigPath").GetString());
@@ -125,9 +125,18 @@ public sealed class BuildProjectWrapperTests {
         Assert.True(process.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
     }
 
-    private static void RunPackageBuildProject(string repoRoot, ProjectBuildCaptureHarness harness, params string[] scriptArgs) {
-        var psi = CreateBuildProjectStartInfo(repoRoot, scriptArgs);
-        psi.Environment["PSModulePath"] = harness.ModuleRoot + Path.PathSeparator + (psi.Environment["PSModulePath"] ?? Environment.GetEnvironmentVariable("PSModulePath") ?? string.Empty);
+    private static void RunPackageBuildProject(string repoRoot, ProjectBuildCaptureHarness harness) {
+        var psi = new ProcessStartInfo {
+            FileName = ResolvePwshPath(),
+            WorkingDirectory = repoRoot,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-File");
+        psi.ArgumentList.Add(harness.WrapperPath);
+        psi.Environment["IX_BUILD_PROJECT_SCRIPT"] = Path.Combine(repoRoot, "Build", "Build-Project.ps1");
         psi.Environment["IX_PROJECT_BUILD_CAPTURE"] = harness.CapturePath;
 
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Build-Project.ps1");
@@ -136,6 +145,7 @@ public sealed class BuildProjectWrapperTests {
         Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync()).GetAwaiter().GetResult();
 
         Assert.True(process.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
+        Assert.True(File.Exists(harness.CapturePath), $"Expected fake PSPublishModule to capture the package build invocation.{Environment.NewLine}Module root: {harness.ModuleRoot}{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
     }
 
     private static ProcessStartInfo CreateBuildProjectStartInfo(string repoRoot, string[] scriptArgs) {
@@ -260,15 +270,17 @@ exit 0
     }
 
     private sealed class ProjectBuildCaptureHarness : IDisposable {
-        private ProjectBuildCaptureHarness(string rootPath, string moduleRoot, string capturePath) {
+        private ProjectBuildCaptureHarness(string rootPath, string moduleRoot, string capturePath, string wrapperPath) {
             RootPath = rootPath;
             ModuleRoot = moduleRoot;
             CapturePath = capturePath;
+            WrapperPath = wrapperPath;
         }
 
         public string RootPath { get; }
         public string ModuleRoot { get; }
         public string CapturePath { get; }
+        public string WrapperPath { get; }
 
         public static ProjectBuildCaptureHarness Create() {
             var rootPath = Path.Combine(Path.GetTempPath(), "ix-project-build-tests", Guid.NewGuid().ToString("N"));
@@ -276,6 +288,14 @@ exit 0
             var modulePath = Path.Combine(moduleRoot, "PSPublishModule");
             Directory.CreateDirectory(modulePath);
             var capturePath = Path.Combine(rootPath, "invocation.json");
+            var wrapperPath = Path.Combine(rootPath, "invoke-build-project.ps1");
+            File.WriteAllText(
+                wrapperPath,
+                """
+$env:PSModulePath = Join-Path $PSScriptRoot 'modules'
+& $env:IX_BUILD_PROJECT_SCRIPT -Plan -PackagesOnly
+exit $LASTEXITCODE
+""");
             File.WriteAllText(
                 Path.Combine(modulePath, "PSPublishModule.psm1"),
                 """
@@ -297,7 +317,17 @@ function Invoke-ProjectBuild {
 }
 Export-ModuleMember -Function Invoke-ProjectBuild
 """);
-            return new ProjectBuildCaptureHarness(rootPath, moduleRoot, capturePath);
+            File.WriteAllText(
+                Path.Combine(modulePath, "PSPublishModule.psd1"),
+                """
+@{
+    RootModule = 'PSPublishModule.psm1'
+    ModuleVersion = '0.0.1'
+    GUID = '958439a3-eedb-4f78-87d6-f1da1eea73bc'
+    FunctionsToExport = @('Invoke-ProjectBuild')
+}
+""");
+            return new ProjectBuildCaptureHarness(rootPath, moduleRoot, capturePath, wrapperPath);
         }
 
         public JsonElement ReadInvocation() {
