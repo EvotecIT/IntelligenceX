@@ -26,8 +26,9 @@ public sealed class BuildProjectWrapperTests {
         using var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(repoRoot, "Build", "project.build.json")));
         var versions = config.RootElement.GetProperty("ExpectedVersionMap");
         Assert.Equal("0.1.X", versions.GetProperty("IntelligenceX").GetString());
-        Assert.Equal("0.1.X", versions.GetProperty("IntelligenceX.Shared").GetString());
+        Assert.Equal("0.1.X", versions.GetProperty("IntelligenceX.Storage.SQLite").GetString());
         Assert.True(config.RootElement.GetProperty("ExpectedVersionMapAsInclude").GetBoolean());
+        Assert.True(config.RootElement.GetProperty("IncludeSymbols").GetBoolean());
     }
 
     [Fact]
@@ -136,7 +137,8 @@ public sealed class BuildProjectWrapperTests {
         Assert.Equal("IntelligenceX", releaseDoc.RootElement.GetProperty("Packages").GetProperty("GitHubPrimaryProject").GetString());
         var releaseVersions = releaseDoc.RootElement.GetProperty("Packages").GetProperty("ExpectedVersionMap");
         Assert.Equal("0.1.X", releaseVersions.GetProperty("IntelligenceX").GetString());
-        Assert.Equal("0.1.X", releaseVersions.GetProperty("IntelligenceX.Shared").GetString());
+        Assert.Equal("0.1.X", releaseVersions.GetProperty("IntelligenceX.Storage.SQLite").GetString());
+        Assert.True(releaseDoc.RootElement.GetProperty("Packages").GetProperty("IncludeSymbols").GetBoolean());
 
         foreach (var wingetPackage in releaseDoc.RootElement.GetProperty("Winget").GetProperty("Packages").EnumerateArray()) {
             Assert.False(wingetPackage.TryGetProperty("PackageVersion", out _));
@@ -149,7 +151,8 @@ public sealed class BuildProjectWrapperTests {
         Assert.Equal("IntelligenceX", packagesDoc.RootElement.GetProperty("Packages").GetProperty("GitHubPrimaryProject").GetString());
         var packageVersions = packagesDoc.RootElement.GetProperty("Packages").GetProperty("ExpectedVersionMap");
         Assert.Equal("0.1.X", packageVersions.GetProperty("IntelligenceX").GetString());
-        Assert.Equal("0.1.X", packageVersions.GetProperty("IntelligenceX.Shared").GetString());
+        Assert.Equal("0.1.X", packageVersions.GetProperty("IntelligenceX.Storage.SQLite").GetString());
+        Assert.True(packagesDoc.RootElement.GetProperty("Packages").GetProperty("IncludeSymbols").GetBoolean());
     }
 
     private static void RunBuildProject(string repoRoot, CliCaptureHarness harness, params string[] scriptArgs) {

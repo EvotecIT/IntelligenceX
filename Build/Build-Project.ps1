@@ -166,7 +166,7 @@ function Assert-DependencyOrderCapableCli {
     $versionMatch = [regex]::Match(($versionOutput -join "`n"), '(?<!\d)(?<Version>\d+\.\d+\.\d+)(?!\d)')
     if (-not $versionMatch.Success -or
         [version] $versionMatch.Groups['Version'].Value -lt [version] '3.0.126') {
-        throw "NuGet publication requires PowerForge CLI 3.0.126 or newer so IntelligenceX.Shared is published before IntelligenceX."
+        throw "NuGet publication requires PowerForge CLI 3.0.126 or newer so repository packages are published in dependency order."
     }
 }
 

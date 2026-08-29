@@ -14,13 +14,25 @@
     <Nullable>enable</Nullable>
     <LangVersion>Latest</LangVersion>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
-    <IsPackable>false</IsPackable>
+    <IsPackable>true</IsPackable>
+    <Company>Evotec</Company>
+    <Authors>Przemyslaw Klys</Authors>
+    <PackageId>IntelligenceX.Storage.SQLite</PackageId>
+    <PackageTags>intelligencex;sqlite;storage;telemetry;github;codex</PackageTags>
+    <PackageProjectUrl>https://github.com/EvotecIT/IntelligenceX</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RequireLicenseAcceptance>false</RequireLicenseAcceptance>
+    <RepositoryUrl>https://github.com/EvotecIT/IntelligenceX</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PlatformTarget>x64</PlatformTarget>
     <Platform>x64</Platform>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,6 +40,30 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="DBAClientX.SQLite" Version="0.8.0" />
+    <PackageReference Include="DBAClientX.SQLite" Version="0.8.0" PrivateAssets="compile" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\Assets\PackageIcon.png" Pack="true" PackagePath="icon.png" />
+  </ItemGroup>
+
+  <!--
+    The source project retains its Windows-only net472 build for existing hosts,
+    but the current DBAClientX.SQLite dependency graph is not a valid standalone
+    net472 PackageReference runtime. Publish only the frameworks proven by the
+    isolated package consumer until that owner dependency provides the contract.
+  -->
+  <Target Name="ExcludeUnsupportedNet472FromPackage"
+          AfterTargets="_WalkEachTargetPerFramework"
+          Condition="'$(TargetFramework)' == ''">
+    <ItemGroup>
+      <_IntelligenceXNet472BuildOutput Include="@(_BuildOutputInPackage)"
+                                       Condition="'%(_BuildOutputInPackage.TargetFramework)' == 'net472'" />
+      <_IntelligenceXNet472Symbols Include="@(_TargetPathsToSymbols)"
+                                   Condition="'%(_TargetPathsToSymbols.TargetFramework)' == 'net472'" />
+      <_BuildOutputInPackage Remove="@(_IntelligenceXNet472BuildOutput)" />
+      <_TargetPathsToSymbols Remove="@(_IntelligenceXNet472Symbols)" />
+    </ItemGroup>
+  </Target>
 </Project>

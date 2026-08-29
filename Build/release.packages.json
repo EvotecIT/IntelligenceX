@@ -18,7 +18,7 @@
     "ExpectedVersion": null,
     "ExpectedVersionMap": {
       "IntelligenceX": "0.1.X",
-      "IntelligenceX.Shared": "0.1.X"
+      "IntelligenceX.Storage.SQLite": "0.1.X"
     },
     "ExpectedVersionMapAsInclude": true,
     "ExpectedVersionMapUseWildcards": false,
@@ -35,6 +35,7 @@
     "PlanOutputPath": "../Artifacts/ProjectBuild/project.build.plan.json",
     "UpdateVersions": true,
     "Build": true,
+    "IncludeSymbols": true,
     "PublishNuget": false,
     "PublishGitHub": false,
     "CreateReleaseZip": true,
