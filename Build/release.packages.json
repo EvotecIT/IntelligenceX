@@ -15,10 +15,13 @@
   },
   "Packages": {
     "RootPath": "..",
-    "ExpectedVersion": "0.1.X",
-    "IncludeProjects": [
-      "IntelligenceX"
-    ],
+    "ExpectedVersion": null,
+    "ExpectedVersionMap": {
+      "IntelligenceX": "0.1.X",
+      "IntelligenceX.Shared": "0.1.X"
+    },
+    "ExpectedVersionMapAsInclude": true,
+    "ExpectedVersionMapUseWildcards": false,
     "ExcludeDirectories": [
       ".worktrees",
       ".claude",

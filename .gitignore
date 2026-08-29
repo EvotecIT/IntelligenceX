@@ -381,6 +381,7 @@ build/*
 !Build/Advanced/**
 !Build/Build-Release.ps1
 !Build/Build-Project.ps1
+!Build/project.build.json
 !Build/Build-Workspace.ps1
 !Build/Chat/
 !Build/Chat/**

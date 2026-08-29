@@ -57,6 +57,45 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
+$focusedPackageParameters = @(
+    'PackagesOnly',
+    'SkipBuild',
+    'PublishNuget',
+    'PublishProjectGitHub',
+    'Plan',
+    'Configuration',
+    'Verbose',
+    'Debug',
+    'ErrorAction',
+    'WarningAction',
+    'InformationAction',
+    'ProgressAction',
+    'ErrorVariable',
+    'WarningVariable',
+    'InformationVariable',
+    'OutVariable',
+    'OutBuffer',
+    'PipelineVariable'
+)
+$hasWiderReleaseArguments = @($PSBoundParameters.Keys | Where-Object { $_ -notin $focusedPackageParameters }).Count -gt 0
+
+if ($PackagesOnly -and
+    -not $hasWiderReleaseArguments -and
+    $Configuration -eq 'Release') {
+    Import-Module PSPublishModule -Force -ErrorAction Stop
+
+    $packageBuildParameters = @{
+        ConfigPath       = Join-Path $PSScriptRoot 'project.build.json'
+        Build            = -not $SkipBuild
+        PublishNuget     = [bool] $PublishNuget
+        PublishGitHub    = [bool] $PublishProjectGitHub
+        Plan             = [bool] $Plan
+    }
+
+    Invoke-ProjectBuild @packageBuildParameters
+    return
+}
+
 . (Join-Path $repoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
 . (Join-Path $repoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
 

@@ -10,12 +10,33 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class BuildProjectWrapperTests {
     [Fact]
-    public void PackagesOnly_DefaultConfig_UsesReleasePackagesConfig_AndRepoRootPaths() {
+    public void PackagesOnly_DefaultConfig_UsesFocusedProjectBuildLane() {
+        var repoRoot = FindRepoRoot();
+        using var harness = ProjectBuildCaptureHarness.Create();
+
+        RunPackageBuildProject(repoRoot, harness, "-Plan", "-PackagesOnly");
+
+        var invocation = harness.ReadInvocation();
+        Assert.Equal(Path.Combine(repoRoot, "Build", "project.build.json"), invocation.GetProperty("ConfigPath").GetString());
+        Assert.True(invocation.GetProperty("Build").GetBoolean());
+        Assert.True(invocation.GetProperty("Plan").GetBoolean());
+        Assert.False(invocation.GetProperty("PublishNuget").GetBoolean());
+        Assert.False(invocation.GetProperty("PublishGitHub").GetBoolean());
+
+        using var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(repoRoot, "Build", "project.build.json")));
+        var versions = config.RootElement.GetProperty("ExpectedVersionMap");
+        Assert.Equal("0.1.X", versions.GetProperty("IntelligenceX").GetString());
+        Assert.Equal("0.1.X", versions.GetProperty("IntelligenceX.Shared").GetString());
+        Assert.True(config.RootElement.GetProperty("ExpectedVersionMapAsInclude").GetBoolean());
+    }
+
+    [Fact]
+    public void PackagesOnly_WithReleaseStagingArguments_UsesReleaseGraphWithoutDroppingThem() {
         var repoRoot = FindRepoRoot();
         using var harness = CliCaptureHarness.Create();
         var stageRoot = Path.Combine(".", "Artifacts", "WrapperTests", "packages-only");
-        var manifestPath = Path.Combine(".", "Artifacts", "WrapperTests", "packages-only", "manifest.json");
-        var checksumsPath = Path.Combine(".", "Artifacts", "WrapperTests", "packages-only", "SHA256SUMS.txt");
+        var manifestPath = Path.Combine(stageRoot, "manifest.json");
+        var checksumsPath = Path.Combine(stageRoot, "SHA256SUMS.txt");
 
         RunBuildProject(
             repoRoot,
@@ -60,9 +81,9 @@ public sealed class BuildProjectWrapperTests {
         Assert.Equal("../Artifacts/UploadReady", releaseDoc.RootElement.GetProperty("Outputs").GetProperty("Staging").GetProperty("RootPath").GetString());
         Assert.Equal("Winget", releaseDoc.RootElement.GetProperty("Winget").GetProperty("OutputPath").GetString());
         Assert.Equal("IntelligenceX", releaseDoc.RootElement.GetProperty("Packages").GetProperty("GitHubPrimaryProject").GetString());
-        var includeProjects = releaseDoc.RootElement.GetProperty("Packages").GetProperty("IncludeProjects").EnumerateArray().Select(element => element.GetString()).ToArray();
-        Assert.Single(includeProjects);
-        Assert.Equal("IntelligenceX", includeProjects[0]);
+        var releaseVersions = releaseDoc.RootElement.GetProperty("Packages").GetProperty("ExpectedVersionMap");
+        Assert.Equal("0.1.X", releaseVersions.GetProperty("IntelligenceX").GetString());
+        Assert.Equal("0.1.X", releaseVersions.GetProperty("IntelligenceX.Shared").GetString());
 
         foreach (var wingetPackage in releaseDoc.RootElement.GetProperty("Winget").GetProperty("Packages").EnumerateArray()) {
             Assert.False(wingetPackage.TryGetProperty("PackageVersion", out _));
@@ -73,6 +94,9 @@ public sealed class BuildProjectWrapperTests {
         Assert.Equal("../Artifacts/UploadReady", packagesDoc.RootElement.GetProperty("Outputs").GetProperty("Staging").GetProperty("RootPath").GetString());
         Assert.False(packagesDoc.RootElement.TryGetProperty("Winget", out _));
         Assert.Equal("IntelligenceX", packagesDoc.RootElement.GetProperty("Packages").GetProperty("GitHubPrimaryProject").GetString());
+        var packageVersions = packagesDoc.RootElement.GetProperty("Packages").GetProperty("ExpectedVersionMap");
+        Assert.Equal("0.1.X", packageVersions.GetProperty("IntelligenceX").GetString());
+        Assert.Equal("0.1.X", packageVersions.GetProperty("IntelligenceX.Shared").GetString());
     }
 
     private static void RunBuildProject(string repoRoot, CliCaptureHarness harness, params string[] scriptArgs) {
@@ -99,6 +123,36 @@ public sealed class BuildProjectWrapperTests {
         Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync()).GetAwaiter().GetResult();
 
         Assert.True(process.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
+    }
+
+    private static void RunPackageBuildProject(string repoRoot, ProjectBuildCaptureHarness harness, params string[] scriptArgs) {
+        var psi = CreateBuildProjectStartInfo(repoRoot, scriptArgs);
+        psi.Environment["PSModulePath"] = harness.ModuleRoot + Path.PathSeparator + (psi.Environment["PSModulePath"] ?? Environment.GetEnvironmentVariable("PSModulePath") ?? string.Empty);
+        psi.Environment["IX_PROJECT_BUILD_CAPTURE"] = harness.CapturePath;
+
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Build-Project.ps1");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync()).GetAwaiter().GetResult();
+
+        Assert.True(process.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
+    }
+
+    private static ProcessStartInfo CreateBuildProjectStartInfo(string repoRoot, string[] scriptArgs) {
+        var psi = new ProcessStartInfo {
+            FileName = ResolvePwshPath(),
+            WorkingDirectory = repoRoot,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-File");
+        psi.ArgumentList.Add(Path.Combine(repoRoot, "Build", "Build-Project.ps1"));
+        foreach (var arg in scriptArgs) {
+            psi.ArgumentList.Add(arg);
+        }
+        return psi;
     }
 
     private static void AssertContainsOption(string[] args, string optionName, string expectedValue) {
@@ -192,6 +246,64 @@ exit 0
             Assert.True(File.Exists(CapturePath), "Expected fake PowerForge CLI to capture arguments.");
             using var doc = JsonDocument.Parse(File.ReadAllText(CapturePath));
             return doc.RootElement.EnumerateArray().Select(element => element.GetString() ?? string.Empty).ToArray();
+        }
+
+        public void Dispose() {
+            try {
+                if (Directory.Exists(RootPath)) {
+                    Directory.Delete(RootPath, recursive: true);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
+    private sealed class ProjectBuildCaptureHarness : IDisposable {
+        private ProjectBuildCaptureHarness(string rootPath, string moduleRoot, string capturePath) {
+            RootPath = rootPath;
+            ModuleRoot = moduleRoot;
+            CapturePath = capturePath;
+        }
+
+        public string RootPath { get; }
+        public string ModuleRoot { get; }
+        public string CapturePath { get; }
+
+        public static ProjectBuildCaptureHarness Create() {
+            var rootPath = Path.Combine(Path.GetTempPath(), "ix-project-build-tests", Guid.NewGuid().ToString("N"));
+            var moduleRoot = Path.Combine(rootPath, "modules");
+            var modulePath = Path.Combine(moduleRoot, "PSPublishModule");
+            Directory.CreateDirectory(modulePath);
+            var capturePath = Path.Combine(rootPath, "invocation.json");
+            File.WriteAllText(
+                Path.Combine(modulePath, "PSPublishModule.psm1"),
+                """
+function Invoke-ProjectBuild {
+    param(
+        [string] $ConfigPath,
+        [Nullable[bool]] $Build,
+        [Nullable[bool]] $PublishNuget,
+        [Nullable[bool]] $PublishGitHub,
+        [Nullable[bool]] $Plan
+    )
+    [ordered]@{
+        ConfigPath = $ConfigPath
+        Build = [bool] $Build
+        PublishNuget = [bool] $PublishNuget
+        PublishGitHub = [bool] $PublishGitHub
+        Plan = [bool] $Plan
+    } | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:IX_PROJECT_BUILD_CAPTURE -NoNewline
+}
+Export-ModuleMember -Function Invoke-ProjectBuild
+""");
+            return new ProjectBuildCaptureHarness(rootPath, moduleRoot, capturePath);
+        }
+
+        public JsonElement ReadInvocation() {
+            Assert.True(File.Exists(CapturePath), "Expected fake PSPublishModule to capture the package build invocation.");
+            using var document = JsonDocument.Parse(File.ReadAllText(CapturePath));
+            return document.RootElement.Clone();
         }
 
         public void Dispose() {

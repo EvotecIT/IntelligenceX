@@ -88,7 +88,7 @@ pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Style
 What this covers today:
 - workspace preflight via the unified `release.json -> WorkspaceValidation -> workspace.validation.json` path unless `-SkipWorkspaceBuild`
 - workspace/preflight failures now include hints for `-SkipTests`, `-SkipHarness`, and `-SkipWorkspaceBuild` so it is clearer whether the problem is validation or publish
-- main project NuGet packaging through `Build-Project.ps1 -PackagesOnly`, which switches to `Build\release.packages.json`
+- public NuGet packaging through `Build-Project.ps1 -PackagesOnly`, which uses focused `Build\project.build.json` for `IntelligenceX.Shared` and `IntelligenceX`
 - plugin NuGet packaging through PowerForge unified `release.json`
 - `IntelligenceX.Cli`, `IntelligenceX.Tray`, `IntelligenceX.Chat.Host`, `IntelligenceX.Chat.Service`, and `IntelligenceX.Chat.App` publish/zip through PowerForge DotNetPublish
 - `IntelligenceX.Chat.App` portable publish composes the client bundle through PowerForge, including the service sidecar, plugin payload, helper launchers, bundle metadata, zip, and WiX MSI
@@ -117,7 +117,7 @@ Current staged notes:
 - `Build\Advanced\Build-Installer.ps1` remains a valid fallback/manual entrypoint, but the default MSI path is now `Build-Project.ps1` -> PowerForge DotNetPublish.
 - `Build\powerforge.dotnetpublish.json` is now the active unified CLI/tray/chat-host/chat-service/chat-app publish config.
 - `Build\release.json` now also owns the normal workspace-preflight hook through `WorkspaceValidation`, so `Build-Project.ps1` stays thin.
-- `Build\release.packages.json` keeps the package-only lane thin as well, so `Build-Project.ps1 -PackagesOnly` can stage the main `IntelligenceX` package without also requiring desktop-app Winget assets.
+- `Build\project.build.json` owns the focused package-only lane, so `Build-Project.ps1 -PackagesOnly` can build and publish `IntelligenceX.Shared` before `IntelligenceX` without requiring desktop-app Winget assets. `Build\release.packages.json` remains available to the wider release graph when release staging arguments are supplied.
 - `Build-Project.ps1` now resolves user-supplied release output paths from the repo root, which removes the old surprise where `.\Artifacts\...` ended up under `Build\Artifacts\...` because PowerForge resolved them relative to the config file.
 - `POWERFORGE_CLI_PATH` is now the most explicit local override for wrapper validation when you want `Build-Project.ps1` and related scripts to use one exact built CLI or script path instead of sibling-repo discovery.
 - `Build\Internal\Resolve-TestimoXRoot.ps1` is now the shared resolver used by workspace/plugin scripts instead of duplicating that logic in multiple files.
@@ -147,7 +147,7 @@ Default output:
 - `Artifacts\UploadReady\<release-id>\SHA256SUMS.txt`
 
 Current release intent:
-- the unified package lane now stages the main `IntelligenceX` NuGet package rather than the internal tool-pack nupkgs
+- the unified package lane now stages the public `IntelligenceX.Shared` and `IntelligenceX` NuGet packages rather than internal tool-pack nupkgs
 - the unified app lane stages Tray portable and Chat portable assets into `GitHub`
 - PowerForge also emits Tray + Chat Winget manifests from those same staged files under `Winget`
 
