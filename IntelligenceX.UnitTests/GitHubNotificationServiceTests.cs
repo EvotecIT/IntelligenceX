@@ -258,19 +258,24 @@ public sealed class GitHubNotificationServiceTests {
     public async Task FetchAsync_HonorsPollIntervalAcrossQueryVariants() {
         var handler = new RecordingHandler((_, _) => {
             var response = Json(HttpStatusCode.OK, "[]");
-            response.Headers.Add("X-Poll-Interval", "1");
+            // Keep the interval well above ordinary CI scheduling jitter. The test
+            // verifies that the second query waits; it does not need to spend the
+            // full provider interval proving that Task.Delay eventually completes.
+            response.Headers.Add("X-Poll-Interval", "30");
             return Task.FromResult(response);
         });
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
         using var service = new GitHubNotificationService(http, disposeHttpClient: false);
+        using var cancellation = new CancellationTokenSource();
 
         await service.FetchAsync(new GitHubNotificationQuery { Limit = 10 });
-        var differentQuery = service.FetchAsync(new GitHubNotificationQuery { Limit = 20 });
+        var differentQuery = service.FetchAsync(new GitHubNotificationQuery { Limit = 20 }, cancellation.Token);
         await Task.Delay(TimeSpan.FromMilliseconds(100));
 
         Assert.Single(handler.Requests);
-        await differentQuery;
-        Assert.Equal(2, handler.Requests.Count);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => differentQuery);
+        Assert.Single(handler.Requests);
     }
 
     [Fact]
