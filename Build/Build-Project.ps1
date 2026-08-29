@@ -163,9 +163,19 @@ function Assert-DependencyOrderCapableCli {
         throw "Unable to verify the PowerForge CLI version required for dependency-safe NuGet publication."
     }
 
-    $versionMatch = [regex]::Match(($versionOutput -join "`n"), '(?<!\d)(?<Version>\d+\.\d+\.\d+)(?!\d)')
-    if (-not $versionMatch.Success -or
-        [version] $versionMatch.Groups['Version'].Value -lt [version] '3.0.126') {
+    $versionMatches = @(
+        foreach ($line in $versionOutput) {
+            $versionMatch = [regex]::Match(
+                ([string] $line).Trim(),
+                '^(?<Version>\d+\.\d+\.\d+)(?:[-+][0-9A-Za-z.-]+)?$'
+            )
+            if ($versionMatch.Success) {
+                $versionMatch.Groups['Version'].Value
+            }
+        }
+    )
+    if ($versionMatches.Count -ne 1 -or
+        [version] $versionMatches[0] -lt [version] '3.0.126') {
         throw "NuGet publication requires PowerForge CLI 3.0.126 or newer so repository packages are published in dependency order."
     }
 }

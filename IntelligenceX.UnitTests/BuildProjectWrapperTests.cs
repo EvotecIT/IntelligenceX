@@ -106,7 +106,7 @@ public sealed class BuildProjectWrapperTests {
         var repoRoot = FindRepoRoot();
         using var harness = CliCaptureHarness.Create();
 
-        var result = RunBuildProjectProcess(repoRoot, harness, "3.0.126", "-Plan", "-PackagesOnly", "-PublishNuget");
+        var result = RunBuildProjectProcess(repoRoot, harness, "3.0.126+test", "-Plan", "-PackagesOnly", "-PublishNuget");
 
         Assert.Equal(0, result.ExitCode);
         var args = harness.ReadCapturedArgs();
@@ -314,6 +314,7 @@ public sealed class BuildProjectWrapperTests {
                 """
 param([Parameter(ValueFromRemainingArguments = $true)][string[]] $ArgsFromCaller)
 if ($ArgsFromCaller.Count -eq 1 -and $ArgsFromCaller[0] -eq '--version') {
+    Write-Output 'SDK warning: .NET 8.0.100 was used to launch the CLI'
     Write-Output $env:IX_FAKE_POWERFORGE_VERSION
     exit 0
 }
