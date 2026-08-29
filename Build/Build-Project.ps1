@@ -78,11 +78,24 @@ $focusedPackageParameters = @(
     'PipelineVariable'
 )
 $hasWiderReleaseArguments = @($PSBoundParameters.Keys | Where-Object { $_ -notin $focusedPackageParameters }).Count -gt 0
+$hasExplicitCliRoute = -not [string]::IsNullOrWhiteSpace($env:POWERFORGE_CLI_PATH) -or
+    -not [string]::IsNullOrWhiteSpace($env:POWERFORGE_ROOT)
+$hasProjectBuildModule = @(Get-Module -ListAvailable -Name PSPublishModule).Count -gt 0
 
 if ($PackagesOnly -and
     -not $hasWiderReleaseArguments -and
-    $Configuration -eq 'Release') {
-    Import-Module PSPublishModule -Force -ErrorAction Stop
+    $Configuration -eq 'Release' -and
+    -not $hasExplicitCliRoute -and
+    $hasProjectBuildModule) {
+    $moduleParameters = @{
+        Name = 'PSPublishModule'
+        Force = $true
+        ErrorAction = 'Stop'
+    }
+    if ($PublishNuget) {
+        $moduleParameters.MinimumVersion = '3.0.126'
+    }
+    Import-Module @moduleParameters
 
     $packageBuildParameters = @{
         ConfigPath       = Join-Path $PSScriptRoot 'project.build.json'

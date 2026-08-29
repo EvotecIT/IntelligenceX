@@ -74,6 +74,31 @@ public sealed class BuildProjectWrapperTests {
     }
 
     [Fact]
+    public void PackagesOnly_ExplicitCliRoute_PreservesWiderReleaseCompatibility() {
+        var repoRoot = FindRepoRoot();
+        using var harness = CliCaptureHarness.Create();
+
+        RunBuildProject(repoRoot, harness, "-Plan", "-PackagesOnly");
+
+        var args = harness.ReadCapturedArgs();
+        Assert.Contains("release", args);
+        AssertContainsOption(args, "--config", Path.Combine(repoRoot, "Build", "release.packages.json"));
+        Assert.Contains("--packages-only", args);
+    }
+
+    [Fact]
+    public void PackagesOnly_PublishNuget_RequiresDependencyOrderCapableModule() {
+        var repoRoot = FindRepoRoot();
+        using var harness = ProjectBuildCaptureHarness.Create();
+
+        var result = RunPackageBuildProjectProcess(repoRoot, harness, publishNuget: true);
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("3.0.126", result.StandardOutput + result.StandardError, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(harness.CapturePath));
+    }
+
+    [Fact]
     public void ReleaseConfigs_KeepUploadReadyOutputsScopedPerRun() {
         var repoRoot = FindRepoRoot();
         var releaseJson = File.ReadAllText(Path.Combine(repoRoot, "Build", "release.json"));
@@ -126,6 +151,13 @@ public sealed class BuildProjectWrapperTests {
     }
 
     private static void RunPackageBuildProject(string repoRoot, ProjectBuildCaptureHarness harness) {
+        var result = RunPackageBuildProjectProcess(repoRoot, harness, publishNuget: false);
+
+        Assert.True(result.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{result.StandardOutput}{Environment.NewLine}STDERR:{Environment.NewLine}{result.StandardError}");
+        Assert.True(File.Exists(harness.CapturePath), $"Expected fake PSPublishModule to capture the package build invocation.{Environment.NewLine}Module root: {harness.ModuleRoot}{Environment.NewLine}STDOUT:{Environment.NewLine}{result.StandardOutput}{Environment.NewLine}STDERR:{Environment.NewLine}{result.StandardError}");
+    }
+
+    private static ProcessResult RunPackageBuildProjectProcess(string repoRoot, ProjectBuildCaptureHarness harness, bool publishNuget) {
         var psi = new ProcessStartInfo {
             FileName = ResolvePwshPath(),
             WorkingDirectory = repoRoot,
@@ -138,14 +170,14 @@ public sealed class BuildProjectWrapperTests {
         psi.ArgumentList.Add(harness.WrapperPath);
         psi.Environment["IX_BUILD_PROJECT_SCRIPT"] = Path.Combine(repoRoot, "Build", "Build-Project.ps1");
         psi.Environment["IX_PROJECT_BUILD_CAPTURE"] = harness.CapturePath;
+        psi.Environment["IX_TEST_PUBLISH_NUGET"] = publishNuget ? "1" : "0";
 
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Build-Project.ps1");
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
         Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync()).GetAwaiter().GetResult();
 
-        Assert.True(process.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
-        Assert.True(File.Exists(harness.CapturePath), $"Expected fake PSPublishModule to capture the package build invocation.{Environment.NewLine}Module root: {harness.ModuleRoot}{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
+        return new ProcessResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
     }
 
     private static ProcessStartInfo CreateBuildProjectStartInfo(string repoRoot, string[] scriptArgs) {
@@ -293,7 +325,11 @@ exit 0
                 wrapperPath,
                 """
 $env:PSModulePath = Join-Path $PSScriptRoot 'modules'
-& $env:IX_BUILD_PROJECT_SCRIPT -Plan -PackagesOnly
+if ($env:IX_TEST_PUBLISH_NUGET -eq '1') {
+    & $env:IX_BUILD_PROJECT_SCRIPT -PackagesOnly -PublishNuget
+} else {
+    & $env:IX_BUILD_PROJECT_SCRIPT -Plan -PackagesOnly
+}
 exit $LASTEXITCODE
 """);
             File.WriteAllText(
@@ -346,4 +382,6 @@ Export-ModuleMember -Function Invoke-ProjectBuild
             }
         }
     }
+
+    private sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError);
 }
