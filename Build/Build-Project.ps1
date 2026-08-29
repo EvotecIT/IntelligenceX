@@ -57,6 +57,58 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
+$focusedPackageParameters = @(
+    'PackagesOnly',
+    'SkipBuild',
+    'PublishNuget',
+    'PublishProjectGitHub',
+    'Plan',
+    'Configuration',
+    'Verbose',
+    'Debug',
+    'ErrorAction',
+    'WarningAction',
+    'InformationAction',
+    'ProgressAction',
+    'ErrorVariable',
+    'WarningVariable',
+    'InformationVariable',
+    'OutVariable',
+    'OutBuffer',
+    'PipelineVariable'
+)
+$hasWiderReleaseArguments = @($PSBoundParameters.Keys | Where-Object { $_ -notin $focusedPackageParameters }).Count -gt 0
+$hasExplicitCliRoute = -not [string]::IsNullOrWhiteSpace($env:POWERFORGE_CLI_PATH) -or
+    -not [string]::IsNullOrWhiteSpace($env:POWERFORGE_ROOT)
+$hasProjectBuildModule = @(Get-Module -ListAvailable -Name PSPublishModule).Count -gt 0
+
+if ($PackagesOnly -and
+    -not $hasWiderReleaseArguments -and
+    $Configuration -eq 'Release' -and
+    -not $hasExplicitCliRoute -and
+    $hasProjectBuildModule) {
+    $moduleParameters = @{
+        Name = 'PSPublishModule'
+        Force = $true
+        ErrorAction = 'Stop'
+    }
+    if ($PublishNuget) {
+        $moduleParameters.MinimumVersion = '3.0.126'
+    }
+    Import-Module @moduleParameters
+
+    $packageBuildParameters = @{
+        ConfigPath       = Join-Path $PSScriptRoot 'project.build.json'
+        Build            = -not $SkipBuild
+        PublishNuget     = [bool] $PublishNuget
+        PublishGitHub    = [bool] $PublishProjectGitHub
+        Plan             = [bool] $Plan
+    }
+
+    Invoke-ProjectBuild @packageBuildParameters
+    return
+}
+
 . (Join-Path $repoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
 . (Join-Path $repoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
 
@@ -99,6 +151,39 @@ if ($Plan -and $Validate) {
 }
 
 $cli = Resolve-PowerForgeCliInvocation -RepoRoot $repoRoot
+
+function Assert-DependencyOrderCapableCli {
+    param([hashtable] $Cli)
+
+    $versionArgs = [System.Collections.Generic.List[string]]::new()
+    $versionArgs.AddRange([string[]] $Cli.Prefix)
+    $versionArgs.Add('--version')
+    $versionOutput = & $Cli.Command @versionArgs 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to verify the PowerForge CLI version required for dependency-safe NuGet publication."
+    }
+
+    $versionMatches = @(
+        foreach ($line in $versionOutput) {
+            $versionMatch = [regex]::Match(
+                ([string] $line).Trim(),
+                '^(?<Version>\d+\.\d+\.\d+)(?:[-+][0-9A-Za-z.-]+)?$'
+            )
+            if ($versionMatch.Success) {
+                $versionMatch.Groups['Version'].Value
+            }
+        }
+    )
+    if ($versionMatches.Count -ne 1 -or
+        [version] $versionMatches[0] -lt [version] '3.0.126') {
+        throw "NuGet publication requires PowerForge CLI 3.0.126 or newer so repository packages are published in dependency order."
+    }
+}
+
+if ($PublishNuget) {
+    Assert-DependencyOrderCapableCli -Cli $cli
+}
+
 $releaseArgs = [System.Collections.Generic.List[string]]::new()
 $releaseArgs.AddRange([string[]] $cli.Prefix)
 $releaseArgs.Add('release')

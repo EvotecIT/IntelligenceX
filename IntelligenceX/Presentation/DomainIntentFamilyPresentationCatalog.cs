@@ -146,6 +146,12 @@ public static class DomainIntentFamilyPresentationCatalog {
 /// User-facing presentation details for a domain-intent family.
 /// </summary>
 public readonly struct DomainIntentFamilyPresentationInfo {
+    /// <summary>
+    /// Initializes presentation details for one domain-intent family.
+    /// </summary>
+    /// <param name="displayName">Friendly family label.</param>
+    /// <param name="replyExample">Natural-language selection example.</param>
+    /// <param name="choiceDescription">Clarification description shown to the user.</param>
     public DomainIntentFamilyPresentationInfo(string displayName, string replyExample, string choiceDescription) {
         DisplayName = displayName ?? string.Empty;
         ReplyExample = replyExample ?? string.Empty;

@@ -381,6 +381,7 @@ build/*
 !Build/Advanced/**
 !Build/Build-Release.ps1
 !Build/Build-Project.ps1
+!Build/project.build.json
 !Build/Build-Workspace.ps1
 !Build/Chat/
 !Build/Chat/**
@@ -394,6 +395,7 @@ build/*
 !Build/powerforge.plugins.json
 !Build/powerforge.dotnetpublish.json
 !Build/Run-Project.ps1
+!Build/Test-Packages.ps1
 !Build/run.profiles.json
 !Build/Store/
 !Build/Store/Prepare-TrayStoreSubmission.ps1

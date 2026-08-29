@@ -47,6 +47,17 @@ jobs:
             - name: Build solution
               run: dotnet build ${{ env.CI_SOLUTION }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
 
+            - name: Validate public NuGet packages
+              shell: pwsh
+              run: |
+                  $packageDirectory = Join-Path $env:RUNNER_TEMP 'intelligencex-packages'
+                  New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
+                  dotnet pack ./IntelligenceX/IntelligenceX.csproj --configuration $env:BUILD_CONFIGURATION --output $packageDirectory --no-restore -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  dotnet pack ./IntelligenceX.Storage.SQLite/IntelligenceX.Storage.SQLite.csproj --configuration $env:BUILD_CONFIGURATION --output $packageDirectory --no-restore -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  ./Build/Test-Packages.ps1 -PackageDirectory $packageDirectory
+
             - name: Run tests
               run: dotnet test ${{ env.CI_SOLUTION }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal --logger trx --collect:"XPlat Code Coverage"
               timeout-minutes: 10

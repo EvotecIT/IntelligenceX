@@ -5,7 +5,7 @@ using System.Linq;
 namespace IntelligenceX.Tools;
 
 /// <summary>
-/// Shared pack identity catalog used to normalize pack ids, aliases, categories, and display labels.
+/// Pack identity catalog used to normalize pack ids, aliases, categories, and display labels.
 /// </summary>
 public static class ToolPackIdentityCatalog {
     private sealed class PackIdentityDescriptor {
