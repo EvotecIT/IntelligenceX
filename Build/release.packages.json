@@ -3,7 +3,7 @@
   "SchemaVersion": 1,
   "WorkspaceValidation": {
     "ConfigPath": "workspace.validation.json",
-    "Profile": "full-private"
+    "Profile": "oss"
   },
   "Outputs": {
     "Staging": {

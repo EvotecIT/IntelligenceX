@@ -84,6 +84,34 @@ public sealed class BuildProjectWrapperTests {
         Assert.Contains("release", args);
         AssertContainsOption(args, "--config", Path.Combine(repoRoot, "Build", "release.packages.json"));
         Assert.Contains("--packages-only", args);
+        using var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(repoRoot, "Build", "release.packages.json")));
+        Assert.Equal("oss", config.RootElement.GetProperty("WorkspaceValidation").GetProperty("Profile").GetString());
+    }
+
+    [Fact]
+    public void PackagesOnly_CliPublishNuget_RequiresDependencyOrderCapableCli() {
+        var repoRoot = FindRepoRoot();
+        using var harness = CliCaptureHarness.Create();
+
+        var result = RunBuildProjectProcess(repoRoot, harness, "3.0.125", "-PackagesOnly", "-PublishNuget");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("3.0.126", result.StandardOutput + result.StandardError, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(harness.CapturePath));
+    }
+
+    [Fact]
+    public void PackagesOnly_CliPublishNuget_AllowsDependencyOrderCapableCli() {
+        var repoRoot = FindRepoRoot();
+        using var harness = CliCaptureHarness.Create();
+
+        var result = RunBuildProjectProcess(repoRoot, harness, "3.0.126", "-Plan", "-PackagesOnly", "-PublishNuget");
+
+        Assert.Equal(0, result.ExitCode);
+        var args = harness.ReadCapturedArgs();
+        Assert.Contains("--publish-nuget", args);
+        Assert.Contains("--packages-only", args);
+        AssertContainsOption(args, "--config", Path.Combine(repoRoot, "Build", "release.packages.json"));
     }
 
     [Fact]
@@ -125,6 +153,12 @@ public sealed class BuildProjectWrapperTests {
     }
 
     private static void RunBuildProject(string repoRoot, CliCaptureHarness harness, params string[] scriptArgs) {
+        var result = RunBuildProjectProcess(repoRoot, harness, "3.0.126", scriptArgs);
+
+        Assert.True(result.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{result.StandardOutput}{Environment.NewLine}STDERR:{Environment.NewLine}{result.StandardError}");
+    }
+
+    private static ProcessResult RunBuildProjectProcess(string repoRoot, CliCaptureHarness harness, string cliVersion, params string[] scriptArgs) {
         var psi = new ProcessStartInfo {
             FileName = ResolvePwshPath(),
             WorkingDirectory = repoRoot,
@@ -141,13 +175,14 @@ public sealed class BuildProjectWrapperTests {
         }
 
         psi.Environment["POWERFORGE_CLI_PATH"] = harness.ScriptPath;
+        psi.Environment["IX_FAKE_POWERFORGE_VERSION"] = cliVersion;
 
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Build-Project.ps1");
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
         Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync()).GetAwaiter().GetResult();
 
-        Assert.True(process.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
+        return new ProcessResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
     }
 
     private static void RunPackageBuildProject(string repoRoot, ProjectBuildCaptureHarness harness) {
@@ -275,6 +310,10 @@ public sealed class BuildProjectWrapperTests {
                 scriptPath,
                 """
 param([Parameter(ValueFromRemainingArguments = $true)][string[]] $ArgsFromCaller)
+if ($ArgsFromCaller.Count -eq 1 -and $ArgsFromCaller[0] -eq '--version') {
+    Write-Output $env:IX_FAKE_POWERFORGE_VERSION
+    exit 0
+}
 $capturePath = Join-Path $PSScriptRoot 'captured-args.json'
 $json = $ArgsFromCaller | ConvertTo-Json -Compress
 Set-Content -LiteralPath $capturePath -Value $json -NoNewline

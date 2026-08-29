@@ -151,6 +151,29 @@ if ($Plan -and $Validate) {
 }
 
 $cli = Resolve-PowerForgeCliInvocation -RepoRoot $repoRoot
+
+function Assert-DependencyOrderCapableCli {
+    param([hashtable] $Cli)
+
+    $versionArgs = [System.Collections.Generic.List[string]]::new()
+    $versionArgs.AddRange([string[]] $Cli.Prefix)
+    $versionArgs.Add('--version')
+    $versionOutput = & $Cli.Command @versionArgs 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to verify the PowerForge CLI version required for dependency-safe NuGet publication."
+    }
+
+    $versionMatch = [regex]::Match(($versionOutput -join "`n"), '(?<!\d)(?<Version>\d+\.\d+\.\d+)(?!\d)')
+    if (-not $versionMatch.Success -or
+        [version] $versionMatch.Groups['Version'].Value -lt [version] '3.0.126') {
+        throw "NuGet publication requires PowerForge CLI 3.0.126 or newer so IntelligenceX.Shared is published before IntelligenceX."
+    }
+}
+
+if ($PublishNuget) {
+    Assert-DependencyOrderCapableCli -Cli $cli
+}
+
 $releaseArgs = [System.Collections.Generic.List[string]]::new()
 $releaseArgs.AddRange([string[]] $cli.Prefix)
 $releaseArgs.Add('release')
