@@ -3,14 +3,17 @@
 Use these as the main entrypoints:
 
 - `Build-Project.ps1`
-  - unified package + app/tool publish path
+  - small public NuGet front door, matching the OfficeIMO build shape
+  - invokes `Invoke-ProjectBuild` with `project.build.json`
+  - builds and publishes `IntelligenceX` before `IntelligenceX.Storage.SQLite`
+- `Build-Product.ps1`
+  - app, tray, installer, tool, and coordinated product-release path
   - thin wrapper over `powerforge release`
-  - `-PackagesOnly` uses the focused ChartForgeX-style `project.build.json` lane and builds `IntelligenceX` followed by the optional `IntelligenceX.Storage.SQLite` package
   - workspace preflight is now declared in `release.json` + `workspace.validation.json`, not hard-coded in the script
 - `Build-Release.ps1`
   - repo-level release wrapper when you want workspace validation + package assets + portable chat bundle + MSI
-  - now a thin compatibility wrapper over `Build-Project.ps1`
-  - `Frontend app` stays on the unified `Build-Project.ps1` / PowerForge path and maps release intent to package / portable / installer outputs
+  - now a thin compatibility wrapper over `Build-Product.ps1`
+  - `Frontend app` stays on the unified `Build-Product.ps1` / PowerForge path and maps release intent to package / portable / installer outputs
   - defaults to a release-facing `Artifacts\UploadReady\<release-id>` root with `NuGet`, `GitHub`, `Winget`, and metadata outputs
   - can also publish the staged release automatically:
     - `-PublishGitHub` forwards to `powerforge release --publish-project-github`, which uses the top-level `GitHub` section in `Build\release.json` to create or reuse the unified repo `v<version>` release and upload the staged assets
@@ -21,7 +24,7 @@ Use these as the main entrypoints:
   - thin compatibility wrapper over `powerforge workspace validate`
 - `workspace.validation.json`
   - declarative workspace-validation contract used by `Build-Workspace.ps1`
-  - also consumed by `Build-Project.ps1` through unified `powerforge release`
+  - also consumed by `Build-Product.ps1` through unified `powerforge release`
 - `powerforge.plugins.json`
   - declarative plugin catalog used by `Internal\Export-PluginFolders.ps1` and `Advanced\Publish-Plugins.ps1`
 - `release.json`
@@ -29,7 +32,7 @@ Use these as the main entrypoints:
 - `release.packages.json`
   - retained release-graph package configuration for explicit/custom release orchestration
 - `project.build.json`
-  - focused public NuGet package build used by `Build-Project.ps1 -PackagesOnly`
+  - focused public NuGet package build used by `Build-Project.ps1`
   - owns matching `0.1.x` versions and dependency order for `IntelligenceX` and `IntelligenceX.Storage.SQLite`
 - `Test-Packages.ps1`
   - validates the actual `.nupkg` payload, portable symbols, framework assemblies, XML documentation, icon, README files, and package dependency boundary
@@ -59,22 +62,22 @@ Folder layout:
 Examples:
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -Plan
+pwsh ./Build/Build-Project.ps1 -Plan $true
+pwsh ./Build/Build-Project.ps1 -Build $true
+pwsh ./Build/Test-Packages.ps1 -PackageDirectory ./Artifacts/ProjectBuild/packages
+pwsh ./Build/Build-Project.ps1 -PublishNuget $true
+pwsh ./Build/Build-Product.ps1 -Plan
 powerforge workspace validate --config ./Build/workspace.validation.json --list
 powerforge workspace validate --config ./Build/workspace.validation.json --profile oss --enable-feature chat
-pwsh ./Build/Build-Project.ps1 -SkipWorkspaceBuild -ToolsOnly -Targets IntelligenceX.Tray
-pwsh ./Build/Build-Project.ps1 -Configuration Debug -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -IncludeSymbols
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignThumbprint <thumbprint>
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignSubjectName "Evotec Code Signing" -SignOnFailure Warn
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -ToolOutputs Portable,Installer
-pwsh ./Build/Build-Project.ps1 -StageRoot ./Artifacts/Releases/demo -SkipChecksums
-pwsh ./Build/Build-Project.ps1 -PackagesOnly -Plan
-pwsh ./Build/Build-Project.ps1 -PackagesOnly
-pwsh ./Build/Test-Packages.ps1 -PackageDirectory ./Artifacts/ProjectBuild/packages
-pwsh ./Build/Build-Project.ps1 -PackagesOnly -PublishNuget
+pwsh ./Build/Build-Product.ps1 -SkipWorkspaceBuild -ToolsOnly -Targets IntelligenceX.Tray
+pwsh ./Build/Build-Product.ps1 -Configuration Debug -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -IncludeSymbols
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignThumbprint <thumbprint>
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignSubjectName "Evotec Code Signing" -SignOnFailure Warn
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -ToolOutputs Portable,Installer
+pwsh ./Build/Build-Product.ps1 -StageRoot ./Artifacts/Releases/demo -SkipChecksums
 pwsh ./Build/Advanced/Build-Reviewer.ps1
 pwsh ./Build/Advanced/Build-Reviewer.ps1 -PublishGitHub
 pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release
@@ -109,7 +112,7 @@ Notes:
 
 Signing is also resolved centrally for the normal case:
 - prefer `CERT_THUMBPRINT` when you want one default code-signing certificate for the repo
-- `Build-Project.ps1 -SignInstaller` and `Build-Release.ps1 -SignInstaller` now use that thumbprint automatically
+- `Build-Product.ps1 -SignInstaller` and `Build-Release.ps1 -SignInstaller` now use that thumbprint automatically
 - `-SignThumbprint` still wins when you need to override it for one run
 - `-SignTimeoutSeconds` caps each signing invocation so a stuck Windows SDK `signtool.exe` fails through the configured signing policy instead of hanging the release
 - `-SignSubjectName`, `-SignCsp`, and `-SignKeyContainer` remain available as advanced escape hatches
@@ -120,7 +123,7 @@ Keep these specialist helpers:
   - thin wrapper over `powerforge plugin pack`
   - shares the repo plugin/package catalog in `Build\powerforge.plugins.json`
 - `Advanced\Build-Reviewer.ps1`
-  - thin compatibility wrapper over `Build-Project.ps1 -ConfigPath Build\release.reviewer.json`
+  - thin compatibility wrapper over `Build-Product.ps1 -ConfigPath Build\release.reviewer.json`
   - use `-PublishGitHub` to replace assets on the stable `reviewer-latest` release
 - `Advanced\Package-Portable.ps1`
   - fallback/manual portable bundle helper
@@ -148,13 +151,13 @@ Keep these specialist helpers:
   - shared console output + strict invocation helpers used by the front-door scripts
 
 The main workspace-validation logic is no longer owned by `Build-Workspace.ps1`, and the normal publish path no longer owns that orchestration either.
-`Build-Workspace.ps1` now forwards into `powerforge workspace validate`, and `Build-Project.ps1` forwards into `powerforge release`, so the readable source of truth lives in `workspace.validation.json`, `release.json`, and `powerforge.dotnetpublish.json`.
+`Build-Workspace.ps1` now forwards into `powerforge workspace validate`, and `Build-Product.ps1` forwards into `powerforge release`, so the readable source of truth lives in `workspace.validation.json`, `release.json`, and `powerforge.dotnetpublish.json`.
 `Build-Release.ps1` now relies on the same unified release engine for the normal app flow, including final release staging into `nuget`, `portable`, `installer`, `tools`, and `metadata`.
 The wrapper now expresses only high-level release intent and lets PowerForge decide which internal DotNetPublish steps still need to run.
 The checked-in `release.json` packages the dependency-light `IntelligenceX` SDK before `IntelligenceX.Storage.SQLite` and uses the unified `UploadReady` staging + Winget manifest flow for desktop-app release handoff.
 `Build-Release.ps1` now stays thin even when publishing: it forwards publish intent into `powerforge release`, and the top-level `GitHub` section in `Build\release.json` owns the unified repo release behavior instead of a repo-local publish helper.
-When you run `Build-Project.ps1 -PackagesOnly` without overriding `-ConfigPath`, the wrapper invokes the focused `Build\project.build.json` package lane directly. This keeps public NuGet packaging independent from private workspace validation, desktop-app Winget assets, and installer tooling. Pass an explicit release config only when you intentionally need the wider release graph.
+`Build-Project.ps1` is intentionally limited to public NuGet packages. It uses `Build\project.build.json`, keeping package publication independent from private workspace validation, desktop-app Winget assets, and installer tooling. Use `Build-Product.ps1` only when you intentionally need the wider app/tool release graph.
 User-supplied `-StageRoot`, `-OutputRoot`, `-ManifestJsonPath`, and `-ChecksumsPath` values are resolved from the repo root now, so `.\Artifacts\...` behaves the way it looks from the shell prompt.
 Set `POWERFORGE_CLI_PATH` when you want the wrappers to use a specific built CLI or script explicitly instead of auto-resolving a sibling PSPublishModule checkout.
 
-The old standalone publish wrappers for CLI/chat/tray were removed because `Build-Project.ps1` now covers those targets through PowerForge.
+The old standalone publish wrappers for CLI/chat/tray were removed because `Build-Product.ps1` now covers those targets through PowerForge.

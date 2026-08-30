@@ -17,7 +17,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repo = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$buildProjectScript = Join-Path $repo 'Build\Build-Project.ps1'
+$buildProductScript = Join-Path $repo 'Build\Build-Product.ps1'
 $configPath = Join-Path $repo 'Build\release.reviewer.json'
 
 $parameters = @{
@@ -38,4 +38,4 @@ if ($PublishGitHub) {
     $parameters.PublishToolGitHub = $true
 }
 
-& $buildProjectScript @parameters
+& $buildProductScript @parameters

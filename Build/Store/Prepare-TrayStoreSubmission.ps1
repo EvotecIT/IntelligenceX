@@ -24,7 +24,7 @@ if (-not $SkipBuild) {
     }
 
     Write-Host 'Building IX Tray Store package artifacts...'
-    & pwsh (Join-Path $repoRoot 'Build\Build-Project.ps1') `
+    & pwsh (Join-Path $repoRoot 'Build\Build-Product.ps1') `
         -SkipWorkspaceBuild `
         -ToolsOnly `
         -Targets IntelligenceX.Tray `

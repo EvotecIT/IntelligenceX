@@ -65,37 +65,42 @@ The readable source of truth is now `Build/workspace.validation.json`.
 
 ## 3. Publish
 
-Unified package release flow (recommended first):
+Public NuGet packages:
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -Plan
-pwsh ./Build/Build-Project.ps1 -PackagesOnly -Plan
-pwsh ./Build/Build-Project.ps1 -PackagesOnly
+pwsh ./Build/Build-Project.ps1 -Plan $true
+pwsh ./Build/Build-Project.ps1 -Build $true
 pwsh ./Build/Test-Packages.ps1 -PackageDirectory ./Artifacts/ProjectBuild/packages
-pwsh ./Build/Build-Project.ps1 -PackagesOnly -PublishNuget
-pwsh ./Build/Build-Project.ps1
-pwsh ./Build/Build-Project.ps1 -Configuration Debug -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -IncludeSymbols
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignThumbprint <thumbprint>
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignSubjectName "Evotec Code Signing" -SignOnFailure Warn
-pwsh ./Build/Build-Project.ps1 -PublishProjectGitHub
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -PublishToolGitHub
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Host -Styles FrameworkDependent
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Service -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -PublishToolGitHub
+pwsh ./Build/Build-Project.ps1 -PublishNuget $true
+```
+
+Apps, tools, installers, and coordinated releases:
+
+```powershell
+pwsh ./Build/Build-Product.ps1 -Plan
+pwsh ./Build/Build-Product.ps1
+pwsh ./Build/Build-Product.ps1 -Configuration Debug -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -IncludeSymbols
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignThumbprint <thumbprint>
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignSubjectName "Evotec Code Signing" -SignOnFailure Warn
+pwsh ./Build/Build-Product.ps1 -PublishProjectGitHub
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -PublishToolGitHub
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Host -Styles FrameworkDependent
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Service -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -PublishToolGitHub
 ```
 
 What this covers today:
 - workspace preflight via the unified `release.json -> WorkspaceValidation -> workspace.validation.json` path unless `-SkipWorkspaceBuild`
 - workspace/preflight failures now include hints for `-SkipTests`, `-SkipHarness`, and `-SkipWorkspaceBuild` so it is clearer whether the problem is validation or publish
-- public NuGet packaging through `Build-Project.ps1 -PackagesOnly`, which uses focused `Build\project.build.json` for `IntelligenceX` and `IntelligenceX.Storage.SQLite`
+- public NuGet packaging through the small `Build-Project.ps1` wrapper and focused `Build\project.build.json`
 - package artifact validation through `Build/Test-Packages.ps1`, which inspects the actual payload and portable symbols, then restores and runs a clean consumer from the local package feed
 - plugin NuGet packaging through PowerForge unified `release.json`
 - `IntelligenceX.Cli`, `IntelligenceX.Tray`, `IntelligenceX.Chat.Host`, `IntelligenceX.Chat.Service`, and `IntelligenceX.Chat.App` publish/zip through PowerForge DotNetPublish
 - `IntelligenceX.Chat.App` portable publish composes the client bundle through PowerForge, including the service sidecar, plugin payload, helper launchers, bundle metadata, zip, and WiX MSI
 - style choice through PowerForge (`FrameworkDependent` for smaller runtime-required outputs, `PortableCompat` for self-contained outputs)
-- symbol-preserving outputs and MSI signing can now be requested through the unified `Build-Project.ps1` / `powerforge release` path as well
+- symbol-preserving outputs and MSI signing can now be requested through the unified `Build-Product.ps1` / `powerforge release` path as well
 - repo-level release staging can now stay on the unified path as well through `-StageRoot` / `Build-Release.ps1`, which copies assets into `nuget`, `portable`, `installer`, `tools`, and `metadata` without a repo-local manifest-copy helper
 - the checked-in `Build/release.json` now uses PowerForge `UploadReady` staging by default so local and CI release handoff land in one root with `NuGet`, `GitHub`, `Winget`, and metadata instead of scattered artifact folders
 - signing policy can now be selected from the unified path as well (`Warn` / `Fail` / `Skip`), which is useful when USB-token middleware like SafeNet may pop interactive PIN/password UI
@@ -107,21 +112,21 @@ Quick reference:
 
 `TestimoXRoot` resolution:
 - `Directory.Build.props` now defines the default `TestimoXRoot` from `TESTIMOX_ROOT` first, then sibling `..\TestimoX` / `..\..\TestimoX` layouts.
-- `Build-Project.ps1` and `Build-Release.ps1` still accept `-TestimoXRoot`, but that should now be the exception rather than the normal path.
+- `Build-Product.ps1` and `Build-Release.ps1` still accept `-TestimoXRoot`, but that should now be the exception rather than the normal path.
 
 Current staged notes:
 - WinAppSDK single-file publish still has app-specific runtime expectations, so keep validating the portable app output when changing startup/bootstrap code.
 - `Build-Release.ps1` remains the repo-specific full release wrapper when you want workspace validation, package assets, portable chat bundle, MSI, and release manifests/checksums in one command.
-- `Build-Release.ps1` is now a thin wrapper over `Build-Project.ps1` for the normal `Frontend app` release flow, and PowerForge itself stages the produced package/portable/MSI assets into the release folder.
+- `Build-Release.ps1` is now a thin wrapper over `Build-Product.ps1` for the normal `Frontend app` release flow, and PowerForge itself stages the produced package/portable/MSI assets into the release folder.
 - `Build-Release.ps1` no longer re-implements skip/fallback orchestration in PowerShell; unsupported cases like `Frontend host` now fail fast and point callers at the advanced helpers directly.
 - `Build\Advanced\Package-Portable.ps1` remains a valid fallback/manual entrypoint, but it now reuses the same bundle-finishing helper as the PowerForge path instead of owning that logic outright.
 - `Build\Internal\Complete-PortableBundle.ps1` is now thin: it exports plugin folders, generates IntelligenceX-specific launcher/README files, and delegates archive/delete/metadata mechanics to `powerforge dotnet bundle-postprocess`.
-- `Build\Advanced\Build-Installer.ps1` remains a valid fallback/manual entrypoint, but the default MSI path is now `Build-Project.ps1` -> PowerForge DotNetPublish.
+- `Build\Advanced\Build-Installer.ps1` remains a valid fallback/manual entrypoint, but the default MSI path is now `Build-Product.ps1` -> PowerForge DotNetPublish.
 - `Build\powerforge.dotnetpublish.json` is now the active unified CLI/tray/chat-host/chat-service/chat-app publish config.
-- `Build\release.json` now also owns the normal workspace-preflight hook through `WorkspaceValidation`, so `Build-Project.ps1` stays thin.
-- `Build\project.build.json` owns the focused package-only lane, so `Build-Project.ps1 -PackagesOnly` can build and publish `IntelligenceX` before `IntelligenceX.Storage.SQLite` without requiring desktop-app Winget assets. `Build\release.packages.json` remains available to the wider release graph when release staging arguments are supplied.
-- `Build-Project.ps1` now resolves user-supplied release output paths from the repo root, which removes the old surprise where `.\Artifacts\...` ended up under `Build\Artifacts\...` because PowerForge resolved them relative to the config file.
-- `POWERFORGE_CLI_PATH` is now the most explicit local override for wrapper validation when you want `Build-Project.ps1` and related scripts to use one exact built CLI or script path instead of sibling-repo discovery.
+- `Build\release.json` now also owns the normal workspace-preflight hook through `WorkspaceValidation`, so `Build-Product.ps1` stays thin.
+- `Build\project.build.json` owns the focused package lane, so `Build-Project.ps1` builds and publishes `IntelligenceX` before `IntelligenceX.Storage.SQLite` without requiring desktop-app Winget assets. `Build\release.packages.json` remains available to the wider release graph when release staging arguments are supplied.
+- `Build-Product.ps1` now resolves user-supplied release output paths from the repo root, which removes the old surprise where `.\Artifacts\...` ended up under `Build\Artifacts\...` because PowerForge resolved them relative to the config file.
+- `POWERFORGE_CLI_PATH` is now the most explicit local override for wrapper validation when you want `Build-Product.ps1` and related scripts to use one exact built CLI or script path instead of sibling-repo discovery.
 - `Build\Internal\Resolve-TestimoXRoot.ps1` is now the shared resolver used by workspace/plugin scripts instead of duplicating that logic in multiple files.
 - `Build\Internal\Resolve-ReleaseDefaults.ps1` is now the shared helper for release-specific defaults like the primary executable name and the TestimoX signing-thumbprint fallback.
 - `Build\Internal\Build.ScriptSupport.ps1` is now the shared helper for front-door script console output plus strict `dotnet` / nested-script invocation.
@@ -166,23 +171,23 @@ Installer project files:
 CLI:
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Cli -Runtimes win-x64 -Frameworks net8.0 -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Cli -Runtimes win-x64 -Frameworks net8.0 -Styles FrameworkDependent
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Cli -Runtimes win-x64 -Frameworks net8.0 -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Cli -Runtimes win-x64 -Frameworks net8.0 -Styles FrameworkDependent
 ```
 
 Chat (single app default = Host, service optional):
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Host -Runtimes win-x64 -Frameworks net10.0-windows -Styles FrameworkDependent
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Service -Runtimes win-x64 -Frameworks net10.0-windows -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Runtimes win-x64 -Frameworks net10.0-windows10.0.26100.0 -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Host -Runtimes win-x64 -Frameworks net10.0-windows -Styles FrameworkDependent
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Service -Runtimes win-x64 -Frameworks net10.0-windows -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Runtimes win-x64 -Frameworks net10.0-windows10.0.26100.0 -Styles PortableCompat
 ```
 
 Tray app:
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64 -Frameworks net10.0-windows10.0.19041.0 -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64 -Frameworks net10.0-windows10.0.19041.0 -Styles FrameworkDependent
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64 -Frameworks net10.0-windows10.0.19041.0 -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64 -Frameworks net10.0-windows10.0.19041.0 -Styles FrameworkDependent
 ```
 
 Tray Store package:
@@ -203,8 +208,8 @@ Store notes:
 Portable app bundle (recommended for end users):
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -PublishToolGitHub
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -PublishToolGitHub
 ```
 
 Fallback/manual bundle path:

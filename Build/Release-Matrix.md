@@ -6,9 +6,10 @@ Use this as the quick "which command do I run?" map.
 
 | Need | Command | Notes |
 | --- | --- | --- |
-| See what will build/publish | `pwsh ./Build/Build-Project.ps1 -Plan` | safest starting point |
-| Build or publish the public NuGet packages | `pwsh ./Build/Build-Project.ps1 -PackagesOnly -PublishNuget` | uses focused `Build\project.build.json` and publishes `IntelligenceX` before `IntelligenceX.Storage.SQLite` |
-| Publish packages + supported app/tool targets | `pwsh ./Build/Build-Project.ps1` | unified PowerForge path |
+| Preview the public NuGet package plan | `pwsh ./Build/Build-Project.ps1 -Plan $true` | safest package starting point |
+| Build the public NuGet packages | `pwsh ./Build/Build-Project.ps1 -Build $true` | writes packages under `Artifacts\ProjectBuild` |
+| Publish the public NuGet packages | `pwsh ./Build/Build-Project.ps1 -PublishNuget $true` | publishes `IntelligenceX` before `IntelligenceX.Storage.SQLite` |
+| Build supported app/tool targets | `pwsh ./Build/Build-Product.ps1 -Plan` | coordinated PowerForge product path |
 | Publish reviewer release assets | `pwsh ./Build/Advanced/Build-Reviewer.ps1 -PublishGitHub` | stable `reviewer-latest` release |
 | Produce full client release folder | `pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release` | wraps workspace validation + release staging |
 | Run local apps/tools | `pwsh ./Build/Run-Project.ps1 -ListTargets` | then pick `-Target` |
@@ -23,7 +24,7 @@ Use this as the quick "which command do I run?" map.
 
 Useful release-time overrides on the unified path:
 - `-IncludeSymbols`
-- `-ToolOutputs Portable,Installer` or `-SkipToolOutputs Installer` on `Build-Project.ps1` when you want output-level selection without dropping to granular scripts
+- `-ToolOutputs Portable,Installer` or `-SkipToolOutputs Installer` on `Build-Product.ps1` when you want output-level selection without dropping to granular scripts
 - `-SignInstaller`
   Normal case: set `CERT_THUMBPRINT` once and let the wrapper resolve it automatically.
   Override case: pass `-SignThumbprint` explicitly for one run.

@@ -295,7 +295,7 @@ dotnet ./IntelligenceX.Tests/bin/Release/net10.0/IntelligenceX.Tests.dll
 Publish CLI (self-contained portable style):
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Cli -Runtimes win-x64 -Frameworks net8.0 -Styles PortableCompat
+pwsh ./Build/Build-Product.ps1 -ToolsOnly -Targets IntelligenceX.Cli -Runtimes win-x64 -Frameworks net8.0 -Styles PortableCompat
 ```
 
 ## License

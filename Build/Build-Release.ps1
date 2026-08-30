@@ -75,7 +75,7 @@ if ($ClearOut -and (Test-Path -LiteralPath $OutDir)) {
 }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-$buildProjectScript = Join-Path $script:RepoRoot 'Build\Build-Project.ps1'
+$buildProductScript = Join-Path $script:RepoRoot 'Build\Build-Product.ps1'
 $frontendNormalized = $Frontend.ToLowerInvariant()
 
 if ($frontendNormalized -ne 'app') {
@@ -213,6 +213,6 @@ Write-Step "Installer: $(-not $SkipInstaller)"
 Write-Step "Publish GitHub: $([bool]($Publish -or $PublishGitHub))"
 Write-Step "Publish NuGet: $([bool]($Publish -or $PublishNuget))"
 
-Invoke-ScriptFile -ScriptPath $buildProjectScript -Parameters $parameters -FailureContext 'Unified release build failed.' -FailureHint 'Use Build-Project.ps1 -Plan to inspect the release graph, or rerun Build-Project.ps1 directly for a narrower repro.'
+Invoke-ScriptFile -ScriptPath $buildProductScript -Parameters $parameters -FailureContext 'Unified release build failed.' -FailureHint 'Use Build-Product.ps1 -Plan to inspect the release graph, or rerun Build-Product.ps1 directly for a narrower repro.'
 
 Write-Ok "Release artifacts ready: $OutDir"

@@ -38,13 +38,13 @@ public sealed class PowerForgePackagingContractTests
 
         Assert.Contains("Use-LegacyInstallerFlow", script, StringComparison.Ordinal);
         Assert.Contains("Build-Installer.Legacy.ps1", script, StringComparison.Ordinal);
-        Assert.Contains("Build-Project.ps1", script, StringComparison.Ordinal);
+        Assert.Contains("Build-Product.ps1", script, StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(ResolveRepositoryRoot(), "Build", "Internal", "Build-Installer.Legacy.ps1")));
         Assert.True(File.Exists(Path.Combine(ResolveRepositoryRoot(), "Installer", "IntelligenceX.Chat", "IntelligenceX.Chat.wxs")));
     }
 
     [Theory]
-    [InlineData("Build-Project.ps1")]
+    [InlineData("Build-Product.ps1")]
     [InlineData("Build-Release.ps1")]
     public void SigningTimeoutZero_DoesNotEnableSigningByItself(string scriptName)
     {
