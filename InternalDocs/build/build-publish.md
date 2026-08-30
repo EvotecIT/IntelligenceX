@@ -68,10 +68,10 @@ The readable source of truth is now `Build/workspace.validation.json`.
 Public NuGet packages:
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -Plan $true
-pwsh ./Build/Build-Project.ps1 -Build $true
+./Build/Build-Project.ps1 -Plan $true
+./Build/Build-Project.ps1 -Build $true
 pwsh ./Build/Test-Packages.ps1 -PackageDirectory ./Artifacts/ProjectBuild/packages
-pwsh ./Build/Build-Project.ps1 -PublishNuget $true
+./Build/Build-Project.ps1 -PublishNuget $true
 ```
 
 Apps, tools, installers, and coordinated releases:

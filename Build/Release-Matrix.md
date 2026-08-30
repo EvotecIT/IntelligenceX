@@ -6,9 +6,9 @@ Use this as the quick "which command do I run?" map.
 
 | Need | Command | Notes |
 | --- | --- | --- |
-| Preview the public NuGet package plan | `pwsh ./Build/Build-Project.ps1 -Plan $true` | safest package starting point |
-| Build the public NuGet packages | `pwsh ./Build/Build-Project.ps1 -Build $true` | writes packages under `Artifacts\ProjectBuild` |
-| Publish the public NuGet packages | `pwsh ./Build/Build-Project.ps1 -PublishNuget $true` | publishes `IntelligenceX` before `IntelligenceX.Storage.SQLite` |
+| Preview the public NuGet package plan | `./Build/Build-Project.ps1 -Plan $true` | safest package starting point; run from PowerShell |
+| Build the public NuGet packages | `./Build/Build-Project.ps1 -Build $true` | writes packages under `Artifacts\ProjectBuild` |
+| Publish the public NuGet packages | `./Build/Build-Project.ps1 -PublishNuget $true` | publishes `IntelligenceX` before `IntelligenceX.Storage.SQLite` |
 | Build supported app/tool targets | `pwsh ./Build/Build-Product.ps1 -Plan` | coordinated PowerForge product path |
 | Publish reviewer release assets | `pwsh ./Build/Advanced/Build-Reviewer.ps1 -PublishGitHub` | stable `reviewer-latest` release |
 | Produce full client release folder | `pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release` | wraps workspace validation + release staging |

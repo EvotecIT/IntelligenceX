@@ -62,10 +62,10 @@ Folder layout:
 Examples:
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -Plan $true
-pwsh ./Build/Build-Project.ps1 -Build $true
+./Build/Build-Project.ps1 -Plan $true
+./Build/Build-Project.ps1 -Build $true
 pwsh ./Build/Test-Packages.ps1 -PackageDirectory ./Artifacts/ProjectBuild/packages
-pwsh ./Build/Build-Project.ps1 -PublishNuget $true
+./Build/Build-Project.ps1 -PublishNuget $true
 pwsh ./Build/Build-Product.ps1 -Plan
 powerforge workspace validate --config ./Build/workspace.validation.json --list
 powerforge workspace validate --config ./Build/workspace.validation.json --profile oss --enable-feature chat
