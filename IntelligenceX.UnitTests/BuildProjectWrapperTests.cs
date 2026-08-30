@@ -10,7 +10,7 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class BuildProjectWrapperTests {
     [Fact]
-    public void DefaultInvocation_UsesFocusedPackageConfiguration() {
+    public void NonPublishInvocation_UsesFocusedPackageConfiguration() {
         var repoRoot = FindRepoRoot();
         using var harness = ProjectBuildCaptureHarness.Create();
 
@@ -64,6 +64,9 @@ public sealed class BuildProjectWrapperTests {
         Assert.Equal("IntelligenceX", root.GetProperty("GitHubPrimaryProject").GetString());
         Assert.Equal("../Artifacts/ProjectBuild/project.build.plan.json", root.GetProperty("PlanOutputPath").GetString());
         Assert.Equal("../Artifacts/ProjectBuild/ReleaseZip", root.GetProperty("ReleaseZipOutputPath").GetString());
+        Assert.Equal("92e95fb58effa6a4a75e77a33cdd6bfe6dd30f1a", root.GetProperty("CertificateThumbprint").GetString());
+        Assert.Equal("CurrentUser", root.GetProperty("CertificateStore").GetString());
+        Assert.Equal("http://timestamp.digicert.com", root.GetProperty("TimeStampServer").GetString());
     }
 
     private static string FindRepoRoot() {
@@ -130,8 +133,8 @@ $env:PSModulePath = $env:IX_PROJECT_BUILD_MODULE_PATH + [IO.Path]::PathSeparator
 $parameters = @{}
 if ($env:IX_PROJECT_BUILD_PLAN -eq '1') { $parameters.Plan = $true }
 if ($env:IX_PROJECT_BUILD_PLAN_PATH) { $parameters.PlanPath = $env:IX_PROJECT_BUILD_PLAN_PATH }
-if ($env:IX_PROJECT_BUILD_PUBLISH_NUGET -eq '1') { $parameters.PublishNuget = $true }
-if ($env:IX_PROJECT_BUILD_PUBLISH_GITHUB -eq '1') { $parameters.PublishGitHub = $true }
+$parameters.PublishNuget = $env:IX_PROJECT_BUILD_PUBLISH_NUGET -eq '1'
+$parameters.PublishGitHub = $env:IX_PROJECT_BUILD_PUBLISH_GITHUB -eq '1'
 & $env:IX_PROJECT_BUILD_SCRIPT @parameters
 """);
 
