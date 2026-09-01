@@ -47,21 +47,6 @@ public final class IXRealtimeWebRTCSession: NSObject {
     public typealias EventHandler = @MainActor @Sendable (IXRealtimeEvent) async -> Void
     public typealias StateHandler = @MainActor @Sendable (IXRealtimeConnectionState) -> Void
 
-    private static let peerFactory: LKRTCPeerConnectionFactory = {
-        _ = LKRTCInitializeSSL()
-        let factory = LKRTCPeerConnectionFactory(
-            audioDeviceModuleType: .audioEngine,
-            bypassVoiceProcessing: false,
-            encoderFactory: LKRTCDefaultVideoEncoderFactory(),
-            decoderFactory: LKRTCDefaultVideoDecoderFactory(),
-            audioProcessingModule: nil
-        )
-        _ = factory.audioDeviceModule.setEngineAvailability(
-            LKRTCAudioEngineAvailability(isInputAvailable: true, isOutputAvailable: true)
-        )
-        return factory
-    }()
-
     private let secret: IXRealtimeClientSecret
     private let exchange: any IXRealtimeSDPExchanging
     private let audioSessionProfile: IXRealtimeAudioSessionProfile
@@ -181,10 +166,14 @@ public final class IXRealtimeWebRTCSession: NSObject {
     private func connectPeer(generation: UInt64) async throws {
         try validateConnection(generation: generation)
         reportState(.connecting)
+        let peerFactory = await IXRealtimeWebRTCPeerFactoryProvider.shared
+            .factory()
+            .value
+        try validateConnection(generation: generation)
         let configuration = LKRTCConfiguration()
         configuration.sdpSemantics = .unifiedPlan
         let constraints = LKRTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
-        guard let peer = Self.peerFactory.peerConnection(
+        guard let peer = peerFactory.peerConnection(
             with: configuration,
             constraints: constraints,
             delegate: self
@@ -193,8 +182,8 @@ public final class IXRealtimeWebRTCSession: NSObject {
         }
         peerConnection = peer
 
-        let audioSource = Self.peerFactory.audioSource(with: constraints)
-        let track = Self.peerFactory.audioTrack(with: audioSource, trackId: "ix-microphone")
+        let audioSource = peerFactory.audioSource(with: constraints)
+        let track = peerFactory.audioTrack(with: audioSource, trackId: "ix-microphone")
         let processingResult = track.setAudioProcessingOptions(
             .communication()
         )

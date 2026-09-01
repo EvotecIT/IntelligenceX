@@ -9,17 +9,20 @@ public actor IXRealtimeClient {
     private let authSession: IXCodexAuthSession
     private let httpClient: any IXHTTPClient
     private let userAgent: String
+    private let requestTimeoutInterval: TimeInterval
 
     public init(
         authSession: IXCodexAuthSession,
         endpoint: URL = URL(string: "https://api.openai.com/v1/realtime/client_secrets")!,
         httpClient: any IXHTTPClient = IXURLSessionHTTPClient(),
-        userAgent: String = "intelligencex-swift/0.1"
+        userAgent: String = "intelligencex-swift/0.1",
+        requestTimeoutInterval: TimeInterval = 12
     ) {
         self.authSession = authSession
         self.endpoint = endpoint
         self.httpClient = httpClient
         self.userAgent = userAgent
+        self.requestTimeoutInterval = requestTimeoutInterval
     }
 
     public func createClientSecret(
@@ -46,7 +49,10 @@ public actor IXRealtimeClient {
         }
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONEncoder().encode(body)
-        let response = try await httpClient.send(request)
+        let response = try await httpClient.send(
+            request,
+            timeoutInterval: requestTimeoutInterval
+        )
         if response.statusCode == 401 && retryUnauthorized {
             _ = try await authSession.validBundle(forceRefresh: true)
             return try await createClientSecret(
