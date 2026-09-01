@@ -9,23 +9,43 @@ public actor IXRealtimeClient {
     private let authSession: IXCodexAuthSession
     private let httpClient: any IXHTTPClient
     private let userAgent: String
+    private let requestTimeoutInterval: TimeInterval
 
     public init(
         authSession: IXCodexAuthSession,
         endpoint: URL = URL(string: "https://api.openai.com/v1/realtime/client_secrets")!,
         httpClient: any IXHTTPClient = IXURLSessionHTTPClient(),
-        userAgent: String = "intelligencex-swift/0.1"
+        userAgent: String = "intelligencex-swift/0.1",
+        requestTimeoutInterval: TimeInterval = 12
     ) {
         self.authSession = authSession
         self.endpoint = endpoint
         self.httpClient = httpClient
         self.userAgent = userAgent
+        self.requestTimeoutInterval = requestTimeoutInterval
     }
 
     public func createClientSecret(
         options: IXRealtimeSessionOptions,
         tools: [IXCodexToolDefinition] = [],
         retryUnauthorized: Bool = true
+    ) async throws -> IXRealtimeClientSecret {
+        let timeout = requestTimeoutInterval
+        return try await IXElapsedDeadline.run(
+            timeoutInterval: timeout
+        ) {
+            try await self.createClientSecretWithinDeadline(
+                options: options,
+                tools: tools,
+                retryUnauthorized: retryUnauthorized
+            )
+        }
+    }
+
+    private func createClientSecretWithinDeadline(
+        options: IXRealtimeSessionOptions,
+        tools: [IXCodexToolDefinition],
+        retryUnauthorized: Bool
     ) async throws -> IXRealtimeClientSecret {
         try IXCodexToolSchemaValidator.validate(tools)
         let bundle = try await authSession.validBundle()
@@ -46,10 +66,13 @@ public actor IXRealtimeClient {
         }
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONEncoder().encode(body)
-        let response = try await httpClient.send(request)
+        let response = try await httpClient.send(
+            request,
+            timeoutInterval: requestTimeoutInterval
+        )
         if response.statusCode == 401 && retryUnauthorized {
             _ = try await authSession.validBundle(forceRefresh: true)
-            return try await createClientSecret(
+            return try await createClientSecretWithinDeadline(
                 options: options,
                 tools: tools,
                 retryUnauthorized: false

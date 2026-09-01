@@ -19,6 +19,24 @@ public protocol IXHTTPClient: Sendable {
     func send(_ request: URLRequest) async throws -> IXHTTPResponse
 }
 
+public extension IXHTTPClient {
+    /// Sends one request with an absolute elapsed-time deadline. The deadline
+    /// remains authoritative even when a custom transport ignores
+    /// `URLRequest.timeoutInterval` or a response keeps producing small chunks.
+    func send(
+        _ request: URLRequest,
+        timeoutInterval: TimeInterval
+    ) async throws -> IXHTTPResponse {
+        let timeout = IXElapsedDeadline.normalized(timeoutInterval)
+        var boundedRequest = request
+        boundedRequest.timeoutInterval = timeout
+        let requestToSend = boundedRequest
+        return try await IXElapsedDeadline.run(timeoutInterval: timeout) {
+            try await send(requestToSend)
+        }
+    }
+}
+
 public struct IXHTTPStreamingResponse: Sendable {
     public let statusCode: Int
     public let headers: [String: String]

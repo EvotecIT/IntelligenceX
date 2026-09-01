@@ -1,4 +1,5 @@
 import Foundation
+import IntelligenceXCodex
 import IntelligenceXRealtime
 import XCTest
 @testable import IntelligenceXRealtimeWebRTC
@@ -186,6 +187,40 @@ final class IXRealtimeSDPExchangeTests: XCTestCase {
         XCTAssertFalse(value.contains("filename="))
         XCTAssertTrue(value.contains("Content-Type: application/sdp\r\n\r\nv=0\r\na=example"))
         XCTAssertTrue(value.hasSuffix("\r\n--test-boundary--\r\n"))
+    }
+
+    func testSDPExchangeAppliesFiniteRequestTimeout() async throws {
+        let recorder = SDPRequestRecorder()
+        let exchange = IXOpenAIRealtimeSDPExchange(
+            httpClient: IXClosureHTTPClient { request in
+                await recorder.record(request)
+                return .init(
+                    statusCode: 200,
+                    body: Data("v=0\r\n".utf8)
+                )
+            },
+            requestTimeoutInterval: 9
+        )
+
+        _ = try await exchange.exchange(
+            offer: "v=0\r\n",
+            secret: .init(
+                value: "test-secret",
+                expiresAt: .distantFuture,
+                model: "test-model"
+            )
+        )
+
+        let request = await recorder.request
+        XCTAssertEqual(request.timeoutInterval, 9)
+    }
+}
+
+private actor SDPRequestRecorder {
+    private(set) var request = URLRequest(url: URL(string: "about:blank")!)
+
+    func record(_ request: URLRequest) {
+        self.request = request
     }
 }
 
