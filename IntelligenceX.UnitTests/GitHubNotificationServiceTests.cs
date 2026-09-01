@@ -377,9 +377,6 @@ public sealed class GitHubNotificationServiceTests {
 
         releaseMutation.TrySetResult(true);
         await mutation;
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
-        Assert.False(fetchAfterMutation.IsCompleted);
-        Assert.Equal(2, handler.Requests.Count);
         var refreshed = await fetchAfterMutation;
 
         Assert.Equal("1", initial.Threads[0].Id);

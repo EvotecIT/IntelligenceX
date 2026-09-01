@@ -21,7 +21,7 @@
     <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.28</OfficeImoMarkdownRendererNuGetVersion>
     <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.41</OfficeImoExcelNuGetVersion>
     <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.37</OfficeImoWordMarkdownNuGetVersion>
-    <AngleSharpNuGetVersion Condition="'$(AngleSharpNuGetVersion)' == ''">1.7.1</AngleSharpNuGetVersion>
+    <AngleSharpNuGetVersion Condition="'$(AngleSharpNuGetVersion)' == ''">1.7.2</AngleSharpNuGetVersion>
   </PropertyGroup>
 
   <ItemGroup>
