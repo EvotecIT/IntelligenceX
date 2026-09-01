@@ -101,6 +101,65 @@ final class IXRealtimeClientTests: XCTestCase {
         await suspendedHTTP.release()
     }
 
+    func testClientSecretDeadlineIncludesInitialAuthenticationRefresh() async throws {
+        let suspendedAuthHTTP = NoncooperativeRealtimeHTTPClient(
+            response: .json(200, [
+                "access_token": "late-access",
+                "refresh_token": "late-refresh",
+                "expires_in": 3_600,
+            ])
+        )
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "expired-access",
+                refreshToken: "refresh",
+                expiresAt: .distantPast,
+                accountID: "account-1"
+            )),
+            httpClient: suspendedAuthHTTP
+        )
+        let client = IXRealtimeClient(
+            authSession: auth,
+            httpClient: IXClosureHTTPClient { _ in
+                XCTFail("Client-secret transport must not run before refresh")
+                return .json(500, [:])
+            },
+            requestTimeoutInterval: 0.02
+        )
+
+        try await assertClientSecretTimesOut(client)
+        await suspendedAuthHTTP.release()
+    }
+
+    func testClientSecretDeadlineIncludesUnauthorizedAuthenticationRefresh() async throws {
+        let suspendedAuthHTTP = NoncooperativeRealtimeHTTPClient(
+            response: .json(200, [
+                "access_token": "late-access",
+                "refresh_token": "late-refresh",
+                "expires_in": 3_600,
+            ])
+        )
+        let auth = IXCodexAuthSession(
+            credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+                accessToken: "oauth-access",
+                refreshToken: "refresh",
+                expiresAt: .distantFuture,
+                accountID: "account-1"
+            )),
+            httpClient: suspendedAuthHTTP
+        )
+        let client = IXRealtimeClient(
+            authSession: auth,
+            httpClient: IXClosureHTTPClient { _ in
+                IXHTTPResponse(statusCode: 401)
+            },
+            requestTimeoutInterval: 0.02
+        )
+
+        try await assertClientSecretTimesOut(client)
+        await suspendedAuthHTTP.release()
+    }
+
     func testClientSecretNormalizesNonfiniteTimeoutToFiniteFallback() async throws {
         let recorder = RealtimeRequestRecorder()
         let client = IXRealtimeClient(
@@ -153,6 +212,32 @@ final class IXRealtimeClientTests: XCTestCase {
             request.timeoutInterval,
             TimeInterval(Int32.max)
         )
+    }
+
+    func testCanceledDeadlineDoesNotStartItsHTTPAttempt() async throws {
+        let gate = CancellationIgnoringStartGate()
+        let recorder = HTTPAttemptRecorder()
+        let client = IXClosureHTTPClient { _ in
+            await recorder.recordAttempt()
+            return IXHTTPResponse(statusCode: 200)
+        }
+        let request = URLRequest(url: URL(string: "https://example.test")!)
+        let task = Task {
+            await gate.wait()
+            return try await client.send(request, timeoutInterval: 1)
+        }
+
+        await gate.waitUntilEntered()
+        task.cancel()
+        await gate.release()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation before the HTTP attempt")
+        } catch is CancellationError {
+        }
+        let attemptCount = await recorder.attemptCount
+        XCTAssertEqual(attemptCount, 0)
     }
 
     func testSessionUpdateCarriesContextualTranscriptionHintsAndTurnPolicy() throws {
@@ -655,6 +740,25 @@ final class IXRealtimeClientTests: XCTestCase {
             ))
         )
     }
+
+    private func assertClientSecretTimesOut(
+        _ client: IXRealtimeClient
+    ) async throws {
+        let clock = ContinuousClock()
+        let startedAt = clock.now
+        do {
+            _ = try await client.createClientSecret(
+                options: .init(instructions: "Help with the home."),
+                tools: []
+            )
+            XCTFail("Expected the complete startup deadline to expire")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .timedOut)
+        } catch {
+            XCTFail("Expected URLError.timedOut, received \(error)")
+        }
+        XCTAssertLessThan(startedAt.duration(to: clock.now), .seconds(1))
+    }
 }
 
 private actor RealtimeRequestRecorder {
@@ -665,8 +769,58 @@ private actor RealtimeRequestRecorder {
     }
 }
 
+private actor HTTPAttemptRecorder {
+    private(set) var attemptCount = 0
+
+    func recordAttempt() {
+        attemptCount += 1
+    }
+}
+
+private actor CancellationIgnoringStartGate {
+    private var entered = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        entered = true
+        let waiters = entryWaiters
+        entryWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilEntered() async {
+        if entered { return }
+        await withCheckedContinuation { continuation in
+            entryWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        let waiters = releaseWaiters
+        releaseWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+}
+
 private actor NoncooperativeRealtimeHTTPClient: IXHTTPClient {
+    private let response: IXHTTPResponse
     private var continuation: CheckedContinuation<IXHTTPResponse, Never>?
+
+    init(response: IXHTTPResponse = .json(200, [
+        "value": "late-secret",
+        "expires_at": 2_000_000_000,
+        "session": ["model": "gpt-realtime-2.1"],
+    ])) {
+        self.response = response
+    }
 
     func send(_ request: URLRequest) async throws -> IXHTTPResponse {
         await withCheckedContinuation { continuation in
@@ -675,13 +829,7 @@ private actor NoncooperativeRealtimeHTTPClient: IXHTTPClient {
     }
 
     func release() {
-        continuation?.resume(
-            returning: .json(200, [
-                "value": "late-secret",
-                "expires_at": 2_000_000_000,
-                "session": ["model": "gpt-realtime-2.1"],
-            ])
-        )
+        continuation?.resume(returning: response)
         continuation = nil
     }
 }

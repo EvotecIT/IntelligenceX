@@ -30,6 +30,23 @@ public actor IXRealtimeClient {
         tools: [IXCodexToolDefinition] = [],
         retryUnauthorized: Bool = true
     ) async throws -> IXRealtimeClientSecret {
+        let timeout = requestTimeoutInterval
+        return try await IXElapsedDeadline.run(
+            timeoutInterval: timeout
+        ) {
+            try await self.createClientSecretWithinDeadline(
+                options: options,
+                tools: tools,
+                retryUnauthorized: retryUnauthorized
+            )
+        }
+    }
+
+    private func createClientSecretWithinDeadline(
+        options: IXRealtimeSessionOptions,
+        tools: [IXCodexToolDefinition],
+        retryUnauthorized: Bool
+    ) async throws -> IXRealtimeClientSecret {
         try IXCodexToolSchemaValidator.validate(tools)
         let bundle = try await authSession.validBundle()
         let seconds = max(10, min(7_200, Int(options.clientSecretLifetime.components.seconds)))
@@ -55,7 +72,7 @@ public actor IXRealtimeClient {
         )
         if response.statusCode == 401 && retryUnauthorized {
             _ = try await authSession.validBundle(forceRefresh: true)
-            return try await createClientSecret(
+            return try await createClientSecretWithinDeadline(
                 options: options,
                 tools: tools,
                 retryUnauthorized: false

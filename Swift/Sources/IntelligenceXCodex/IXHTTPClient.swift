@@ -27,113 +27,13 @@ public extension IXHTTPClient {
         _ request: URLRequest,
         timeoutInterval: TimeInterval
     ) async throws -> IXHTTPResponse {
-        let timeout = IXHTTPDeadline.normalized(timeoutInterval)
+        let timeout = IXElapsedDeadline.normalized(timeoutInterval)
         var boundedRequest = request
         boundedRequest.timeoutInterval = timeout
         let requestToSend = boundedRequest
-        let race = IXHTTPDeadlineRace()
-
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                race.install(continuation)
-                let operation = Task {
-                    do {
-                        race.resolve(.success(try await send(requestToSend)))
-                    } catch {
-                        race.resolve(.failure(error))
-                    }
-                }
-                let deadline = Task {
-                    do {
-                        try await Task.sleep(for: .seconds(timeout))
-                    } catch {
-                        return
-                    }
-                    race.resolve(.failure(URLError(.timedOut)))
-                }
-                race.install(operation: operation, deadline: deadline)
-            }
-        } onCancel: {
-            race.resolve(.failure(CancellationError()))
+        return try await IXElapsedDeadline.run(timeoutInterval: timeout) {
+            try await send(requestToSend)
         }
-    }
-}
-
-private enum IXHTTPDeadline {
-    static let fallbackTimeout: TimeInterval = 12
-    static let minimumTimeout: TimeInterval = 0.01
-    // Keep floating-point conversion comfortably inside Duration's portable
-    // representation. Int32.max seconds already exceeds any useful HTTP
-    // request lifetime while avoiding platform-specific overflow boundaries.
-    static let maximumTimeout: TimeInterval = TimeInterval(Int32.max)
-
-    static func normalized(_ value: TimeInterval) -> TimeInterval {
-        guard value.isFinite else { return fallbackTimeout }
-        return min(maximumTimeout, max(minimumTimeout, value))
-    }
-}
-
-/// Resolves the caller without making structured concurrency wait for a
-/// custom HTTP client that does not cooperate with cancellation. The losing
-/// task is still cancelled so URLSession and well-behaved clients stop work.
-private final class IXHTTPDeadlineRace: @unchecked Sendable {
-    typealias DeadlineResult = Result<IXHTTPResponse, Error>
-
-    private let lock = NSLock()
-    private var continuation:
-        CheckedContinuation<IXHTTPResponse, Error>?
-    private var operation: Task<Void, Never>?
-    private var deadline: Task<Void, Never>?
-    private var settledResult: DeadlineResult?
-
-    func install(
-        _ continuation: CheckedContinuation<IXHTTPResponse, Error>
-    ) {
-        lock.lock()
-        if let settledResult {
-            lock.unlock()
-            continuation.resume(with: settledResult)
-            return
-        }
-        self.continuation = continuation
-        lock.unlock()
-    }
-
-    func install(
-        operation: Task<Void, Never>,
-        deadline: Task<Void, Never>
-    ) {
-        lock.lock()
-        let alreadySettled = settledResult != nil
-        if !alreadySettled {
-            self.operation = operation
-            self.deadline = deadline
-        }
-        lock.unlock()
-        if alreadySettled {
-            operation.cancel()
-            deadline.cancel()
-        }
-    }
-
-    func resolve(_ result: DeadlineResult) {
-        lock.lock()
-        guard settledResult == nil else {
-            lock.unlock()
-            return
-        }
-        settledResult = result
-        let continuation = continuation
-        self.continuation = nil
-        let operation = operation
-        self.operation = nil
-        let deadline = deadline
-        self.deadline = nil
-        lock.unlock()
-
-        operation?.cancel()
-        deadline?.cancel()
-        continuation?.resume(with: result)
     }
 }
 
