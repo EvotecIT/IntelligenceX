@@ -127,6 +127,34 @@ final class IXRealtimeClientTests: XCTestCase {
         XCTAssertEqual(request.timeoutInterval, 12)
     }
 
+    func testClientSecretClampsFiniteTimeoutToRepresentableDuration() async throws {
+        let recorder = RealtimeRequestRecorder()
+        let client = IXRealtimeClient(
+            authSession: makeAuthorizedSession(),
+            httpClient: IXClosureHTTPClient { request in
+                await recorder.record(request)
+                return .json(200, [
+                    "value": "ek_test",
+                    "expires_at": 2_000_000_000,
+                    "session": ["model": "gpt-realtime-2.1"],
+                ])
+            },
+            requestTimeoutInterval: .greatestFiniteMagnitude
+        )
+
+        _ = try await client.createClientSecret(
+            options: .init(instructions: "Help with the home."),
+            tools: []
+        )
+
+        let recordedRequest = await recorder.request
+        let request = try XCTUnwrap(recordedRequest)
+        XCTAssertEqual(
+            request.timeoutInterval,
+            TimeInterval(Int32.max)
+        )
+    }
+
     func testSessionUpdateCarriesContextualTranscriptionHintsAndTurnPolicy() throws {
         let event = IXRealtimeClientEvent.sessionUpdate(
             options: .init(

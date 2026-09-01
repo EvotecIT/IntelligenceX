@@ -62,10 +62,14 @@ public extension IXHTTPClient {
 private enum IXHTTPDeadline {
     static let fallbackTimeout: TimeInterval = 12
     static let minimumTimeout: TimeInterval = 0.01
+    // Keep floating-point conversion comfortably inside Duration's portable
+    // representation. Int32.max seconds already exceeds any useful HTTP
+    // request lifetime while avoiding platform-specific overflow boundaries.
+    static let maximumTimeout: TimeInterval = TimeInterval(Int32.max)
 
     static func normalized(_ value: TimeInterval) -> TimeInterval {
         guard value.isFinite else { return fallbackTimeout }
-        return max(minimumTimeout, value)
+        return min(maximumTimeout, max(minimumTimeout, value))
     }
 }
 
