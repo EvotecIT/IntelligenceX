@@ -1,5 +1,5 @@
 param(
-    [string] $ConfigPath = "$PSScriptRoot\project.build.json",
+    [string] $ConfigPath = (Join-Path $PSScriptRoot 'project.build.json'),
     [Nullable[bool]] $UpdateVersions,
     [Nullable[bool]] $Build,
     [Nullable[bool]] $PublishNuget = $false,
