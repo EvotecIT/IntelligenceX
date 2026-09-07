@@ -6,6 +6,7 @@ public struct IXRealtimeResponseCoordinator: Sendable, Equatable {
     public enum Request: Sendable, Equatable {
         case standard
         case withoutTools
+        case withTools([IXCodexToolDefinition])
 
         public var event: IXJSONValue {
             switch self {
@@ -13,6 +14,8 @@ public struct IXRealtimeResponseCoordinator: Sendable, Equatable {
                 IXRealtimeClientEvent.createResponse
             case .withoutTools:
                 IXRealtimeClientEvent.createResponseWithoutTools
+            case .withTools(let tools):
+                IXRealtimeClientEvent.createResponse(tools: tools)
             }
         }
     }
@@ -33,14 +36,12 @@ public struct IXRealtimeResponseCoordinator: Sendable, Equatable {
     }
 
     public mutating func submit(_ request: Request) -> Submission {
-        guard isBusy else {
-            isAwaitingResponseCreated = true
-            return .send(request)
-        }
         if pendingRequests.last != request {
             pendingRequests.append(request)
         }
-        return .queued
+        guard !isBusy else { return .queued }
+        isAwaitingResponseCreated = true
+        return .send(pendingRequests.removeFirst())
     }
 
     public mutating func didObserveResponse(_ responseID: String) {
@@ -69,6 +70,12 @@ public struct IXRealtimeResponseCoordinator: Sendable, Equatable {
     /// before response.created supplied an identity.
     public mutating func didRejectAwaitingRequest() {
         isAwaitingResponseCreated = false
+    }
+
+    /// Discards queued continuations when a newer user turn supersedes them.
+    /// The current server response remains tracked until it actually finishes.
+    public mutating func discardPendingRequests() {
+        pendingRequests.removeAll()
     }
 
     public mutating func reset() {
