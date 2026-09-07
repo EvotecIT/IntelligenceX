@@ -591,6 +591,55 @@ public sealed class OpenAICompatibleHttpTransportTests {
         Assert.Equal("hello", messages[1].GetProperty("content").GetString());
     }
 
+    [Theory]
+    [InlineData(false, "stop", "completed")]
+    [InlineData(false, "length", "incomplete")]
+    [InlineData(true, "stop", "completed")]
+    [InlineData(true, "length", "incomplete")]
+    public async Task InlineImagesSchemaAndCompletionReasonReachTheWire(bool streaming, string reason, string expectedStatus) {
+        var handler = new StubHandler();
+        if (streaming) handler.RespondSse("data: " + JsonSerializer.Serialize(new { choices = new[] { new { index = 0, delta = new { content = "{}" }, finish_reason = (string?)null } } })
+            + "\n\ndata: " + JsonSerializer.Serialize(new { choices = new[] { new { index = 0, delta = (object?)null, finish_reason = reason } } }) + "\n\ndata: [DONE]\n\n");
+        else handler.RespondJson(HttpStatusCode.OK, JsonSerializer.Serialize(new {
+            choices = new[] { new { index = 0, message = new { role = "assistant", content = "{}" }, finish_reason = reason } }
+        }));
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new() {
+            BaseUrl = "http://127.0.0.1:11434", AllowInsecureHttp = true, Streaming = streaming
+        }, http);
+        var input = ChatInput.FromText("Read this page");
+        input.AddImageBytes(new byte[] { 1, 2, 3 }, "image/png", 3);
+        var thread = await transport.StartThreadAsync("vision", null, null, null, CancellationToken.None);
+        var turn = await transport.StartTurnAsync(thread.Id, input, new ChatOptions {
+            Model = "vision", ResponseFormat = new ChatResponseFormat("document", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"), MaxResponseBytes = 4096
+        }, null, null, null, CancellationToken.None);
+        Assert.Equal(expectedStatus, turn.Status);
+        using var json = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
+        var content = json.RootElement.GetProperty("messages")[0].GetProperty("content");
+        Assert.Equal("Read this page", content[0].GetProperty("text").GetString());
+        Assert.Equal("data:image/png;base64,AQID", content[1].GetProperty("image_url").GetProperty("url").GetString());
+        var format = json.RootElement.GetProperty("response_format");
+        Assert.Equal("json_schema", format.GetProperty("type").GetString());
+        Assert.True(format.GetProperty("json_schema").GetProperty("strict").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ResponseBudgetRejectsOversizedJsonSseAndErrors(bool streaming, bool error) {
+        var handler = new StubHandler();
+        if (streaming) handler.RespondSse("data: " + new string('x', 5000) + "\n\n");
+        else handler.RespondJson(error ? HttpStatusCode.BadRequest : HttpStatusCode.OK, new string('x', 5000));
+        using var http = new HttpClient(handler);
+        using var transport = new OpenAICompatibleHttpTransport(new() {
+            BaseUrl = "http://127.0.0.1:11434", AllowInsecureHttp = true, Streaming = streaming
+        }, http);
+        var thread = await transport.StartThreadAsync("model", null, null, null, CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidDataException>(() => transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"),
+            new ChatOptions { Model = "model", MaxResponseBytes = 1024 }, null, null, null, CancellationToken.None));
+    }
+
     private sealed class StubHandler : HttpMessageHandler {
         private readonly Queue<Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>> _responses = new();
         public List<Uri> RequestUris { get; } = new();

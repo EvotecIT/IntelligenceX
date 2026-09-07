@@ -51,6 +51,10 @@ internal sealed partial class OpenAINativeTransport {
             .Add("text", new JsonObject().Add("verbosity", verbosity.ToApiString()))
             .Add("prompt_cache_key", sessionId);
 
+        if (options.ResponseFormat is not null) {
+            body.GetObject("text")!.Add("format", options.ResponseFormat.ToJsonSchema().Add("type", "json_schema"));
+        }
+
         if (temperature.HasValue) {
             body.Add("temperature", temperature.Value);
         }

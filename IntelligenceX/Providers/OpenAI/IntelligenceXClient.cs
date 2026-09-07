@@ -30,7 +30,7 @@ public sealed class IntelligenceXClient : IDisposable
     private SandboxPolicy? _defaultSandboxPolicy;
     private IDisposable? _usageTelemetrySession;
 
-    private IntelligenceXClient(IOpenAITransport transport, string defaultModel, string? workingDirectory, string? approvalPolicy, SandboxPolicy? sandboxPolicy) {
+    internal IntelligenceXClient(IOpenAITransport transport, string defaultModel, string? workingDirectory, string? approvalPolicy, SandboxPolicy? sandboxPolicy) {
         _transport = transport;
         _defaultModel = defaultModel;
         _defaultWorkingDirectory = workingDirectory;
@@ -353,7 +353,16 @@ public sealed class IntelligenceXClient : IDisposable
     public async Task<TurnInfo> ChatAsync(Chat.ChatInput input, Chat.ChatOptions? options = null, CancellationToken cancellationToken = default) {
         Guard.NotNull(input, nameof(input));
         options ??= new Chat.ChatOptions();
-        if (options.NewThread) {
+        if (options.MaxResponseBytes.HasValue && options.MaxResponseBytes.Value < 1)
+            throw new ArgumentOutOfRangeException(nameof(options.MaxResponseBytes));
+        if (options.MaxResponseBytes.HasValue && TransportKind != OpenAITransportKind.Native && TransportKind != OpenAITransportKind.CompatibleHttp)
+            throw new NotSupportedException("This transport does not support response wire byte limits.");
+        if (options.ResponseFormat is not null && TransportKind != OpenAITransportKind.Native && TransportKind != OpenAITransportKind.CompatibleHttp) {
+            throw new NotSupportedException("This transport does not support explicit JSON-schema response formats.");
+        }
+        if (options.Ephemeral && _transport is not Transport.ILocalThreadLifetime)
+            throw new NotSupportedException("This transport cannot guarantee ephemeral local conversation state.");
+        if (options.NewThread || options.Ephemeral) {
             _currentThreadId = null;
         }
         EnsureFileSafety(input, options);
@@ -362,6 +371,7 @@ public sealed class IntelligenceXClient : IDisposable
         var model = options.Model ?? _defaultModel;
         options.Model ??= model;
         await EnsureThreadAsync(model, cancellationToken).ConfigureAwait(false);
+        string operationThreadId = _currentThreadId!;
         var cwd = options.WorkingDirectory ?? _defaultWorkingDirectory;
         var approval = options.ApprovalPolicy ?? _defaultApprovalPolicy;
         var sandbox = options.SandboxPolicy ?? _defaultSandboxPolicy;
@@ -390,6 +400,11 @@ public sealed class IntelligenceXClient : IDisposable
             stopwatch.Stop();
             RaiseTurnCompleted(_currentThreadId!, options, model, cwd, startedAtUtc, stopwatch.Elapsed, turn: null, success: false, error: ex);
             throw;
+        } finally {
+            if (options.Ephemeral) {
+                ((Transport.ILocalThreadLifetime)_transport).ForgetThread(operationThreadId);
+                if (_currentThreadId == operationThreadId) _currentThreadId = null;
+            }
         }
     }
 

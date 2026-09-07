@@ -43,7 +43,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         }
 
         var usage = responseObj.GetObject("usage");
-        var turn = BuildTurnFromAssistantMessage(assistantMessage, usage);
+        var turn = BuildTurnFromAssistantMessage(assistantMessage, usage, first?.GetString("finish_reason"));
         return new ChatCompletionResponse(turn, assistantMessage);
     }
 
@@ -217,7 +217,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         return toolCalls.Count == 0 ? null : toolCalls;
     }
 
-    private static TurnInfo BuildTurnFromAssistantMessage(JsonObject assistantMessageForHistory, JsonObject? usageObj) {
+    private static TurnInfo BuildTurnFromAssistantMessage(JsonObject assistantMessageForHistory, JsonObject? usageObj, string? finishReason) {
         var outputs = new List<TurnOutput>();
         var rawOutputs = new JsonArray();
 
@@ -286,9 +286,11 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         }
 
         var turnId = Guid.NewGuid().ToString("N");
+        var status = finishReason == "stop" || finishReason == "tool_calls" || finishReason == "function_call" ? "completed" : "incomplete";
         var turnRaw = new JsonObject()
             .Add("id", turnId)
-            .Add("status", "completed")
+            .Add("status", status)
+            .Add("finish_reason", finishReason)
             .Add("outputs", rawOutputs);
 
         TurnUsage? usage = null;
@@ -297,7 +299,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             turnRaw.Add("usage", usageObj);
         }
 
-        return new TurnInfo(turnId, responseId: null, status: "completed", outputs, Array.Empty<TurnOutput>(), turnRaw, additional: null, usage);
+        return new TurnInfo(turnId, responseId: null, status: status, outputs, Array.Empty<TurnOutput>(), turnRaw, additional: null, usage);
     }
 
     private static JsonObject BuildAssistantMessageForHistory(string content, Dictionary<int, ToolCallBuilder> toolCallsByIndex) {
@@ -413,8 +415,20 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
                             .Add("content", output));
                         break;
                     }
-                case "image":
-                    throw new NotSupportedException("CompatibleHttp transport does not currently support image inputs.");
+                case "image": {
+                    var url = item.GetString("url");
+                    if (string.IsNullOrWhiteSpace(url)) {
+                        throw new NotSupportedException("CompatibleHttp images require inline bytes or an explicit image URL; local paths are not read by this transport.");
+                    }
+                    var content = new JsonArray();
+                    if (userText.Length > 0) {
+                        content.Add(new JsonObject().Add("type", "text").Add("text", userText.ToString()));
+                        userText.Clear();
+                    }
+                    content.Add(new JsonObject().Add("type", "image_url").Add("image_url", new JsonObject().Add("url", url)));
+                    messages.Add(new JsonObject().Add("role", "user").Add("content", content));
+                    break;
+                }
                 default:
                     throw new NotSupportedException($"Unsupported chat input item type '{type}'.");
             }

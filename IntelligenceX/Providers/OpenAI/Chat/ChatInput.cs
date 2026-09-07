@@ -9,6 +9,16 @@ namespace IntelligenceX.OpenAI.Chat;
 public sealed class ChatInput {
     private readonly JsonArray _items = new();
 
+    /// <summary>Adds a bounded inline raster image without granting the provider access to a local file path.</summary>
+    public ChatInput AddImageBytes(byte[] bytes, string mediaType, int maxBytes = 10 * 1024 * 1024) {
+        if (bytes is null) throw new ArgumentNullException(nameof(bytes));
+        if (maxBytes < 1 || maxBytes > 64 * 1024 * 1024 || bytes.Length < 1 || bytes.Length > maxBytes)
+            throw new ArgumentOutOfRangeException(nameof(bytes), "Image bytes exceed the configured limit or are empty.");
+        if (mediaType != "image/png" && mediaType != "image/jpeg" && mediaType != "image/webp" && mediaType != "image/gif")
+            throw new ArgumentException("Unsupported inline image media type.", nameof(mediaType));
+        return AddImageUrl("data:" + mediaType + ";base64," + Convert.ToBase64String(bytes));
+    }
+
     /// <summary>
     /// Creates a chat input from a text prompt.
     /// </summary>

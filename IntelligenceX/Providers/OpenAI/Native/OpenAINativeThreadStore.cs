@@ -27,6 +27,7 @@ internal sealed class OpenAINativeThreadStore {
     public bool TryGet(string threadId, out NativeThreadState state) {
         return _threads.TryGetValue(threadId, out state!);
     }
+    public void Forget(string threadId) => _threads.Remove(threadId);
 }
 
 internal sealed class NativeThreadState {

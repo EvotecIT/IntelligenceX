@@ -58,9 +58,14 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             Workspace = request.Workspace,
             AllowNetwork = request.AllowNetwork,
             NewThread = request.NewThread,
+            MaxResponseBytes = request.MaxResponseBytes,
+            Ephemeral = request.Ephemeral,
             TelemetryFeature = "treatment",
             TelemetrySurface = "IntelligenceX.Treatment",
             RequireWorkspaceForFileAccess = true,
+            ResponseFormat = request.EnforceOutputSchema
+                ? new ChatResponseFormat("treatment_output", JsonLite.Serialize(JsonValue.From(request.OutputSchema!.JsonSchema!)), request.OutputSchema.Strict)
+                : null,
             ImageGeneration = MapImageOptions(request.ImageGeneration)
         };
     }
@@ -83,8 +88,15 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
     }
 
     private static void AddImageInputs(ChatInput input, TreatmentRequest request) {
+        long inlineBytes = 0;
         foreach (var artifact in request.Inputs) {
             if (artifact is null) {
+                continue;
+            }
+            if (artifact.ImageBytes is not null) {
+                inlineBytes += artifact.ImageBytes.Length;
+                if (inlineBytes > request.MaxInlineImageBytes) throw new ArgumentException("Inline image payloads exceed the treatment limit.", nameof(request));
+                input.AddImageBytes(artifact.ImageBytes, NormalizeMediaType(artifact.MediaType), request.MaxInlineImageBytes);
                 continue;
             }
             if (!IsImageArtifact(artifact)) {

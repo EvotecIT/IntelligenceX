@@ -31,3 +31,41 @@ foreach (GitHubNotificationThread thread in snapshot.Threads) {
 For persistent SQLite-backed telemetry and GitHub monitoring stores on .NET 8 or .NET 10, add [`IntelligenceX.Storage.SQLite`](https://www.nuget.org/packages/IntelligenceX.Storage.SQLite).
 
 Documentation and source are available in the [IntelligenceX repository](https://github.com/EvotecIT/IntelligenceX).
+
+## Bounded image and structured-output treatment
+
+`TreatmentRequest` can carry text/JSON and inline image bytes without giving the provider a local file path. For an already connected `IntelligenceXClient` and a caller-authorized PNG payload:
+
+```csharp
+using IntelligenceX.Json;
+using IntelligenceX.Treatment;
+
+static Task<TreatmentResult> ReadImageAsync(
+    IntelligenceX.OpenAI.IntelligenceXClient client, byte[] png,
+    CancellationToken cancellationToken = default) {
+    return new OpenAIChatTreatmentProvider(client).RunAsync(new TreatmentRequest {
+        Prompt = "Read the reference printed in this image. Use null when unreadable.",
+        Inputs = new[] {
+            new TreatmentInputArtifact { Id = "source", MediaType = "image/png", ImageBytes = png }
+        },
+        OutputSchema = new TreatmentOutputSchema {
+            JsonSchema = JsonLite.Parse("""
+                {"type":"object","properties":{"reference":{"type":["string","null"]}},"required":["reference"],"additionalProperties":false}
+                """).AsObject(),
+            Strict = true
+        },
+        EnforceOutputSchema = true,
+        MaxInlineImageBytes = 4 * 1024 * 1024,
+        MaxResponseBytes = 256 * 1024,
+        Ephemeral = true,
+        InlineLocalInputFiles = false,
+        ImageGeneration = new TreatmentImageOptions { Enabled = false }
+    }, cancellationToken);
+}
+```
+
+The Native and OpenAI-compatible HTTP transports map enforced schemas to their respective response formats. Other transports must explicitly support the contract; unsupported ephemeral execution is rejected. `EnforceOutputSchema = false` preserves prompted JSON behavior. Always validate the returned structure and source support in the consumer: generation constraints do not establish factual correctness.
+
+`MaxResponseBytes` bounds the response wire stream, including SSE framing, before full buffering. `Ephemeral` starts a fresh conversation and removes local SDK thread state after the request settles; it does not establish remote retention policy. `MaxInlineImageBytes` applies to aggregate encoded image bytes, while the caller remains responsible for decoding and pixel limits.
+
+For sensitive native requests, configure `OpenAINativeOptions.AllowSensitiveDiagnostics = false`, disable telemetry as appropriate, and use `EnableModelFallback = false` when switching models would violate the chosen profile. Compatible HTTP clients can set `AllowAutoRedirect = false` and `UseProxy = false` for an explicitly local loopback route. These options preserve existing defaults for other consumers. `AllowNetwork` controls provider-side tool policy, not whether hosted inference sends supplied content over the network.

@@ -21,19 +21,23 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.Native;
 
-internal sealed partial class OpenAINativeTransport : IOpenAITransport {
+internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalThreadLifetime {
     private readonly OpenAINativeOptions _options;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient;
     private readonly OpenAINativeAuthManager _auth;
     private readonly OpenAINativeThreadStore _threads = new();
 
-    public OpenAINativeTransport(OpenAINativeOptions options) {
+    public OpenAINativeTransport(OpenAINativeOptions options) : this(options, null) { }
+
+    internal OpenAINativeTransport(OpenAINativeOptions options, HttpClient? httpClient) {
         _options = options;
         _options.Validate();
+        _httpClient = httpClient ?? new HttpClient();
         _auth = new OpenAINativeAuthManager(_options);
     }
 
     public OpenAITransportKind Kind => OpenAITransportKind.Native;
+    public void ForgetThread(string threadId) => _threads.Forget(threadId);
     public AppServerClient? RawAppServerClient => null;
 
     public event EventHandler<string>? DeltaReceived;
@@ -265,7 +269,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, ChatOptions options,
         CancellationToken cancellationToken) {
         if (!response.IsSuccessStatusCode) {
-            var error = await ParseErrorResponseAsync(response, cancellationToken).ConfigureAwait(false);
+            var error = await ParseErrorResponseAsync(response, cancellationToken, options.MaxResponseBytes).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
                 var message = string.IsNullOrWhiteSpace(error.Message)
                     ? OpenAIAuthenticationRequiredException.DefaultMessage
@@ -274,7 +278,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             }
             var httpFailure = new HttpRequestException($"ChatGPT request failed ({(int)response.StatusCode}).");
             throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode,
-                OpenAINativeTrace.IsEnabled(), httpFailure);
+                _options.AllowSensitiveDiagnostics && OpenAINativeTrace.IsEnabled(), httpFailure);
         }
 
         var delta = new StringBuilder();
@@ -283,11 +287,12 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         string? streamError = null;
         var streamedOutputs = new List<JsonObject>();
 
-        using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        using var stream = new ResponseBudgetStream(await response.Content.ReadAsStreamAsync().ConfigureAwait(false), options.MaxResponseBytes);
+        using var cancellationRegistration = cancellationToken.Register(stream.Dispose);
         await OpenAINativeSseParser.ParseAsync(stream, evt => {
             HandleStreamEvent(evt, delta, streamedOutputs, ref status, ref completedResponse, ref streamError);
             return Task.CompletedTask;
-        }, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken, _options.AllowSensitiveDiagnostics).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(streamError)) {
             throw new InvalidOperationException(streamError);
@@ -366,7 +371,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             return await SendWithToolSchemaFallbackAsync(body, requestMessages, accessToken, accountId, state, inputItems, trackMessages,
                     model, turnId, options, cancellationToken)
                 .ConfigureAwait(false);
-        } catch (InvalidOperationException ex) when (IsModelNotSupportedForChatGpt(ex)) {
+        } catch (InvalidOperationException ex) when (_options.EnableModelFallback && IsModelNotSupportedForChatGpt(ex)) {
             var fallbackCandidates = await GetChatGptFallbackModelsAsync(model, accessToken, accountId, cancellationToken)
                 .ConfigureAwait(false);
             foreach (var fallback in fallbackCandidates) {
@@ -455,7 +460,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
 
         if (string.Equals(type, "response.output_text.delta", StringComparison.Ordinal)) {
             var piece = evt.GetString("delta");
-            if (!string.IsNullOrWhiteSpace(piece)) {
+            if (!string.IsNullOrEmpty(piece)) {
                 delta.Append(piece);
                 DeltaReceived?.Invoke(this, piece!);
             }
@@ -464,7 +469,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
 
         if (string.Equals(type, "response.refusal.delta", StringComparison.Ordinal)) {
             var piece = evt.GetString("delta");
-            if (!string.IsNullOrWhiteSpace(piece)) {
+            if (!string.IsNullOrEmpty(piece)) {
                 delta.Append(piece);
                 DeltaReceived?.Invoke(this, piece!);
             }

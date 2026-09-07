@@ -100,6 +100,21 @@ public static class TreatmentPromptBuilder {
         if (request.Inputs is null) {
             throw new ArgumentException("Treatment inputs cannot be null.", nameof(request));
         }
+        if (request.MaxInlineImageBytes < 1 || request.MaxInlineImageBytes > 64 * 1024 * 1024)
+            throw new ArgumentOutOfRangeException(nameof(request.MaxInlineImageBytes));
+        if (request.MaxResponseBytes.HasValue && request.MaxResponseBytes.Value < 1)
+            throw new ArgumentOutOfRangeException(nameof(request.MaxResponseBytes));
+        if (request.EnforceOutputSchema && request.OutputSchema?.JsonSchema is null)
+            throw new ArgumentException("Schema enforcement requires an explicit JSON schema.", nameof(request));
+        long inlineImageBytes = 0;
+        foreach (var artifact in request.Inputs) {
+            if (artifact?.ImageBytes is null) continue;
+            if (artifact.Path is not null || artifact.Uri is not null)
+                throw new ArgumentException("Inline images cannot also specify a path or URI.", nameof(request));
+            inlineImageBytes += artifact.ImageBytes.Length;
+            if (artifact.ImageBytes.Length == 0 || inlineImageBytes > request.MaxInlineImageBytes)
+                throw new ArgumentException("Inline images exceed the treatment byte limit or are empty.", nameof(request));
+        }
         if (request.Outputs is null) {
             throw new ArgumentException("Treatment outputs cannot be null.", nameof(request));
         }

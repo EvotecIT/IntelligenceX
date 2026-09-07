@@ -19,7 +19,7 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.CompatibleHttp;
 
-internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
+internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalThreadLifetime {
     private readonly OpenAICompatibleHttpOptions _options;
     private readonly HttpClient _http;
     private readonly Uri _apiBase;
@@ -42,11 +42,12 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         _lmStudioModelsUrl = BuildLmStudioModelsUrl(_apiBase);
         _chatCompletionsUrl = new Uri(_apiBase, "chat/completions");
 
-        _http = httpClient ?? new HttpClient();
+        _http = httpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = _options.AllowAutoRedirect, UseProxy = _options.UseProxy });
         _http.Timeout = Timeout.InfiniteTimeSpan;
     }
 
     public OpenAITransportKind Kind => OpenAITransportKind.CompatibleHttp;
+    public void ForgetThread(string threadId) { lock (_threadsLock) _threads.Remove(threadId); }
     public AppServerClient? RawAppServerClient => null;
 
     public event EventHandler<string>? DeltaReceived;
@@ -402,7 +403,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
-            var response = await SendChatCompletionsAsync(body, cancellationToken).ConfigureAwait(false);
+            var response = await SendChatCompletionsAsync(body, options.MaxResponseBytes, cancellationToken).ConfigureAwait(false);
             RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("chat.completions.create", sw.Elapsed, true));
 
             // Update history with the messages we sent + the assistant message we received.
@@ -419,7 +420,8 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         }
     }
 
-    private async Task<ChatCompletionResponse> SendChatCompletionsAsync(JsonObject body, CancellationToken cancellationToken) {
+    private async Task<ChatCompletionResponse> SendChatCompletionsAsync(JsonObject body, long? maxResponseBytes, CancellationToken cancellationToken) {
+        if (maxResponseBytes.HasValue && maxResponseBytes.Value < 1) throw new ArgumentOutOfRangeException(nameof(maxResponseBytes));
         var json = JsonLite.Serialize(JsonValue.From(body));
         using var request = new HttpRequestMessage(HttpMethod.Post, _chatCompletionsUrl);
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -427,18 +429,18 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
-            var errorPayload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
+            var errorPayload = await ResponseBudgetStream.ReadTextAsync(response.Content, maxResponseBytes, cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException($"Chat request failed ({(int)response.StatusCode}): {errorPayload}");
         }
 
         var contentType = response.Content.Headers.ContentType?.MediaType;
         var wantsStreaming = _options.Streaming && body.GetBoolean("stream");
         if (wantsStreaming && string.Equals(contentType, "text/event-stream", StringComparison.OrdinalIgnoreCase)) {
-            return await ReadChatCompletionsStreamAsync(response, cancellationToken).ConfigureAwait(false);
+            return await ReadChatCompletionsStreamAsync(response, maxResponseBytes, cancellationToken).ConfigureAwait(false);
         }
 
         // Fallback: provider ignored stream and returned a normal JSON payload.
-        var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        var payload = await ResponseBudgetStream.ReadTextAsync(response.Content, maxResponseBytes, cancellationToken).ConfigureAwait(false);
         var value = JsonLite.Parse(payload);
         var obj = value?.AsObject();
         if (obj is null) {
@@ -447,8 +449,8 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         return BuildTurnFromChatCompletions(obj);
     }
 
-    private async Task<ChatCompletionResponse> ReadChatCompletionsStreamAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
-        using var stream = await ReadAsStreamAsync(response.Content, cancellationToken).ConfigureAwait(false);
+    private async Task<ChatCompletionResponse> ReadChatCompletionsStreamAsync(HttpResponseMessage response, long? maxResponseBytes, CancellationToken cancellationToken) {
+        using var stream = new ResponseBudgetStream(await ReadAsStreamAsync(response.Content, cancellationToken).ConfigureAwait(false), maxResponseBytes);
         using var cancelRegistration = cancellationToken.Register(() => {
             try {
                 stream.Dispose();
@@ -461,6 +463,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         var content = new StringBuilder();
         var toolCalls = new Dictionary<int, ToolCallBuilder>();
         JsonObject? finalUsage = null;
+        string? finishReason = null;
 
         while (true) {
             cancellationToken.ThrowIfCancellationRequested();
@@ -505,6 +508,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
             var choices = obj.GetArray("choices");
             var first = choices?.Count > 0 ? choices[0].AsObject() : null;
+            finishReason = first?.GetString("finish_reason") ?? finishReason;
             var delta = first?.GetObject("delta");
             if (delta is null) {
                 continue;
@@ -554,7 +558,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         }
 
         var assistantMessage = BuildAssistantMessageForHistory(content.ToString(), toolCalls);
-        var turn = BuildTurnFromAssistantMessage(assistantMessage, usageObj: finalUsage);
+        var turn = BuildTurnFromAssistantMessage(assistantMessage, usageObj: finalUsage, finishReason);
         return new ChatCompletionResponse(turn, assistantMessage);
     }
 
@@ -569,6 +573,11 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             .Add("messages", messageArray);
 
         body.Add("stream", streaming);
+
+        if (options.ResponseFormat is not null) {
+            body.Add("response_format", new JsonObject().Add("type", "json_schema")
+                .Add("json_schema", options.ResponseFormat.ToJsonSchema()));
+        }
 
         if (options.Temperature.HasValue) {
             body.Add("temperature", options.Temperature.Value);

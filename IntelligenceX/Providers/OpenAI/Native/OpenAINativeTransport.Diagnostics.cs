@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI.Chat;
 
 namespace IntelligenceX.OpenAI.Native;
 
@@ -24,13 +25,8 @@ internal sealed partial class OpenAINativeTransport {
         public string? Param { get; }
     }
 
-    private static async Task<NativeErrorDetails> ParseErrorResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
-#if NET8_0_OR_GREATER
-        var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-#else
-        var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-#endif
+    private static async Task<NativeErrorDetails> ParseErrorResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken, long? maxResponseBytes = null) {
+        var text = await ResponseBudgetStream.ReadTextAsync(response.Content, maxResponseBytes, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(text)) {
             return new NativeErrorDetails($"ChatGPT request failed ({(int)response.StatusCode}).", string.Empty, null, null);
         }
@@ -67,8 +63,8 @@ internal sealed partial class OpenAINativeTransport {
         return new NativeErrorDetails(text, text, null, null);
     }
 
-    private static void TryDumpRequest(HttpRequestMessage request, string json) {
-        if (!OpenAINativeTrace.IsEnabled()) {
+    private void TryDumpRequest(HttpRequestMessage request, string json) {
+        if (!_options.AllowSensitiveDiagnostics || !OpenAINativeTrace.IsEnabled()) {
             return;
         }
         try {

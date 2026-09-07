@@ -8,7 +8,7 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.Native;
 
 internal static class OpenAINativeSseParser {
-    public static async Task ParseAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken) {
+    public static async Task ParseAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken, bool allowSensitiveDiagnostics = true) {
         using var reader = new StreamReader(stream, Encoding.UTF8);
         var buffer = new StringBuilder();
         var charBuffer = new char[4096];
@@ -21,14 +21,14 @@ internal static class OpenAINativeSseParser {
             }
             buffer.Append(charBuffer, 0, read);
             NormalizeNewLines(buffer);
-            await DrainBufferAsync(buffer, onEvent, cancellationToken).ConfigureAwait(false);
+            await DrainBufferAsync(buffer, onEvent, cancellationToken, allowSensitiveDiagnostics).ConfigureAwait(false);
         }
 
-        await DrainBufferAsync(buffer, onEvent, cancellationToken).ConfigureAwait(false);
+        await DrainBufferAsync(buffer, onEvent, cancellationToken, allowSensitiveDiagnostics).ConfigureAwait(false);
     }
 
     private static async Task DrainBufferAsync(StringBuilder buffer, Func<JsonObject, Task> onEvent,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken, bool allowSensitiveDiagnostics) {
         while (true) {
             var index = buffer.ToString().IndexOf("\n\n", StringComparison.Ordinal);
             if (index < 0) {
@@ -49,7 +49,7 @@ internal static class OpenAINativeSseParser {
                 // reconstruction that avoids inserting separators between data lines.
                 var alt = ExtractData(chunk, alternate: true);
                 if (string.IsNullOrWhiteSpace(alt) || string.Equals(alt, data, StringComparison.Ordinal)) {
-                    TraceMalformedEvent(data);
+                    if (allowSensitiveDiagnostics) TraceMalformedEvent(data);
                     continue;
                 }
                 try {
@@ -57,7 +57,7 @@ internal static class OpenAINativeSseParser {
                 } catch (FormatException) {
                     // Skip invalid events and continue parsing; callers can still fall back to accumulated deltas
                     // if the completed response isn't available.
-                    TraceMalformedEvent(alt);
+                    if (allowSensitiveDiagnostics) TraceMalformedEvent(alt);
                     continue;
                 }
             }
