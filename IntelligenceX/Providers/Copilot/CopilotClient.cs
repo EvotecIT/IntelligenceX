@@ -77,8 +77,16 @@ public sealed class CopilotClient : IDisposable
         options ??= new CopilotClientOptions();
         options.Validate();
         var client = new CopilotClient(options);
-        await client.StartWithRetryAsync(cancellationToken).ConfigureAwait(false);
-        return client;
+        try {
+            await client.StartWithRetryAsync(cancellationToken).ConfigureAwait(false);
+            using var handshake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            handshake.CancelAfter(options.ConnectTimeout);
+            await client.CallAsync("connect", JsonValue.From(new JsonArray().Add(new JsonObject())), handshake.Token).ConfigureAwait(false);
+            return client;
+        } catch {
+            client.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -145,14 +153,24 @@ public sealed class CopilotClient : IDisposable
             request.Add("sessionId", options.SessionId);
         }
         if (!string.IsNullOrWhiteSpace(options.SystemMessage)) {
-            request.Add("systemMessage", new JsonObject().Add("content", options.SystemMessage));
+            request.Add("systemMessage", new JsonObject().Add("content", options.SystemMessage).Add("mode", options.Restricted ? "replace" : "append"));
         }
         if (options.Streaming.HasValue) {
             request.Add("streaming", options.Streaming.Value);
         }
 
-        var parameters = new JsonArray().Add(request);
-        var result = await CallAsync("session.create", JsonValue.From(parameters), cancellationToken).ConfigureAwait(false);
+        if (options.Restricted) {
+            request.Add("availableTools", new JsonArray()).Add("tools", new JsonArray())
+                .Add("enableConfigDiscovery", false).Add("enableOnDemandInstructionDiscovery", false)
+                .Add("enableFileHooks", false).Add("enableHostGitOperations", false)
+                .Add("enableSessionStore", false).Add("enableSkills", false)
+                .Add("enableSessionTelemetry", false).Add("skipEmbeddingRetrieval", true)
+                .Add("memory", new JsonObject().Add("enabled", false))
+                .Add("infiniteSessions", new JsonObject().Add("enabled", false))
+                .Add("mcpServers", new JsonObject()).Add("skillDirectories", new JsonArray())
+                .Add("pluginDirectories", new JsonArray()).Add("instructionDirectories", new JsonArray());
+        }
+        var result = await CallAsync("session.create", JsonValue.From(request), cancellationToken).ConfigureAwait(false);
         var obj = result?.AsObject();
         var sessionId = obj?.GetString("sessionId") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(sessionId)) {
@@ -172,8 +190,7 @@ public sealed class CopilotClient : IDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default) {
         var request = new JsonObject().Add("sessionId", sessionId);
-        var parameters = new JsonArray().Add(request);
-        await CallAsync("session.delete", JsonValue.From(parameters), cancellationToken).ConfigureAwait(false);
+        await CallAsync("session.delete", JsonValue.From(request), cancellationToken).ConfigureAwait(false);
         if (_sessions.TryRemove(sessionId, out var session)) {
             session.Dispose();
         }
@@ -281,19 +298,31 @@ public sealed class CopilotClient : IDisposable
     }
 
     private void InitializeTransport(Stream input, Stream output) {
-        _transport = new HeaderDelimitedMessageTransport(input, output);
-        _rpc = new JsonRpcClient(message => _transport.SendAsync(message, _cts.Token));
+        _transport = new HeaderDelimitedMessageTransport(input, output, _options.MaxReceivedBytes);
+        _rpc = new JsonRpcClient(async (message, token) => {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _cts.Token);
+            await _transport.SendAsync(message, linked.Token).ConfigureAwait(false);
+        }, includeProtocolVersion: true);
         _rpc.CallStarted += (_, args) => RpcCallStarted?.Invoke(this, args);
         _rpc.CallCompleted += (_, args) => RpcCallCompleted?.Invoke(this, args);
         _transport.MessageReceived += (_, message) => ProtocolMessageReceived?.Invoke(this, message);
         _transport.MessageSent += (_, message) => ProtocolMessageSent?.Invoke(this, message);
         _rpc.RequestReceived += OnRequestReceived;
         _rpc.NotificationReceived += OnNotificationReceived;
-        _readerTask = Task.Run(() => _transport.ReadLoopAsync(_rpc.HandleLine, _cts.Token), _cts.Token);
+        _readerTask = Task.Run(async () => {
+            try {
+                await _transport.ReadLoopAsync(_rpc.HandleLine, _cts.Token).ConfigureAwait(false);
+                if (!_cts.IsCancellationRequested) throw new EndOfStreamException("Copilot connection ended.");
+            } catch (Exception error) {
+                _rpc.FailPending(error);
+                foreach (var session in _sessions.Values) session.Dispatch(CopilotSessionEvent.FromJson(
+                    new JsonObject().Add("type", "session.error").Add("data", new JsonObject().Add("message", "Copilot connection ended or exceeded its receive limit."))));
+            }
+        }, _cts.Token);
     }
 
     private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs e) {
-        // No-op for now
+        if (string.Equals(e.Method, "session.event", StringComparison.Ordinal)) TryParseSessionEvent(e.Params);
     }
 
     private void OnRequestReceived(object? sender, JsonRpcRequestEventArgs e) {
@@ -316,11 +345,9 @@ public sealed class CopilotClient : IDisposable
 
     private CopilotSessionEvent? TryParseSessionEvent(JsonValue? parameters) {
         var array = parameters?.AsArray();
-        if (array is null || array.Count < 2) {
-            return null;
-        }
-        var sessionId = array[0].AsString();
-        var evtObj = array[1].AsObject();
+        var obj = parameters?.AsObject();
+        var sessionId = obj?.GetString("sessionId") ?? (array is { Count: >= 2 } ? array[0].AsString() : null);
+        var evtObj = obj?.GetObject("event") ?? (array is { Count: >= 2 } ? array[1].AsObject() : null);
         if (string.IsNullOrWhiteSpace(sessionId) || evtObj is null) {
             return null;
         }
@@ -337,7 +364,7 @@ public sealed class CopilotClient : IDisposable
         if (options.CliArgs.Count > 0) {
             args.AddRange(options.CliArgs);
         }
-        args.Add("--server");
+        args.Add("--headless");
         args.Add("--log-level");
         args.Add(options.LogLevel);
         if (options.UseStdio) {
@@ -632,11 +659,7 @@ public sealed class CopilotClient : IDisposable
         _networkStream?.Dispose();
         _tcpClient?.Close();
         if (_process is not null && !_process.HasExited) {
-#if NET5_0_OR_GREATER
-            _process.Kill(entireProcessTree: true);
-#else
-            _process.Kill();
-#endif
+            OwnedProcessTermination.KillTree(_process);
         }
         _process?.Dispose();
         _cts.Dispose();

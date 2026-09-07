@@ -59,7 +59,7 @@ Console.WriteLine(EasyChatResult.FromTurn(turn).Text);
 
 Notes:
 - `BaseUrl` may be either `http://host:port` or `http://host:port/v1`; it will be normalized to `/v1/`.
-- Image inputs are not supported for `CompatibleHttp` yet (text + tools only).
+- Inline image inputs are supported when the selected endpoint and model accept vision messages. Capability selection is explicit; an endpoint URL alone does not establish image or schema support.
 
 ## Copilot
 
@@ -67,6 +67,23 @@ Notes:
 - Supported in `IntelligenceXClient` via `OpenAITransportKind.CopilotCli`
 - Uses Copilot sign-in flow (subscription auth), not `compatible-http` API key fields
 - Experimental direct HTTP client is available for custom endpoints (unsupported)
+
+For document processing that needs inline text without workspace access, use
+`IntelligenceX.Treatment.CopilotTreatmentProvider`. Each call starts a fresh installed
+Copilot CLI in an isolated temporary directory. It disables tools, MCP servers,
+ambient instructions, skills, memory and session persistence, then closes the
+process and removes its temporary directory. Pass a GitHub token through the
+constructor when the isolated CLI cannot use an existing sign-in; keep tokens in
+process memory or a secret store.
+
+This treatment route requires an explicit model, `NewThread = true` and
+`Ephemeral = true`. It accepts inline text only and rejects file paths, URLs,
+images, workspace access and network tools. Set `EnforceOutputSchema = false`:
+the model is prompted to return JSON, and the caller must validate the response.
+It does not claim server-enforced schemas or zero retention by the hosted service.
+Calls have a ten-minute deadline and a bounded response size. Restricted treatment
+supports modern .NET on Windows, macOS and Linux; legacy .NET targets require
+Windows for child-process cleanup.
 
 ```csharp
 using IntelligenceX.OpenAI;

@@ -4,6 +4,8 @@ namespace IntelligenceX.Copilot;
 /// Options for Copilot chat sessions.
 /// </summary>
 public sealed class CopilotSessionOptions {
+    /// <summary>Disables tools, config discovery, skills, memory, hooks and session persistence for inline treatment requests.</summary>
+    public bool Restricted { get; set; }
     /// <summary>
     /// Model name override.
     /// </summary>

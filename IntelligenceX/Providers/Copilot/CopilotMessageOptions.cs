@@ -6,6 +6,8 @@ namespace IntelligenceX.Copilot;
 /// Options for sending a Copilot message.
 /// </summary>
 public sealed class CopilotMessageOptions {
+    /// <summary>Maximum accumulated response characters; exceeding the limit fails the operation.</summary>
+    public int MaxResponseCharacters { get; set; } = 1_000_000;
     /// <summary>
     /// Prompt text.
     /// </summary>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ namespace IntelligenceX.Copilot;
 public sealed class CopilotSession : IDisposable {
     private readonly CopilotClient _client;
     private readonly List<Action<CopilotSessionEvent>> _handlers = new();
+    private readonly object _handlersLock = new();
     private bool _disposed;
 
     internal CopilotSession(string sessionId, CopilotClient client) {
@@ -34,8 +36,8 @@ public sealed class CopilotSession : IDisposable {
         if (handler is null) {
             throw new ArgumentNullException(nameof(handler));
         }
-        _handlers.Add(handler);
-        return new Subscription(() => _handlers.Remove(handler));
+        lock (_handlersLock) _handlers.Add(handler);
+        return new Subscription(() => { lock (_handlersLock) _handlers.Remove(handler); });
     }
 
     /// <summary>
@@ -73,8 +75,7 @@ public sealed class CopilotSession : IDisposable {
             request.Add("mode", options.Mode);
         }
 
-        var parameters = new JsonArray().Add(request);
-        var result = await _client.CallAsync("session.send", JsonValue.From(parameters), cancellationToken).ConfigureAwait(false);
+        var result = await _client.CallAsync("session.send", JsonValue.From(request), cancellationToken).ConfigureAwait(false);
         var messageId = result?.AsObject()?.GetString("messageId");
         return messageId ?? string.Empty;
     }
@@ -87,14 +88,21 @@ public sealed class CopilotSession : IDisposable {
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<string?> SendAndWaitAsync(CopilotMessageOptions options, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
+        if (options is null) throw new ArgumentNullException(nameof(options));
+        if (options.MaxResponseCharacters < 1 || options.MaxResponseCharacters > 16_000_000) throw new ArgumentOutOfRangeException(nameof(options));
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var builder = new StringBuilder();
         string? lastMessage = null;
 
         void Handler(CopilotSessionEvent evt) {
-            if (!string.IsNullOrWhiteSpace(evt.Content)) {
+            if (tcs.Task.IsCompleted) return;
+            if ((evt.Content?.Length ?? 0) > options.MaxResponseCharacters
+                || (long)builder.Length + (evt.DeltaContent?.Length ?? 0) > options.MaxResponseCharacters) {
+                tcs.TrySetException(new InvalidDataException("Copilot response exceeded its character limit.")); return;
+            }
+            if (evt.Content is not null) {
                 lastMessage = evt.Content;
-            } else if (!string.IsNullOrWhiteSpace(evt.DeltaContent)) {
+            } else if (evt.DeltaContent is not null) {
                 builder.Append(evt.DeltaContent);
             } else if (!string.IsNullOrWhiteSpace(evt.ErrorMessage)) {
                 tcs.TrySetException(new InvalidOperationException(evt.ErrorMessage));
@@ -117,13 +125,17 @@ public sealed class CopilotSession : IDisposable {
         var effectiveTimeout = timeout ?? TimeSpan.FromSeconds(60);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(effectiveTimeout);
-        using var registration = cts.Token.Register(() =>
-            tcs.TrySetException(new TimeoutException($"SendAndWaitAsync timed out after {effectiveTimeout}")));
+        using var registration = cts.Token.Register(() => {
+            if (cancellationToken.IsCancellationRequested) tcs.TrySetCanceled(cancellationToken);
+            else tcs.TrySetException(new TimeoutException("Copilot response timed out."));
+        });
         return await tcs.Task.ConfigureAwait(false);
     }
 
     internal void Dispatch(CopilotSessionEvent evt) {
-        foreach (var handler in _handlers.ToArray()) {
+        Action<CopilotSessionEvent>[] handlers;
+        lock (_handlersLock) handlers = _handlers.ToArray();
+        foreach (var handler in handlers) {
             handler(evt);
         }
     }
@@ -133,7 +145,7 @@ public sealed class CopilotSession : IDisposable {
     /// </summary>
     public void Dispose() {
         _disposed = true;
-        _handlers.Clear();
+        lock (_handlersLock) _handlers.Clear();
     }
 
     private sealed class Subscription : IDisposable {

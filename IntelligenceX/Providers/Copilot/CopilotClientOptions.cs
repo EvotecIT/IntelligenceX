@@ -10,6 +10,8 @@ namespace IntelligenceX.Copilot;
 /// Options for connecting to the Copilot CLI.
 /// </summary>
 public sealed class CopilotClientOptions {
+    /// <summary>Maximum header and payload bytes received over this client connection.</summary>
+    public long MaxReceivedBytes { get; set; } = 134_217_728;
     /// <summary>
     /// Path to the Copilot CLI executable.
     /// </summary>
@@ -94,6 +96,7 @@ public sealed class CopilotClientOptions {
     /// Validates configuration values.
     /// </summary>
     public void Validate() {
+        if (MaxReceivedBytes < 1 || MaxReceivedBytes > 268_435_456) throw new ArgumentOutOfRangeException(nameof(MaxReceivedBytes));
         var cliUrlRaw = CliUrl;
         if (!string.IsNullOrWhiteSpace(cliUrlRaw)) {
             var cliUrl = cliUrlRaw!.Trim();
