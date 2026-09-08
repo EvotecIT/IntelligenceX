@@ -108,7 +108,9 @@ public static class TreatmentPromptBuilder {
             throw new ArgumentException("Schema enforcement requires an explicit JSON schema.", nameof(request));
         long inlineImageBytes = 0;
         foreach (var artifact in request.Inputs) {
-            if (artifact?.ImageBytes is null) continue;
+            if (artifact is null)
+                throw new ArgumentException("Treatment inputs cannot contain null entries.", nameof(request));
+            if (artifact.ImageBytes is null) continue;
             if (artifact.Path is not null || artifact.Uri is not null)
                 throw new ArgumentException("Inline images cannot also specify a path or URI.", nameof(request));
             inlineImageBytes += artifact.ImageBytes.Length;

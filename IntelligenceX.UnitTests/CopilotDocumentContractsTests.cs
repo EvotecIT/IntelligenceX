@@ -10,6 +10,33 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class CopilotDocumentContractsTests {
     [Fact]
+    public async Task NullInputIsRejectedBySharedValidationBeforeStartingCli() {
+        var request = new TreatmentRequest { Prompt = "text", Model = "model", Ephemeral = true,
+            Inputs = new TreatmentInputArtifact[] { null! } };
+        Assert.Throws<ArgumentException>(() => TreatmentPromptBuilder.Validate(request));
+        await Assert.ThrowsAsync<ArgumentException>(() => new CopilotTreatmentProvider("missing-cli").RunAsync(request));
+    }
+
+    [Fact]
+    public void RuntimeCleanupRemovesOwnedFilesAndToleratesIoFailure() {
+        string runtime = Path.Combine(Path.GetTempPath(), "intelligencex-treatment-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(runtime);
+        try {
+            File.WriteAllText(Path.Combine(runtime, "cli.log"), "test");
+            CopilotTreatmentProvider.CleanupRuntimeDirectory(runtime);
+            Assert.False(Directory.Exists(runtime));
+            CopilotTreatmentProvider.CleanupRuntimeDirectory(runtime);
+            // A file where the directory was expected makes Directory.Delete fail on every platform.
+            File.WriteAllText(runtime, "unremovable as directory");
+            Assert.Null(Record.Exception(() => CopilotTreatmentProvider.CleanupRuntimeDirectory(runtime)));
+            Assert.True(File.Exists(runtime));
+        } finally {
+            if (File.Exists(runtime)) File.Delete(runtime);
+            if (Directory.Exists(runtime)) Directory.Delete(runtime, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task CancellationEscapesBlockedSendAndDoesNotTransmitCanceledQueuedRequest() {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int sent = 0;

@@ -66,7 +66,17 @@ public sealed class CopilotTreatmentProvider : ITreatmentProvider {
             return new TreatmentResult(request.Id ?? Guid.NewGuid().ToString("N"), "completed", response, null, null, null, request.Metadata);
         } finally {
             // This exact random directory was created above; never recurse into a caller-selected directory.
+            CleanupRuntimeDirectory(runtime);
+        }
+    }
+
+    internal static void CleanupRuntimeDirectory(string runtime) {
+        try {
             Directory.Delete(runtime, recursive: true);
+        } catch (IOException) {
+            // A CLI or external scanner may still hold a file. Preserve the treatment outcome.
+        } catch (UnauthorizedAccessException) {
+            // Cleanup is best-effort; it must not replace cancellation or the original provider failure.
         }
     }
 }
