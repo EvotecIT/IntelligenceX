@@ -55,6 +55,7 @@ internal sealed partial class ReviewSettings {
         var effectiveProvider = provider ?? Provider;
         if (!string.IsNullOrWhiteSpace(profile.Model)) {
             Model = profile.Model.Trim();
+            if (effectiveProvider == ReviewProvider.Copilot) CopilotModel = Model;
         }
         if (profile.ReasoningEffort.HasValue) {
             ReasoningEffort = profile.ReasoningEffort;
@@ -64,44 +65,19 @@ internal sealed partial class ReviewSettings {
         }
         OpenAiAccountId = UseIfSet(profile.OpenAiAccountId, OpenAiAccountId);
 
-        if (profile.CopilotTransport.HasValue) {
-            CopilotTransport = profile.CopilotTransport.Value;
-        }
         CopilotModel = UseIfSet(profile.CopilotModel, CopilotModel);
-        if (string.IsNullOrWhiteSpace(profile.CopilotModel) &&
-            effectiveProvider == ReviewProvider.Copilot &&
-            !string.IsNullOrWhiteSpace(profile.Model)) {
-            CopilotModel = profile.Model.Trim();
+        CopilotBaseUrl = UseIfSet(profile.CopilotBaseUrl, CopilotBaseUrl);
+        if (!string.IsNullOrWhiteSpace(profile.CopilotToken) && !string.IsNullOrWhiteSpace(profile.CopilotTokenEnvironmentVariable))
+            throw new InvalidOperationException("A Copilot agent profile must select either token or tokenEnv, not both.");
+        if (!string.IsNullOrWhiteSpace(profile.CopilotToken)) {
+            CopilotToken = profile.CopilotToken.Trim();
+            CopilotTokenEnvironmentVariable = null;
+        } else if (!string.IsNullOrWhiteSpace(profile.CopilotTokenEnvironmentVariable)) {
+            CopilotToken = null;
+            CopilotTokenEnvironmentVariable = profile.CopilotTokenEnvironmentVariable.Trim();
         }
-        if (!string.IsNullOrWhiteSpace(profile.CopilotLauncher)) {
-            CopilotLauncher = NormalizeCopilotLauncher(profile.CopilotLauncher, CopilotLauncher);
-        }
-        CopilotCliPath = UseIfSet(profile.CopilotCliPath, CopilotCliPath);
-        CopilotCliUrl = UseIfSet(profile.CopilotCliUrl, CopilotCliUrl);
-        CopilotWorkingDirectory = UseIfSet(profile.CopilotWorkingDirectory, CopilotWorkingDirectory);
-        if (profile.CopilotAutoInstall.HasValue) {
-            CopilotAutoInstall = profile.CopilotAutoInstall.Value;
-        }
-        CopilotAutoInstallMethod = UseIfSet(profile.CopilotAutoInstallMethod, CopilotAutoInstallMethod);
-        if (profile.CopilotAutoInstallPrerelease.HasValue) {
-            CopilotAutoInstallPrerelease = profile.CopilotAutoInstallPrerelease.Value;
-        }
-        if (profile.CopilotInheritEnvironment.HasValue) {
-            CopilotInheritEnvironment = profile.CopilotInheritEnvironment.Value;
-        }
-        if (profile.CopilotEnvAllowlist is not null) {
-            CopilotEnvAllowlist = profile.CopilotEnvAllowlist;
-        }
-        if (profile.CopilotEnv is not null) {
-            CopilotEnv = NormalizeStringMap(profile.CopilotEnv);
-        }
-        CopilotDirectUrl = UseIfSet(profile.CopilotDirectUrl, CopilotDirectUrl);
-        CopilotDirectTokenEnv = UseIfSet(profile.CopilotDirectTokenEnv, CopilotDirectTokenEnv);
-        if (profile.CopilotDirectTimeoutSeconds.HasValue && profile.CopilotDirectTimeoutSeconds.Value > 0) {
-            CopilotDirectTimeoutSeconds = profile.CopilotDirectTimeoutSeconds.Value;
-        }
-        if (profile.CopilotDirectHeaders is not null) {
-            CopilotDirectHeaders = NormalizeStringMap(profile.CopilotDirectHeaders);
+        if (profile.CopilotRequestTimeoutSeconds.HasValue && profile.CopilotRequestTimeoutSeconds.Value > 0) {
+            CopilotRequestTimeoutSeconds = profile.CopilotRequestTimeoutSeconds.Value;
         }
 
         OpenAICompatibleBaseUrl = UseIfSet(profile.OpenAICompatibleBaseUrl, OpenAICompatibleBaseUrl);
@@ -160,25 +136,15 @@ internal sealed partial class ReviewSettings {
     private void RestoreProfileOwnedState(ReviewSettings source) {
         Provider = source.Provider;
         Model = source.Model;
+        ModelExplicitlyConfigured = source.ModelExplicitlyConfigured;
         ReasoningEffort = source.ReasoningEffort;
         OpenAITransport = source.OpenAITransport;
         OpenAiAccountId = source.OpenAiAccountId;
-        CopilotTransport = source.CopilotTransport;
         CopilotModel = source.CopilotModel;
-        CopilotLauncher = source.CopilotLauncher;
-        CopilotCliPath = source.CopilotCliPath;
-        CopilotCliUrl = source.CopilotCliUrl;
-        CopilotWorkingDirectory = source.CopilotWorkingDirectory;
-        CopilotAutoInstall = source.CopilotAutoInstall;
-        CopilotAutoInstallMethod = source.CopilotAutoInstallMethod;
-        CopilotAutoInstallPrerelease = source.CopilotAutoInstallPrerelease;
-        CopilotInheritEnvironment = source.CopilotInheritEnvironment;
-        CopilotEnvAllowlist = source.CopilotEnvAllowlist;
-        CopilotEnv = source.CopilotEnv;
-        CopilotDirectUrl = source.CopilotDirectUrl;
-        CopilotDirectTokenEnv = source.CopilotDirectTokenEnv;
-        CopilotDirectTimeoutSeconds = source.CopilotDirectTimeoutSeconds;
-        CopilotDirectHeaders = source.CopilotDirectHeaders;
+        CopilotBaseUrl = source.CopilotBaseUrl;
+        CopilotToken = source.CopilotToken;
+        CopilotTokenEnvironmentVariable = source.CopilotTokenEnvironmentVariable;
+        CopilotRequestTimeoutSeconds = source.CopilotRequestTimeoutSeconds;
         OpenAICompatibleBaseUrl = source.OpenAICompatibleBaseUrl;
         OpenAICompatibleApiKeyEnv = source.OpenAICompatibleApiKeyEnv;
         OpenAICompatibleTimeoutSeconds = source.OpenAICompatibleTimeoutSeconds;

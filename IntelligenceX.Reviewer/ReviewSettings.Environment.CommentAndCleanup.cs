@@ -5,84 +5,16 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewSettings {
     private static void ApplyEnvironmentCopilotAndAzureSettings(ReviewSettings settings) {
-        var copilotCliPath = Environment.GetEnvironmentVariable("COPILOT_CLI_PATH");
-        if (!string.IsNullOrWhiteSpace(copilotCliPath)) {
-            settings.CopilotCliPath = copilotCliPath;
+        settings.CopilotModel = GetInput("copilot_model", "COPILOT_MODEL") ?? settings.CopilotModel;
+        settings.CopilotBaseUrl = GetInput("copilot_base_url", "COPILOT_BASE_URL") ?? settings.CopilotBaseUrl;
+        var copilotTokenEnvironment = GetInput("copilot_token_env", "COPILOT_TOKEN_ENV");
+        if (!string.IsNullOrWhiteSpace(copilotTokenEnvironment)) {
+            settings.CopilotTokenEnvironmentVariable = copilotTokenEnvironment;
+            settings.CopilotToken = null;
         }
-
-        var copilotCliUrl = Environment.GetEnvironmentVariable("COPILOT_CLI_URL");
-        if (!string.IsNullOrWhiteSpace(copilotCliUrl)) {
-            settings.CopilotCliUrl = copilotCliUrl;
-        }
-
-        var copilotWorkingDirectory = Environment.GetEnvironmentVariable("COPILOT_CLI_WORKDIR");
-        if (!string.IsNullOrWhiteSpace(copilotWorkingDirectory)) {
-            settings.CopilotWorkingDirectory = copilotWorkingDirectory;
-        }
-
-        var copilotModel = GetInput("copilot_model", "COPILOT_MODEL");
-        if (!string.IsNullOrWhiteSpace(copilotModel)) {
-            settings.CopilotModel = copilotModel;
-        }
-
-        var copilotLauncher = GetInput("copilot_launcher", "COPILOT_LAUNCHER");
-        if (!string.IsNullOrWhiteSpace(copilotLauncher)) {
-            settings.CopilotLauncher = NormalizeCopilotLauncher(copilotLauncher, settings.CopilotLauncher);
-        }
-
-        var copilotAutoInstall = Environment.GetEnvironmentVariable("COPILOT_AUTO_INSTALL");
-        if (!string.IsNullOrWhiteSpace(copilotAutoInstall)) {
-            settings.CopilotAutoInstall = ParseBoolean(copilotAutoInstall, settings.CopilotAutoInstall);
-        }
-
-        var copilotAutoInstallMethod = Environment.GetEnvironmentVariable("COPILOT_AUTO_INSTALL_METHOD");
-        if (!string.IsNullOrWhiteSpace(copilotAutoInstallMethod)) {
-            settings.CopilotAutoInstallMethod = copilotAutoInstallMethod;
-        }
-
-        var copilotAutoInstallPrerelease = Environment.GetEnvironmentVariable("COPILOT_AUTO_INSTALL_PRERELEASE");
-        if (!string.IsNullOrWhiteSpace(copilotAutoInstallPrerelease)) {
-            settings.CopilotAutoInstallPrerelease =
-                ParseBoolean(copilotAutoInstallPrerelease, settings.CopilotAutoInstallPrerelease);
-        }
-
-        var copilotEnvAllowlist = GetInput("copilot_env_allowlist", "COPILOT_ENV_ALLOWLIST");
-        if (!string.IsNullOrWhiteSpace(copilotEnvAllowlist)) {
-            settings.CopilotEnvAllowlist = ParseList(copilotEnvAllowlist, settings.CopilotEnvAllowlist);
-        }
-
-        var copilotInheritEnvironment = GetInput("copilot_inherit_environment", "COPILOT_INHERIT_ENVIRONMENT");
-        if (!string.IsNullOrWhiteSpace(copilotInheritEnvironment)) {
-            settings.CopilotInheritEnvironment =
-                ParseBoolean(copilotInheritEnvironment, settings.CopilotInheritEnvironment);
-        }
-
-        var copilotTransport = GetInput("copilot_transport", "COPILOT_TRANSPORT");
-        if (!string.IsNullOrWhiteSpace(copilotTransport)) {
-            settings.CopilotTransport = ParseCopilotTransport(copilotTransport, settings.CopilotTransport);
-        }
-
-        var copilotDirectUrl = GetInput("copilot_direct_url", "COPILOT_DIRECT_URL");
-        if (!string.IsNullOrWhiteSpace(copilotDirectUrl)) {
-            settings.CopilotDirectUrl = copilotDirectUrl;
-        }
-
-        var copilotDirectToken = GetInput("copilot_direct_token", "COPILOT_DIRECT_TOKEN");
-        if (!string.IsNullOrWhiteSpace(copilotDirectToken)) {
-            settings.CopilotDirectToken = copilotDirectToken;
-        }
-
-        var copilotDirectTokenEnv = GetInput("copilot_direct_token_env", "COPILOT_DIRECT_TOKEN_ENV");
-        if (!string.IsNullOrWhiteSpace(copilotDirectTokenEnv)) {
-            settings.CopilotDirectTokenEnv = copilotDirectTokenEnv;
-        }
-
-        var copilotDirectTimeout = GetInput("copilot_direct_timeout_seconds", "COPILOT_DIRECT_TIMEOUT_SECONDS");
-        if (!string.IsNullOrWhiteSpace(copilotDirectTimeout)) {
-            settings.CopilotDirectTimeoutSeconds =
-                ParsePositiveInt(copilotDirectTimeout, settings.CopilotDirectTimeoutSeconds);
-        }
-
+        var copilotTimeout = GetInput("copilot_timeout_seconds", "COPILOT_TIMEOUT_SECONDS");
+        if (!string.IsNullOrWhiteSpace(copilotTimeout))
+            settings.CopilotRequestTimeoutSeconds = ParsePositiveInt(copilotTimeout, settings.CopilotRequestTimeoutSeconds);
         var azureOrg = GetInput("azure_org", "AZURE_DEVOPS_ORG");
         if (!string.IsNullOrWhiteSpace(azureOrg)) {
             settings.AzureOrganization = azureOrg;

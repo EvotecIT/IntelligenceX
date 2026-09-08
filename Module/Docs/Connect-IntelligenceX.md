@@ -14,7 +14,7 @@ running Codex app-server process. The cmdlet sets the active default client, so 
 ## SYNTAX
 ### __AllParameterSets
 ```powershell
-Connect-IntelligenceX [-Transport <OpenAITransportKind>] [-ExecutablePath <string>] [-Arguments <string>] [-WorkingDirectory <string>] [-Diagnostics] [-NoConfig] [-OpenAIAccountId <string>] [<CommonParameters>]
+Connect-IntelligenceX [-Transport <OpenAITransportKind>] [-ExecutablePath <string>] [-Arguments <string>] [-WorkingDirectory <string>] [-Diagnostics] [-NoConfig] [-OpenAIAccountId <string>] [-CopilotOptions <CopilotNativeOptions>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -38,6 +38,22 @@ Arguments to pass to the app-server. Defaults to 'app-server'.
 
 ```yaml
 Type: String
+Parameter Sets: __AllParameterSets
+Aliases: None
+Possible values:
+
+Required: False
+Position: named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -CopilotOptions
+Native Copilot credential, store, endpoint, and device sign-in settings.
+
+```yaml
+Type: CopilotNativeOptions
 Parameter Sets: __AllParameterSets
 Aliases: None
 Possible values:
@@ -120,7 +136,7 @@ Transport to use (Native or AppServer). Native uses ChatGPT OAuth directly.
 Type: OpenAITransportKind
 Parameter Sets: __AllParameterSets
 Aliases: None
-Possible values: Native, AppServer, CompatibleHttp, CopilotCli
+Possible values: Native, AppServer, CompatibleHttp, CopilotNative
 
 Required: False
 Position: named

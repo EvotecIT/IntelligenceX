@@ -368,7 +368,7 @@ internal static partial class Program {
         }
     }
 
-    private sealed class TestRealtimeAuthStore : IAuthBundleStore {
+    private sealed class TestRealtimeAuthStore : IRemovableAuthBundleStore {
         private readonly AuthBundle _bundle;
 
         internal TestRealtimeAuthStore(AuthBundle bundle) {
@@ -388,6 +388,7 @@ internal static partial class Program {
             return Task.FromResult<IReadOnlyList<AuthBundle>>(new[] { _bundle });
         }
 
+        public Task RemoveAsync(string provider, string? accountId, CancellationToken cancellationToken = default) => throw new NotSupportedException("Logout is outside this fixture contract.");
         public Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) {
             return Task.CompletedTask;
         }

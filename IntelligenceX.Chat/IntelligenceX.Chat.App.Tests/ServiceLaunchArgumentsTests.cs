@@ -184,11 +184,11 @@ public sealed class ServiceLaunchArgumentsTests {
     }
 
     /// <summary>
-    /// Ensures Copilot transport aliases normalize to copilot-cli.
+    /// Ensures Copilot transport aliases normalize to copilot-native.
     /// </summary>
     [Theory]
     [InlineData("copilot")]
-    [InlineData("copilot-cli")]
+    [InlineData("copilot-native")]
     [InlineData("github-copilot")]
     [InlineData("githubcopilot")]
     public void Build_NormalizesCopilotTransportAliases(string inputTransport) {
@@ -208,7 +208,7 @@ public sealed class ServiceLaunchArgumentsTests {
         }
         Assert.True(transportIndex >= 0);
         Assert.True(transportIndex + 1 < args.Count);
-        Assert.Equal("copilot-cli", args[transportIndex + 1]);
+        Assert.Equal("copilot-native", args[transportIndex + 1]);
     }
 
     /// <summary>

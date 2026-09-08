@@ -91,7 +91,7 @@ jobs:
         seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(
-            new[] { "--provider", "copilot" },
+            new[] { "--provider", "copilot", "--model", "account-catalog-model" },
             seed);
 
         AssertContainsText(content, "custom_pre:", "workflow upgrade keeps custom_pre");
@@ -108,7 +108,7 @@ jobs:
             "workflow upgrade has single provider override");
 
         var secondPass = SetupRunner.BuildWorkflowYamlFromSeedForTests(
-            new[] { "--provider", "copilot" },
+            new[] { "--provider", "copilot", "--model", "account-catalog-model" },
             content);
         AssertEqual(content, secondPass, "workflow upgrade idempotent on second pass");
     }
@@ -141,7 +141,6 @@ jobs:
         AssertContainsText(content, "usage_budget_allow_weekly_limit:",
             "workflow template usage budget weekly input");
         AssertContainsText(content, "copilot_model:", "workflow template copilot model input");
-        AssertContainsText(content, "copilot_launcher:", "workflow template copilot launcher input");
         AssertContainsText(content, "profile:", "workflow template prompt profile input");
         AssertContainsText(content, "ci_context_enabled:", "workflow template CI context input");
         AssertContainsText(content, "reviewed_changes:", "workflow template reviewed changes input");
@@ -182,8 +181,6 @@ jobs:
             "workflow template agent profile input can override or deliberately suppress repo variable");
         AssertContainsText(content, "copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}",
             "workflow template copilot model input overrides repo variable");
-        AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}",
-            "workflow template copilot launcher pass-through");
         AssertContainsText(content, "profile: ${{ inputs.profile || 'balanced' }}",
             "workflow template prompt profile pass-through");
         AssertContainsText(content, "mode: ${{ inputs.mode || 'hybrid' }}",
@@ -198,9 +195,6 @@ jobs:
             "workflow template max files pass-through without YAML default");
         AssertContainsText(content, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "workflow template diagnostics pass-through");
-        AssertContainsText(content,
-            "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true'",
-            "workflow template copilot auto-install respects launcher repo variable");
         AssertContainsText(content, "history_enabled: ${{ inputs.history_enabled }}",
             "workflow template history enabled pass-through");
         AssertContainsText(content,
@@ -245,6 +239,11 @@ jobs:
         var wrapperWorkflowPath = ResolveReviewWorkflowPath("review-intelligencex.yml");
         var wrapperContent = NormalizeWorkflowText(File.ReadAllText(wrapperWorkflowPath));
 
+        AssertContainsText(wrapperContent, "model: ${{ inputs.model || vars.IX_REVIEW_MODEL }}",
+            "wrapper preserves an absent model rather than manufacturing an explicit provider selection");
+        AssertContainsText(content, "model:\n        description: 'Model id (provider-specific)'\n        required: false\n        default: ''",
+            "direct reusable workflow calls preserve absent model selection");
+
         AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
         AssertEqual(true, CountWorkflowDispatchInputs(wrapperContent) <= 25,
             "wrapper workflow stays within GitHub workflow_dispatch input limit");
@@ -279,11 +278,6 @@ jobs:
             "wrapper workflow preserves swarm metrics manual override");
         AssertContainsText(wrapperContent, "copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}",
             "wrapper workflow lets reusable copilot model input override repo variable");
-        AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}",
-            "wrapper workflow passes copilot launcher through to reusable workflow");
-        AssertContainsText(wrapperContent,
-            "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true'",
-            "wrapper workflow copilot auto-install respects launcher repo variable");
         AssertContainsText(wrapperContent, "history_enabled: ${{ inputs.history_enabled }}",
             "wrapper workflow passes history awareness through to reusable workflow");
         AssertContainsText(wrapperContent, "reviewed_changes: ${{ inputs.reviewed_changes }}",
@@ -309,27 +303,27 @@ jobs:
             "wrapper workflow passes max files through without overriding repo config");
         AssertContainsText(wrapperContent, "max_inline_comments: ${{ inputs.max_inline_comments }}",
             "wrapper workflow passes max inline comments through without overriding repo config");
-        AssertContainsText(wrapperContent, """
+        AssertContainsText(wrapperContent, NormalizeWorkflowText("""
       auto_approve_enabled:
         description: 'Auto-approval enablement override for reusable callers'
         required: false
         default: ''
         type: string
-""", "wrapper workflow keeps auto-approval overrides as explicit empty string pass-through");
-        AssertContainsText(wrapperContent, """
+"""), "wrapper workflow keeps auto-approval overrides as explicit empty string pass-through");
+        AssertContainsText(wrapperContent, NormalizeWorkflowText("""
       max_files:
         description: 'Max files override for reusable callers'
         required: false
         default: ''
         type: string
-""", "wrapper workflow keeps numeric review overrides as explicit empty string pass-through");
-        AssertContainsText(wrapperContent, """
+"""), "wrapper workflow keeps numeric review overrides as explicit empty string pass-through");
+        AssertContainsText(wrapperContent, NormalizeWorkflowText("""
       max_inline_comments:
         description: 'Max inline comments override for reusable callers'
         required: false
         default: ''
         type: string
-""", "wrapper workflow keeps max inline comments as explicit empty string pass-through");
+"""), "wrapper workflow keeps max inline comments as explicit empty string pass-through");
         AssertContainsText(wrapperContent, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "wrapper workflow passes diagnostics through with default");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
@@ -346,8 +340,6 @@ jobs:
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
         AssertEqual(1, CountOccurrences(content, "openai_model:"),
             "reusable workflow defines openai_model once for workflow_call");
-        AssertEqual(1, CountOccurrences(content, "copilot_launcher:"),
-            "reusable workflow defines copilot_launcher once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "history_enabled:"),
             "reusable workflow defines history_enabled once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "reviewed_changes:"),
@@ -356,27 +348,27 @@ jobs:
             "reusable workflow defines external bot history once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "swarm_max_parallel:"),
             "reusable workflow defines swarm max parallel once for workflow_call");
-        AssertContainsText(content, """
+        AssertContainsText(content, NormalizeWorkflowText("""
       auto_approve_enabled:
         description: 'Enable guarded auto-approval readiness/approval'
         required: false
         default: ''
         type: string
-""", "reusable workflow keeps auto-approval overrides as explicit empty string pass-through");
-        AssertContainsText(content, """
+"""), "reusable workflow keeps auto-approval overrides as explicit empty string pass-through");
+        AssertContainsText(content, NormalizeWorkflowText("""
       max_files:
         description: 'Max files to review'
         required: false
         default: ''
         type: string
-""", "reusable workflow keeps numeric review overrides as explicit empty string pass-through");
-        AssertContainsText(content, """
+"""), "reusable workflow keeps numeric review overrides as explicit empty string pass-through");
+        AssertContainsText(content, NormalizeWorkflowText("""
       skip_authors:
         description: 'Comma-separated PR author logins to skip before provider auth'
         required: false
         default: ''
         type: string
-""", "reusable workflow keeps author-skip overrides as explicit empty string pass-through");
+"""), "reusable workflow keeps author-skip overrides as explicit empty string pass-through");
         AssertContainsText(content, "default: 180",
             "reusable workflow gives PR-sized reviewer prompts a longer default wait window");
         AssertContainsText(content, "dotnet-version: '8.0.x'",
@@ -394,7 +386,7 @@ jobs:
         AssertEqual(false, jobEnvContent.Contains("ANTHROPIC_API_KEY:", StringComparison.Ordinal),
             "reusable workflow does not expose provider api key at job scope");
         AssertContainsText(jobEnvContent, "COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}",
-            "reusable workflow exposes Copilot CLI token at job scope for child prompt process auth");
+            "reusable workflow supplies the native Copilot credential");
         AssertContainsText(sourceStep, "INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}",
             "source reviewer step receives auth bundle");
         AssertContainsText(sourceStep, "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}",
@@ -409,8 +401,6 @@ jobs:
             "release windows reviewer step receives provider api key");
         AssertEqual(1, CountOccurrences(content, "INPUT_PROVIDER: ${{ inputs.provider }}"),
             "reusable workflow defines shared reviewer env once instead of repeating it per step");
-        AssertEqual(1, CountOccurrences(content, "INPUT_COPILOT_LAUNCHER: ${{ inputs.copilot_launcher }}"),
-            "reusable workflow exports copilot launcher env once");
         AssertEqual(1, CountOccurrences(content, "INPUT_HISTORY_ENABLED: ${{ inputs.history_enabled }}"),
             "reusable workflow exports history enabled env once");
         AssertEqual(1, CountOccurrences(content, "INPUT_REVIEWED_CHANGES: ${{ inputs.reviewed_changes }}"),
@@ -617,16 +607,9 @@ jobs:
         AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
         AssertContainsText(content, "max_inline_comments: ${{ inputs.max_inline_comments }}",
             "workflow explicit-secrets passes max inline comments through");
-        AssertContainsText(content, "copilot_auto_install:", "workflow explicit-secrets Copilot auto-install input");
-        AssertContainsText(content, "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto'",
-            "workflow explicit-secrets maps Copilot launcher auto to auto-install");
-        AssertContainsText(content, "copilot_auto_install_method:",
-            "workflow explicit-secrets Copilot auto-install method input");
-        AssertContainsText(content, "copilot_auto_install_prerelease:",
-            "workflow explicit-secrets Copilot prerelease input");
         AssertContainsText(content, "INTELLIGENCEX_AUTH_B64:", "workflow explicit-secrets includes auth bundle mapping");
         AssertContainsText(content, "COPILOT_GITHUB_TOKEN:",
-            "workflow explicit-secrets includes Copilot CLI token mapping");
+            "workflow explicit-secrets includes native Copilot credential mapping");
         AssertEqual(false, content.Contains("INTELLIGENCEX_AUTH_KEY:", StringComparison.Ordinal),
             "workflow explicit-secrets does not pass undeclared auth key");
     }

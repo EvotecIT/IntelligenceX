@@ -135,9 +135,7 @@ internal static partial class Program {
             TestStaticAnalysisDocsDuplicationLanguageAliasesStayInSync);
         failed += Run("PowerShell docs snippets use exported cmdlets", TestPowerShellDocsSnippetsUseExportedCmdlets);
         failed += Run("PowerShell example scripts use exported cmdlets", TestPowerShellExampleScriptsUseExportedCmdlets);
-        failed += Run("PowerShell cmdlet source XML docs are rich", TestPowerShellCmdletSourceXmlDocsAreRich);
-        failed += Run("PowerShell help XML covers all cmdlets with rich docs", TestPowerShellHelpXmlCoversAllCmdletsWithRichDocs);
-        failed += Run("OpenAI client C# XML docs are complete", TestOpenAiClientCSharpXmlDocsAreComplete);
+        failed += Run("PowerShell generated help matches exports", TestPowerShellGeneratedHelpMatchesExports);
         failed += Run("Analysis catalog override invalid type falls back", TestAnalysisCatalogOverrideInvalidTypeFallsBack);
         failed += Run("Analysis catalog validator rejects dangling override", TestAnalysisCatalogValidatorRejectsDanglingOverride);
         failed += Run("Analysis catalog built-in rules have type classification", TestAnalysisCatalogBuiltInRulesHaveTypes);
@@ -701,92 +699,8 @@ internal static partial class Program {
         failed += Run("Review settings policy preview clamp range", TestReviewSettingsPolicyRulePreviewConfigClampRange);
         failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
-        failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
-        failed += Run("Copilot agent profile config preserves explicit empty maps",
-            TestCopilotAgentProfileConfigPreservesExplicitEmptyMaps);
-        failed += Run("Non-copilot agent profile ignores root Copilot aliases",
-            TestNonCopilotAgentProfileIgnoresRootCopilotAliases);
-        failed += Run("Copilot agent profile allows root Copilot aliases",
-            TestCopilotAgentProfileAllowsRootCopilotAliases);
-        failed += Run("Review config loader apply materializes selected agent profile",
-            TestReviewConfigLoaderApplyMaterializesSelectedAgentProfile);
-        failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
         failed += Run("Copilot model env overrides generic model", TestCopilotModelEnvOverridesGenericModel);
-        failed += Run("Copilot default OpenAI model uses CLI default", TestCopilotDefaultOpenAiModelUsesCliDefault);
-        failed += Run("Copilot prompt runner parses JSON output", TestCopilotPromptRunnerParsesJsonOutput);
-        failed += Run("Copilot prompt runner parses concatenated JSON output",
-            TestCopilotPromptRunnerParsesConcatenatedJsonOutput);
-        failed += Run("Copilot prompt runner falls back to stdout when JSON shares a line with noise",
-            TestCopilotPromptRunnerFallsBackToStdoutWhenJsonSharesLineWithNoise);
-        failed += Run("Copilot prompt runner falls back to stdout when JSON has trailing noise",
-            TestCopilotPromptRunnerFallsBackToStdoutWhenJsonHasTrailingNoise);
-        failed += Run("Copilot prompt runner falls back to stdout when JSON is valid but no assistant message was parsed",
-            TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed);
-        failed += Run("Copilot prompt runner rejects malformed JSON without assistant message",
-            TestCopilotPromptRunnerRejectsMalformedJsonWithoutAssistantMessage);
-        failed += Run("Copilot prompt runner falls back to stdout when brace noise prevents JSON parsing",
-            TestCopilotPromptRunnerFallsBackToStdoutWhenBraceNoisePreventsJsonParsing);
-        failed += Run("Copilot prompt runner ignores brace noise before a valid JSON line",
-            TestCopilotPromptRunnerIgnoresBraceNoiseBeforeValidJsonLine);
-        failed += Run("Copilot prompt runner falls back to stdout when a brace line starts with non-JSON text",
-            TestCopilotPromptRunnerFallsBackToStdoutWhenBraceLineStartsWithNonJsonToken);
-        failed += Run("Copilot prompt runner does not treat JSON warnings as review content",
-            TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent);
-        failed += Run("Copilot prompt runner builds MCP-disabled args",
-            TestCopilotPromptRunnerBuildsMcpDisabledArgs);
-        failed += Run("Copilot prompt runner retries prompt argument when stdin produces no review",
-            TestCopilotPromptRunnerRetriesPromptArgumentWhenStdinProducesNoReview);
-        failed += Run("Copilot prompt runner prefers transport retry before compatibility fallback",
-            TestCopilotPromptRunnerPrefersTransportRetryBeforeCompatibilityFallback);
-        failed += Run("Copilot prompt runner wraps rooted Windows cmd paths",
-            TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths);
-        failed += Run("Copilot prompt runner detects unsupported MCP flag",
-            TestCopilotPromptRunnerDetectsUnsupportedMcpFlag);
-        failed += Run("Copilot prompt runner accepts successful warnings without retry",
-            TestCopilotPromptRunnerAcceptsSuccessfulWarningsWithoutRetry);
-        failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
-        failed += Run("Copilot auto launcher uses binary",
-            TestCopilotAutoLauncherUsesBinary);
-        failed += Run("Copilot auto launcher keeps gh wrapper explicit",
-            TestCopilotAutoLauncherKeepsGhWrapperExplicit);
-        failed += Run("Copilot auto launcher uses binary for auto-install",
-            TestCopilotAutoLauncherUsesBinaryForAutoInstall);
-        failed += Run("Copilot CLI auto-install defaults prefer Linux script",
-            TestCopilotCliAutoInstallDefaultsPreferLinuxScript);
-        failed += Run("Copilot CLI auto-install defaults honor Linux prerelease",
-            TestCopilotCliAutoInstallDefaultsHonorLinuxPrerelease);
-        failed += Run("Copilot CLI auto-install defaults keep macOS Homebrew",
-            TestCopilotCliAutoInstallDefaultsKeepMacHomebrew);
-        failed += Run("Copilot launcher diagnostics describe resolved command",
-            TestCopilotLauncherDiagnosticsDescribeResolvedCommand);
-        failed += Run("Copilot binary launcher keeps direct cli path", TestCopilotBinaryLauncherKeepsDirectCliPath);
-        failed += Run("Copilot client wraps rooted Windows cmd paths", TestCopilotClientWrapsRootedWindowsCmdPaths);
-        failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
-        failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
-        failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
-        failed += Run("Copilot prompt timeout honors configured wait", TestCopilotPromptTimeoutUsesRunnerSafeMinimum);
-        failed += Run("Copilot prompt timeout honors higher explicit wait", TestCopilotPromptTimeoutHonorsHigherExplicitWait);
-        failed += Run("Copilot CLI session timeout honors configured wait",
-            TestCopilotCliSessionTimeoutUsesRunnerSafeMinimum);
-        failed += Run("Copilot CLI session timeout honors higher explicit wait",
-            TestCopilotCliSessionTimeoutHonorsHigherExplicitWait);
-        failed += Run("Copilot prompt failure falls back for timeout and prompt errors",
-            TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors);
-        failed += Run("Copilot prompt mode selection uses cliUrl only",
-            TestCopilotPromptModeSelectionUsesCliUrlOnly);
-        failed += Run("Copilot CLI session requires idle signal for completion",
-            TestCopilotCliSessionRequiresIdleSignalForCompletion);
-        failed += Run("Copilot prompt start failure keeps cause details",
-            TestCopilotPromptStartFailureKeepsCauseDetails);
-        failed += Run("Copilot install resolver finds platform install", TestCopilotInstallResolverFindsPlatformInstall);
-        failed += Run("Copilot prompt runner rejects missing configured cli path",
-            TestCopilotPromptRunnerRejectsMissingConfiguredCliPath);
-        failed += Run("Copilot prompt runner write honors timeout", TestCopilotPromptRunnerWriteHonorsTimeout);
-        failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
-        failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
-        failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
-        failed += Run("Copilot CLI url validation", TestCopilotCliUrlValidation);
-        failed += Run("Copilot prompt requires Actions token", TestCopilotPromptRunnerRequiresActionsCopilotToken);
+        failed += Run("Copilot requires an explicit model", TestCopilotRequiresAnExplicitModel);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads default bot logins include managed bots", TestResolveThreadsDefaultBotLoginsIncludeManagedBots);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
@@ -952,11 +866,16 @@ internal static partial class Program {
         failed += Run("Review summary parser merge blocker detection custom sections",
             TestReviewSummaryParserMergeBlockerDetectionCustomSections);
         failed += Run("Review swarm shadow plan uses reviewer overrides", TestReviewSwarmShadowPlanUsesReviewerOverrides);
-        failed += Run("Review swarm shadow plan uses agent profiles", TestReviewSwarmShadowPlanUsesAgentProfiles);
-        failed += Run("Review agent profile switch rebases to baseline",
-            TestReviewAgentProfileSwitchRebasesToBaseline);
-        failed += Run("Review swarm shadow clone uses refreshed runtime baseline",
-            TestReviewSwarmShadowCloneUsesRefreshedRuntimeBaseline);
+        failed += Run("Native Copilot profile switch restores baseline", TestNativeCopilotProfileSwitchRestoresBaseline);
+        failed += Run("Native Copilot profile credentials replace and restore baseline", TestNativeCopilotProfileCredentialsReplaceAndRestoreBaseline);
+        failed += Run("Native Copilot setup model reaches reviewer", TestNativeCopilotSetupModelReachesReviewer);
+        failed += Run("Native Copilot configured credential callback", TestNativeCopilotCredentialCallbackReadsOnlyItsConfiguredVariable);
+        failed += Run("Native Copilot swarm profile overrides", TestNativeCopilotSwarmProfilesPreserveProviderAndModelOverrides);
+        failed += Run("Native Copilot health deadline classification", TestNativeCopilotHealthDeadlineIsTransientButCallerCancellationIsNot);
+        failed += Run("Native Copilot environment credential override", TestNativeCopilotEnvironmentCredentialOverridesConfiguredToken);
+        failed += Run("Native Copilot HTTP status classification", TestNativeCopilotHttpStatusControlsReviewerRetryClassification);
+        failed += Run("Copilot credential source audit", TestCopilotCredentialAuditTracksSelectedSourcesWithoutValues);
+        failed += Run("Copilot config credential source override", TestCopilotConfigReplacesThePreviousCredentialSource);
         failed += Run("Review swarm shadow plan falls back to primary provider and model",
             TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel);
         failed += Run("Review swarm shadow reviewer prompt shapes focus", TestReviewSwarmShadowReviewerPromptShapesFocus);

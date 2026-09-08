@@ -58,8 +58,8 @@ public sealed partial class MainWindow {
 
         var transportLabel = string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
             ? "compatible-http"
-            : string.Equals(_localProviderTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)
-                ? "copilot-cli"
+            : string.Equals(_localProviderTransport, TransportCopilotNative, StringComparison.OrdinalIgnoreCase)
+                ? "copilot-native"
                 : "native";
         var modelLabel = string.IsNullOrWhiteSpace(selectedModel) ? "(provider default)" : selectedModel.Trim();
         if (compactSelfReport) {

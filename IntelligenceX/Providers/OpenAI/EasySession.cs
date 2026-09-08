@@ -47,10 +47,15 @@ public sealed class EasySession : IDisposable
         }
 
         var session = new EasySession(client, options);
-        if (options.AutoLogin) {
-            await session.EnsureLoggedInAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            if (options.AutoLogin) {
+                await session.EnsureLoggedInAsync(cancellationToken).ConfigureAwait(false);
+            }
+            return session;
+        } catch {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
-        return session;
     }
 
     /// <summary>
@@ -180,17 +185,44 @@ public sealed class EasySession : IDisposable
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task EnsureLoggedInAsync(CancellationToken cancellationToken = default) {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_options.Login == EasyLoginMode.None) return;
+
+        if (_options.TransportKind == OpenAITransportKind.CopilotNative
+            && (_options.CopilotOptions.TokenProvider is not null || !string.IsNullOrWhiteSpace(_options.CopilotOptions.GitHubToken)
+                || _options.CopilotOptions.GetEnvironmentToken() is not null)) {
+            // Host credentials do not require GitHub's optional profile endpoint to support inference.
+            // An explicitly pinned identity still needs verification and must fail closed.
+            if (!string.IsNullOrWhiteSpace(_options.CopilotOptions.AccountId)
+                && (!_loggedIn || _options.ValidateLoginOnEachRequest))
+                await _client.GetAccountAsync(cancellationToken).ConfigureAwait(false);
+            _loggedIn = true;
+            return;
+        }
+
         if (_options.ValidateLoginOnEachRequest && _loggedIn) {
             if (!await TryReadAccountAsync(cancellationToken).ConfigureAwait(false)) {
                 _loggedIn = false;
             }
         }
 
-        if (_loggedIn || _options.Login == EasyLoginMode.None) {
+        if (_loggedIn) {
             return;
         }
 
         if (await TryReadAccountAsync(cancellationToken).ConfigureAwait(false)) {
+            _loggedIn = true;
+            return;
+        }
+
+        if (_options.TransportKind == OpenAITransportKind.CopilotNative) {
+            if (_options.Login == EasyLoginMode.ApiKey)
+                throw new InvalidOperationException("Configure CopilotOptions.GitHubToken or TokenProvider for native Copilot credentials.");
+            await _client.LoginCopilotAsync(code => {
+                if (_options.OnCopilotLoginCode is not null) _options.OnCopilotLoginCode(code);
+                else if (_options.PrintLoginUrl) Console.WriteLine($"Open {code.VerificationUri} and enter {code.UserCode}.");
+                else throw new InvalidOperationException("Configure OnCopilotLoginCode to display the GitHub sign-in instructions.");
+            }, cancellationToken).ConfigureAwait(false);
             _loggedIn = true;
             return;
         }
@@ -218,7 +250,7 @@ public sealed class EasySession : IDisposable
         try {
             await _client.GetAccountAsync(cancellationToken).ConfigureAwait(false);
             return true;
-        } catch {
+        } catch (Exception) when (!cancellationToken.IsCancellationRequested) {
             return false;
         }
     }
@@ -253,6 +285,8 @@ public sealed class EasySession : IDisposable
         clientOptions.NativeOptions.TextVerbosity = options.NativeOptions.TextVerbosity;
         clientOptions.NativeOptions.IncludeReasoningEncryptedContent = options.NativeOptions.IncludeReasoningEncryptedContent;
         clientOptions.NativeOptions.EnableToolSchemaFallback = options.NativeOptions.EnableToolSchemaFallback;
+        clientOptions.NativeOptions.EnableModelFallback = options.NativeOptions.EnableModelFallback;
+        clientOptions.NativeOptions.AllowSensitiveDiagnostics = options.NativeOptions.AllowSensitiveDiagnostics;
         clientOptions.NativeOptions.ImageGeneration = options.NativeOptions.ImageGeneration.Clone();
         clientOptions.NativeOptions.OAuthTimeout = options.NativeOptions.OAuthTimeout;
         clientOptions.NativeOptions.UseLocalListener = options.NativeOptions.UseLocalListener;
@@ -289,41 +323,14 @@ public sealed class EasySession : IDisposable
             clientOptions.CompatibleHttpOptions.BasicUsername = options.CompatibleHttpOptions.BasicUsername;
             clientOptions.CompatibleHttpOptions.BasicPassword = options.CompatibleHttpOptions.BasicPassword;
             clientOptions.CompatibleHttpOptions.Streaming = options.CompatibleHttpOptions.Streaming;
+            clientOptions.CompatibleHttpOptions.AllowAutoRedirect = options.CompatibleHttpOptions.AllowAutoRedirect;
+            clientOptions.CompatibleHttpOptions.UseProxy = options.CompatibleHttpOptions.UseProxy;
             clientOptions.CompatibleHttpOptions.AllowInsecureHttp = options.CompatibleHttpOptions.AllowInsecureHttp;
             clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.CompatibleHttpOptions.AllowInsecureHttpNonLoopback;
         }
 
-        if (options.TransportKind == OpenAITransportKind.CopilotCli) {
-            clientOptions.CopilotOptions.CliPath = options.CopilotOptions.CliPath;
-            clientOptions.CopilotOptions.CliUrl = options.CopilotOptions.CliUrl;
-            clientOptions.CopilotOptions.UseStdio = options.CopilotOptions.UseStdio;
-            clientOptions.CopilotOptions.Port = options.CopilotOptions.Port;
-            clientOptions.CopilotOptions.LogLevel = options.CopilotOptions.LogLevel;
-            clientOptions.CopilotOptions.WorkingDirectory = options.CopilotOptions.WorkingDirectory;
-            clientOptions.CopilotOptions.InheritEnvironment = options.CopilotOptions.InheritEnvironment;
-            clientOptions.CopilotOptions.AutoStart = options.CopilotOptions.AutoStart;
-            clientOptions.CopilotOptions.AutoInstallCli = options.CopilotOptions.AutoInstallCli;
-            clientOptions.CopilotOptions.AutoInstallMethod = options.CopilotOptions.AutoInstallMethod;
-            clientOptions.CopilotOptions.AutoInstallPrerelease = options.CopilotOptions.AutoInstallPrerelease;
-            clientOptions.CopilotOptions.ConnectTimeout = options.CopilotOptions.ConnectTimeout;
-            clientOptions.CopilotOptions.ConnectRetryCount = options.CopilotOptions.ConnectRetryCount;
-            clientOptions.CopilotOptions.ConnectRetryInitialDelay = options.CopilotOptions.ConnectRetryInitialDelay;
-            clientOptions.CopilotOptions.ConnectRetryMaxDelay = options.CopilotOptions.ConnectRetryMaxDelay;
-            clientOptions.CopilotOptions.ShutdownTimeout = options.CopilotOptions.ShutdownTimeout;
-
-            clientOptions.CopilotOptions.CliArgs.Clear();
-            for (var i = 0; i < options.CopilotOptions.CliArgs.Count; i++) {
-                clientOptions.CopilotOptions.CliArgs.Add(options.CopilotOptions.CliArgs[i]);
-            }
-
-            clientOptions.CopilotOptions.Environment.Clear();
-            foreach (var pair in options.CopilotOptions.Environment) {
-                clientOptions.CopilotOptions.Environment[pair.Key] = pair.Value;
-            }
-
-            clientOptions.CopilotOptions.RpcRetry.InitialDelay = options.CopilotOptions.RpcRetry.InitialDelay;
-            clientOptions.CopilotOptions.RpcRetry.MaxDelay = options.CopilotOptions.RpcRetry.MaxDelay;
-            clientOptions.CopilotOptions.RpcRetry.RetryCount = options.CopilotOptions.RpcRetry.RetryCount;
+        if (options.TransportKind == OpenAITransportKind.CopilotNative) {
+            clientOptions.CopilotOptions = options.CopilotOptions.Snapshot();
         }
 
         return clientOptions;
@@ -358,6 +365,7 @@ public sealed class EasySession : IDisposable
     }
 
     private static void EnsureFileSafety(ChatInput input, string? workspace, long maxImageBytes, bool requireWorkspace) {
+        input.EnsureInlineImageSize(maxImageBytes);
         var paths = input.GetImagePaths();
         if (paths.Length == 0) {
             return;

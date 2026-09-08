@@ -1,3 +1,4 @@
+using IntelligenceX.Utils;
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
@@ -18,14 +19,20 @@ internal sealed class JsonRpcClient : IDisposable {
         public TaskCompletionSource<JsonValue?> Tcs { get; }
     }
 
-    private readonly Func<string, Task> _sendLineAsync;
+    private readonly Func<string, CancellationToken, Task> _sendLineAsync;
     private readonly ConcurrentDictionary<long, PendingCall> _pending = new();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly bool _includeProtocolVersion;
     private long _nextId;
     private bool _disposed;
+    private Exception? _terminalError;
 
-    public JsonRpcClient(Func<string, Task> sendLineAsync) {
-        _sendLineAsync = sendLineAsync;
+    public JsonRpcClient(Func<string, Task> sendLineAsync, bool includeProtocolVersion = false)
+        : this((line, _) => sendLineAsync(line), includeProtocolVersion) { }
+
+    public JsonRpcClient(Func<string, CancellationToken, Task> sendLineAsync, bool includeProtocolVersion = false) {
+        _includeProtocolVersion = includeProtocolVersion;
+        _sendLineAsync = sendLineAsync ?? throw new ArgumentNullException(nameof(sendLineAsync));
     }
 
     public event EventHandler<JsonRpcNotificationEventArgs>? NotificationReceived;
@@ -39,13 +46,14 @@ internal sealed class JsonRpcClient : IDisposable {
     }
 
     public async Task<JsonValue?> CallAsync(string method, JsonValue? @params, CancellationToken cancellationToken = default) {
+        ThrowIfUnavailable();
         if (string.IsNullOrWhiteSpace(method)) {
             throw new ArgumentException("Method cannot be null or whitespace.", nameof(method));
         }
 
         var started = DateTime.UtcNow;
         var id = Interlocked.Increment(ref _nextId);
-        CallStarted?.Invoke(this, new RpcCallStartedEventArgs(method, @params, id));
+        ObserverDispatcher.Raise(CallStarted, this, new RpcCallStartedEventArgs(method, @params, id));
         var tcs = new TaskCompletionSource<JsonValue?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending.TryAdd(id, new PendingCall(method, tcs));
 
@@ -58,9 +66,15 @@ internal sealed class JsonRpcClient : IDisposable {
                 }
             });
             cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfUnavailable();
 
             try {
-                await SendRequestAsync(id, method, @params).ConfigureAwait(false);
+                Task send = SendRequestAsync(id, method, @params, cancellationToken);
+                _ = send.ContinueWith(task => { _ = task.Exception; }, CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                Task completed = await Task.WhenAny(send, tcs.Task).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (completed == send) await send.ConfigureAwait(false);
             } catch {
                 _pending.TryRemove(id, out _);
                 throw;
@@ -68,12 +82,12 @@ internal sealed class JsonRpcClient : IDisposable {
 
             var result = await tcs.Task.ConfigureAwait(false);
             var duration = DateTime.UtcNow - started;
-            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, true, null, id));
+            ObserverDispatcher.Raise(CallCompleted, this, new RpcCallCompletedEventArgs(method, duration, true, null, id));
             return result;
         } catch (Exception ex) {
             _pending.TryRemove(id, out _);
             var duration = DateTime.UtcNow - started;
-            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, false, ex, id));
+            ObserverDispatcher.Raise(CallCompleted, this, new RpcCallCompletedEventArgs(method, duration, false, ex, id));
             throw;
         }
     }
@@ -83,11 +97,12 @@ internal sealed class JsonRpcClient : IDisposable {
     }
 
     public Task NotifyAsync(string method, JsonValue? @params, CancellationToken cancellationToken = default) {
+        ThrowIfUnavailable();
         if (string.IsNullOrWhiteSpace(method)) {
             throw new ArgumentException("Method cannot be null or whitespace.", nameof(method));
         }
         cancellationToken.ThrowIfCancellationRequested();
-        return SendNotificationAsync(method, @params);
+        return SendNotificationAsync(method, @params, cancellationToken);
     }
 
     public void HandleLine(string line) {
@@ -160,23 +175,23 @@ internal sealed class JsonRpcClient : IDisposable {
         return new JsonRpcError(code, message, data);
     }
 
-    private async Task SendRequestAsync(long id, string method, JsonValue? @params) {
+    private async Task SendRequestAsync(long id, string method, JsonValue? @params, CancellationToken cancellationToken) {
         var obj = new JsonObject()
             .Add("id", id)
             .Add("method", method);
         if (@params is not null) {
             obj.Add("params", @params);
         }
-        await SendLineAsync(JsonLite.Serialize(obj)).ConfigureAwait(false);
+        await SendObjectAsync(obj, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task SendNotificationAsync(string method, JsonValue? @params) {
+    private async Task SendNotificationAsync(string method, JsonValue? @params, CancellationToken cancellationToken) {
         var obj = new JsonObject()
             .Add("method", method);
         if (@params is not null) {
             obj.Add("params", @params);
         }
-        await SendLineAsync(JsonLite.Serialize(obj)).ConfigureAwait(false);
+        await SendObjectAsync(obj, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task RespondAsync(long id, JsonValue? result) {
@@ -187,7 +202,7 @@ internal sealed class JsonRpcClient : IDisposable {
         } else {
             obj.Add("result", result);
         }
-        await SendLineAsync(JsonLite.Serialize(obj)).ConfigureAwait(false);
+        await SendObjectAsync(obj).ConfigureAwait(false);
     }
 
     private async Task RespondErrorAsync(long id, JsonRpcError error) {
@@ -200,16 +215,54 @@ internal sealed class JsonRpcClient : IDisposable {
         var obj = new JsonObject()
             .Add("id", id)
             .Add("error", errorObj);
-        await SendLineAsync(JsonLite.Serialize(obj)).ConfigureAwait(false);
+        await SendObjectAsync(obj).ConfigureAwait(false);
     }
 
-    private async Task SendLineAsync(string line) {
-        await _sendLock.WaitAsync().ConfigureAwait(false);
+    private Task SendObjectAsync(JsonObject message, CancellationToken cancellationToken = default) {
+        if (_includeProtocolVersion) message.Add("jsonrpc", "2.0");
+        return SendLineAsync(JsonLite.Serialize(message), cancellationToken);
+    }
+
+    private async Task SendLineAsync(string line, CancellationToken cancellationToken) {
+        await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            await _sendLineAsync(line).ConfigureAwait(false);
+            ThrowIfUnavailable();
+            cancellationToken.ThrowIfCancellationRequested();
+            Task send;
+            try { send = _sendLineAsync(line, cancellationToken); }
+            catch (Exception error) { FailConnection(WriteFailure(error, cancellationToken)); throw; }
+            using var cancellation = cancellationToken.Register(() => {
+                // A canceled write can leave a partial protocol frame. Do not let later calls
+                // reuse the connection or remain queued behind a non-cooperative writer.
+                if (send.Status != TaskStatus.RanToCompletion) FailConnection(CanceledWriteFailure());
+            });
+            try { await TaskCancellation.WaitAsync(send, cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) {
+                if (send.Status != TaskStatus.RanToCompletion) FailConnection(WriteFailure(error, cancellationToken));
+                throw;
+            }
         } finally {
             _sendLock.Release();
         }
+    }
+
+    private void ThrowIfUnavailable() {
+        if (_disposed) throw new ObjectDisposedException(nameof(JsonRpcClient));
+        Exception? error = Volatile.Read(ref _terminalError);
+        if (error is not null) throw new InvalidOperationException("The RPC connection has terminated.", error);
+    }
+
+    private static Exception WriteFailure(Exception error, CancellationToken cancellationToken) =>
+        error is OperationCanceledException && cancellationToken.IsCancellationRequested ? CanceledWriteFailure() : error;
+
+    private static System.IO.IOException CanceledWriteFailure() =>
+        new("The RPC connection terminated after an in-flight write was canceled.");
+
+    internal void FailConnection(Exception error) {
+        if (error is null) throw new ArgumentNullException(nameof(error));
+        error = Interlocked.CompareExchange(ref _terminalError, error, null) ?? error;
+        foreach (var entry in _pending)
+            if (_pending.TryRemove(entry.Key, out var pending)) pending.Tcs.TrySetException(error);
     }
 
     public void Dispose() {
@@ -217,7 +270,7 @@ internal sealed class JsonRpcClient : IDisposable {
             return;
         }
         _disposed = true;
-        _sendLock.Dispose();
+        // An uncooperative send may still own this managed gate; its continuation must be able to release it.
         foreach (var pending in _pending.Values) {
             pending.Tcs.TrySetCanceled();
         }

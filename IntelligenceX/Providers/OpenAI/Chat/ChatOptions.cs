@@ -41,6 +41,9 @@ public sealed class ChatOptions {
         TelemetryFeature = other.TelemetryFeature;
         TelemetrySurface = other.TelemetrySurface;
         MaxImageBytes = other.MaxImageBytes;
+        ResponseFormat = other.ResponseFormat;
+        MaxResponseBytes = other.MaxResponseBytes;
+        Ephemeral = other.Ephemeral;
         RequireWorkspaceForFileAccess = other.RequireWorkspaceForFileAccess;
     }
 
@@ -134,6 +137,12 @@ public sealed class ChatOptions {
     /// Maximum allowed image size in bytes.
     /// </summary>
     public long? MaxImageBytes { get; set; }
+    /// <summary>Optional provider-enforced JSON schema; unsupported transports reject this instead of silently ignoring it.</summary>
+    public ChatResponseFormat? ResponseFormat { get; set; }
+    /// <summary>Optional maximum response wire bytes, including streaming protocol overhead. Supported by Native and CompatibleHttp.</summary>
+    public long? MaxResponseBytes { get; set; }
+    /// <summary>Starts an isolated request and forgets its local thread state after completion, failure or cancellation. Native and CompatibleHttp only.</summary>
+    public bool Ephemeral { get; set; }
     /// <summary>
     /// Whether a workspace is required for file access.
     /// </summary>

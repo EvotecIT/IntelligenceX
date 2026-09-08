@@ -94,6 +94,10 @@ public sealed class OpenAINativeOptions {
     /// Disable if you require strict single-attempt semantics.
     /// </summary>
     public bool EnableToolSchemaFallback { get; set; } = true;
+    /// <summary>Whether an unsupported model may be retried with another available ChatGPT model.</summary>
+    public bool EnableModelFallback { get; set; } = true;
+    /// <summary>Whether explicitly enabled environment tracing may record request or malformed-response payloads.</summary>
+    public bool AllowSensitiveDiagnostics { get; set; } = true;
 
     /// <summary>
     /// Timeout for OAuth login flows.

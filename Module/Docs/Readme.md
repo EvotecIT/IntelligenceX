@@ -2,7 +2,7 @@
 Module Name: IntelligenceX
 Module Guid: 8fc3e038-c57b-44f3-bc7f-714beb3bd65a
 Download Help Link: https://github.com/EvotecIT/IntelligenceX/blob/master/README.md
-Help Version: 0.1.0
+Help Version: 0.1.1
 Locale: en-US
 ---
 # IntelligenceX Module
@@ -52,17 +52,10 @@ Reads server-defined constraints for supported configuration values.
 Returns allowed values for key settings (for example approval policy and sandbox mode)
 so scripts can validate config before writing changes.
 
-### [Get-IntelligenceXCopilotInstall](Get-IntelligenceXCopilotInstall.md)
-Shows platform-specific installation commands for GitHub Copilot CLI.
-
-This cmdlet does not install anything. It returns suggested install command metadata
-so you can preview, log, or execute it manually.
-
 ### [Get-IntelligenceXHealth](Get-IntelligenceXHealth.md)
-Runs health checks for OpenAI app-server and optional Copilot CLI.
+Checks the active IntelligenceX connection and optional native Copilot access.
 
-Returns health status for the active IntelligenceX client and, optionally, a Copilot CLI
-instance using explicit or config-derived options.
+Copilot checks use direct HTTPS model discovery. No CLI installation or process is required.
 
 ### [Get-IntelligenceXLoadedThread](Get-IntelligenceXLoadedThread.md)
 Lists threads currently loaded in the app-server process.
@@ -102,12 +95,6 @@ Initializes the client handshake with the app-server.
 
 Sends client identity metadata (name, title, version) to app-server. Some flows require
 initialization before login, chat, or review operations.
-
-### [Install-IntelligenceXCopilotCli](Install-IntelligenceXCopilotCli.md)
-Installs GitHub Copilot CLI using a selected install strategy.
-
-Executes the platform-specific installer command and optionally returns command metadata.
-Supports WhatIf/Confirm through ShouldProcess.
 
 ### [Invoke-IntelligenceXChat](Invoke-IntelligenceXChat.md)
 Super-easy chat command that handles connect, init, login, thread, and send.

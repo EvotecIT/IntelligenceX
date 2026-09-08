@@ -47,7 +47,7 @@ internal static class WizardSummary {
             if (!string.IsNullOrWhiteSpace(providerSummary)) {
                 table.AddRow("Provider fit", providerSummary!);
             }
-            if (!string.Equals(plan.Provider, SetupProviderCatalog.CopilotProvider, System.StringComparison.OrdinalIgnoreCase)) {
+            {
                 var selectedModel = string.IsNullOrWhiteSpace(plan.OpenAIModel)
                     ? SetupProviderCatalog.GetDefaultModel(plan.Provider)
                     : plan.OpenAIModel!;

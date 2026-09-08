@@ -7,25 +7,31 @@ namespace IntelligenceX.OpenAI.Native;
 
 internal sealed class OpenAINativeThreadStore {
     private readonly Dictionary<string, NativeThreadState> _threads = new(StringComparer.Ordinal);
+    private readonly object _gate = new();
 
     public NativeThreadState StartNew(string model) {
         var state = NativeThreadState.Create(model);
-        _threads[state.Id] = state;
+        lock (_gate) _threads[state.Id] = state;
         return state;
     }
 
     public NativeThreadState Resume(string threadId, string model) {
-        if (_threads.TryGetValue(threadId, out var existing)) {
-            existing.Touch(model);
-            return existing;
+        lock (_gate) {
+            if (_threads.TryGetValue(threadId, out var existing)) {
+                existing.Touch(model);
+                return existing;
+            }
+            var state = NativeThreadState.Create(model, threadId);
+            _threads[state.Id] = state;
+            return state;
         }
-        var state = NativeThreadState.Create(model, threadId);
-        _threads[state.Id] = state;
-        return state;
     }
 
     public bool TryGet(string threadId, out NativeThreadState state) {
-        return _threads.TryGetValue(threadId, out state!);
+        lock (_gate) return _threads.TryGetValue(threadId, out state!);
+    }
+    public void Forget(string threadId) {
+        lock (_gate) _threads.Remove(threadId);
     }
 }
 

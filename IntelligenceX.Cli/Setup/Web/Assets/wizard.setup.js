@@ -371,7 +371,6 @@ function buildReviewTable() {
       </div>
       ${providerSetupSummary ? `
       <div class="review-note">${safeProviderSetupSummary}</div>` : ''}
-      ${selectedProvider !== 'copilot' ? `
       <div class="review-item">
         <span class="review-label">Model</span>
         <span class="review-value">${safeReviewModel}</span>
@@ -380,7 +379,7 @@ function buildReviewTable() {
         <span class="review-label">Model profile</span>
         <span class="review-value">${safeModelProfile}</span>
       </div>
-      ${modelProfile ? `<div class="review-note">${safeModelSummary}${modelProfile.id === getProviderDefaultModel(selectedProvider) ? ' Recommended default.' : ''}</div>` : ''}` : ''}
+      ${modelProfile ? `<div class="review-note">${safeModelSummary}${modelProfile.id === getProviderDefaultModel(selectedProvider) ? ' Recommended default.' : ''}</div>` : ''}
       <div class="review-item">
         <span class="review-label">Review Profile</span>
         <span class="review-value">${safeProfile}</span>
@@ -573,7 +572,7 @@ function buildRequestBody(dryRun) {
     anthropicApiKey: anthropicApiKey ? anthropicApiKey.value.trim() : '',
     anthropicApiKeyPath: anthropicApiKeyPath ? anthropicApiKeyPath.value.trim() : '',
     provider: selectedProvider,
-    openAIModel: selectedProvider === 'copilot' ? '' : reviewModelValue,
+    openAIModel: reviewModelValue,
     reviewProfile: selectedPresetProfile,
     reviewMode: reviewMode.value,
     reviewCommentMode: reviewCommentMode.value,

@@ -1,0 +1,62 @@
+using IntelligenceX.Copilot.Native;
+using IntelligenceX.OpenAI;
+
+namespace IntelligenceX.Reviewer;
+
+internal sealed partial class ReviewRunner {
+    private IntelligenceXClientOptions BuildCopilotClientOptions() {
+        string model = ResolveCopilotModel(_settings) ?? throw new InvalidOperationException(
+            "Copilot requires an explicit copilot.model or review.model. Select an available model from the native model catalog.");
+        var native = new CopilotNativeOptions {
+            BaseUrl = _settings.CopilotBaseUrl ?? "https://api.githubcopilot.com/",
+            GitHubToken = _settings.CopilotToken,
+            RequestTimeout = TimeSpan.FromSeconds(Math.Max(1, _settings.CopilotRequestTimeoutSeconds)),
+            Streaming = true
+        };
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotTokenEnvironmentVariable)) {
+            if (!string.IsNullOrWhiteSpace(native.GitHubToken)) throw new InvalidOperationException("Choose a Copilot token or a token environment variable, not both.");
+            string variable = _settings.CopilotTokenEnvironmentVariable!;
+            native.UseEnvironmentCredentials = false;
+            native.TokenProvider = _ => {
+                string? token = Environment.GetEnvironmentVariable(variable);
+                if (string.IsNullOrWhiteSpace(token)) throw new InvalidOperationException("The configured Copilot token environment variable is empty.");
+                SecretsAudit.Record($"Copilot credential from {variable}");
+                return Task.FromResult(token!);
+            };
+        } else if (!string.IsNullOrWhiteSpace(native.GitHubToken)) {
+            SecretsAudit.Record("Copilot credential from config (copilot.token)");
+        } else {
+            native.TokenProvider = _ => {
+                string token = native.GetEnvironmentToken(out string? source)
+                    ?? throw new InvalidOperationException("Copilot authentication is required. Configure a token or a token environment variable.");
+                SecretsAudit.Record($"Copilot credential from {source}");
+                return Task.FromResult(token);
+            };
+        }
+        return new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CopilotNative, DefaultModel = model, CopilotOptions = native,
+            EnableUsageTelemetry = true,
+            UsageTelemetrySessionFactory = new IntelligenceX.Telemetry.Usage.SqliteInternalIxUsageTelemetrySessionFactory()
+        };
+    }
+
+    private Task RunCopilotHealthCheckAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+        RunCopilotHealthCheckAsync(BuildCopilotClientOptions(), timeout, cancellationToken);
+
+    internal static async Task RunCopilotHealthCheckAsync(IntelligenceXClientOptions options, TimeSpan timeout, CancellationToken cancellationToken) {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeout);
+        try {
+            await using var client = await IntelligenceXClient.ConnectAsync(options, deadline.Token).ConfigureAwait(false);
+            _ = await client.ListModelsAsync(deadline.Token).ConfigureAwait(false);
+        } catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested) {
+            throw new TimeoutException("The native Copilot health check exceeded its configured timeout.", error);
+        }
+    }
+
+    private Task<string> RunCopilotAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,
+        CancellationToken cancellationToken) =>
+        RunChatOnceAsync(BuildCopilotClientOptions(), prompt, onPartial, updateInterval, cancellationToken, captureSnapshot: null);
+
+    internal IntelligenceXClientOptions BuildCopilotClientOptionsForTests() => BuildCopilotClientOptions();
+}

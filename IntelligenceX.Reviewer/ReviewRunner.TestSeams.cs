@@ -20,10 +20,6 @@ internal sealed partial class ReviewRunner {
     internal static ReviewSwarmShadowPlan BuildSwarmShadowPlanForTests(ReviewSettings settings) =>
         ReviewSwarmShadowPlanner.Build(settings);
 
-    /// <summary>Test-only forwarder for Copilot CLI option resolution.</summary>
-    internal CopilotClientOptions BuildCopilotClientOptionsForTests() =>
-        BuildCopilotClientOptions();
-
     /// <summary>Test-only forwarder for swarm shadow plan rendering.</summary>
     internal static string RenderSwarmShadowPlanForTests(ReviewSwarmShadowPlan plan) =>
         ReviewSwarmShadowPlanner.Render(plan);

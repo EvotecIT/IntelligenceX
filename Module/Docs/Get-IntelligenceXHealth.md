@@ -6,35 +6,33 @@ schema: 2.0.0
 ---
 # Get-IntelligenceXHealth
 ## SYNOPSIS
-Runs health checks for OpenAI app-server and optional Copilot CLI.
+Checks the active IntelligenceX connection and optional native Copilot access.
 
-Returns health status for the active IntelligenceX client and, optionally, a Copilot CLI
-instance using explicit or config-derived options.
+Copilot checks use direct HTTPS model discovery. No CLI installation or process is required.
 
 ## SYNTAX
 ### __AllParameterSets
 ```powershell
-Get-IntelligenceXHealth [-Client <IntelligenceXClient>] [-Copilot] [-NoConfig] [-CopilotCliPath <string>] [-CopilotCliUrl <string>] [-CopilotWorkingDirectory <string>] [-CopilotAutoInstall] [-CopilotInstallMethod <CopilotCliInstallMethod>] [-CopilotInstallPrerelease] [<CommonParameters>]
+Get-IntelligenceXHealth [-Client <IntelligenceXClient>] [-Copilot] [-NoConfig] [-CopilotBaseUrl <string>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
-Runs health checks for OpenAI app-server and optional Copilot CLI.
+Checks the active IntelligenceX connection and optional native Copilot access.
 
-Returns health status for the active IntelligenceX client and, optionally, a Copilot CLI
-instance using explicit or config-derived options.
+Copilot checks use direct HTTPS model discovery. No CLI installation or process is required.
 
 ## EXAMPLES
 
 ### EXAMPLE 1
 ```powershell
-Get-IntelligenceXHealth -CopilotCliPath 'C:\Path'
+Get-IntelligenceXHealth -Client 'Value'
 ```
 
 
 ## PARAMETERS
 
 ### -Client
-OpenAI/app-server client instance. Defaults to the active client.
+Client to check. Defaults to the active client.
 
 ```yaml
 Type: IntelligenceXClient
@@ -50,7 +48,7 @@ Accept wildcard characters: False
 ```
 
 ### -Copilot
-Run a Copilot CLI health check.
+Also check Copilot model access using native HTTP.
 
 ```yaml
 Type: SwitchParameter
@@ -65,88 +63,8 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -CopilotAutoInstall
-Auto-install Copilot CLI if missing.
-
-```yaml
-Type: SwitchParameter
-Parameter Sets: __AllParameterSets
-Aliases: None
-Possible values:
-
-Required: False
-Position: named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -CopilotCliPath
-Copilot CLI path.
-
-```yaml
-Type: String
-Parameter Sets: __AllParameterSets
-Aliases: None
-Possible values:
-
-Required: False
-Position: named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -CopilotCliUrl
-Copilot CLI URL (host:port).
-
-```yaml
-Type: String
-Parameter Sets: __AllParameterSets
-Aliases: None
-Possible values:
-
-Required: False
-Position: named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -CopilotInstallMethod
-Copilot auto-install method to use when -CopilotAutoInstall is set.
-
-```yaml
-Type: CopilotCliInstallMethod
-Parameter Sets: __AllParameterSets
-Aliases: None
-Possible values: Auto, Winget, Homebrew, Npm, Script
-
-Required: False
-Position: named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -CopilotInstallPrerelease
-Copilot auto-install prerelease.
-
-```yaml
-Type: SwitchParameter
-Parameter Sets: __AllParameterSets
-Aliases: None
-Possible values:
-
-Required: False
-Position: named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -CopilotWorkingDirectory
-Copilot CLI working directory.
+### -CopilotBaseUrl
+Optional explicitly trusted Copilot HTTPS API root.
 
 ```yaml
 Type: String

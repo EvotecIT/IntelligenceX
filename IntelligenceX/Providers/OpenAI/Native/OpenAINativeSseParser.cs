@@ -4,11 +4,17 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.Native;
 
 internal static class OpenAINativeSseParser {
-    public static async Task ParseAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken) {
+    public static Task ParseAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken,
+        bool allowSensitiveDiagnostics = true, bool stopOnTerminalResponse = false) =>
+        TaskCancellation.WaitAsync(ParseCoreAsync(stream, onEvent, cancellationToken, allowSensitiveDiagnostics, stopOnTerminalResponse), cancellationToken);
+
+    private static async Task ParseCoreAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken,
+        bool allowSensitiveDiagnostics = true, bool stopOnTerminalResponse = false) {
         using var reader = new StreamReader(stream, Encoding.UTF8);
         var buffer = new StringBuilder();
         var charBuffer = new char[4096];
@@ -21,18 +27,18 @@ internal static class OpenAINativeSseParser {
             }
             buffer.Append(charBuffer, 0, read);
             NormalizeNewLines(buffer);
-            await DrainBufferAsync(buffer, onEvent, cancellationToken).ConfigureAwait(false);
+            if (await DrainBufferAsync(buffer, onEvent, cancellationToken, allowSensitiveDiagnostics, stopOnTerminalResponse).ConfigureAwait(false)) return;
         }
 
-        await DrainBufferAsync(buffer, onEvent, cancellationToken).ConfigureAwait(false);
+        await DrainBufferAsync(buffer, onEvent, cancellationToken, allowSensitiveDiagnostics, stopOnTerminalResponse).ConfigureAwait(false);
     }
 
-    private static async Task DrainBufferAsync(StringBuilder buffer, Func<JsonObject, Task> onEvent,
-        CancellationToken cancellationToken) {
+    private static async Task<bool> DrainBufferAsync(StringBuilder buffer, Func<JsonObject, Task> onEvent,
+        CancellationToken cancellationToken, bool allowSensitiveDiagnostics, bool stopOnTerminalResponse) {
         while (true) {
             var index = buffer.ToString().IndexOf("\n\n", StringComparison.Ordinal);
             if (index < 0) {
-                return;
+                return false;
             }
 
             var chunk = buffer.ToString(0, index);
@@ -49,7 +55,7 @@ internal static class OpenAINativeSseParser {
                 // reconstruction that avoids inserting separators between data lines.
                 var alt = ExtractData(chunk, alternate: true);
                 if (string.IsNullOrWhiteSpace(alt) || string.Equals(alt, data, StringComparison.Ordinal)) {
-                    TraceMalformedEvent(data);
+                    if (allowSensitiveDiagnostics) TraceMalformedEvent(data);
                     continue;
                 }
                 try {
@@ -57,7 +63,7 @@ internal static class OpenAINativeSseParser {
                 } catch (FormatException) {
                     // Skip invalid events and continue parsing; callers can still fall back to accumulated deltas
                     // if the completed response isn't available.
-                    TraceMalformedEvent(alt);
+                    if (allowSensitiveDiagnostics) TraceMalformedEvent(alt);
                     continue;
                 }
             }
@@ -67,6 +73,8 @@ internal static class OpenAINativeSseParser {
             }
             cancellationToken.ThrowIfCancellationRequested();
             await onEvent(obj).ConfigureAwait(false);
+            if (stopOnTerminalResponse && obj.GetString("type") is "response.completed" or "response.incomplete" or "response.failed" or "error")
+                return true;
         }
     }
 

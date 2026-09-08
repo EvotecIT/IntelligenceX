@@ -8,7 +8,7 @@ try {
     # OpenAI app-server health (uses active client)
     Get-IntelligenceXHealth
 
-    # Copilot CLI health (optional)
+    # Native Copilot health (optional)
     # Get-IntelligenceXHealth -Copilot
 } finally {
     if ($client) {

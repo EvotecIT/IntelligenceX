@@ -17,7 +17,7 @@ Build-Module -ModuleName 'IntelligenceX' {
 
     # Usual defaults as per standard module
     $Manifest = [ordered] @{
-        ModuleVersion        = '0.1.0'
+        ModuleVersion        = '0.1.1'
         CompatiblePSEditions = @('Desktop', 'Core')
         GUID                 = '8fc3e038-c57b-44f3-bc7f-714beb3bd65a'
         Author               = 'Przemyslaw Klys'

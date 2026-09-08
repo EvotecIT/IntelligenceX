@@ -41,7 +41,7 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
         var response = await _client.SendAsync(input, options, cancellationToken).ConfigureAwait(false);
         var text = JoinText(response.Outputs);
         var assets = BuildAssets(request, response);
-        var json = TryExtractJson(text);
+        var json = TreatmentResponseParser.TryExtractJson(text);
         var id = !string.IsNullOrWhiteSpace(request.Id) ? request.Id! : response.Id;
 
         return new TreatmentResult(id, response.Status, text, json, assets, response.Raw, request.Metadata);
@@ -58,9 +58,14 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             Workspace = request.Workspace,
             AllowNetwork = request.AllowNetwork,
             NewThread = request.NewThread,
+            MaxResponseBytes = request.MaxResponseBytes,
+            Ephemeral = request.Ephemeral,
             TelemetryFeature = "treatment",
             TelemetrySurface = "IntelligenceX.Treatment",
             RequireWorkspaceForFileAccess = true,
+            ResponseFormat = request.EnforceOutputSchema
+                ? new ChatResponseFormat("treatment_output", JsonLite.Serialize(JsonValue.From(request.OutputSchema!.JsonSchema!)), request.OutputSchema.Strict)
+                : null,
             ImageGeneration = MapImageOptions(request.ImageGeneration)
         };
     }
@@ -83,8 +88,15 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
     }
 
     private static void AddImageInputs(ChatInput input, TreatmentRequest request) {
+        long inlineBytes = 0;
         foreach (var artifact in request.Inputs) {
             if (artifact is null) {
+                continue;
+            }
+            if (artifact.ImageBytes is not null) {
+                inlineBytes += artifact.ImageBytes.Length;
+                if (inlineBytes > request.MaxInlineImageBytes) throw new ArgumentException("Inline image payloads exceed the treatment limit.", nameof(request));
+                input.AddImageBytes(artifact.ImageBytes, NormalizeMediaType(artifact.MediaType), request.MaxInlineImageBytes);
                 continue;
             }
             if (!IsImageArtifact(artifact)) {
@@ -218,30 +230,6 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) ? uri : null;
     }
 
-    private static JsonValue? TryExtractJson(string? text) {
-        if (string.IsNullOrWhiteSpace(text)) {
-            return null;
-        }
-        var trimmed = StripJsonFence(text!.Trim());
-        try {
-            return JsonLite.Parse(trimmed);
-        } catch {
-            return null;
-        }
-    }
-
-    private static string StripJsonFence(string text) {
-        if (!text.StartsWith("```", StringComparison.Ordinal)) {
-            return text;
-        }
-
-        var firstNewLine = text.IndexOf('\n');
-        var lastFence = text.LastIndexOf("```", StringComparison.Ordinal);
-        if (firstNewLine < 0 || lastFence <= firstNewLine) {
-            return text;
-        }
-        return text.Substring(firstNewLine + 1, lastFence - firstNewLine - 1).Trim();
-    }
 }
 
 /// <summary>

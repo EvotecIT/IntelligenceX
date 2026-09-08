@@ -1,124 +1,48 @@
 using System.Management.Automation;
 using System.Threading.Tasks;
 using IntelligenceX.Configuration;
-using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.Utils;
 
 namespace IntelligenceX.PowerShell;
 
 /// <summary>
-/// <para type="synopsis">Runs health checks for OpenAI app-server and optional Copilot CLI.</para>
-/// <para type="description">Returns health status for the active IntelligenceX client and, optionally, a Copilot CLI
-/// instance using explicit or config-derived options.</para>
-/// <example>
-///  <para>Check OpenAI app-server health</para>
-///  <code>Get-IntelligenceXHealth</code>
-/// </example>
-/// <example>
-///  <para>Check OpenAI and Copilot CLI health</para>
-///  <code>Get-IntelligenceXHealth -Copilot</code>
-/// </example>
-/// <example>
-///  <para>Check Copilot with explicit path and auto-install enabled</para>
-///  <code>Get-IntelligenceXHealth -Copilot -CopilotCliPath "copilot" -CopilotAutoInstall</code>
-/// </example>
+/// <para type="synopsis">Checks the active IntelligenceX connection and optional native Copilot access.</para>
+/// <para type="description">Copilot checks use direct HTTPS model discovery. No CLI installation or process is required.</para>
+/// <example><para>Check the active connection and Copilot subscription access.</para>
+/// <code>Get-IntelligenceXHealth -Copilot</code></example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "IntelligenceXHealth")]
 [OutputType(typeof(HealthReportRecord))]
 public sealed class CmdletGetIntelligenceXHealth : IntelligenceXCmdlet {
-    /// <summary>
-    /// <para type="description">OpenAI/app-server client instance. Defaults to the active client.</para>
-    /// </summary>
+    /// <summary><para type="description">Client to check. Defaults to the active client.</para></summary>
     [Parameter(ValueFromPipeline = true)]
     public IntelligenceXClient? Client { get; set; }
 
-    /// <summary>
-    /// <para type="description">Run a Copilot CLI health check.</para>
-    /// </summary>
+    /// <summary><para type="description">Also check Copilot model access using native HTTP.</para></summary>
     [Parameter]
     public SwitchParameter Copilot { get; set; }
 
-    /// <summary>
-    /// <para type="description">Ignore .intelligencex/config.json overrides.</para>
-    /// </summary>
+    /// <summary><para type="description">Ignore .intelligencex/config.json overrides.</para></summary>
     [Parameter]
     public SwitchParameter NoConfig { get; set; }
 
-    /// <summary>
-    /// <para type="description">Copilot CLI path.</para>
-    /// </summary>
+    /// <summary><para type="description">Optional explicitly trusted Copilot HTTPS API root.</para></summary>
     [Parameter]
-    public string? CopilotCliPath { get; set; }
-
-    /// <summary>
-    /// <para type="description">Copilot CLI URL (host:port).</para>
-    /// </summary>
-    [Parameter]
-    public string? CopilotCliUrl { get; set; }
-
-    /// <summary>
-    /// <para type="description">Copilot CLI working directory.</para>
-    /// </summary>
-    [Parameter]
-    public string? CopilotWorkingDirectory { get; set; }
-
-    /// <summary>
-    /// <para type="description">Auto-install Copilot CLI if missing.</para>
-    /// </summary>
-    [Parameter]
-    public SwitchParameter CopilotAutoInstall { get; set; }
-
-    /// <summary>
-    /// <para type="description">Copilot auto-install method to use when <c>-CopilotAutoInstall</c> is set.</para>
-    /// </summary>
-    [Parameter]
-    public CopilotCliInstallMethod CopilotInstallMethod { get; set; } = CopilotCliInstallMethod.Auto;
-
-    /// <summary>
-    /// <para type="description">Copilot auto-install prerelease.</para>
-    /// </summary>
-    [Parameter]
-    public SwitchParameter CopilotInstallPrerelease { get; set; }
+    public string? CopilotBaseUrl { get; set; }
 
     /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
-        HealthCheckResult? openAi = null;
-        HealthCheckResult? copilot = null;
-
-        if (Client is not null || ClientContext.DefaultClient is not null) {
-            var resolved = ResolveClient(Client);
-            openAi = await resolved.HealthCheckAsync().ConfigureAwait(false);
-        }
-
+        HealthCheckResult? active = null, copilot = null;
+        if (Client is not null || ClientContext.DefaultClient is not null)
+            active = await ResolveClient(Client).HealthCheckAsync(cancellationToken: CancelToken).ConfigureAwait(false);
         if (Copilot.IsPresent) {
-            var options = new CopilotClientOptions();
-            if (!NoConfig.IsPresent && IntelligenceXConfig.TryLoad(out var config)) {
-                config.Copilot.ApplyTo(options);
-            }
-            if (!string.IsNullOrWhiteSpace(CopilotCliPath)) {
-                options.CliPath = CopilotCliPath;
-            }
-            if (!string.IsNullOrWhiteSpace(CopilotCliUrl)) {
-                options.CliUrl = CopilotCliUrl;
-            }
-            if (!string.IsNullOrWhiteSpace(CopilotWorkingDirectory)) {
-                options.WorkingDirectory = CopilotWorkingDirectory;
-            }
-            if (CopilotAutoInstall.IsPresent) {
-                options.AutoInstallCli = true;
-            }
-            options.AutoInstallMethod = CopilotInstallMethod;
-            options.AutoInstallPrerelease = CopilotInstallPrerelease.IsPresent;
-
-            var client = await CopilotClient.StartAsync(options, CancelToken).ConfigureAwait(false);
-            try {
-                copilot = await client.HealthCheckAsync(cancellationToken: CancelToken).ConfigureAwait(false);
-            } finally {
-                await client.DisposeAsync().ConfigureAwait(false);
-            }
+            var options = new IntelligenceXClientOptions { TransportKind = OpenAITransportKind.CopilotNative };
+            if (!NoConfig.IsPresent && IntelligenceXConfig.TryLoad(out var config)) config.Copilot.ApplyTo(options.CopilotOptions);
+            if (!string.IsNullOrWhiteSpace(CopilotBaseUrl)) options.CopilotOptions.BaseUrl = CopilotBaseUrl!;
+            using var client = await IntelligenceXClient.ConnectAsync(options, CancelToken).ConfigureAwait(false);
+            copilot = await client.HealthCheckAsync(cancellationToken: CancelToken).ConfigureAwait(false);
         }
-
-        WriteObject(new HealthReportRecord(openAi, copilot));
+        WriteObject(new HealthReportRecord(active, copilot));
     }
 }

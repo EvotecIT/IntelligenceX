@@ -890,12 +890,4 @@ internal static partial class Program {
         }
     }
 
-    private static void TestCopilotIdleEvent() {
-        var json = new JsonObject()
-            .Add("type", "session.idle")
-            .Add("data", new JsonObject());
-        var evt = CopilotSessionEvent.FromJson(json);
-        AssertEqual(true, evt.IsIdle, "idle");
-    }
-
 }

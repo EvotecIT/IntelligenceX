@@ -19,7 +19,7 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.CompatibleHttp;
 
-internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
+internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalThreadLifetime {
     private readonly OpenAICompatibleHttpOptions _options;
     private readonly HttpClient _http;
     private readonly Uri _apiBase;
@@ -33,20 +33,21 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
     internal OpenAICompatibleHttpTransport(OpenAICompatibleHttpOptions options)
         : this(options, httpClient: null) { }
 
-    internal OpenAICompatibleHttpTransport(OpenAICompatibleHttpOptions options, HttpClient? httpClient) {
+    internal OpenAICompatibleHttpTransport(OpenAICompatibleHttpOptions options, HttpClient? httpClient, Uri? apiBase = null) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _options.Validate();
 
-        _apiBase = NormalizeBaseUrl(_options.BaseUrl!);
+        _apiBase = apiBase ?? NormalizeBaseUrl(_options.BaseUrl!);
         _modelsUrl = new Uri(_apiBase, "models");
         _lmStudioModelsUrl = BuildLmStudioModelsUrl(_apiBase);
         _chatCompletionsUrl = new Uri(_apiBase, "chat/completions");
 
-        _http = httpClient ?? new HttpClient();
+        _http = httpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = _options.AllowAutoRedirect, UseProxy = _options.UseProxy });
         _http.Timeout = Timeout.InfiniteTimeSpan;
     }
 
-    public OpenAITransportKind Kind => OpenAITransportKind.CompatibleHttp;
+    public virtual OpenAITransportKind Kind => OpenAITransportKind.CompatibleHttp;
+    public void ForgetThread(string threadId) { lock (_threadsLock) _threads.Remove(threadId); }
     public AppServerClient? RawAppServerClient => null;
 
     public event EventHandler<string>? DeltaReceived;
@@ -77,15 +78,17 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         try {
             // Prefer a cheap call that most OpenAI-compatible servers implement.
             _ = await ListModelsAsync(token).ConfigureAwait(false);
-            return new HealthCheckResult(true, "compatible-http/models", null, sw.Elapsed);
+            return new HealthCheckResult(true, Kind == OpenAITransportKind.CopilotNative ? "copilot-native/models" : "compatible-http/models", null, sw.Elapsed);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw new OperationCanceledException(cancellationToken);
         } catch (Exception ex) {
-            return new HealthCheckResult(false, "compatible-http/models", ex, sw.Elapsed);
+            return new HealthCheckResult(false, Kind == OpenAITransportKind.CopilotNative ? "copilot-native/models" : "compatible-http/models", ex, sw.Elapsed);
         } finally {
             cts?.Dispose();
         }
     }
 
-    public Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken) {
+    public virtual Task<AccountInfo> GetAccountAsync(CancellationToken cancellationToken) {
         // Many OpenAI-compatible endpoints don't expose an account endpoint. Treat "reachable" as "authenticated".
         var obj = new JsonObject()
             .Add("id", "local")
@@ -93,31 +96,29 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         return Task.FromResult(AccountInfo.FromJson(obj));
     }
 
-    public Task LogoutAsync(CancellationToken cancellationToken) {
+    public virtual Task LogoutAsync(CancellationToken cancellationToken) {
         // No session state to clear for compatible HTTP endpoints.
         return Task.CompletedTask;
     }
 
-    public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken) {
+    public virtual async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken) {
         using var request = new HttpRequestMessage(HttpMethod.Get, _modelsUrl);
-        AddAuthHeader(request);
+        await PrepareRequestAsync(request, cancellationToken).ConfigureAwait(false);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("models.list", JsonValue.From(new JsonObject().Add("url", _modelsUrl.ToString()))));
+        ObserverDispatcher.Raise(RpcCallStarted, this, new RpcCallStartedEventArgs("models.list", JsonValue.From(new JsonObject().Add("url", _modelsUrl.ToString()))));
         try {
-            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) {
-                throw new InvalidOperationException($"Model list request failed ({(int)response.StatusCode}): {payload}");
-            }
+            using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var payload = await ResponseBudgetStream.ReadTextAsync(response.Content, 4_194_304, cancellationToken).ConfigureAwait(false);
 
             var value = JsonLite.Parse(payload);
             var obj = value?.AsObject() ?? new JsonObject();
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, true));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, true));
             var primary = ModelListResult.FromJson(obj);
             return await TryMergeLmStudioCatalogAsync(primary, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) {
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, false, ex));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, false, ex));
             throw;
         }
     }
@@ -143,7 +144,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         try {
             using var request = new HttpRequestMessage(HttpMethod.Get, _lmStudioModelsUrl);
-            AddAuthHeader(request);
+            await PrepareRequestAsync(request, cancellationToken).ConfigureAwait(false);
             using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
                 return null;
@@ -300,8 +301,8 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         _options.ApiKey = apiKey.Trim();
         _options.BasicUsername = null;
         _options.BasicPassword = null;
-        LoginStarted?.Invoke(this, new LoginEventArgs("apikey"));
-        LoginCompleted?.Invoke(this, new LoginEventArgs("apikey"));
+        ObserverDispatcher.Raise(LoginStarted, this, new LoginEventArgs("apikey"));
+        ObserverDispatcher.Raise(LoginCompleted, this, new LoginEventArgs("apikey"));
         return Task.CompletedTask;
     }
 
@@ -348,7 +349,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         return Task.FromResult(ThreadInfo.FromJson(raw));
     }
 
-    public async Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
+    public virtual async Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken) {
         if (string.IsNullOrWhiteSpace(threadId)) {
             throw new ArgumentException("Thread id cannot be empty.", nameof(threadId));
@@ -369,9 +370,15 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(model)) {
-            state.Model = model!;
-        }
+        await state.TurnGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            return await RunThreadTurnAsync(state, input, options, model, cancellationToken).ConfigureAwait(false);
+        } finally { state.TurnGate.Release(); }
+    }
+
+    private async Task<TurnInfo> RunThreadTurnAsync(CompatibleThreadState state, ChatInput input, ChatOptions options,
+        string? model, CancellationToken cancellationToken) {
+        if (!string.IsNullOrWhiteSpace(model)) state.Model = model!;
 
         if (string.IsNullOrWhiteSpace(state.Model)) {
             throw new InvalidOperationException("No model configured for CompatibleHttp transport. Set ChatOptions.Model or set a default model when creating the thread.");
@@ -396,14 +403,20 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         }
 
         var normalizedRequestMessages = NormalizeToolReplayMessages(requestMessages);
-        var body = BuildChatCompletionsRequest(state.Model, normalizedRequestMessages, options, streaming: _options.Streaming);
+        bool responses = await UseResponsesAsync(state.Model, cancellationToken).ConfigureAwait(false);
+        var body = responses
+            ? BuildResponsesRequest(state.Model, normalizedRequestMessages, options, _options.Streaming)
+            : BuildChatCompletionsRequest(state.Model, normalizedRequestMessages, options, streaming: _options.Streaming);
+        string operation = responses ? "responses.create" : "chat.completions.create";
         var rpcParams = JsonValue.From(body);
-        RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("chat.completions.create", rpcParams));
+        ObserverDispatcher.Raise(RpcCallStarted, this, new RpcCallStartedEventArgs(operation, rpcParams));
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
-            var response = await SendChatCompletionsAsync(body, cancellationToken).ConfigureAwait(false);
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("chat.completions.create", sw.Elapsed, true));
+            var response = responses
+                ? await SendResponsesAsync(body, options.MaxResponseBytes, cancellationToken).ConfigureAwait(false)
+                : await SendChatCompletionsAsync(body, options.MaxResponseBytes, cancellationToken).ConfigureAwait(false);
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs(operation, sw.Elapsed, true));
 
             // Update history with the messages we sent + the assistant message we received.
             lock (_threadsLock) {
@@ -414,31 +427,29 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
             return response.Turn;
         } catch (Exception ex) {
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("chat.completions.create", sw.Elapsed, false, ex));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs(operation, sw.Elapsed, false, ex));
             throw;
         }
     }
 
-    private async Task<ChatCompletionResponse> SendChatCompletionsAsync(JsonObject body, CancellationToken cancellationToken) {
+    private async Task<ChatCompletionResponse> SendChatCompletionsAsync(JsonObject body, long? maxResponseBytes, CancellationToken cancellationToken) {
+        if (maxResponseBytes.HasValue && maxResponseBytes.Value < 1) throw new ArgumentOutOfRangeException(nameof(maxResponseBytes));
         var json = JsonLite.Serialize(JsonValue.From(body));
         using var request = new HttpRequestMessage(HttpMethod.Post, _chatCompletionsUrl);
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-        AddAuthHeader(request);
+        await PrepareRequestAsync(request, cancellationToken).ConfigureAwait(false);
 
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) {
-            var errorPayload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
-            throw new InvalidOperationException($"Chat request failed ({(int)response.StatusCode}): {errorPayload}");
-        }
+        using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
 
         var contentType = response.Content.Headers.ContentType?.MediaType;
         var wantsStreaming = _options.Streaming && body.GetBoolean("stream");
         if (wantsStreaming && string.Equals(contentType, "text/event-stream", StringComparison.OrdinalIgnoreCase)) {
-            return await ReadChatCompletionsStreamAsync(response, cancellationToken).ConfigureAwait(false);
+            return await ReadChatCompletionsStreamAsync(response, maxResponseBytes, cancellationToken).ConfigureAwait(false);
         }
 
         // Fallback: provider ignored stream and returned a normal JSON payload.
-        var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        var payload = await ResponseBudgetStream.ReadTextAsync(response.Content, maxResponseBytes, cancellationToken).ConfigureAwait(false);
         var value = JsonLite.Parse(payload);
         var obj = value?.AsObject();
         if (obj is null) {
@@ -447,8 +458,11 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         return BuildTurnFromChatCompletions(obj);
     }
 
-    private async Task<ChatCompletionResponse> ReadChatCompletionsStreamAsync(HttpResponseMessage response, CancellationToken cancellationToken) {
-        using var stream = await ReadAsStreamAsync(response.Content, cancellationToken).ConfigureAwait(false);
+    private Task<ChatCompletionResponse> ReadChatCompletionsStreamAsync(HttpResponseMessage response, long? maxResponseBytes, CancellationToken cancellationToken) =>
+        TaskCancellation.WaitAsync(ReadChatCompletionsStreamCoreAsync(response, maxResponseBytes, cancellationToken), cancellationToken);
+
+    private async Task<ChatCompletionResponse> ReadChatCompletionsStreamCoreAsync(HttpResponseMessage response, long? maxResponseBytes, CancellationToken cancellationToken) {
+        using var stream = new ResponseBudgetStream(await ReadAsStreamAsync(response.Content, cancellationToken).ConfigureAwait(false), maxResponseBytes);
         using var cancelRegistration = cancellationToken.Register(() => {
             try {
                 stream.Dispose();
@@ -461,6 +475,8 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         var content = new StringBuilder();
         var toolCalls = new Dictionary<int, ToolCallBuilder>();
         JsonObject? finalUsage = null;
+        string? finishReason = null;
+        bool receivedDone = false;
 
         while (true) {
             cancellationToken.ThrowIfCancellationRequested();
@@ -470,6 +486,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             } catch (Exception) when (cancellationToken.IsCancellationRequested) {
                 throw new OperationCanceledException(cancellationToken);
             }
+            cancellationToken.ThrowIfCancellationRequested();
             if (line is null) {
                 break;
             }
@@ -486,6 +503,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
                 continue;
             }
             if (string.Equals(data, "[DONE]", StringComparison.OrdinalIgnoreCase)) {
+                receivedDone = true;
                 break;
             }
 
@@ -493,18 +511,21 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             try {
                 parsed = JsonLite.Parse(data);
             } catch {
-                continue;
+                throw new InvalidDataException("The chat stream contained invalid JSON.");
             }
             var obj = parsed?.AsObject();
             if (obj is null) {
-                continue;
+                throw new InvalidDataException("The chat stream contained a non-object data frame.");
             }
+            if (obj.GetObject("error") is not null || obj.GetString("type") == "error")
+                throw new InvalidOperationException("The provider failed the chat request.");
 
             // Best-effort usage parsing: some servers include usage on the final chunk.
             finalUsage ??= obj.GetObject("usage");
 
             var choices = obj.GetArray("choices");
             var first = choices?.Count > 0 ? choices[0].AsObject() : null;
+            finishReason = first?.GetString("finish_reason") ?? finishReason;
             var delta = first?.GetObject("delta");
             if (delta is null) {
                 continue;
@@ -513,7 +534,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             var deltaContent = ExtractDeltaContentText(delta);
             if (!string.IsNullOrEmpty(deltaContent)) {
                 content.Append(deltaContent);
-                DeltaReceived?.Invoke(this, deltaContent!);
+                ObserverDispatcher.Raise(DeltaReceived, this, deltaContent!);
             }
 
             var deltaToolCalls = delta.GetArray("tool_calls") ?? ExtractDeltaToolCallsFromContent(delta);
@@ -553,15 +574,19 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             }
         }
 
+        if (string.IsNullOrWhiteSpace(finishReason) && !receivedDone)
+            throw new InvalidDataException("The chat stream ended without a finish reason or terminal marker.");
         var assistantMessage = BuildAssistantMessageForHistory(content.ToString(), toolCalls);
-        var turn = BuildTurnFromAssistantMessage(assistantMessage, usageObj: finalUsage);
+        var turn = BuildTurnFromAssistantMessage(assistantMessage, usageObj: finalUsage, finishReason);
         return new ChatCompletionResponse(turn, assistantMessage);
     }
 
     private JsonObject BuildChatCompletionsRequest(string model, IReadOnlyList<JsonObject> messages, ChatOptions options, bool streaming) {
         var messageArray = new JsonArray();
         for (var i = 0; i < messages.Count; i++) {
-            messageArray.Add(JsonValue.From(messages[i]));
+            var wireMessage = new JsonObject();
+            foreach (var entry in messages[i]) if (entry.Key != ResponseReplayKey) wireMessage.Add(entry.Key, entry.Value ?? JsonValue.Null);
+            messageArray.Add(wireMessage);
         }
 
         var body = new JsonObject()
@@ -569,6 +594,11 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
             .Add("messages", messageArray);
 
         body.Add("stream", streaming);
+
+        if (options.ResponseFormat is not null) {
+            body.Add("response_format", new JsonObject().Add("type", "json_schema")
+                .Add("json_schema", options.ResponseFormat.ToJsonSchema()));
+        }
 
         if (options.Temperature.HasValue) {
             body.Add("temperature", options.Temperature.Value);
@@ -635,6 +665,14 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         return JsonValue.From("auto");
     }
+
+    protected virtual Task PrepareRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        AddAuthHeader(request);
+        return Task.CompletedTask;
+    }
+
+    protected virtual Task<bool> UseResponsesAsync(string model, CancellationToken cancellationToken) => Task.FromResult(false);
 
     private void AddAuthHeader(HttpRequestMessage request) {
         if (request is null) {

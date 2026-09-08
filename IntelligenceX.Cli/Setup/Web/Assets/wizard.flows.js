@@ -358,6 +358,7 @@ if (reviewModelProfile) reviewModelProfile.addEventListener('change', () => {
   }
 });
 if (reviewModel) reviewModel.addEventListener('input', () => {
+  reviewModel.setCustomValidity('');
   setSelectedModelQuickPick(reviewModel.value, selectedProvider);
   syncSelectedModelProfile(selectedProvider, reviewModel.value);
   if (currentStep === 4) {
