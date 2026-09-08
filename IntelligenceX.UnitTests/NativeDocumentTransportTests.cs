@@ -19,6 +19,11 @@ public sealed class NativeDocumentTransportTests {
     [InlineData("session", "bytes")]
     [InlineData("session", "url")]
     [InlineData("turn", "bytes")]
+    [InlineData("client", "message")]
+    [InlineData("session", "message")]
+    [InlineData("turn", "message")]
+    [InlineData("client", "role-message")]
+    [InlineData("client", "image-url-object")]
     public async Task InlineImageLimitIsAppliedBeforeProviderDispatch(string scope, string source) {
         int calls = 0;
         using var http = new HttpClient(new Handler(_ => {
@@ -31,6 +36,15 @@ public sealed class NativeDocumentTransportTests {
         ChatInput Input(int count) {
             var input = ChatInput.FromText("image");
             string data = "data:image/png;base64," + Convert.ToBase64String(new byte[count]);
+            if (source is "message" or "role-message" or "image-url-object") {
+                var image = new IntelligenceX.Json.JsonObject().Add("type", "input_image");
+                if (source == "image-url-object") image.Add("image_url", new IntelligenceX.Json.JsonObject().Add("url", data));
+                else image.Add("image_url", data);
+                var message = new IntelligenceX.Json.JsonObject().Add("role", "user")
+                    .Add("content", new IntelligenceX.Json.JsonArray().Add(image));
+                if (source != "role-message") message.Add("type", "message");
+                return input.AddRaw(message);
+            }
             return source == "bytes" ? input.AddImageBytes(new byte[count], "image/png", 100)
                 : source == "url" ? input.AddImageUrl(data)
                 : input.AddRaw(new IntelligenceX.Json.JsonObject().Add("type", "image").Add("url", data));
