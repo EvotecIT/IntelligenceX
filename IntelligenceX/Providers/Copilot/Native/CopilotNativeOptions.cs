@@ -52,4 +52,14 @@ public sealed class CopilotNativeOptions {
     }
 
     internal CopilotNativeOptions Snapshot() => (CopilotNativeOptions)MemberwiseClone();
+
+    // Keep environment selection and its isolation rules shared by authentication and EasySession.
+    internal string? GetEnvironmentToken() {
+        if (!UseEnvironmentCredentials || AuthStore is not null || !string.IsNullOrWhiteSpace(AccountId)) return null;
+        foreach (string variable in new[] { "COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN" }) {
+            string? token = Environment.GetEnvironmentVariable(variable);
+            if (!string.IsNullOrWhiteSpace(token)) return token;
+        }
+        return null;
+    }
 }

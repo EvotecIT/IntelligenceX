@@ -21,7 +21,7 @@
         {
           "id": "providers",
           "question": "Which AI providers are supported?",
-          "answer": "ChatGPT (native transport via OAuth) and GitHub Copilot (native HTTPS). You configure the provider and model in .intelligencex/reviewer.json."
+          "answer": "ChatGPT (native transport via OAuth) and GitHub Copilot (via Copilot CLI). You configure the provider and model in .intelligencex/reviewer.json."
         },
         {
           "id": "get-started",

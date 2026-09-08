@@ -9,7 +9,7 @@
     FunctionsToExport    = @()
     GUID                 = '8fc3e038-c57b-44f3-bc7f-714beb3bd65a'
     HelpInfoURI          = 'https://github.com/EvotecIT/IntelligenceX/blob/master/README.md'
-    ModuleVersion        = '0.1.0'
+    ModuleVersion        = '0.1.1'
     PowerShellVersion    = '5.1'
     PrivateData          = @{
         PSData = @{

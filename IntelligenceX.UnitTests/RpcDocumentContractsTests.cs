@@ -34,7 +34,11 @@ public sealed class RpcDocumentContractsTests {
         try {
             cancel.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => active.WaitAsync(TimeSpan.FromSeconds(5)));
-            await Assert.ThrowsAsync<IOException>(() => queued.WaitAsync(TimeSpan.FromSeconds(5)));
+            // The queued caller can observe the terminal failure through its pending result or
+            // through the released send gate. Both paths must preserve the same I/O cause.
+            Exception? queuedError = await Record.ExceptionAsync(() => queued.WaitAsync(TimeSpan.FromSeconds(5)));
+            var terminal = Assert.IsType<IOException>(queuedError is InvalidOperationException unavailable ? unavailable.InnerException : queuedError);
+            Assert.Contains("in-flight write was canceled", terminal.Message);
             await Assert.ThrowsAsync<InvalidOperationException>(() => queuedNotification.WaitAsync(TimeSpan.FromSeconds(5)));
             await Assert.ThrowsAsync<InvalidOperationException>(() => rpc.CallAsync("future", new JsonObject()).WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Equal(1, writes);

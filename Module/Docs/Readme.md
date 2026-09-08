@@ -2,7 +2,7 @@
 Module Name: IntelligenceX
 Module Guid: 8fc3e038-c57b-44f3-bc7f-714beb3bd65a
 Download Help Link: https://github.com/EvotecIT/IntelligenceX/blob/master/README.md
-Help Version: 0.1.0
+Help Version: 0.1.1
 Locale: en-US
 ---
 # IntelligenceX Module

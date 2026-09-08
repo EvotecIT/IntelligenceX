@@ -196,7 +196,8 @@ public sealed class EasySession : IDisposable
         }
 
         if (_options.TransportKind == OpenAITransportKind.CopilotNative
-            && (_options.CopilotOptions.TokenProvider is not null || !string.IsNullOrWhiteSpace(_options.CopilotOptions.GitHubToken))) {
+            && (_options.CopilotOptions.TokenProvider is not null || !string.IsNullOrWhiteSpace(_options.CopilotOptions.GitHubToken)
+                || _options.CopilotOptions.GetEnvironmentToken() is not null)) {
             // Host credentials do not require GitHub's optional profile endpoint to support inference.
             // An explicitly pinned identity still needs verification and must fail closed.
             if (!string.IsNullOrWhiteSpace(_options.CopilotOptions.AccountId))

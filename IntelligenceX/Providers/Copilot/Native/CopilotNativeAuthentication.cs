@@ -89,12 +89,7 @@ public sealed class CopilotNativeAuthentication : IDisposable {
                 }
                 return ValidateToken(_bundle.AccessToken);
             }
-            if (_options.AuthStore is null && _options.UseEnvironmentCredentials && string.IsNullOrWhiteSpace(_options.AccountId)) {
-                foreach (string variable in new[] { "COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN" }) {
-                    string? token = Environment.GetEnvironmentVariable(variable);
-                    if (!string.IsNullOrWhiteSpace(token)) return ValidateToken(token!);
-                }
-            }
+            if (_options.GetEnvironmentToken() is { } ambientToken) return ValidateToken(ambientToken);
             throw new InvalidOperationException("Copilot authentication is required. Supply a GitHub credential, a token provider, or sign in using a registered GitHub app.");
         } finally { _gate.Release(); }
     }
