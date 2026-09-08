@@ -377,6 +377,15 @@ public enum IXRealtimeClientEvent {
         "type": .string("input_audio_buffer.commit"),
     ])
 
+    /// Removes an input item rejected locally, such as verified speaker echo,
+    /// so it cannot influence a later model turn.
+    public static func deleteConversationItem(itemID: String) -> IXJSONValue {
+        .object([
+            "type": .string("conversation.item.delete"),
+            "item_id": .string(itemID),
+        ])
+    }
+
     /// Truncates unplayed assistant audio after a local barge-in. Callers must
     /// pass the duration that was actually rendered, not the amount received.
     public static func truncateConversationAudio(
@@ -488,6 +497,17 @@ public enum IXRealtimeClientEvent {
         "type": .string("response.create"),
     ])
 
+    /// Overrides the session tools for one response without changing later turns.
+    public static func createResponse(tools: [IXCodexToolDefinition]) -> IXJSONValue {
+        .object([
+            "type": .string("response.create"),
+            "response": .object([
+                "tool_choice": .string(tools.isEmpty ? "none" : "auto"),
+                "tools": .array(tools.map(\.realtimeDefinition)),
+            ]),
+        ])
+    }
+
     /// Cancels the currently generating response. Clients can use this after
     /// classifying microphone input as a genuine barge-in rather than echo.
     public static let cancelResponse: IXJSONValue = .object([
@@ -574,14 +594,7 @@ extension IXRealtimeSessionOptions {
             "output_modalities": .array([.string(outputModality)]),
             "audio": .object(audio),
             "tool_choice": .string("auto"),
-            "tools": .array(tools.map { tool in
-                .object([
-                    "type": .string("function"),
-                    "name": .string(tool.name),
-                    "description": .string(tool.description),
-                    "parameters": tool.parameters,
-                ])
-            }),
+            "tools": .array(tools.map(\.realtimeDefinition)),
         ]
         if let reasoningEffort {
             configuration["reasoning"] = .object([
@@ -589,5 +602,16 @@ extension IXRealtimeSessionOptions {
             ])
         }
         return configuration
+    }
+}
+
+extension IXCodexToolDefinition {
+    fileprivate var realtimeDefinition: IXJSONValue {
+        .object([
+            "type": .string("function"),
+            "name": .string(name),
+            "description": .string(description),
+            "parameters": parameters,
+        ])
     }
 }

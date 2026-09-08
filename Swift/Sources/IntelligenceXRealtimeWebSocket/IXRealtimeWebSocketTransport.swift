@@ -7,6 +7,20 @@ public protocol IXRealtimeWebSocketConnection: Sendable {
     func send(_ data: Data) async throws
     func receive() async throws -> Data
     func close() async
+    /// Capture before closing; local teardown can replace the peer's close code.
+    func failureDiagnostics(
+        for error: any Error, operation: IXRealtimeWebSocketFailure.Operation,
+        taskWasCancelled: Bool
+    ) async -> IXRealtimeWebSocketFailure
+}
+
+public extension IXRealtimeWebSocketConnection {
+    func failureDiagnostics(
+        for error: any Error, operation: IXRealtimeWebSocketFailure.Operation,
+        taskWasCancelled: Bool
+    ) async -> IXRealtimeWebSocketFailure {
+        .init(error: error, operation: operation, taskWasCancelled: taskWasCancelled)
+    }
 }
 
 public protocol IXRealtimeWebSocketConnecting: Sendable {
@@ -74,6 +88,14 @@ private actor IXURLSessionRealtimeWebSocketConnection:
     func close() {
         task.cancel(with: .goingAway, reason: nil)
         session.invalidateAndCancel()
+    }
+
+    func failureDiagnostics(
+        for error: any Error, operation: IXRealtimeWebSocketFailure.Operation,
+        taskWasCancelled: Bool
+    ) -> IXRealtimeWebSocketFailure {
+        .init(error: error, operation: operation, taskWasCancelled: taskWasCancelled,
+              closeCode: task.closeCode == .invalid ? nil : task.closeCode.rawValue)
     }
 }
 

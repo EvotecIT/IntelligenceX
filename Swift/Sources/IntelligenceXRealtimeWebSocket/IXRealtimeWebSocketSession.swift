@@ -27,6 +27,8 @@ public final class IXRealtimeWebSocketSession {
     private var lifecycleGeneration: UInt64 = 0
 
     public private(set) var state: IXRealtimeWebSocketConnectionState = .idle
+    /// Available before a failed-state callback and retained through teardown.
+    public private(set) var lastFailure: IXRealtimeWebSocketFailure?
 
     public var isReady: Bool { state == .connected }
 
@@ -58,6 +60,7 @@ public final class IXRealtimeWebSocketSession {
             throw IXCodexError.authenticationRequired
         }
         await disconnect()
+        lastFailure = nil
         lifecycleGeneration &+= 1
         let generation = lifecycleGeneration
         try await withTaskCancellationHandler {
@@ -105,6 +108,10 @@ public final class IXRealtimeWebSocketSession {
                 )
                 try await validate(connection, generation: generation)
             } catch {
+                let failure = await connection.failureDiagnostics(
+                    for: error, operation: .connect, taskWasCancelled: Task.isCancelled
+                )
+                if generation == lifecycleGeneration { lastFailure = failure }
                 await connection.close()
                 if generation == lifecycleGeneration {
                     self.connection = nil
@@ -123,15 +130,17 @@ public final class IXRealtimeWebSocketSession {
                         let event = try IXRealtimeEvent(data: data)
                         await onEvent(event)
                     }
-                } catch is CancellationError {
-                    return
                 } catch {
                     guard !Task.isCancelled else { return }
+                    let failure = await connection.failureDiagnostics(
+                        for: error, operation: .receive, taskWasCancelled: Task.isCancelled
+                    )
                     await connection.close()
                     guard let self,
                           generation == self.lifecycleGeneration else {
                         return
                     }
+                    self.lastFailure = failure
                     self.transition(to: .failed(error.localizedDescription))
                     self.connection = nil
                 }
@@ -150,6 +159,10 @@ public final class IXRealtimeWebSocketSession {
                 throw CancellationError()
             }
             if generation == lifecycleGeneration {
+                if lastFailure == nil {
+                    lastFailure = .init(error: error, operation: .connect,
+                                        taskWasCancelled: Task.isCancelled)
+                }
                 transition(to: .failed(error.localizedDescription))
                 self.connection = nil
             }
@@ -161,7 +174,16 @@ public final class IXRealtimeWebSocketSession {
         guard let connection, isReady else {
             throw IXRealtimeWebSocketError.notConnected
         }
-        try await connection.send(event.encodedData())
+        let generation = lifecycleGeneration
+        do {
+            try await connection.send(event.encodedData())
+        } catch {
+            let failure = await connection.failureDiagnostics(
+                for: error, operation: .send, taskWasCancelled: Task.isCancelled
+            )
+            if generation == lifecycleGeneration { lastFailure = failure }
+            throw error
+        }
     }
 
     public func disconnect() async {
