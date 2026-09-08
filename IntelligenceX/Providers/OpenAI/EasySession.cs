@@ -185,24 +185,28 @@ public sealed class EasySession : IDisposable
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task EnsureLoggedInAsync(CancellationToken cancellationToken = default) {
-        if (_options.ValidateLoginOnEachRequest && _loggedIn) {
-            if (!await TryReadAccountAsync(cancellationToken).ConfigureAwait(false)) {
-                _loggedIn = false;
-            }
-        }
-
-        if (_loggedIn || _options.Login == EasyLoginMode.None) {
-            return;
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_options.Login == EasyLoginMode.None) return;
 
         if (_options.TransportKind == OpenAITransportKind.CopilotNative
             && (_options.CopilotOptions.TokenProvider is not null || !string.IsNullOrWhiteSpace(_options.CopilotOptions.GitHubToken)
                 || _options.CopilotOptions.GetEnvironmentToken() is not null)) {
             // Host credentials do not require GitHub's optional profile endpoint to support inference.
             // An explicitly pinned identity still needs verification and must fail closed.
-            if (!string.IsNullOrWhiteSpace(_options.CopilotOptions.AccountId))
+            if (!string.IsNullOrWhiteSpace(_options.CopilotOptions.AccountId)
+                && (!_loggedIn || _options.ValidateLoginOnEachRequest))
                 await _client.GetAccountAsync(cancellationToken).ConfigureAwait(false);
             _loggedIn = true;
+            return;
+        }
+
+        if (_options.ValidateLoginOnEachRequest && _loggedIn) {
+            if (!await TryReadAccountAsync(cancellationToken).ConfigureAwait(false)) {
+                _loggedIn = false;
+            }
+        }
+
+        if (_loggedIn) {
             return;
         }
 

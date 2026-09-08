@@ -44,6 +44,7 @@ public sealed class EasySessionCopilotAuthenticationTests {
             Assert.Equal("answer", (await session.AskAsync("question")).Text);
             Assert.Equal("answer", (await session.AskAsync("another question")).Text);
             Assert.Equal(2, handler.Inferences);
+            Assert.Equal(0, handler.IdentityRequests);
             Assert.Equal(0, handler.DeviceRequests);
         } finally {
             foreach (var item in previous) Environment.SetEnvironmentVariable(item.Key, item.Value);
@@ -75,6 +76,7 @@ public sealed class EasySessionCopilotAuthenticationTests {
         Assert.Equal("answer", (await session.AskAsync("question")).Text);
         Assert.Equal("answer", (await session.AskAsync("another question")).Text);
         Assert.Equal(2, handler.Inferences);
+        Assert.Equal(0, handler.IdentityRequests);
         Assert.Equal(0, handler.DeviceRequests);
     }
 
@@ -91,6 +93,30 @@ public sealed class EasySessionCopilotAuthenticationTests {
         Assert.True(handler.Disposed);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MatchingPinnedIdentityUsesTheConfiguredPerTurnValidation(bool validateEachRequest) {
+        var handler = new Handler(HttpStatusCode.OK);
+        var options = Options(handler, false);
+        options.CopilotOptions.AccountId = "42";
+        options.ValidateLoginOnEachRequest = validateEachRequest;
+        using var session = await EasySession.StartAsync(options);
+        int verifiedRequests = handler.IdentityRequests;
+        Assert.True(verifiedRequests > 0);
+        handler.IdentityStatus = HttpStatusCode.ServiceUnavailable;
+        if (validateEachRequest) {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => session.AskAsync("question"));
+            Assert.Equal(0, handler.Inferences);
+            Assert.True(handler.IdentityRequests > verifiedRequests);
+        } else {
+            Assert.Equal("answer", (await session.AskAsync("question")).Text);
+            Assert.Equal(1, handler.Inferences);
+            Assert.Equal(verifiedRequests, handler.IdentityRequests);
+        }
+        Assert.Equal(0, handler.DeviceRequests);
+    }
+
     private static EasySessionOptions Options(Handler handler, bool callback) => new() {
         TransportKind = OpenAITransportKind.CopilotNative, DefaultModel = "model",
         CopilotOptions = new() { GitHubToken = callback ? null : "host-token",
@@ -100,11 +126,15 @@ public sealed class EasySessionCopilotAuthenticationTests {
     };
 
     private sealed class Handler(HttpStatusCode identityStatus) : HttpMessageHandler {
-        internal int Inferences, DeviceRequests;
+        internal HttpStatusCode IdentityStatus = identityStatus;
+        internal int Inferences, DeviceRequests, IdentityRequests;
         internal bool Disposed;
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
             string path = request.RequestUri!.AbsolutePath;
-            if (path == "/user") return Task.FromResult(new HttpResponseMessage(identityStatus) { Content = new StringContent("{\"id\":42}") });
+            if (path == "/user") {
+                IdentityRequests++;
+                return Task.FromResult(new HttpResponseMessage(IdentityStatus) { Content = new StringContent("{\"id\":42}") });
+            }
             if (path.Contains("login")) {
                 DeviceRequests++;
                 return Task.FromResult(Json(path.EndsWith("device/code", StringComparison.Ordinal)

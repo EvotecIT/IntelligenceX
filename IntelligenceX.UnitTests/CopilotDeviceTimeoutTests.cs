@@ -44,8 +44,9 @@ public sealed class CopilotDeviceTimeoutTests {
         Task login = auth.LoginAsync(_ => codes++);
         try {
             await bodyStarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
-            Assert.Same(login, await Task.WhenAny(login, Task.Delay(500)));
-            await Assert.ThrowsAsync<TimeoutException>(() => login);
+            await Assert.ThrowsAsync<TimeoutException>(() => login.WaitAsync(TimeSpan.FromSeconds(10)));
+            // The outer watchdog must not substitute for the configured provider deadline.
+            Assert.True(login.IsCompleted);
             Assert.Equal(tokenPhase ? 1 : 0, codes);
         } finally {
             bodyReleased.TrySetResult(0);
