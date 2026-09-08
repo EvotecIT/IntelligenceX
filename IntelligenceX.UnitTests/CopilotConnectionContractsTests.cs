@@ -34,7 +34,8 @@ public sealed class CopilotConnectionContractsTests {
         await File.WriteAllTextAsync(path, "This is not an executable.");
         try {
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() => CopilotClient.StartAsync(new() {
-                CliPath = path, AutoInstallCli = false, ConnectRetryCount = retries, ConnectRetryInitialDelay = TimeSpan.Zero
+                CliPath = path, WorkingDirectory = Path.GetTempPath(), AutoInstallCli = false,
+                ConnectRetryCount = retries, ConnectRetryInitialDelay = TimeSpan.Zero
             }));
             Assert.Contains("failed to start", error.Message);
             Assert.IsType<System.ComponentModel.Win32Exception>(error.InnerException);

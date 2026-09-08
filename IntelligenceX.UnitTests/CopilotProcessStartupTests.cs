@@ -31,8 +31,12 @@ public sealed class CopilotProcessStartupTests {
             };
             options.Environment["IX_TEST_PID_LOG"] = log;
             options.Environment["IX_TEST_PORT"] = ((IPEndPoint)reservedPort.LocalEndPoint!).Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            await Assert.ThrowsAsync<SocketException>(() => CopilotClient.StartAsync(options, deadline.Token));
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            Exception? failure = await Record.ExceptionAsync(() => CopilotClient.StartAsync(options, deadline.Token));
+            // A bound non-listening port is refused on some hosts and times out on others.
+            // Both paths must dispose both failed attempts before returning to the caller.
+            Assert.True(failure is SocketException or OperationCanceledException, failure?.ToString());
+            Assert.False(deadline.IsCancellationRequested, "The caller deadline expired before both connection attempts settled.");
             string[] ids = await File.ReadAllLinesAsync(log);
             Assert.Equal(2, ids.Length);
             foreach (string id in ids) {
