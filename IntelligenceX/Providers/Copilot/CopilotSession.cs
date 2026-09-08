@@ -90,7 +90,7 @@ public sealed class CopilotSession : IDisposable {
     public async Task<string?> SendAndWaitAsync(CopilotMessageOptions options, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default) {
         if (options is null) throw new ArgumentNullException(nameof(options));
-        if (options.MaxResponseCharacters < 1 || options.MaxResponseCharacters > 16_000_000) throw new ArgumentOutOfRangeException(nameof(options));
+        if (options.MaxResponseCharacters < 1 || options.MaxResponseCharacters > 268_435_456) throw new ArgumentOutOfRangeException(nameof(options));
         if (options.MaxResponseBytes is < 1 or > 268_435_456) throw new ArgumentOutOfRangeException(nameof(options));
         int maximumCharacters = options.MaxResponseCharacters;
         long? maximumBytes = options.MaxResponseBytes;

@@ -76,17 +76,7 @@ public sealed class CopilotClient : IDisposable
     public static async Task<CopilotClient> StartAsync(CopilotClientOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new CopilotClientOptions();
         options.Validate();
-        var client = await StartWithRetryAsync(options, cancellationToken).ConfigureAwait(false);
-        try {
-            var handshakeToken = CreateTimeoutToken(options.ConnectTimeout, cancellationToken, out var handshake);
-            try {
-                await client.CallAsync("connect", JsonValue.From(new JsonArray().Add(new JsonObject())), handshakeToken).ConfigureAwait(false);
-            } finally { handshake?.Dispose(); }
-            return client;
-        } catch (Exception error) {
-            DisposeFailedClient(client, error);
-            throw;
-        }
+        return await StartWithRetryAsync(options, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -222,6 +212,10 @@ public sealed class CopilotClient : IDisposable
             var client = new CopilotClient(options);
             try {
                 await client.StartCoreAsync(cancellationToken).ConfigureAwait(false);
+                var handshakeToken = CreateTimeoutToken(options.ConnectTimeout, cancellationToken, out var handshake);
+                try {
+                    await client.CallAsync("connect", JsonValue.From(new JsonArray().Add(new JsonObject())), handshakeToken).ConfigureAwait(false);
+                } finally { handshake?.Dispose(); }
                 return client;
             } catch (Exception ex) {
                 lastError = ex;

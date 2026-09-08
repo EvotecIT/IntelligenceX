@@ -9,6 +9,37 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class CopilotConnectionContractsTests {
+    [Theory]
+    [InlineData(20_000_000, true)]
+    [InlineData(16_999_999, false)]
+    public async Task TreatmentHonorsTheRequestedResponseByteBudget(long maximum, bool accepted) {
+        string response = new string('a', 17_000_000);
+        using var peer = new Peer(response, false);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var client = await CopilotClient.StartAsync(new() { CliUrl = peer.Address, AutoStart = false,
+            UseStdio = false, ConnectRetryCount = 0, MaxReceivedBytes = 268_435_456 }, deadline.Token);
+        var pending = CopilotTreatmentProvider.RunSessionAsync(client, new() { Prompt = "text", Model = "fixture" },
+            "text", maximum, deadline.Token);
+        if (accepted) {
+            var result = await pending;
+            Assert.Equal(response, result.Text);
+            Assert.Equal("completed", result.Status);
+        } else {
+            await Assert.ThrowsAsync<InvalidDataException>(() => pending);
+        }
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task ImageOutputsAreRejectedBeforeStartingTheCli(bool required, bool disabledGeneration) {
+        var request = new TreatmentRequest { Prompt = "Create an image", Model = "fixture", Ephemeral = true,
+            Outputs = new[] { new TreatmentOutputSpec { Modality = TreatmentOutputModality.Image, Required = required } } };
+        if (disabledGeneration) request.ImageGeneration = new() { Enabled = false };
+        await Assert.ThrowsAsync<NotSupportedException>(() => new CopilotTreatmentProvider("missing-cli").RunAsync(request));
+    }
+
     [Fact]
     public async Task DisconnectReachesEveryAcknowledgedWaiterDespiteThrowingObservers() {
         using var peer = new Peer("{}", false, holdResponses: true);

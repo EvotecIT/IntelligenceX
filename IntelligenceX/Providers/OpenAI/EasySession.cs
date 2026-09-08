@@ -253,6 +253,8 @@ public sealed class EasySession : IDisposable
         clientOptions.NativeOptions.TextVerbosity = options.NativeOptions.TextVerbosity;
         clientOptions.NativeOptions.IncludeReasoningEncryptedContent = options.NativeOptions.IncludeReasoningEncryptedContent;
         clientOptions.NativeOptions.EnableToolSchemaFallback = options.NativeOptions.EnableToolSchemaFallback;
+        clientOptions.NativeOptions.EnableModelFallback = options.NativeOptions.EnableModelFallback;
+        clientOptions.NativeOptions.AllowSensitiveDiagnostics = options.NativeOptions.AllowSensitiveDiagnostics;
         clientOptions.NativeOptions.ImageGeneration = options.NativeOptions.ImageGeneration.Clone();
         clientOptions.NativeOptions.OAuthTimeout = options.NativeOptions.OAuthTimeout;
         clientOptions.NativeOptions.UseLocalListener = options.NativeOptions.UseLocalListener;
@@ -289,6 +291,8 @@ public sealed class EasySession : IDisposable
             clientOptions.CompatibleHttpOptions.BasicUsername = options.CompatibleHttpOptions.BasicUsername;
             clientOptions.CompatibleHttpOptions.BasicPassword = options.CompatibleHttpOptions.BasicPassword;
             clientOptions.CompatibleHttpOptions.Streaming = options.CompatibleHttpOptions.Streaming;
+            clientOptions.CompatibleHttpOptions.AllowAutoRedirect = options.CompatibleHttpOptions.AllowAutoRedirect;
+            clientOptions.CompatibleHttpOptions.UseProxy = options.CompatibleHttpOptions.UseProxy;
             clientOptions.CompatibleHttpOptions.AllowInsecureHttp = options.CompatibleHttpOptions.AllowInsecureHttp;
             clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.CompatibleHttpOptions.AllowInsecureHttpNonLoopback;
         }
@@ -299,6 +303,7 @@ public sealed class EasySession : IDisposable
             clientOptions.CopilotOptions.UseStdio = options.CopilotOptions.UseStdio;
             clientOptions.CopilotOptions.Port = options.CopilotOptions.Port;
             clientOptions.CopilotOptions.LogLevel = options.CopilotOptions.LogLevel;
+            clientOptions.CopilotOptions.MaxReceivedBytes = options.CopilotOptions.MaxReceivedBytes;
             clientOptions.CopilotOptions.WorkingDirectory = options.CopilotOptions.WorkingDirectory;
             clientOptions.CopilotOptions.InheritEnvironment = options.CopilotOptions.InheritEnvironment;
             clientOptions.CopilotOptions.AutoStart = options.CopilotOptions.AutoStart;

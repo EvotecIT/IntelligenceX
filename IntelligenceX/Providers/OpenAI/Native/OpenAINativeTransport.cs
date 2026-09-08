@@ -29,11 +29,11 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
 
     public OpenAINativeTransport(OpenAINativeOptions options) : this(options, null) { }
 
-    internal OpenAINativeTransport(OpenAINativeOptions options, HttpClient? httpClient) {
+    internal OpenAINativeTransport(OpenAINativeOptions options, HttpClient? httpClient, OpenAINativeAuthManager? auth = null) {
         _options = options;
         _options.Validate();
         _httpClient = httpClient ?? new HttpClient();
-        _auth = new OpenAINativeAuthManager(_options);
+        _auth = auth ?? new OpenAINativeAuthManager(_options);
     }
 
     public OpenAITransportKind Kind => OpenAITransportKind.Native;
@@ -268,14 +268,13 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
     private async Task<TurnInfo> ProcessResponseAsync(HttpResponseMessage response, string turnId, string model,
         NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, ChatOptions options,
         CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Authentication is determined by HTTP status. Its error payload must neither consume
+        // the generation budget nor delay the bounded refresh/replay path.
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new OpenAIAuthenticationRequiredException(OpenAIAuthenticationRequiredException.DefaultMessage);
         if (!response.IsSuccessStatusCode) {
             var error = await ParseErrorResponseAsync(response, cancellationToken, options.MaxResponseBytes).ConfigureAwait(false);
-            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
-                var message = string.IsNullOrWhiteSpace(error.Message)
-                    ? OpenAIAuthenticationRequiredException.DefaultMessage
-                    : error.Message;
-                throw new OpenAIAuthenticationRequiredException(message);
-            }
             var httpFailure = new HttpRequestException($"ChatGPT request failed ({(int)response.StatusCode}).");
             throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode,
                 _options.AllowSensitiveDiagnostics && OpenAINativeTrace.IsEnabled(), httpFailure);

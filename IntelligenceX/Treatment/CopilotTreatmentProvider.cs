@@ -32,7 +32,8 @@ public sealed class CopilotTreatmentProvider : ITreatmentProvider {
         CancellationToken token = deadline.Token;
         token.ThrowIfCancellationRequested();
         if (request.EnforceOutputSchema || request.AllowNetwork || request.Workspace is not null || request.WorkingDirectory is not null
-            || request.ImageGeneration?.Enabled == true || !request.NewThread || !request.Ephemeral
+            || request.ImageGeneration?.Enabled == true || request.Outputs.Any(output => output?.Modality == TreatmentOutputModality.Image)
+            || !request.NewThread || !request.Ephemeral
             || request.Inputs.Any(input => input.ImageBytes is not null || input.Path is not null || input.Uri is not null))
             throw new NotSupportedException("Copilot treatment requires ephemeral inline text, prompted output, and no tool or file access.");
         if (string.IsNullOrWhiteSpace(request.Model)) throw new ArgumentException("Copilot treatment requires an explicit model.", nameof(request));
@@ -73,7 +74,7 @@ public sealed class CopilotTreatmentProvider : ITreatmentProvider {
             Model = request.Model, Restricted = true, Streaming = false, SystemMessage = request.Instructions
         }, token).ConfigureAwait(false);
         string? response = await session.SendAndWaitAsync(new CopilotMessageOptions {
-            Prompt = prompt, MaxResponseCharacters = (int)Math.Min(maximum, 16_000_000), MaxResponseBytes = maximum
+            Prompt = prompt, MaxResponseCharacters = (int)maximum, MaxResponseBytes = maximum
         }, TimeSpan.FromMinutes(10), token).ConfigureAwait(false);
         // The owning caller always terminates the dedicated process, including on cancellation or invalid output.
         using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
