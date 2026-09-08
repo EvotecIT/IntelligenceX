@@ -90,15 +90,33 @@ public sealed class CopilotSession : IDisposable {
         CancellationToken cancellationToken = default) {
         if (options is null) throw new ArgumentNullException(nameof(options));
         if (options.MaxResponseCharacters < 1 || options.MaxResponseCharacters > 16_000_000) throw new ArgumentOutOfRangeException(nameof(options));
+        if (options.MaxResponseBytes is < 1 or > 268_435_456) throw new ArgumentOutOfRangeException(nameof(options));
+        int maximumCharacters = options.MaxResponseCharacters;
+        long? maximumBytes = options.MaxResponseBytes;
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var builder = new StringBuilder();
+        var deltaEncoder = Encoding.UTF8.GetEncoder();
+        var encodingBuffer = new byte[512];
+        long deltaBytes = 0;
         string? lastMessage = null;
 
         void Handler(CopilotSessionEvent evt) {
             if (tcs.Task.IsCompleted) return;
-            if ((evt.Content?.Length ?? 0) > options.MaxResponseCharacters
-                || (long)builder.Length + (evt.DeltaContent?.Length ?? 0) > options.MaxResponseCharacters) {
+            if ((evt.Content?.Length ?? 0) > maximumCharacters
+                || (long)builder.Length + (evt.DeltaContent?.Length ?? 0) > maximumCharacters) {
                 tcs.TrySetException(new InvalidDataException("Copilot response exceeded its character limit.")); return;
+            }
+            if (maximumBytes.HasValue) {
+                if (evt.Content is not null && Encoding.UTF8.GetByteCount(evt.Content) > maximumBytes.Value) {
+                    tcs.TrySetException(new InvalidDataException("Copilot response exceeded its UTF-8 byte limit.")); return;
+                }
+                if (evt.DeltaContent is not null) {
+                    deltaBytes += CountUtf8Bytes(deltaEncoder, evt.DeltaContent, encodingBuffer, flush: false);
+                }
+                if (evt.IsIdle) deltaBytes += CountUtf8Bytes(deltaEncoder, string.Empty, encodingBuffer, flush: true);
+                if (deltaBytes > maximumBytes.Value) {
+                    tcs.TrySetException(new InvalidDataException("Copilot response exceeded its UTF-8 byte limit.")); return;
+                }
             }
             if (evt.Content is not null) {
                 lastMessage = evt.Content;
@@ -130,6 +148,19 @@ public sealed class CopilotSession : IDisposable {
             else tcs.TrySetException(new TimeoutException("Copilot response timed out."));
         });
         return await tcs.Task.ConfigureAwait(false);
+    }
+
+    private static long CountUtf8Bytes(Encoder encoder, string text, byte[] buffer, bool flush) {
+        char[] characters = text.ToCharArray();
+        int offset = 0;
+        long count = 0;
+        bool completed;
+        do {
+            encoder.Convert(characters, offset, characters.Length - offset, buffer, 0, buffer.Length, flush,
+                out int consumed, out int written, out completed);
+            offset += consumed; count += written;
+        } while (!completed);
+        return count;
     }
 
     internal void Dispatch(CopilotSessionEvent evt) {

@@ -14,6 +14,10 @@ public sealed class ChatInput {
         if (bytes is null) throw new ArgumentNullException(nameof(bytes));
         if (maxBytes < 1 || maxBytes > 64 * 1024 * 1024 || bytes.Length < 1 || bytes.Length > maxBytes)
             throw new ArgumentOutOfRangeException(nameof(bytes), "Image bytes exceed the configured limit or are empty.");
+        if (mediaType is null) throw new ArgumentNullException(nameof(mediaType));
+        int separator = mediaType.IndexOf(';');
+        mediaType = (separator < 0 ? mediaType : mediaType.Substring(0, separator)).Trim().ToLowerInvariant();
+        if (mediaType == "image/jpg") mediaType = "image/jpeg";
         if (mediaType != "image/png" && mediaType != "image/jpeg" && mediaType != "image/webp" && mediaType != "image/gif")
             throw new ArgumentException("Unsupported inline image media type.", nameof(mediaType));
         return AddImageUrl("data:" + mediaType + ";base64," + Convert.ToBase64String(bytes));

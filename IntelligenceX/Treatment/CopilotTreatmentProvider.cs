@@ -43,31 +43,44 @@ public sealed class CopilotTreatmentProvider : ITreatmentProvider {
         string runtime = Path.Combine(Path.GetTempPath(), "intelligencex-treatment-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(runtime);
         try {
-            var options = new CopilotClientOptions {
-                CliPath = _cliPath ?? "copilot", AutoInstallCli = false, WorkingDirectory = runtime,
-                LogLevel = "none", MaxReceivedBytes = maximum, ConnectRetryCount = 0
-            };
-            options.Environment["COPILOT_HOME"] = runtime;
-            if (!string.IsNullOrWhiteSpace(_githubToken)) options.Environment["COPILOT_GITHUB_TOKEN"] = _githubToken!;
-            options.CliArgs.AddRange(new[] { "--no-auto-update", "--disable-builtin-mcps", "--no-custom-instructions",
-                "--no-remote-export", "--no-ask-user" });
+            CopilotClientOptions options = CreateClientOptions(runtime);
             using var client = await CopilotClient.StartAsync(options, token).ConfigureAwait(false);
-            var auth = await client.GetAuthStatusAsync(token).ConfigureAwait(false);
-            if (!auth.IsAuthenticated) throw new InvalidOperationException("Copilot treatment authentication is unavailable.");
-            using var session = await client.CreateSessionAsync(new CopilotSessionOptions {
-                Model = request.Model, Restricted = true, Streaming = false, SystemMessage = request.Instructions
-            }, token).ConfigureAwait(false);
-            string? response = await session.SendAndWaitAsync(new CopilotMessageOptions {
-                Prompt = prompt, MaxResponseCharacters = (int)Math.Min(maximum, 16_000_000)
-            }, TimeSpan.FromMinutes(10), token).ConfigureAwait(false);
-            // Closing the dedicated CLI below also terminates outstanding work on cancellation or invalid output.
-            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await client.DeleteSessionAsync(session.SessionId, cleanup.Token).ConfigureAwait(false);
-            return new TreatmentResult(request.Id ?? Guid.NewGuid().ToString("N"), "completed", response, null, null, null, request.Metadata);
+            return await RunSessionAsync(client, request, prompt, maximum, token).ConfigureAwait(false);
         } finally {
             // This exact random directory was created above; never recurse into a caller-selected directory.
             CleanupRuntimeDirectory(runtime);
         }
+    }
+
+    internal CopilotClientOptions CreateClientOptions(string runtime) {
+        var options = new CopilotClientOptions {
+            CliPath = _cliPath ?? "copilot", AutoInstallCli = false, WorkingDirectory = runtime,
+            // Independent connection-wide protection includes handshake and control-plane traffic.
+            LogLevel = "none", MaxReceivedBytes = 268_435_456, ConnectRetryCount = 0
+        };
+        options.Environment["COPILOT_HOME"] = runtime;
+        if (!string.IsNullOrWhiteSpace(_githubToken)) options.Environment["COPILOT_GITHUB_TOKEN"] = _githubToken!;
+        options.CliArgs.AddRange(new[] { "--no-auto-update", "--disable-builtin-mcps", "--no-custom-instructions",
+            "--no-remote-export", "--no-ask-user" });
+        return options;
+    }
+
+    internal static async Task<TreatmentResult> RunSessionAsync(CopilotClient client, TreatmentRequest request,
+        string prompt, long maximum, CancellationToken token) {
+        var auth = await client.GetAuthStatusAsync(token).ConfigureAwait(false);
+        if (!auth.IsAuthenticated) throw new InvalidOperationException("Copilot treatment authentication is unavailable.");
+        using var session = await client.CreateSessionAsync(new CopilotSessionOptions {
+            Model = request.Model, Restricted = true, Streaming = false, SystemMessage = request.Instructions
+        }, token).ConfigureAwait(false);
+        string? response = await session.SendAndWaitAsync(new CopilotMessageOptions {
+            Prompt = prompt, MaxResponseCharacters = (int)Math.Min(maximum, 16_000_000), MaxResponseBytes = maximum
+        }, TimeSpan.FromMinutes(10), token).ConfigureAwait(false);
+        // The owning caller always terminates the dedicated process, including on cancellation or invalid output.
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try { await client.DeleteSessionAsync(session.SessionId, cleanup.Token).ConfigureAwait(false); }
+        catch (Exception) { /* Session deletion must not discard a completed response. */ }
+        return new TreatmentResult(request.Id ?? Guid.NewGuid().ToString("N"), "completed", response,
+            TreatmentResponseParser.TryExtractJson(response), null, null, request.Metadata);
     }
 
     internal static void CleanupRuntimeDirectory(string runtime) {

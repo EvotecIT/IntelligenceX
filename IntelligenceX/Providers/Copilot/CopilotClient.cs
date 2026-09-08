@@ -79,9 +79,10 @@ public sealed class CopilotClient : IDisposable
         var client = new CopilotClient(options);
         try {
             await client.StartWithRetryAsync(cancellationToken).ConfigureAwait(false);
-            using var handshake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            handshake.CancelAfter(options.ConnectTimeout);
-            await client.CallAsync("connect", JsonValue.From(new JsonArray().Add(new JsonObject())), handshake.Token).ConfigureAwait(false);
+            var handshakeToken = CreateTimeoutToken(options.ConnectTimeout, cancellationToken, out var handshake);
+            try {
+                await client.CallAsync("connect", JsonValue.From(new JsonArray().Add(new JsonObject())), handshakeToken).ConfigureAwait(false);
+            } finally { handshake?.Dispose(); }
             return client;
         } catch {
             client.Dispose();
@@ -314,7 +315,8 @@ public sealed class CopilotClient : IDisposable
                 await _transport.ReadLoopAsync(_rpc.HandleLine, _cts.Token).ConfigureAwait(false);
                 if (!_cts.IsCancellationRequested) throw new EndOfStreamException("Copilot connection ended.");
             } catch (Exception error) {
-                _rpc.FailPending(error);
+                _rpc.FailConnection(error);
+                _cts.Cancel();
                 foreach (var session in _sessions.Values) session.Dispatch(CopilotSessionEvent.FromJson(
                     new JsonObject().Add("type", "session.error").Add("data", new JsonObject().Add("message", "Copilot connection ended or exceeded its receive limit."))));
             }

@@ -596,9 +596,19 @@ public sealed class OpenAICompatibleHttpTransportTests {
     [InlineData(false, "length", "incomplete")]
     [InlineData(true, "stop", "completed")]
     [InlineData(true, "length", "incomplete")]
-    public async Task InlineImagesSchemaAndCompletionReasonReachTheWire(bool streaming, string reason, string expectedStatus) {
+    [InlineData(false, null, "completed")]
+    [InlineData(true, null, "completed")]
+    [InlineData(false, "omitted", "completed")]
+    [InlineData(true, "omitted", "completed")]
+    [InlineData(false, "content_filter", "incomplete")]
+    [InlineData(true, "unknown", "incomplete")]
+    public async Task InlineImagesSchemaAndCompletionReasonReachTheWire(bool streaming, string? reason, string expectedStatus) {
         var handler = new StubHandler();
-        if (streaming) handler.RespondSse("data: " + JsonSerializer.Serialize(new { choices = new[] { new { index = 0, delta = new { content = "{}" }, finish_reason = (string?)null } } })
+        if (reason == "omitted") {
+            if (streaming) handler.RespondSse("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"{}\"}}]}\n\ndata: [DONE]\n\n");
+            else handler.RespondJson(HttpStatusCode.OK, "{\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"{}\"}}]}");
+        }
+        else if (streaming) handler.RespondSse("data: " + JsonSerializer.Serialize(new { choices = new[] { new { index = 0, delta = new { content = "{}" }, finish_reason = (string?)null } } })
             + "\n\ndata: " + JsonSerializer.Serialize(new { choices = new[] { new { index = 0, delta = (object?)null, finish_reason = reason } } }) + "\n\ndata: [DONE]\n\n");
         else handler.RespondJson(HttpStatusCode.OK, JsonSerializer.Serialize(new {
             choices = new[] { new { index = 0, message = new { role = "assistant", content = "{}" }, finish_reason = reason } }

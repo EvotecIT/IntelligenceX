@@ -286,7 +286,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
         }
 
         var turnId = Guid.NewGuid().ToString("N");
-        var status = finishReason == "stop" || finishReason == "tool_calls" || finishReason == "function_call" ? "completed" : "incomplete";
+        var status = finishReason is null || finishReason == "stop" || finishReason == "tool_calls" || finishReason == "function_call" ? "completed" : "incomplete";
         var turnRaw = new JsonObject()
             .Add("id", turnId)
             .Add("status", status)

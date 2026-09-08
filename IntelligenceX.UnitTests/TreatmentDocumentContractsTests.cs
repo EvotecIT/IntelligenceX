@@ -6,6 +6,31 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class TreatmentDocumentContractsTests {
+    [Theory]
+    [InlineData("plain text")]
+    [InlineData("{broken}")]
+    [InlineData("{\"number\":1e}")]
+    [InlineData("\"\\uZZZZ\"")]
+    public void MalformedStructuredProjectionDoesNotReplaceTextWithAnException(string text) {
+        Assert.Null(TreatmentResponseParser.TryExtractJson(text));
+        Assert.Null(TreatmentResponseParser.TryExtractJson(new string('[', 150) + "0" + new string(']', 150)));
+        Assert.NotNull(TreatmentResponseParser.TryExtractJson("```json\n{\"value\":42}\n```"));
+    }
+
+    [Theory]
+    [InlineData("IMAGE/PNG", "image/png")]
+    [InlineData(" image/jpg; encoding=binary ", "image/jpeg")]
+    [InlineData("Image/WebP", "image/webp")]
+    public async Task InlineImageMediaTypesHaveTheSameCanonicalFormAtBothEntrypoints(string inputType, string expectedType) {
+        var direct = new ChatInput().AddImageBytes(new byte[] { 1 }, inputType);
+        Assert.Contains("data:" + expectedType + ";base64,AQ==", JsonLite.Serialize(direct.ToJson()));
+        var client = new Client();
+        await new OpenAIChatTreatmentProvider(client).RunAsync(new() {
+            Prompt = "Read image", Inputs = new[] { new TreatmentInputArtifact { MediaType = inputType, ImageBytes = new byte[] { 1 } } }
+        });
+        Assert.Contains("data:" + expectedType + ";base64,AQ==", JsonLite.Serialize(client.Input!.ToJson()));
+    }
+
     [Fact]
     public async Task TreatmentCarriesInlineImagesSchemaAndEphemeralBounds() {
         var client = new Client();

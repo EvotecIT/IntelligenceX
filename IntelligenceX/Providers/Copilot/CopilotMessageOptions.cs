@@ -8,6 +8,8 @@ namespace IntelligenceX.Copilot;
 public sealed class CopilotMessageOptions {
     /// <summary>Maximum accumulated response characters; exceeding the limit fails the operation.</summary>
     public int MaxResponseCharacters { get; set; } = 1_000_000;
+    /// <summary>Optional UTF-8 byte limit for model response text, excluding connection and session metadata.</summary>
+    public long? MaxResponseBytes { get; set; }
     /// <summary>
     /// Prompt text.
     /// </summary>

@@ -10,6 +10,44 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class CopilotDocumentContractsTests {
     [Fact]
+    public async Task TerminalConnectionFailureRejectsPendingQueuedAndFutureRpcCalls() {
+        int writes = 0;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var rpc = new JsonRpcClient(_ => { Interlocked.Increment(ref writes); return release.Task; });
+        Task<JsonValue?> pending = rpc.CallAsync("pending", new JsonObject());
+        Task<JsonValue?> queued = rpc.CallAsync("queued", new JsonObject());
+        try {
+            rpc.FailConnection(new EndOfStreamException("closed"));
+            await Assert.ThrowsAsync<EndOfStreamException>(() => pending.WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.ThrowsAsync<EndOfStreamException>(() => queued.WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => rpc.CallAsync("future", new JsonObject()).WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => rpc.NotifyAsync("future", new JsonObject()));
+            Assert.Equal(1, writes);
+        } finally { release.SetResult(); }
+        using var raced = new JsonRpcClient(_ => throw new InvalidOperationException("Must not send."));
+        raced.CallStarted += (_, _) => raced.FailConnection(new EndOfStreamException("closed during registration"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => raced.CallAsync("race", new JsonObject()).WaitAsync(TimeSpan.FromSeconds(2)));
+    }
+
+    [Theory]
+    [InlineData(false, 4, true)]
+    [InlineData(false, 3, false)]
+    [InlineData(true, 4, true)]
+    [InlineData(true, 3, false)]
+    public async Task ModelByteLimitCountsUtf8AndSurrogatesAcrossStreamingDeltas(bool streaming, int maximum, bool succeeds) {
+        using var client = Client(_ => new JsonObject().Add("messageId", "m1"));
+        using var session = new CopilotSession("test-session", client);
+        Task<string?> pending = session.SendAndWaitAsync(new() { Prompt = "text", MaxResponseBytes = maximum });
+        if (streaming) {
+            session.Dispatch(Event("assistant.message_delta", "deltaContent", "\ud83d"));
+            session.Dispatch(Event("assistant.message_delta", "deltaContent", "\ude00"));
+        } else session.Dispatch(Event("assistant.message", "content", "😀"));
+        session.Dispatch(Event("session.idle", "unused", ""));
+        if (succeeds) Assert.Equal("😀", await pending);
+        else await Assert.ThrowsAsync<InvalidDataException>(() => pending);
+    }
+
+    [Fact]
     public async Task NullInputIsRejectedBySharedValidationBeforeStartingCli() {
         var request = new TreatmentRequest { Prompt = "text", Model = "model", Ephemeral = true,
             Inputs = new TreatmentInputArtifact[] { null! } };

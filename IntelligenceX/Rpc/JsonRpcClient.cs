@@ -24,6 +24,7 @@ internal sealed class JsonRpcClient : IDisposable {
     private readonly bool _includeProtocolVersion;
     private long _nextId;
     private bool _disposed;
+    private Exception? _terminalError;
 
     public JsonRpcClient(Func<string, Task> sendLineAsync, bool includeProtocolVersion = false)
         : this((line, _) => sendLineAsync(line), includeProtocolVersion) { }
@@ -44,7 +45,7 @@ internal sealed class JsonRpcClient : IDisposable {
     }
 
     public async Task<JsonValue?> CallAsync(string method, JsonValue? @params, CancellationToken cancellationToken = default) {
-        if (_disposed) throw new ObjectDisposedException(nameof(JsonRpcClient));
+        ThrowIfUnavailable();
         if (string.IsNullOrWhiteSpace(method)) {
             throw new ArgumentException("Method cannot be null or whitespace.", nameof(method));
         }
@@ -64,6 +65,7 @@ internal sealed class JsonRpcClient : IDisposable {
                 }
             });
             cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfUnavailable();
 
             try {
                 Task send = SendRequestAsync(id, method, @params, cancellationToken);
@@ -94,7 +96,7 @@ internal sealed class JsonRpcClient : IDisposable {
     }
 
     public Task NotifyAsync(string method, JsonValue? @params, CancellationToken cancellationToken = default) {
-        if (_disposed) throw new ObjectDisposedException(nameof(JsonRpcClient));
+        ThrowIfUnavailable();
         if (string.IsNullOrWhiteSpace(method)) {
             throw new ArgumentException("Method cannot be null or whitespace.", nameof(method));
         }
@@ -223,7 +225,7 @@ internal sealed class JsonRpcClient : IDisposable {
     private async Task SendLineAsync(string line, CancellationToken cancellationToken) {
         await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            if (_disposed) throw new ObjectDisposedException(nameof(JsonRpcClient));
+            ThrowIfUnavailable();
             cancellationToken.ThrowIfCancellationRequested();
             await _sendLineAsync(line, cancellationToken).ConfigureAwait(false);
         } finally {
@@ -231,7 +233,15 @@ internal sealed class JsonRpcClient : IDisposable {
         }
     }
 
-    internal void FailPending(Exception error) {
+    private void ThrowIfUnavailable() {
+        if (_disposed) throw new ObjectDisposedException(nameof(JsonRpcClient));
+        Exception? error = Volatile.Read(ref _terminalError);
+        if (error is not null) throw new InvalidOperationException("The RPC connection has terminated.", error);
+    }
+
+    internal void FailConnection(Exception error) {
+        if (error is null) throw new ArgumentNullException(nameof(error));
+        Interlocked.CompareExchange(ref _terminalError, error, null);
         foreach (var entry in _pending)
             if (_pending.TryRemove(entry.Key, out var pending)) pending.Tcs.TrySetException(error);
     }
