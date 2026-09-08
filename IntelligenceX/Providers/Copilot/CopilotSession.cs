@@ -139,8 +139,6 @@ public sealed class CopilotSession : IDisposable {
         }
 
         using var subscription = OnEvent(Handler);
-        await SendAsync(options, cancellationToken).ConfigureAwait(false);
-
         var effectiveTimeout = timeout ?? TimeSpan.FromSeconds(60);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(effectiveTimeout);
@@ -148,7 +146,24 @@ public sealed class CopilotSession : IDisposable {
             if (cancellationToken.IsCancellationRequested) tcs.TrySetCanceled(cancellationToken);
             else tcs.TrySetException(new TimeoutException("Copilot response timed out."));
         });
-        return await tcs.Task.ConfigureAwait(false);
+        Task send = SendAsync(options, cts.Token);
+        // Observe an abandoned acknowledgement fault even when a terminal event completes first.
+        _ = send.ContinueWith(task => { _ = task.Exception; }, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        try {
+            Task completed = await Task.WhenAny(send, tcs.Task).ConfigureAwait(false);
+            if (completed == send && !tcs.Task.IsCompleted) {
+                try { await send.ConfigureAwait(false); }
+                catch (OperationCanceledException) when (cts.IsCancellationRequested) {
+                    // The registration supplies the public timeout or caller-cancellation result.
+                    return await tcs.Task.ConfigureAwait(false);
+                }
+            }
+            return await tcs.Task.ConfigureAwait(false);
+        } finally {
+            // A model error, limit violation or idle event can precede acknowledgement.
+            cts.Cancel();
+        }
     }
 
     private static long CountUtf8Bytes(Encoder encoder, string text, byte[] buffer, bool flush) {

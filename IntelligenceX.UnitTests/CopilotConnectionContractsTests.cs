@@ -10,6 +10,23 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class CopilotConnectionContractsTests {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingSendAcknowledgementCannotHideTimeoutOrResponseLimit(bool oversized) {
+        using var peer = new Peer("oversized", false, holdResponses: !oversized, omitSendAcknowledgement: true);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var client = await CopilotClient.StartAsync(new() { CliUrl = peer.Address, AutoStart = false,
+            UseStdio = false, ConnectRetryCount = 0 }, deadline.Token);
+        using var session = await client.CreateSessionAsync(cancellationToken: deadline.Token);
+        var pending = session.SendAndWaitAsync(new() { Prompt = "text", MaxResponseBytes = 2 },
+            TimeSpan.FromMilliseconds(300), deadline.Token);
+        if (oversized) await Assert.ThrowsAsync<InvalidDataException>(() => pending);
+        else await Assert.ThrowsAsync<TimeoutException>(() => pending);
+        Assert.False(deadline.IsCancellationRequested);
+        Assert.True((await client.GetAuthStatusAsync(deadline.Token)).IsAuthenticated);
+    }
+
+    [Theory]
     [InlineData(20_000_000, true)]
     [InlineData(16_999_999, false)]
     public async Task TreatmentHonorsTheRequestedResponseByteBudget(long maximum, bool accepted) {
@@ -115,6 +132,7 @@ public sealed class CopilotConnectionContractsTests {
         private readonly string _response;
         private readonly bool _deleteFails;
         private readonly bool _holdResponses;
+        private readonly bool _omitSendAcknowledgement;
         private int _sessions;
         private int _sends;
         internal TaskCompletionSource<bool> TwoSendsAcknowledged { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -123,7 +141,8 @@ public sealed class CopilotConnectionContractsTests {
         internal bool Deleted { get; private set; }
         internal string Address => "127.0.0.1:" + ((IPEndPoint)_listener.LocalEndpoint).Port;
 
-        internal Peer(string response, bool deleteFails, bool holdResponses = false) {
+        internal Peer(string response, bool deleteFails, bool holdResponses = false, bool omitSendAcknowledgement = false) {
+            _omitSendAcknowledgement = omitSendAcknowledgement;
             _response = response; _deleteFails = deleteFails; _holdResponses = holdResponses; _listener.Start();
             _loop = Task.Run(async () => {
                 try {
@@ -148,6 +167,7 @@ public sealed class CopilotConnectionContractsTests {
                 }
             }
             if (method == "session.delete") Deleted = true;
+            if (method == "session.send" && _omitSendAcknowledgement) return;
             var reply = new JsonObject().Add("jsonrpc", "2.0").Add("id", message.GetInt64("id")!.Value);
             if (method == "session.delete" && _deleteFails) reply.Add("error", new JsonObject().Add("code", -1).Add("message", "cleanup failed"));
             else reply.Add("result", result);
