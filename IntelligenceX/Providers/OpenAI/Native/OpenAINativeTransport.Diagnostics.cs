@@ -26,7 +26,14 @@ internal sealed partial class OpenAINativeTransport {
     }
 
     private static async Task<NativeErrorDetails> ParseErrorResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken, long? maxResponseBytes = null) {
-        var text = await ResponseBudgetStream.ReadTextAsync(response.Content, maxResponseBytes, cancellationToken).ConfigureAwait(false);
+        string text;
+        try {
+            text = await ResponseBudgetStream.ReadTextAsync(response.Content, maxResponseBytes, cancellationToken).ConfigureAwait(false);
+        } catch (Exception error) when (error is InvalidDataException || error is IOException) {
+            cancellationToken.ThrowIfCancellationRequested();
+            // Status remains authoritative when the optional error payload exceeds its budget or cannot be read.
+            return new NativeErrorDetails($"ChatGPT request failed ({(int)response.StatusCode}); error body unavailable.", string.Empty, null, null);
+        }
         if (string.IsNullOrWhiteSpace(text)) {
             return new NativeErrorDetails($"ChatGPT request failed ({(int)response.StatusCode}).", string.Empty, null, null);
         }

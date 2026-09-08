@@ -13,6 +13,45 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class NativeDocumentTransportTests {
     [Theory]
+    [InlineData("client", "bytes")]
+    [InlineData("client", "url")]
+    [InlineData("client", "raw")]
+    [InlineData("session", "bytes")]
+    [InlineData("session", "url")]
+    [InlineData("turn", "bytes")]
+    public async Task InlineImageLimitIsAppliedBeforeProviderDispatch(string scope, string source) {
+        int calls = 0;
+        using var http = new HttpClient(new Handler(_ => {
+            calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Event(new {
+                type = "response.completed", response = new { status = "completed", output = Array.Empty<object>() }
+            })) });
+        }));
+        using var client = new IntelligenceXClient(CreateTransport("native", http), "model", null, null, null);
+        ChatInput Input(int count) {
+            var input = ChatInput.FromText("image");
+            string data = "data:image/png;base64," + Convert.ToBase64String(new byte[count]);
+            return source == "bytes" ? input.AddImageBytes(new byte[count], "image/png", 100)
+                : source == "url" ? input.AddImageUrl(data)
+                : input.AddRaw(new IntelligenceX.Json.JsonObject().Add("type", "image").Add("url", data));
+        }
+        if (scope == "client") {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => client.ChatAsync(Input(4), new ChatOptions { MaxImageBytes = 3 }));
+            Assert.Equal(0, calls);
+            await client.ChatAsync(Input(3), new ChatOptions { MaxImageBytes = 3 });
+        } else {
+            var options = new EasySessionOptions { Login = EasyLoginMode.None, AutoLogin = false, MaxImageBytes = scope == "session" ? 3 : 100 };
+            using var session = (EasySession)Activator.CreateInstance(typeof(EasySession),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new object[] { client, options }, null)!;
+            var turnOptions = scope == "turn" ? new EasyChatOptions { MaxImageBytes = 3 } : null;
+            await Assert.ThrowsAsync<InvalidOperationException>(() => session.ChatAsync(Input(4), turnOptions));
+            Assert.Equal(0, calls);
+            await session.ChatAsync(Input(3), turnOptions);
+        }
+        Assert.Equal(1, calls);
+    }
+
+    [Theory]
     [InlineData(400)]
     [InlineData(429)]
     [InlineData(503)]
@@ -235,14 +274,23 @@ public sealed class NativeDocumentTransportTests {
     [Theory]
     [InlineData(HttpStatusCode.OK)]
     [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
     public async Task NativeResponseBudgetCoversSuccessAndErrorBodies(HttpStatusCode status) {
         using var http = new HttpClient(new Handler(_ => Task.FromResult(new HttpResponseMessage(status) {
             Content = new StringContent(new string('x', 5000))
         })));
         using var transport = new OpenAINativeTransport(Options(), http);
         var thread = await transport.StartThreadAsync("model", null, null, null, CancellationToken.None);
-        await Assert.ThrowsAsync<InvalidDataException>(() => transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"),
-            new ChatOptions { Model = "model", MaxResponseBytes = 1024 }, null, null, null, CancellationToken.None));
+        Task Run() => transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"),
+            new ChatOptions { Model = "model", MaxResponseBytes = 1024 }, null, null, null, CancellationToken.None);
+        if (status == HttpStatusCode.OK) await Assert.ThrowsAsync<InvalidDataException>(Run);
+        else {
+            var error = await Assert.ThrowsAsync<OpenAINativeErrorResponseException>(Run);
+            Assert.Equal(status, error.StatusCode);
+            Assert.Equal(status, Assert.IsType<HttpRequestException>(error.InnerException).StatusCode);
+            Assert.Empty(error.RawText);
+        }
     }
 
     [Fact]

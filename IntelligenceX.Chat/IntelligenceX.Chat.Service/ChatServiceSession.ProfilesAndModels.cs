@@ -94,6 +94,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (opts.TransportKind == OpenAITransportKind.CopilotNative) {
+            opts.CopilotOptions.Streaming = _options.OpenAIStreaming;
             // Credentials are resolved by the shared native owner; the host never launches a provider CLI.
             var baseUrl = Environment.GetEnvironmentVariable("COPILOT_BASE_URL");
             if (!string.IsNullOrWhiteSpace(baseUrl)) opts.CopilotOptions.BaseUrl = baseUrl;

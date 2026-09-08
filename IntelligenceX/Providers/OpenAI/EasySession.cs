@@ -361,6 +361,7 @@ public sealed class EasySession : IDisposable
     }
 
     private static void EnsureFileSafety(ChatInput input, string? workspace, long maxImageBytes, bool requireWorkspace) {
+        input.EnsureInlineImageSize(maxImageBytes);
         var paths = input.GetImagePaths();
         if (paths.Length == 0) {
             return;

@@ -516,6 +516,7 @@ public sealed class IntelligenceXClient : IDisposable
     }
 
     private void EnsureFileSafety(Chat.ChatInput input, Chat.ChatOptions options) {
+        input.EnsureInlineImageSize(options.MaxImageBytes ?? 0);
         var paths = input.GetImagePaths();
         if (paths.Length == 0) {
             return;

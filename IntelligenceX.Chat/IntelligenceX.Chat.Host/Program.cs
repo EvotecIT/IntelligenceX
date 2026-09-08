@@ -149,10 +149,7 @@ internal static partial class Program {
                 runtimePolicyContext,
                 warning => CollectPackWarning(runtimePackWarnings, warning));
             var nextPacks = nextBootstrapResult.Packs;
-            var clientOptions = new IntelligenceXClientOptions {
-                TransportKind = options.OpenAITransport,
-                DefaultModel = options.Model
-            };
+            var clientOptions = BuildTransportClientOptions(options);
             if (options.ImageGenerationEnabledOverride.HasValue) {
                 clientOptions.NativeOptions.ImageGeneration.Enabled = options.ImageGenerationEnabledOverride.Value;
             }
@@ -168,14 +165,6 @@ internal static partial class Program {
             runtimeInstructions = string.IsNullOrWhiteSpace(shaped) ? null : shaped;
             if (clientOptions.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(runtimeInstructions)) {
                 clientOptions.NativeOptions.Instructions = runtimeInstructions!;
-            }
-
-            if (clientOptions.TransportKind == OpenAITransportKind.CompatibleHttp) {
-                clientOptions.CompatibleHttpOptions.BaseUrl = options.OpenAIBaseUrl;
-                clientOptions.CompatibleHttpOptions.ApiKey = options.OpenAIApiKey;
-                clientOptions.CompatibleHttpOptions.Streaming = options.OpenAIStreaming;
-                clientOptions.CompatibleHttpOptions.AllowInsecureHttp = options.OpenAIAllowInsecureHttp;
-                clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback;
             }
 
             var authPath = ResolveAuthPath(options);

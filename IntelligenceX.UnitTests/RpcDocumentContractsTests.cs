@@ -9,6 +9,18 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class RpcDocumentContractsTests {
+    [Fact]
+    public async Task CompetingTerminalFailuresPreserveTheFirstCauseForQueuedCalls() {
+        using var rpc = new JsonRpcClient(_ => Task.CompletedTask);
+        var first = new IOException("original transport failure");
+        Task pending = rpc.CallAsync("pending", new JsonObject());
+        rpc.FailConnection(first);
+        rpc.FailConnection(new OperationCanceledException("secondary write cancellation"));
+        Assert.Same(first, await Record.ExceptionAsync(() => pending));
+        var future = await Assert.ThrowsAsync<InvalidOperationException>(() => rpc.CallAsync("future", new JsonObject()));
+        Assert.Same(first, future.InnerException);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

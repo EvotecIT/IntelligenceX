@@ -91,7 +91,7 @@ jobs:
         seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(
-            new[] { "--provider", "copilot" },
+            new[] { "--provider", "copilot", "--model", "account-catalog-model" },
             seed);
 
         AssertContainsText(content, "custom_pre:", "workflow upgrade keeps custom_pre");
@@ -108,7 +108,7 @@ jobs:
             "workflow upgrade has single provider override");
 
         var secondPass = SetupRunner.BuildWorkflowYamlFromSeedForTests(
-            new[] { "--provider", "copilot" },
+            new[] { "--provider", "copilot", "--model", "account-catalog-model" },
             content);
         AssertEqual(content, secondPass, "workflow upgrade idempotent on second pass");
     }
@@ -303,27 +303,27 @@ jobs:
             "wrapper workflow passes max files through without overriding repo config");
         AssertContainsText(wrapperContent, "max_inline_comments: ${{ inputs.max_inline_comments }}",
             "wrapper workflow passes max inline comments through without overriding repo config");
-        AssertContainsText(wrapperContent, """
+        AssertContainsText(wrapperContent, NormalizeWorkflowText("""
       auto_approve_enabled:
         description: 'Auto-approval enablement override for reusable callers'
         required: false
         default: ''
         type: string
-""", "wrapper workflow keeps auto-approval overrides as explicit empty string pass-through");
-        AssertContainsText(wrapperContent, """
+"""), "wrapper workflow keeps auto-approval overrides as explicit empty string pass-through");
+        AssertContainsText(wrapperContent, NormalizeWorkflowText("""
       max_files:
         description: 'Max files override for reusable callers'
         required: false
         default: ''
         type: string
-""", "wrapper workflow keeps numeric review overrides as explicit empty string pass-through");
-        AssertContainsText(wrapperContent, """
+"""), "wrapper workflow keeps numeric review overrides as explicit empty string pass-through");
+        AssertContainsText(wrapperContent, NormalizeWorkflowText("""
       max_inline_comments:
         description: 'Max inline comments override for reusable callers'
         required: false
         default: ''
         type: string
-""", "wrapper workflow keeps max inline comments as explicit empty string pass-through");
+"""), "wrapper workflow keeps max inline comments as explicit empty string pass-through");
         AssertContainsText(wrapperContent, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "wrapper workflow passes diagnostics through with default");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
@@ -348,27 +348,27 @@ jobs:
             "reusable workflow defines external bot history once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "swarm_max_parallel:"),
             "reusable workflow defines swarm max parallel once for workflow_call");
-        AssertContainsText(content, """
+        AssertContainsText(content, NormalizeWorkflowText("""
       auto_approve_enabled:
         description: 'Enable guarded auto-approval readiness/approval'
         required: false
         default: ''
         type: string
-""", "reusable workflow keeps auto-approval overrides as explicit empty string pass-through");
-        AssertContainsText(content, """
+"""), "reusable workflow keeps auto-approval overrides as explicit empty string pass-through");
+        AssertContainsText(content, NormalizeWorkflowText("""
       max_files:
         description: 'Max files to review'
         required: false
         default: ''
         type: string
-""", "reusable workflow keeps numeric review overrides as explicit empty string pass-through");
-        AssertContainsText(content, """
+"""), "reusable workflow keeps numeric review overrides as explicit empty string pass-through");
+        AssertContainsText(content, NormalizeWorkflowText("""
       skip_authors:
         description: 'Comma-separated PR author logins to skip before provider auth'
         required: false
         default: ''
         type: string
-""", "reusable workflow keeps author-skip overrides as explicit empty string pass-through");
+"""), "reusable workflow keeps author-skip overrides as explicit empty string pass-through");
         AssertContainsText(content, "default: 180",
             "reusable workflow gives PR-sized reviewer prompts a longer default wait window");
         AssertContainsText(content, "dotnet-version: '8.0.x'",

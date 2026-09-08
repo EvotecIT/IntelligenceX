@@ -158,5 +158,33 @@ public sealed class ChatInput {
         return list.ToArray();
     }
 
+    internal void EnsureInlineImageSize(long maximumBytes) {
+        if (maximumBytes <= 0) return;
+        foreach (var item in _items) {
+            var obj = item.AsObject();
+            if (!string.Equals(obj?.GetString("type"), "image", StringComparison.Ordinal)) continue;
+            string? url = obj?.GetString("url");
+            if (url == null || !url.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
+            int comma = url.IndexOf(',');
+            if (comma < 0 || !url.Substring(0, comma).EndsWith(";base64", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Bounded inline images require a base64 data URL.");
+            long symbols = 0;
+            int padding = 0;
+            for (int index = comma + 1; index < url.Length; index++) {
+                char symbol = url[index];
+                if (char.IsWhiteSpace(symbol)) continue;
+                symbols++;
+                if (symbol == '=') padding++;
+                else if (padding != 0 || !(symbol >= 'A' && symbol <= 'Z' || symbol >= 'a' && symbol <= 'z'
+                    || symbol >= '0' && symbol <= '9' || symbol == '+' || symbol == '/'))
+                    throw new InvalidOperationException("Inline image data is not valid base64.");
+            }
+            if (padding > 2 || symbols % 4 != 0)
+                throw new InvalidOperationException("Inline image data is not valid base64.");
+            if (symbols / 4 * 3 - padding > maximumBytes)
+                throw new InvalidOperationException($"Inline image exceeds max size {maximumBytes} bytes.");
+        }
+    }
+
     internal JsonArray ToJson() => _items;
 }

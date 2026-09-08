@@ -24,7 +24,7 @@ jobs:
         seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
 
         var upgraded = SetupRunner.BuildWorkflowYamlFromSeedForTests(
-            new[] { "--provider", "copilot" },
+            new[] { "--provider", "copilot", "--model", "account-catalog-model" },
             seed);
 
         AssertContainsText(upgraded, "uses: ./.github/workflows/review-intelligencex-core.yml",
@@ -57,7 +57,7 @@ jobs:
         seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
 
         var upgraded = SetupRunner.BuildWorkflowYamlFromSeedForTests(
-            new[] { "--provider", "copilot" },
+            new[] { "--provider", "copilot", "--model", "account-catalog-model" },
             seed);
 
         AssertContainsText(upgraded, "uses: ./.github/workflows/review-intelligencex-core.yml",
@@ -112,7 +112,7 @@ jobs:
         seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
 
         var upgraded = SetupRunner.BuildWorkflowYamlFromSeedForTests(
-            new[] { "--provider", "copilot" },
+            new[] { "--provider", "copilot", "--model", "account-catalog-model" },
             seed);
 
         AssertContainsText(upgraded, "provider: copilot", "workflow upgrade updates provider");
@@ -127,7 +127,7 @@ jobs:
             "workflow upgrade preserves content outside managed block");
 
         var secondPass = SetupRunner.BuildWorkflowYamlFromSeedForTests(
-            new[] { "--provider", "copilot" },
+            new[] { "--provider", "copilot", "--model", "account-catalog-model" },
             upgraded);
         AssertEqual(upgraded, secondPass, "workflow upgrade remains idempotent after outside-block preserve");
     }

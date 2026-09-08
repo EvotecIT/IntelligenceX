@@ -230,15 +230,15 @@ internal sealed class JsonRpcClient : IDisposable {
             cancellationToken.ThrowIfCancellationRequested();
             Task send;
             try { send = _sendLineAsync(line, cancellationToken); }
-            catch (Exception error) { FailConnection(error); throw; }
+            catch (Exception error) { FailConnection(WriteFailure(error, cancellationToken)); throw; }
             using var cancellation = cancellationToken.Register(() => {
                 // A canceled write can leave a partial protocol frame. Do not let later calls
                 // reuse the connection or remain queued behind a non-cooperative writer.
-                if (send.Status != TaskStatus.RanToCompletion) FailConnection(new System.IO.IOException("The RPC connection terminated after an in-flight write was canceled."));
+                if (send.Status != TaskStatus.RanToCompletion) FailConnection(CanceledWriteFailure());
             });
             try { await TaskCancellation.WaitAsync(send, cancellationToken).ConfigureAwait(false); }
             catch (Exception error) {
-                if (send.Status != TaskStatus.RanToCompletion) FailConnection(error);
+                if (send.Status != TaskStatus.RanToCompletion) FailConnection(WriteFailure(error, cancellationToken));
                 throw;
             }
         } finally {
@@ -252,9 +252,15 @@ internal sealed class JsonRpcClient : IDisposable {
         if (error is not null) throw new InvalidOperationException("The RPC connection has terminated.", error);
     }
 
+    private static Exception WriteFailure(Exception error, CancellationToken cancellationToken) =>
+        error is OperationCanceledException && cancellationToken.IsCancellationRequested ? CanceledWriteFailure() : error;
+
+    private static System.IO.IOException CanceledWriteFailure() =>
+        new("The RPC connection terminated after an in-flight write was canceled.");
+
     internal void FailConnection(Exception error) {
         if (error is null) throw new ArgumentNullException(nameof(error));
-        Interlocked.CompareExchange(ref _terminalError, error, null);
+        error = Interlocked.CompareExchange(ref _terminalError, error, null) ?? error;
         foreach (var entry in _pending)
             if (_pending.TryRemove(entry.Key, out var pending)) pending.Tcs.TrySetException(error);
     }
