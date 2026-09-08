@@ -515,6 +515,7 @@ public sealed class CopilotConfig {
         if (!string.IsNullOrWhiteSpace(GitHubClientId)) options.GitHubClientId = GitHubClientId;
         if (!string.IsNullOrWhiteSpace(TokenEnvironmentVariable)) {
             string variable = TokenEnvironmentVariable!;
+            options.GitHubToken = null;
             options.UseEnvironmentCredentials = false;
             options.TokenProvider = _ => System.Threading.Tasks.Task.FromResult(Environment.GetEnvironmentVariable(variable)
                 ?? throw new InvalidOperationException("The configured Copilot token environment variable is empty."));

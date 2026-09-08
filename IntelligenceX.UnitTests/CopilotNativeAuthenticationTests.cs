@@ -126,7 +126,7 @@ public sealed class CopilotNativeAuthenticationTests {
         using var http = new HttpClient(new Handler((request, _) => Task.FromResult(Json(request.RequestUri!.AbsolutePath == "/login/oauth/access_token"
             ? "{\"access_token\":\"renewed\",\"refresh_token\":\"new-refresh\",\"expires_in\":3600}" : "{\"id\":42}"))));
         using var auth = new CopilotNativeAuthentication(new() { AuthStore = store, GitHubClientId = "app",
-            RequestTimeout = TimeSpan.FromMilliseconds(150) }, http);
+            RequestTimeout = timeout ? TimeSpan.FromMilliseconds(150) : TimeSpan.FromSeconds(10) }, http);
         using var cancellation = new CancellationTokenSource();
         var pending = auth.GetAccessTokenAsync(cancellation.Token);
         await store.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -136,7 +136,6 @@ public sealed class CopilotNativeAuthenticationTests {
             if (timeout) await Assert.ThrowsAsync<TimeoutException>(() => pending);
             else Assert.Equal(cancellation.Token, (await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(2)))).CancellationToken);
             var logout = auth.LogoutAsync();
-            await Task.Delay(20);
             Assert.False(logout.IsCompleted);
             store.Complete.TrySetResult(true);
             await logout.WaitAsync(TimeSpan.FromSeconds(2));

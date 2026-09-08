@@ -17,9 +17,21 @@ internal sealed partial class ReviewRunner {
             if (!string.IsNullOrWhiteSpace(native.GitHubToken)) throw new InvalidOperationException("Choose a Copilot token or a token environment variable, not both.");
             string variable = _settings.CopilotTokenEnvironmentVariable!;
             native.UseEnvironmentCredentials = false;
-            native.TokenProvider = _ => Task.FromResult(Environment.GetEnvironmentVariable(variable)
-                ?? throw new InvalidOperationException("The configured Copilot token environment variable is empty."));
-            SecretsAudit.Record($"Copilot credential from {variable}");
+            native.TokenProvider = _ => {
+                string? token = Environment.GetEnvironmentVariable(variable);
+                if (string.IsNullOrWhiteSpace(token)) throw new InvalidOperationException("The configured Copilot token environment variable is empty.");
+                SecretsAudit.Record($"Copilot credential from {variable}");
+                return Task.FromResult(token!);
+            };
+        } else if (!string.IsNullOrWhiteSpace(native.GitHubToken)) {
+            SecretsAudit.Record("Copilot credential from config (copilot.token)");
+        } else {
+            native.TokenProvider = _ => {
+                string token = native.GetEnvironmentToken(out string? source)
+                    ?? throw new InvalidOperationException("Copilot authentication is required. Configure a token or a token environment variable.");
+                SecretsAudit.Record($"Copilot credential from {source}");
+                return Task.FromResult(token);
+            };
         }
         return new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CopilotNative, DefaultModel = model, CopilotOptions = native,

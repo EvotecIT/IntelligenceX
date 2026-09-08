@@ -239,6 +239,11 @@ jobs:
         var wrapperWorkflowPath = ResolveReviewWorkflowPath("review-intelligencex.yml");
         var wrapperContent = NormalizeWorkflowText(File.ReadAllText(wrapperWorkflowPath));
 
+        AssertContainsText(wrapperContent, "model: ${{ inputs.model || vars.IX_REVIEW_MODEL }}",
+            "wrapper preserves an absent model rather than manufacturing an explicit provider selection");
+        AssertContainsText(content, "model:\n        description: 'Model id (provider-specific)'\n        required: false\n        default: ''",
+            "direct reusable workflow calls preserve absent model selection");
+
         AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
         AssertEqual(true, CountWorkflowDispatchInputs(wrapperContent) <= 25,
             "wrapper workflow stays within GitHub workflow_dispatch input limit");

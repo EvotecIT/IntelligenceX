@@ -9,8 +9,16 @@ internal static partial class ReviewConfigLoader {
         RejectRetiredCopilotConfiguration(copilot);
         settings.CopilotModel = copilot.GetString("model") ?? settings.CopilotModel;
         settings.CopilotBaseUrl = copilot.GetString("baseUrl") ?? settings.CopilotBaseUrl;
-        settings.CopilotToken = copilot.GetString("token") ?? settings.CopilotToken;
-        settings.CopilotTokenEnvironmentVariable = copilot.GetString("tokenEnv") ?? settings.CopilotTokenEnvironmentVariable;
+        string? token = copilot.GetString("token"), tokenEnvironment = copilot.GetString("tokenEnv");
+        if (!string.IsNullOrWhiteSpace(token) && !string.IsNullOrWhiteSpace(tokenEnvironment))
+            throw new InvalidOperationException("Copilot configuration must select either token or tokenEnv, not both.");
+        if (!string.IsNullOrWhiteSpace(token)) {
+            settings.CopilotToken = token;
+            settings.CopilotTokenEnvironmentVariable = null;
+        } else if (!string.IsNullOrWhiteSpace(tokenEnvironment)) {
+            settings.CopilotToken = null;
+            settings.CopilotTokenEnvironmentVariable = tokenEnvironment.Trim();
+        }
         settings.CopilotRequestTimeoutSeconds = ReadInt(copilot, "timeoutSeconds", settings.CopilotRequestTimeoutSeconds);
     }
 
