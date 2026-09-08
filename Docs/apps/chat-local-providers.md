@@ -51,7 +51,7 @@ Notes:
 
 Reasoning controls:
 - `native` and most `compatible-http` presets expose reasoning controls (`minimal|low|medium|high|xhigh`) as provider hints.
-- `copilot-native` currently does not expose reasoning controls.
+- `copilot-native` passes reasoning controls to the selected model; support depends on that model and its advertised inference protocol.
 - Experimental Anthropic/Gemini bridge presets currently use provider-default reasoning.
 
 ## Model Discovery and Runtime Detection

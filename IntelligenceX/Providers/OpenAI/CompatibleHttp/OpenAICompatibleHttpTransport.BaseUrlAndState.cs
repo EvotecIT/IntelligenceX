@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.CompatibleHttp;
 
@@ -69,9 +70,9 @@ internal partial class OpenAICompatibleHttpTransport {
     private static Task<Stream> ReadAsStreamAsync(HttpContent content, CancellationToken cancellationToken) {
 #if NETSTANDARD2_0 || NET472
         cancellationToken.ThrowIfCancellationRequested();
-        return content.ReadAsStreamAsync();
+        return TaskCancellation.WaitAsync(content.ReadAsStreamAsync(), cancellationToken, abandoned => abandoned.Dispose());
 #else
-        return content.ReadAsStreamAsync(cancellationToken);
+        return TaskCancellation.WaitAsync(content.ReadAsStreamAsync(cancellationToken), cancellationToken, abandoned => abandoned.Dispose());
 #endif
     }
 

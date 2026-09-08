@@ -6,6 +6,34 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class CopilotNativeAuthenticationTests {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SharedStoreLogoutSupersedesPendingApprovalOnlyForTheRemovedAccount(bool otherAccount) {
+        var store = new Store(new("copilot", "stored", "", null) { AccountId = "42" });
+        var tokenRequested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var approve = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var http = new HttpClient(new Handler((request, _) => {
+            if (request.RequestUri!.AbsolutePath == "/login/device/code") return Task.FromResult(Json(
+                "{\"device_code\":\"private\",\"user_code\":\"public\",\"verification_uri\":\"https://github.com/login/device\",\"expires_in\":60,\"interval\":1}"));
+            if (request.RequestUri.AbsolutePath == "/login/oauth/access_token") { tokenRequested.TrySetResult(true); return approve.Task; }
+            return Task.FromResult(Json(otherAccount ? "{\"id\":99}" : "{\"id\":42}"));
+        }));
+        using var first = new CopilotNativeAuthentication(new() { AuthStore = store, GitHubClientId = "app" }, http);
+        using var second = new CopilotNativeAuthentication(new() { AuthStore = store }, http);
+        Task login = first.LoginAsync(_ => { });
+        await tokenRequested.Task;
+        await second.LogoutAsync();
+        approve.SetResult(Json("{\"access_token\":\"approved\"}"));
+        if (otherAccount) {
+            await login;
+            Assert.Equal("99", store.Bundle!.AccountId);
+        } else {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => login);
+            Assert.Null(store.Bundle);
+        }
+    }
+
     [Fact]
     public async Task StoreWithoutRemovalCapabilityStillSupportsAuthenticationAndReportsPersistentLogoutGap() {
         var store = new LegacyStore();

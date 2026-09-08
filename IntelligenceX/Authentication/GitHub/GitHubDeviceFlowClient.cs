@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.Authentication.GitHub;
 
@@ -16,17 +17,29 @@ public sealed class GitHubDeviceFlowClient : IDisposable {
     private readonly bool _ownsHttp;
     private readonly string _clientId;
     private readonly Uri _authBase;
+    private readonly TimeSpan _requestTimeout;
 
     /// <summary>Creates an authorization client for a registered GitHub app with device flow enabled.</summary>
     /// <param name="clientId">The host product's registered public client ID.</param>
     /// <param name="authBaseUrl">GitHub login root, or an explicitly trusted enterprise login root.</param>
     /// <param name="httpClient">Optional host HTTP client. The caller retains ownership.</param>
-    public GitHubDeviceFlowClient(string clientId, string authBaseUrl = "https://github.com/", HttpClient? httpClient = null) {
+    public GitHubDeviceFlowClient(string clientId, string authBaseUrl = "https://github.com/", HttpClient? httpClient = null)
+        : this(clientId, authBaseUrl, httpClient, TimeSpan.FromSeconds(30)) { }
+
+    /// <summary>Creates an authorization client with a timeout for each HTTP operation, independently of the user's approval window.</summary>
+    /// <param name="clientId">The host product's registered public client ID.</param>
+    /// <param name="authBaseUrl">GitHub login root, or an explicitly trusted enterprise login root.</param>
+    /// <param name="httpClient">Optional host HTTP client. The caller retains ownership.</param>
+    /// <param name="requestTimeout">Maximum duration of an HTTP request and its response body.</param>
+    public GitHubDeviceFlowClient(string clientId, string authBaseUrl, HttpClient? httpClient, TimeSpan requestTimeout) {
         if (string.IsNullOrWhiteSpace(clientId)) throw new ArgumentException("A registered GitHub client ID is required.", nameof(clientId));
+        if (requestTimeout <= TimeSpan.Zero || requestTimeout.TotalMilliseconds > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(requestTimeout));
         if (!Uri.TryCreate(authBaseUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps
             || uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0)
             throw new ArgumentException("GitHub login root must use HTTPS without credentials, query or fragment.", nameof(authBaseUrl));
         _clientId = clientId; _authBase = new Uri(uri.AbsoluteUri.TrimEnd('/') + "/");
+        _requestTimeout = requestTimeout;
         _http = httpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
         _ownsHttp = httpClient is null;
     }
@@ -88,16 +101,23 @@ public sealed class GitHubDeviceFlowClient : IDisposable {
 
     private async Task<JsonObject> PostAsync(string path, Dictionary<string, string> values, CancellationToken cancellationToken, bool allowPending = false) {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(30));
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_authBase, path)) { Content = new FormUrlEncodedContent(values) };
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.UserAgent.ParseAdd("IntelligenceX/0.1.1");
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"GitHub authorization failed (HTTP {(int)response.StatusCode}).");
-        var json = await ResponseBudgetStream.ReadTextAsync(response.Content, 65_536, deadline.Token).ConfigureAwait(false);
-        var obj = JsonLite.Parse(json)?.AsObject() ?? throw new InvalidOperationException("GitHub returned an invalid authorization response.");
-        if (!allowPending && obj.GetString("error") is not null) throw new InvalidOperationException("GitHub rejected authorization. Check the registered app configuration or sign in again.");
-        return obj;
+        deadline.CancelAfter(_requestTimeout);
+        try {
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_authBase, path)) { Content = new FormUrlEncodedContent(values) };
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            request.Headers.UserAgent.ParseAdd("IntelligenceX/0.1.1");
+            using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token),
+                deadline.Token, abandoned => abandoned.Dispose()).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"GitHub authorization failed (HTTP {(int)response.StatusCode}).");
+            var json = await ResponseBudgetStream.ReadTextAsync(response.Content, 65_536, deadline.Token).ConfigureAwait(false);
+            var obj = JsonLite.Parse(json)?.AsObject() ?? throw new InvalidOperationException("GitHub returned an invalid authorization response.");
+            if (!allowPending && obj.GetString("error") is not null) throw new InvalidOperationException("GitHub rejected authorization. Check the registered app configuration or sign in again.");
+            return obj;
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw new OperationCanceledException(cancellationToken);
+        } catch (OperationCanceledException) {
+            throw new TimeoutException("GitHub authorization HTTP request exceeded its configured timeout.");
+        }
     }
 
     private static AuthBundle ParseBundle(JsonObject obj, string provider) {

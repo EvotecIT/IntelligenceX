@@ -153,6 +153,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
         var resolvedModel = NormalizeModelId(options.Model, state.Model);
         state.Touch(resolvedModel);
 
+        var authenticationOperation = _auth.CaptureOperation();
         var bundle = await EnsureAuthAsync(cancellationToken).ConfigureAwait(false);
         var accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
         if (string.IsNullOrWhiteSpace(accountId)) {
@@ -177,7 +178,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
                         resolvedModel, turnId, options, cancellationToken)
                     .ConfigureAwait(false);
             } catch (OpenAIAuthenticationRequiredException) when (!string.IsNullOrWhiteSpace(bundle.RefreshToken)) {
-                bundle = await _auth.RefreshAsync(bundle, cancellationToken).ConfigureAwait(false);
+                bundle = await _auth.RefreshAsync(bundle, authenticationOperation, cancellationToken).ConfigureAwait(false);
                 accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
                 if (string.IsNullOrWhiteSpace(accountId)) {
                     throw new InvalidOperationException("Failed to extract account id from refreshed access token.");
@@ -218,7 +219,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
 
         TryDumpRequest(request, json);
 
-        return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+        return await TaskCancellation.WaitAsync(_httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose())
             .ConfigureAwait(false);
     }
 
@@ -277,7 +278,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
         string? streamError = null;
         var streamedOutputs = new List<JsonObject>();
 
-        using var stream = new ResponseBudgetStream(await response.Content.ReadAsStreamAsync().ConfigureAwait(false), options.MaxResponseBytes);
+        using var stream = new ResponseBudgetStream(await TaskCancellation.WaitAsync(response.Content.ReadAsStreamAsync(),
+            cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false), options.MaxResponseBytes);
         using var cancellationRegistration = cancellationToken.Register(stream.Dispose);
         try {
             await OpenAINativeSseParser.ParseAsync(stream, evt => {

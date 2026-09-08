@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.Chat;
 
@@ -19,11 +20,17 @@ internal sealed class ResponseBudgetStream : Stream {
         _maximum = maximum ?? long.MaxValue;
     }
 
-    internal static async Task<string> ReadTextAsync(HttpContent content, long? maximum, CancellationToken cancellationToken) {
-        using var stream = new ResponseBudgetStream(await content.ReadAsStreamAsync().ConfigureAwait(false), maximum);
+    internal static Task<string> ReadTextAsync(HttpContent content, long? maximum, CancellationToken cancellationToken) =>
+        TaskCancellation.WaitAsync(ReadTextCoreAsync(content, maximum, cancellationToken), cancellationToken);
+
+    private static async Task<string> ReadTextCoreAsync(HttpContent content, long? maximum, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var stream = new ResponseBudgetStream(await TaskCancellation.WaitAsync(content.ReadAsStreamAsync(),
+            cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false), maximum);
         using var registration = cancellationToken.Register(stream.Dispose);
         using var buffer = new MemoryStream();
         try {
+            // Keep copy buffers owned until a non-cooperative read finishes, even after the caller stops waiting.
             await stream.CopyToAsync(buffer, 81920, cancellationToken).ConfigureAwait(false);
         } catch (Exception) when (cancellationToken.IsCancellationRequested) {
             throw new OperationCanceledException(cancellationToken);

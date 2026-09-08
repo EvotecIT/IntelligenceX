@@ -47,10 +47,15 @@ public sealed class EasySession : IDisposable
         }
 
         var session = new EasySession(client, options);
-        if (options.AutoLogin) {
-            await session.EnsureLoggedInAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            if (options.AutoLogin) {
+                await session.EnsureLoggedInAsync(cancellationToken).ConfigureAwait(false);
+            }
+            return session;
+        } catch {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
-        return session;
     }
 
     /// <summary>
@@ -187,6 +192,16 @@ public sealed class EasySession : IDisposable
         }
 
         if (_loggedIn || _options.Login == EasyLoginMode.None) {
+            return;
+        }
+
+        if (_options.TransportKind == OpenAITransportKind.CopilotNative
+            && (_options.CopilotOptions.TokenProvider is not null || !string.IsNullOrWhiteSpace(_options.CopilotOptions.GitHubToken))) {
+            // Host credentials do not require GitHub's optional profile endpoint to support inference.
+            // An explicitly pinned identity still needs verification and must fail closed.
+            if (!string.IsNullOrWhiteSpace(_options.CopilotOptions.AccountId))
+                await _client.GetAccountAsync(cancellationToken).ConfigureAwait(false);
+            _loggedIn = true;
             return;
         }
 

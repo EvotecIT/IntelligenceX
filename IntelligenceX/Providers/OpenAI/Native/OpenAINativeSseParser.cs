@@ -4,11 +4,16 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.Native;
 
 internal static class OpenAINativeSseParser {
-    public static async Task ParseAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken,
+    public static Task ParseAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken,
+        bool allowSensitiveDiagnostics = true, bool stopOnTerminalResponse = false) =>
+        TaskCancellation.WaitAsync(ParseCoreAsync(stream, onEvent, cancellationToken, allowSensitiveDiagnostics, stopOnTerminalResponse), cancellationToken);
+
+    private static async Task ParseCoreAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken,
         bool allowSensitiveDiagnostics = true, bool stopOnTerminalResponse = false) {
         using var reader = new StreamReader(stream, Encoding.UTF8);
         var buffer = new StringBuilder();

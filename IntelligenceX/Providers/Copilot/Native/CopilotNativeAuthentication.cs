@@ -8,6 +8,7 @@ using IntelligenceX.Json;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.Copilot.Native;
 
@@ -19,6 +20,7 @@ public sealed class CopilotNativeAuthentication : IDisposable {
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
     private readonly SemaphoreSlim _gate;
+    private readonly AuthStoreCoordination.CredentialEpoch _storeEpoch;
     private AuthBundle? _bundle;
     private volatile bool _signedOut;
     private int _logoutGeneration;
@@ -30,6 +32,7 @@ public sealed class CopilotNativeAuthentication : IDisposable {
         if (options is null) throw new ArgumentNullException(nameof(options));
         options.Validate(); _options = options.Snapshot();
         _gate = AuthStoreCoordination.GetGate(_options.AuthStore);
+        _storeEpoch = AuthStoreCoordination.GetEpoch(_gate, Provider);
         _http = httpClient ?? new HttpClient(_options.HttpMessageHandler ?? new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
         _ownsHttp = httpClient is null;
     }
@@ -40,7 +43,7 @@ public sealed class CopilotNativeAuthentication : IDisposable {
         deadline.CancelAfter(_options.RequestTimeout);
         try {
             // The underlying operation retains its gate until any non-cooperative store write finishes.
-            string token = await AwaitCancellationAsync(GetSelectedTokenAsync(deadline.Token), deadline.Token).ConfigureAwait(false);
+            string token = await TaskCancellation.WaitAsync(GetSelectedTokenAsync(deadline.Token), deadline.Token).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(_options.AccountId) && token != _verifiedToken) {
                 var identity = await ReadIdentityAsync(token, deadline.Token).ConfigureAwait(false);
                 if (identity.AccountId != _options.AccountId)
@@ -60,7 +63,7 @@ public sealed class CopilotNativeAuthentication : IDisposable {
         cancellationToken.ThrowIfCancellationRequested();
         if (_signedOut) throw new InvalidOperationException("Copilot is signed out. Sign in before sending requests.");
         if (_options.TokenProvider is not null)
-            return ValidateToken(await AwaitCancellationAsync(_options.TokenProvider(cancellationToken), cancellationToken).ConfigureAwait(false));
+            return ValidateToken(await TaskCancellation.WaitAsync(_options.TokenProvider(cancellationToken), cancellationToken).ConfigureAwait(false));
         if (!string.IsNullOrWhiteSpace(_options.GitHubToken)) return ValidateToken(_options.GitHubToken!);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
@@ -102,6 +105,7 @@ public sealed class CopilotNativeAuthentication : IDisposable {
         if (_options.TokenProvider is not null || !string.IsNullOrWhiteSpace(_options.GitHubToken))
             throw new InvalidOperationException("Device sign-in cannot replace an explicitly configured credential. Create a client using an authentication store or device sign-in instead.");
         int generation = Volatile.Read(ref _logoutGeneration);
+        long storeEpoch = _storeEpoch.Capture();
         using var flow = CreateDeviceFlow();
         var pending = await flow.RequestCodeAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
         onCode(pending);
@@ -114,11 +118,13 @@ public sealed class CopilotNativeAuthentication : IDisposable {
             await _gate.WaitAsync(token).ConfigureAwait(false);
             try {
                 token.ThrowIfCancellationRequested();
-                if (generation != Volatile.Read(ref _logoutGeneration)) throw new InvalidOperationException("Sign-in was superseded by logout.");
+                if (generation != Volatile.Read(ref _logoutGeneration) || !_storeEpoch.IsCurrent(storeEpoch, bundle.AccountId))
+                    throw new InvalidOperationException("Sign-in was superseded by logout.");
                 if (_options.AuthStore is not null) await _options.AuthStore.SaveAsync(bundle, token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
                 lock (_stateLock) {
-                    if (generation != _logoutGeneration) throw new InvalidOperationException("Sign-in was superseded by logout.");
+                    if (generation != _logoutGeneration || !_storeEpoch.IsCurrent(storeEpoch, bundle.AccountId))
+                        throw new InvalidOperationException("Sign-in was superseded by logout.");
                     _bundle = bundle; _signedOut = false;
                 }
             } finally { _gate.Release(); }
@@ -150,8 +156,10 @@ public sealed class CopilotNativeAuthentication : IDisposable {
                     var selected = _bundle ?? await _options.AuthStore.GetAsync(Provider, _options.AccountId, token).ConfigureAwait(false);
                     token.ThrowIfCancellationRequested();
                     if (selected is not null && string.Equals(selected.Provider, Provider, StringComparison.OrdinalIgnoreCase) &&
-                        (string.IsNullOrWhiteSpace(_options.AccountId) || selected.AccountId == _options.AccountId))
+                        (string.IsNullOrWhiteSpace(_options.AccountId) || selected.AccountId == _options.AccountId)) {
+                        _storeEpoch.Invalidate(selected.AccountId);
                         await _options.AuthStore.RemoveAsync(Provider, selected.AccountId, token).ConfigureAwait(false);
+                    } else if (selected is null) _storeEpoch.Invalidate(_options.AccountId);
                 }
                 _bundle = null;
             } finally { _gate.Release(); }
@@ -162,13 +170,13 @@ public sealed class CopilotNativeAuthentication : IDisposable {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(_options.RequestTimeout);
         async Task<bool> Run() { await action(deadline.Token).ConfigureAwait(false); return true; }
-        try { await AwaitCancellationAsync(Run(), deadline.Token).ConfigureAwait(false); }
+        try { await TaskCancellation.WaitAsync(Run(), deadline.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw new OperationCanceledException(cancellationToken); }
         catch (OperationCanceledException) { throw new TimeoutException("Copilot authentication exceeded its configured timeout."); }
     }
 
     private GitHubDeviceFlowClient CreateDeviceFlow() => new(_options.GitHubClientId ?? throw new InvalidOperationException(
-        "Configure GitHubClientId for your registered app before device sign-in or token renewal."), _options.GitHubAuthBaseUrl, _http);
+        "Configure GitHubClientId for your registered app before device sign-in or token renewal."), _options.GitHubAuthBaseUrl, _http, _options.RequestTimeout);
 
     private async Task<AccountInfo> ReadIdentityAsync(string token, CancellationToken cancellationToken) {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -176,7 +184,8 @@ public sealed class CopilotNativeAuthentication : IDisposable {
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(_options.GitHubApiBaseUrl.TrimEnd('/') + "/"), "user"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ValidateToken(token));
         request.Headers.UserAgent.ParseAdd("IntelligenceX/0.1.1");
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+        using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token),
+            deadline.Token, abandoned => abandoned.Dispose()).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"GitHub identity request failed (HTTP {(int)response.StatusCode}).");
         var json = await ResponseBudgetStream.ReadTextAsync(response.Content, 65_536, deadline.Token).ConfigureAwait(false);
         var obj = JsonLite.Parse(json)?.AsObject() ?? throw new InvalidOperationException("Invalid GitHub identity response.");
@@ -189,17 +198,6 @@ public sealed class CopilotNativeAuthentication : IDisposable {
         if (string.IsNullOrWhiteSpace(value) || value.IndexOfAny(new[] { '\r', '\n' }) >= 0)
             throw new InvalidOperationException("Copilot requires a nonempty GitHub credential without newlines.");
         return value.Trim();
-    }
-
-    private static async Task<T> AwaitCancellationAsync<T>(Task<T> task, CancellationToken cancellationToken) {
-        var cancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var registration = cancellationToken.Register(() => cancelled.TrySetResult(true));
-        if (await Task.WhenAny(task, cancelled.Task).ConfigureAwait(false) != task) {
-            _ = task.ContinueWith(t => { _ = t.Exception; }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-            throw new OperationCanceledException(cancellationToken);
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        return await task.ConfigureAwait(false);
     }
 
     /// <summary>Releases HTTP resources created by this instance. Call after outstanding operations finish.</summary>

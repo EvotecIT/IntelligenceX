@@ -13,8 +13,13 @@ internal sealed class OpenAINativeAuthManager {
 
     private readonly OpenAINativeOptions _options;
     private volatile bool _signedOut;
+    private int _logoutGeneration;
+    private readonly object _stateLock = new();
+    private readonly SemaphoreSlim _storeGate;
+    private readonly AuthStoreCoordination.CredentialEpoch _storeEpoch;
     private readonly OAuthLoginService _oauth = new();
     private readonly Func<OAuthConfig, AuthBundle, CancellationToken, Task<OAuthLoginResult>> _refreshOAuthAsync;
+    private readonly Func<OAuthLoginOptions, Task<OAuthLoginResult>> _loginOAuthAsync;
 
     public OpenAINativeAuthManager(OpenAINativeOptions options)
         : this(options, null) {
@@ -22,9 +27,13 @@ internal sealed class OpenAINativeAuthManager {
 
     internal OpenAINativeAuthManager(
         OpenAINativeOptions options,
-        Func<OAuthConfig, AuthBundle, CancellationToken, Task<OAuthLoginResult>>? refreshOAuthAsync) {
+        Func<OAuthConfig, AuthBundle, CancellationToken, Task<OAuthLoginResult>>? refreshOAuthAsync,
+        Func<OAuthLoginOptions, Task<OAuthLoginResult>>? loginOAuthAsync = null) {
         _options = options;
+        _storeGate = AuthStoreCoordination.GetGate(options.AuthStore);
+        _storeEpoch = AuthStoreCoordination.GetEpoch(_storeGate, OpenAICodexDefaults.Provider);
         _refreshOAuthAsync = refreshOAuthAsync ?? _oauth.RefreshAsync;
+        _loginOAuthAsync = loginOAuthAsync ?? _oauth.LoginAsync;
     }
 
     public async Task<AuthBundle?> TryGetValidBundleAsync(CancellationToken cancellationToken) {
@@ -46,6 +55,7 @@ internal sealed class OpenAINativeAuthManager {
 
     public async Task<AuthBundle> LoginAsync(Action<string>? onAuthUrl, Func<string, Task<string>>? onPrompt,
         bool useLocalListener, TimeSpan timeout, CancellationToken cancellationToken) {
+        var operation = CaptureOperation();
         var prompt = onPrompt ?? (p => DefaultPromptAsync(p, cancellationToken));
         var loginOptions = new OAuthLoginOptions(_options.OAuth) {
             OnAuthUrl = url => {
@@ -58,60 +68,93 @@ internal sealed class OpenAINativeAuthManager {
             CancellationToken = cancellationToken
         };
 
-        var result = await _oauth.LoginAsync(loginOptions).ConfigureAwait(false);
-        await SaveBundleAsync(result.Bundle, cancellationToken).ConfigureAwait(false);
-        _signedOut = false;
+        var result = await _loginOAuthAsync(loginOptions).ConfigureAwait(false);
+        result.Bundle.AccountId ??= JwtDecoder.TryGetAccountId(result.Bundle.AccessToken);
+        await _storeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            EnsureCurrentOperation(operation, result.Bundle.AccountId, cancellationToken);
+            await SaveBundleAsync(result.Bundle, operation, cancellationToken).ConfigureAwait(false);
+            lock (_stateLock) {
+                EnsureCurrentOperation(operation, result.Bundle.AccountId, cancellationToken);
+                _signedOut = false;
+            }
+        } finally { _storeGate.Release(); }
         return result.Bundle;
     }
 
     public async Task LogoutAsync(CancellationToken cancellationToken) {
-        var selected = await TryGetCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
-        _signedOut = true;
-        if (selected is not null)
-            await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, selected.AccountId, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_stateLock) {
+            _logoutGeneration++;
+            _signedOut = true;
+        }
+        // Wait for any non-cooperative store write before removing the selected account.
+        await _storeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            var selected = await ReadCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            _storeEpoch.Invalidate(selected?.AccountId ?? _options.AuthAccountId);
+            if (selected is not null)
+                await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, selected.AccountId, cancellationToken).ConfigureAwait(false);
+        } finally { _storeGate.Release(); }
     }
 
-    public async Task<AuthBundle> RefreshAsync(AuthBundle bundle, CancellationToken cancellationToken) {
+    public Task<AuthBundle> RefreshAsync(AuthBundle bundle, CancellationToken cancellationToken) =>
+        RefreshAsync(bundle, CaptureOperation(), cancellationToken);
+
+    internal async Task<AuthBundle> RefreshAsync(AuthBundle bundle, (int Generation, long Epoch) operation, CancellationToken cancellationToken) {
+        if (_signedOut) throw new OpenAIAuthenticationRequiredException("ChatGPT is signed out. Sign in before refreshing credentials.");
         var accessTokenBeforeLock = bundle.AccessToken;
         var refreshLock = RefreshLocks.GetOrAdd(
             BuildRefreshLockKey(bundle),
             _ => new SemaphoreSlim(1, 1));
         await refreshLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            var current = await TryGetCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
-            if (current is not null &&
-                !string.Equals(current.AccessToken, accessTokenBeforeLock, StringComparison.Ordinal) &&
-                !IsExpiring(current)) {
-                return current;
-            }
+            await _storeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try {
+                EnsureCurrentOperation(operation, _options.AuthAccountId ?? bundle.AccountId, cancellationToken);
+                var current = await TryGetCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
+                if (current is null || !SameSelectedAccount(current, bundle))
+                    throw new OpenAIAuthenticationRequiredException("The selected ChatGPT credential was removed or replaced. Sign in before retrying.");
+                if (!string.Equals(current.AccessToken, accessTokenBeforeLock, StringComparison.Ordinal) &&
+                    !IsExpiring(current)) {
+                    EnsureCurrentOperation(operation, current.AccountId, cancellationToken);
+                    return current;
+                }
 
-            var refreshCandidate = current ?? bundle;
-            if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
-                var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
-                refreshCandidate = SelectRefreshCandidate(refreshCandidate, storedBundle);
-            }
-            if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
-                throw new InvalidOperationException("Refresh token is missing. Re-run the ChatGPT login.");
-            }
+                var refreshCandidate = current;
+                if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
+                    var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
+                    refreshCandidate = SelectRefreshCandidate(refreshCandidate, storedBundle);
+                }
+                if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
+                    throw new InvalidOperationException("Refresh token is missing. Re-run the ChatGPT login.");
+                }
 
-            var refreshed = await _refreshOAuthAsync(_options.OAuth, refreshCandidate, cancellationToken)
-                .ConfigureAwait(false);
-            await SaveBundleAsync(refreshed.Bundle, cancellationToken).ConfigureAwait(false);
-            return refreshed.Bundle;
+                var refreshed = await _refreshOAuthAsync(_options.OAuth, refreshCandidate, cancellationToken)
+                    .ConfigureAwait(false);
+                EnsureCurrentOperation(operation, refreshed.Bundle.AccountId, cancellationToken);
+                await SaveBundleAsync(refreshed.Bundle, operation, cancellationToken).ConfigureAwait(false);
+                EnsureCurrentOperation(operation, refreshed.Bundle.AccountId, cancellationToken);
+                return refreshed.Bundle;
+            } finally { _storeGate.Release(); }
         } finally {
             refreshLock.Release();
         }
     }
 
-    private async Task SaveBundleAsync(AuthBundle bundle, CancellationToken cancellationToken) {
+    private async Task SaveBundleAsync(AuthBundle bundle, (int Generation, long Epoch) operation, CancellationToken cancellationToken) {
         bundle.AccountId ??= JwtDecoder.TryGetAccountId(bundle.AccessToken);
         await _options.AuthStore.SaveAsync(bundle, cancellationToken).ConfigureAwait(false);
-
-        if (_options.PersistCodexAuthJson && !string.IsNullOrWhiteSpace(bundle.IdToken)) {
-            try {
-                CodexAuthStore.WriteAuthJson(bundle, _options.CodexHome);
-            } catch {
-                // Codex auth export is best-effort; ignore failures.
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_stateLock) {
+            EnsureCurrentOperation(operation, bundle.AccountId, cancellationToken);
+            if (_options.PersistCodexAuthJson && !string.IsNullOrWhiteSpace(bundle.IdToken)) {
+                try {
+                    CodexAuthStore.WriteAuthJson(bundle, _options.CodexHome);
+                } catch {
+                    // Codex auth export is best-effort; ignore failures.
+                }
             }
         }
     }
@@ -190,11 +233,33 @@ internal sealed class OpenAINativeAuthManager {
 
     private async Task<AuthBundle?> TryGetCurrentBundleAsync(CancellationToken cancellationToken) {
         if (_signedOut) return null;
+        var bundle = await ReadCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
+        return _signedOut ? null : bundle;
+    }
+
+    private async Task<AuthBundle?> ReadCurrentBundleAsync(CancellationToken cancellationToken) {
         var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
         return SelectPreferredBundle(
             storedBundle,
             TryGetCodexBundle(),
             _options.PreferCurrentCodexSession && string.IsNullOrWhiteSpace(_options.AuthAccountId));
+    }
+
+    // A request captures this before sending; a delayed 401 must not start a new authentication lifetime.
+    internal (int Generation, long Epoch) CaptureOperation() => (Volatile.Read(ref _logoutGeneration), _storeEpoch.Capture());
+
+    private static bool SameSelectedAccount(AuthBundle current, AuthBundle previous) {
+        string? currentId = current.AccountId ?? JwtDecoder.TryGetAccountId(current.AccessToken);
+        string? previousId = previous.AccountId ?? JwtDecoder.TryGetAccountId(previous.AccessToken);
+        return !string.IsNullOrWhiteSpace(currentId) && !string.IsNullOrWhiteSpace(previousId)
+            ? string.Equals(currentId, previousId, StringComparison.OrdinalIgnoreCase)
+            : string.Equals(current.AccessToken, previous.AccessToken, StringComparison.Ordinal);
+    }
+
+    private void EnsureCurrentOperation((int Generation, long Epoch) operation, string? accountId, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (operation.Generation != Volatile.Read(ref _logoutGeneration) || !_storeEpoch.IsCurrent(operation.Epoch, accountId))
+            throw new OpenAIAuthenticationRequiredException("Authentication was superseded by logout.");
     }
 
     private string BuildRefreshLockKey(AuthBundle bundle) {

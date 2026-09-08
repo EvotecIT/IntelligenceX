@@ -108,7 +108,7 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalT
         var sw = System.Diagnostics.Stopwatch.StartNew();
         ObserverDispatcher.Raise(RpcCallStarted, this, new RpcCallStartedEventArgs("models.list", JsonValue.From(new JsonObject().Add("url", _modelsUrl.ToString()))));
         try {
-            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
                 throw new InvalidOperationException($"Model list request failed (HTTP {(int)response.StatusCode}).");
             }
@@ -441,7 +441,7 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalT
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
         await PrepareRequestAsync(request, cancellationToken).ConfigureAwait(false);
 
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
             throw new InvalidOperationException($"Chat request failed (HTTP {(int)response.StatusCode}).");
         }
@@ -462,7 +462,10 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalT
         return BuildTurnFromChatCompletions(obj);
     }
 
-    private async Task<ChatCompletionResponse> ReadChatCompletionsStreamAsync(HttpResponseMessage response, long? maxResponseBytes, CancellationToken cancellationToken) {
+    private Task<ChatCompletionResponse> ReadChatCompletionsStreamAsync(HttpResponseMessage response, long? maxResponseBytes, CancellationToken cancellationToken) =>
+        TaskCancellation.WaitAsync(ReadChatCompletionsStreamCoreAsync(response, maxResponseBytes, cancellationToken), cancellationToken);
+
+    private async Task<ChatCompletionResponse> ReadChatCompletionsStreamCoreAsync(HttpResponseMessage response, long? maxResponseBytes, CancellationToken cancellationToken) {
         using var stream = new ResponseBudgetStream(await ReadAsStreamAsync(response.Content, cancellationToken).ConfigureAwait(false), maxResponseBytes);
         using var cancelRegistration = cancellationToken.Register(() => {
             try {

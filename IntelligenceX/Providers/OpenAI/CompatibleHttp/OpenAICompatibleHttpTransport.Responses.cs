@@ -101,7 +101,7 @@ internal partial class OpenAICompatibleHttpTransport {
             Content = new StringContent(JsonLite.Serialize(body), Encoding.UTF8, "application/json")
         };
         await PrepareRequestAsync(request, cancellationToken).ConfigureAwait(false);
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"Responses request failed (HTTP {(int)response.StatusCode}).");
         JsonObject? result;
         if (string.Equals(response.Content.Headers.ContentType?.MediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase)) {
