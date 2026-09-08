@@ -7,7 +7,11 @@ internal sealed partial class ReviewSettings {
     private static void ApplyEnvironmentCopilotAndAzureSettings(ReviewSettings settings) {
         settings.CopilotModel = GetInput("copilot_model", "COPILOT_MODEL") ?? settings.CopilotModel;
         settings.CopilotBaseUrl = GetInput("copilot_base_url", "COPILOT_BASE_URL") ?? settings.CopilotBaseUrl;
-        settings.CopilotTokenEnvironmentVariable = GetInput("copilot_token_env", "COPILOT_TOKEN_ENV") ?? settings.CopilotTokenEnvironmentVariable;
+        var copilotTokenEnvironment = GetInput("copilot_token_env", "COPILOT_TOKEN_ENV");
+        if (!string.IsNullOrWhiteSpace(copilotTokenEnvironment)) {
+            settings.CopilotTokenEnvironmentVariable = copilotTokenEnvironment;
+            settings.CopilotToken = null;
+        }
         var copilotTimeout = GetInput("copilot_timeout_seconds", "COPILOT_TIMEOUT_SECONDS");
         if (!string.IsNullOrWhiteSpace(copilotTimeout))
             settings.CopilotRequestTimeoutSeconds = ParsePositiveInt(copilotTimeout, settings.CopilotRequestTimeoutSeconds);

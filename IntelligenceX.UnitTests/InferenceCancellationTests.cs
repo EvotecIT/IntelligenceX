@@ -45,7 +45,9 @@ public sealed class InferenceCancellationTests {
         try {
             await blocked.Task.WaitAsync(TimeSpan.FromSeconds(3));
             if (route == "native") cancellation.Cancel();
-            Assert.Same(turn, await Task.WhenAny(turn, Task.Delay(500)));
+            // This is a deadlock guard, not a scheduler-latency assertion. The HTTP fixture
+            // remains blocked until after the result, so a missing cancellation bound still fails.
+            Assert.Same(turn, await Task.WhenAny(turn, Task.Delay(TimeSpan.FromSeconds(10))));
             if (route == "native") Assert.Equal(cancellation.Token, (await Assert.ThrowsAnyAsync<OperationCanceledException>(() => turn)).CancellationToken);
             else await Assert.ThrowsAsync<TimeoutException>(() => turn);
         } finally {

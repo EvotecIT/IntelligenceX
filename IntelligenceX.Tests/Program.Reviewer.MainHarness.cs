@@ -871,6 +871,9 @@ internal static partial class Program {
         failed += Run("Native Copilot setup model reaches reviewer", TestNativeCopilotSetupModelReachesReviewer);
         failed += Run("Native Copilot configured credential callback", TestNativeCopilotCredentialCallbackReadsOnlyItsConfiguredVariable);
         failed += Run("Native Copilot swarm profile overrides", TestNativeCopilotSwarmProfilesPreserveProviderAndModelOverrides);
+        failed += Run("Native Copilot health deadline classification", TestNativeCopilotHealthDeadlineIsTransientButCallerCancellationIsNot);
+        failed += Run("Native Copilot environment credential override", TestNativeCopilotEnvironmentCredentialOverridesConfiguredToken);
+        failed += Run("Native Copilot HTTP status classification", TestNativeCopilotHttpStatusControlsReviewerRetryClassification);
         failed += Run("Review swarm shadow plan falls back to primary provider and model",
             TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel);
         failed += Run("Review swarm shadow reviewer prompt shapes focus", TestReviewSwarmShadowReviewerPromptShapesFocus);

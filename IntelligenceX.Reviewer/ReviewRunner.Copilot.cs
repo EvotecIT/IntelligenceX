@@ -28,11 +28,18 @@ internal sealed partial class ReviewRunner {
         };
     }
 
-    private async Task RunCopilotHealthCheckAsync(TimeSpan timeout, CancellationToken cancellationToken) {
+    private Task RunCopilotHealthCheckAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+        RunCopilotHealthCheckAsync(BuildCopilotClientOptions(), timeout, cancellationToken);
+
+    internal static async Task RunCopilotHealthCheckAsync(IntelligenceXClientOptions options, TimeSpan timeout, CancellationToken cancellationToken) {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);
-        await using var client = await IntelligenceXClient.ConnectAsync(BuildCopilotClientOptions(), deadline.Token).ConfigureAwait(false);
-        _ = await client.ListModelsAsync(deadline.Token).ConfigureAwait(false);
+        try {
+            await using var client = await IntelligenceXClient.ConnectAsync(options, deadline.Token).ConfigureAwait(false);
+            _ = await client.ListModelsAsync(deadline.Token).ConfigureAwait(false);
+        } catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested) {
+            throw new TimeoutException("The native Copilot health check exceeded its configured timeout.", error);
+        }
     }
 
     private Task<string> RunCopilotAsync(string prompt, Func<string, Task>? onPartial, TimeSpan? updateInterval,

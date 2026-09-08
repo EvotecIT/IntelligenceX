@@ -648,7 +648,7 @@ public sealed class OpenAICompatibleHttpTransportTests {
         var thread = await transport.StartThreadAsync("model", null, null, null, CancellationToken.None);
         Task Run() => transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"),
             new ChatOptions { Model = "model", MaxResponseBytes = 1024 }, null, null, null, CancellationToken.None);
-        if (error) Assert.Equal("Chat request failed (HTTP 400).", (await Assert.ThrowsAsync<InvalidOperationException>(Run)).Message);
+        if (error) Assert.Equal(HttpStatusCode.BadRequest, (await Assert.ThrowsAsync<HttpRequestException>(Run)).StatusCode);
         else await Assert.ThrowsAsync<InvalidDataException>(Run);
     }
 

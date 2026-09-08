@@ -10,6 +10,38 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class RpcDocumentContractsTests {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedWriteCannotBeReusedAsACompleteProtocolConnection(bool synchronous) {
+        var failure = new IOException("partial frame write");
+        using var rpc = new JsonRpcClient(_ => synchronous ? throw failure : Task.FromException(failure));
+        Assert.Same(failure, await Assert.ThrowsAsync<IOException>(() => rpc.NotifyAsync("partial", new JsonObject())));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rpc.NotifyAsync("future", new JsonObject()));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AbandonedWriteTerminatesQueuedAndFutureRequests(bool notification) {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int writes = 0;
+        using var rpc = new JsonRpcClient(_ => { Interlocked.Increment(ref writes); return release.Task; });
+        using var cancel = new CancellationTokenSource();
+        Task active = notification ? rpc.NotifyAsync("active", new JsonObject(), cancel.Token)
+            : rpc.CallAsync("active", new JsonObject(), cancel.Token);
+        Task queued = rpc.CallAsync("queued", new JsonObject());
+        Task queuedNotification = rpc.NotifyAsync("queued-notification", new JsonObject());
+        try {
+            cancel.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => active.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAsync<IOException>(() => queued.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => queuedNotification.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => rpc.CallAsync("future", new JsonObject()).WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(1, writes);
+        } finally { release.TrySetResult(); }
+    }
+
+    [Theory]
     [InlineData("success")]
     [InlineData("failure")]
     [InlineData("cancellation")]
@@ -63,14 +95,14 @@ public sealed class RpcDocumentContractsTests {
         using var queued = new CancellationTokenSource();
         Task<JsonValue?> active = rpc.CallAsync("first", new JsonObject(), first.Token);
         Task<JsonValue?> waiting = rpc.CallAsync("queued", new JsonObject(), queued.Token);
-        first.Cancel(); queued.Cancel();
+        queued.Cancel(); first.Cancel();
         try {
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => active.WaitAsync(TimeSpan.FromSeconds(2)));
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting.WaitAsync(TimeSpan.FromSeconds(2)));
             Assert.Equal(1, sent);
         } finally { release.TrySetResult(); }
-        await rpc.NotifyAsync("flush", new JsonObject()).WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Equal(2, sent);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rpc.NotifyAsync("flush", new JsonObject()));
+        Assert.Equal(1, sent);
     }
 
     [Fact]

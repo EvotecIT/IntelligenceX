@@ -13,6 +13,19 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class NativeDocumentTransportTests {
     [Theory]
+    [InlineData(400)]
+    [InlineData(429)]
+    [InlineData(503)]
+    public async Task NativeProviderErrorsKeepHttpStatusInTheirCause(int status) {
+        using var http = new HttpClient(new Handler(_ => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status) {
+            Content = new StringContent("{\"error\":{\"message\":\"provider failed\"}}")
+        })));
+        using var client = new IntelligenceXClient(CreateTransport("native", http), "model", null, null, null);
+        var error = await Assert.ThrowsAsync<OpenAINativeErrorResponseException>(() => client.ChatAsync("question"));
+        Assert.Equal((HttpStatusCode)status, Assert.IsType<HttpRequestException>(error.InnerException).StatusCode);
+    }
+
+    [Theory]
     [InlineData("native", "success")]
     [InlineData("native", "failure")]
     [InlineData("native", "cancellation")]

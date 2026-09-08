@@ -11,6 +11,45 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class CopilotNativeTransportTests {
     [Theory]
+    [InlineData("models", 429)]
+    [InlineData("models", 503)]
+    [InlineData("chat", 429)]
+    [InlineData("chat", 503)]
+    [InlineData("responses", 429)]
+    [InlineData("responses", 503)]
+    [InlineData("chat", 401)]
+    [InlineData("responses", 400)]
+    public async Task ProviderFailuresPreserveHttpStatus(string operation, int status) {
+        using var client = await Connect(new Handler((request, _) => Task.FromResult(
+            operation != "models" && request.Method == HttpMethod.Get ? Catalog(operation == "responses")
+                : new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent("private provider error") })), false);
+        var error = await Assert.ThrowsAsync<HttpRequestException>(async () => {
+            if (operation == "models") await client.ListModelsAsync();
+            else await client.ChatAsync("question");
+        });
+        Assert.Equal((HttpStatusCode)status, error.StatusCode);
+        Assert.DoesNotContain("private provider error", error.ToString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DiscoveredModelValueSelectsItsAdvertisedProtocol(bool responses) {
+        using var client = await Connect(new Handler(async (request, _) => {
+            if (request.Method == HttpMethod.Get) return Json(JsonSerializer.Serialize(new {
+                data = new[] { new { id = "catalog-id", model = "request-model", supported_endpoints = new[] { responses ? "/responses" : "/chat/completions" } } }
+            }));
+            Assert.Equal(responses ? "/responses" : "/chat/completions", request.RequestUri!.AbsolutePath);
+            Assert.Contains("\"model\":\"request-model\"", await request.Content!.ReadAsStringAsync());
+            return Answer(responses, false);
+        }), false);
+        var model = Assert.Single((await client.ListModelsAsync()).Models);
+        Assert.Equal("request-model", model.Model);
+        var turn = await client.ChatAsync("question", model.Model);
+        Assert.Equal("answer", Assert.Single(turn.Outputs).Text);
+    }
+
+    [Theory]
     [InlineData(true, false)]
     [InlineData(true, true)]
     [InlineData(false, false)]

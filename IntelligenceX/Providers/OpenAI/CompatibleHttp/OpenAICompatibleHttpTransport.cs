@@ -109,9 +109,7 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalT
         ObserverDispatcher.Raise(RpcCallStarted, this, new RpcCallStartedEventArgs("models.list", JsonValue.From(new JsonObject().Add("url", _modelsUrl.ToString()))));
         try {
             using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) {
-                throw new InvalidOperationException($"Model list request failed (HTTP {(int)response.StatusCode}).");
-            }
+            response.EnsureSuccessStatusCode();
             var payload = await ResponseBudgetStream.ReadTextAsync(response.Content, 4_194_304, cancellationToken).ConfigureAwait(false);
 
             var value = JsonLite.Parse(payload);
@@ -442,9 +440,7 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalT
         await PrepareRequestAsync(request, cancellationToken).ConfigureAwait(false);
 
         using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) {
-            throw new InvalidOperationException($"Chat request failed (HTTP {(int)response.StatusCode}).");
-        }
+        response.EnsureSuccessStatusCode();
 
         var contentType = response.Content.Headers.ContentType?.MediaType;
         var wantsStreaming = _options.Streaming && body.GetBoolean("stream");

@@ -267,9 +267,11 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
             throw new OpenAIAuthenticationRequiredException(OpenAIAuthenticationRequiredException.DefaultMessage);
         if (!response.IsSuccessStatusCode) {
             var error = await ParseErrorResponseAsync(response, cancellationToken, options.MaxResponseBytes).ConfigureAwait(false);
-            var httpFailure = new HttpRequestException($"ChatGPT request failed ({(int)response.StatusCode}).");
-            throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode,
-                _options.AllowSensitiveDiagnostics && OpenAINativeTrace.IsEnabled(), httpFailure);
+            try { response.EnsureSuccessStatusCode(); }
+            catch (HttpRequestException httpFailure) {
+                throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode,
+                    _options.AllowSensitiveDiagnostics && OpenAINativeTrace.IsEnabled(), httpFailure);
+            }
         }
 
         var delta = new StringBuilder();

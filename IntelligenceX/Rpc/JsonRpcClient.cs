@@ -228,7 +228,19 @@ internal sealed class JsonRpcClient : IDisposable {
         try {
             ThrowIfUnavailable();
             cancellationToken.ThrowIfCancellationRequested();
-            await _sendLineAsync(line, cancellationToken).ConfigureAwait(false);
+            Task send;
+            try { send = _sendLineAsync(line, cancellationToken); }
+            catch (Exception error) { FailConnection(error); throw; }
+            using var cancellation = cancellationToken.Register(() => {
+                // A canceled write can leave a partial protocol frame. Do not let later calls
+                // reuse the connection or remain queued behind a non-cooperative writer.
+                if (send.Status != TaskStatus.RanToCompletion) FailConnection(new System.IO.IOException("The RPC connection terminated after an in-flight write was canceled."));
+            });
+            try { await TaskCancellation.WaitAsync(send, cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) {
+                if (send.Status != TaskStatus.RanToCompletion) FailConnection(error);
+                throw;
+            }
         } finally {
             _sendLock.Release();
         }

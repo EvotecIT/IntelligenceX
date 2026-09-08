@@ -74,10 +74,14 @@ internal sealed class CopilotNativeTransport : OpenAICompatibleHttpTransport {
         var protocols = new Dictionary<string, bool>(StringComparer.Ordinal);
         foreach (var model in models.Models) {
             var endpoints = model.Raw.GetArray("supported_endpoints");
+            bool? responses = null;
             if (endpoints is null) {
-                if (model.Raw.GetObject("capabilities")?.GetString("type") != "embeddings") protocols[model.Id] = false;
-            } else if (endpoints.Any(value => value.AsString() == "/responses")) protocols[model.Id] = true;
-            else if (endpoints.Any(value => value.AsString() == "/chat/completions")) protocols[model.Id] = false;
+                if (model.Raw.GetObject("capabilities")?.GetString("type") != "embeddings") responses = false;
+            } else if (endpoints.Any(value => value.AsString() == "/responses")) responses = true;
+            else if (endpoints.Any(value => value.AsString() == "/chat/completions")) responses = false;
+            if (!responses.HasValue) continue;
+            if (!string.IsNullOrWhiteSpace(model.Id)) protocols[model.Id] = responses.Value;
+            if (!string.IsNullOrWhiteSpace(model.Model)) protocols[model.Model] = responses.Value;
         }
         _protocols = protocols; _catalogExpires = DateTimeOffset.UtcNow.AddMinutes(5);
     }
