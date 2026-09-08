@@ -97,8 +97,15 @@ internal sealed class OpenAINativeAuthManager {
             var selected = await ReadCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             _storeEpoch.Invalidate(selected?.AccountId ?? SelectedAccountId);
-            if (selected is not null)
+            if (selected is not null) {
                 await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, selected.AccountId, cancellationToken).ConfigureAwait(false);
+                // Older bundles may still live under the provider-only key, including a copy
+                // left by renewal into an account-keyed entry. Remove only this identity's copy.
+                foreach (var stored in await _options.AuthStore.ListAsync(OpenAICodexDefaults.Provider, cancellationToken).ConfigureAwait(false)) {
+                    if (string.IsNullOrWhiteSpace(stored.AccountId) && SameSelectedAccount(stored, selected))
+                        await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, stored.AccountId, cancellationToken).ConfigureAwait(false);
+                }
+            }
         } finally { _storeGate.Release(); }
     }
 
@@ -225,11 +232,26 @@ internal sealed class OpenAINativeAuthManager {
     }
 
     private async Task<AuthBundle?> GetStoredBundleAsync(CancellationToken cancellationToken) {
+        string? accountId = SelectedAccountId;
         var storedBundle = await _options.AuthStore
-            .GetAsync(OpenAICodexDefaults.Provider, SelectedAccountId, cancellationToken)
+            .GetAsync(OpenAICodexDefaults.Provider, accountId, cancellationToken)
             .ConfigureAwait(false);
+        if (storedBundle is null && !string.IsNullOrWhiteSpace(accountId)) {
+            // Logical identity can be inferred from a JWT even when an older bundle was saved
+            // without AccountId. Recover that storage shape without selecting a different account.
+            foreach (var candidate in await _options.AuthStore.ListAsync(OpenAICodexDefaults.Provider, cancellationToken).ConfigureAwait(false)) {
+                if (string.IsNullOrWhiteSpace(candidate.AccountId)
+                    && string.Equals(JwtDecoder.TryGetAccountId(candidate.AccessToken), accountId, StringComparison.OrdinalIgnoreCase)) {
+                    storedBundle = candidate;
+                    break;
+                }
+            }
+        }
         if (storedBundle is not null && string.IsNullOrWhiteSpace(storedBundle.AccountId)) {
-            storedBundle.AccountId = JwtDecoder.TryGetAccountId(storedBundle.AccessToken);
+            storedBundle = new AuthBundle(storedBundle.Provider, storedBundle.AccessToken, storedBundle.RefreshToken, storedBundle.ExpiresAt) {
+                AccountId = JwtDecoder.TryGetAccountId(storedBundle.AccessToken), IdToken = storedBundle.IdToken,
+                TokenType = storedBundle.TokenType, Scope = storedBundle.Scope
+            };
         }
         return storedBundle;
     }

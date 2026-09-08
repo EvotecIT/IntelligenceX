@@ -5,6 +5,31 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class AuthStoreAccountLifecycleTests {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ChatGptKeepsLegacyProviderKeyedCredentialsReadableAndRemovable(bool expiring) {
+        string path = Path.Combine(Path.GetTempPath(), "ix-legacy-account-" + Guid.NewGuid().ToString("N") + ".json");
+        string payload = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+            "{\"https://api.openai.com/auth\":{\"chatgpt_account_id\":\"first\"}}" )).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        string jwt = "e30." + payload + ".signature";
+        try {
+            var store = new FileAuthBundleStore(path);
+            await store.SaveAsync(new("openai-codex", jwt, "refresh", expiring ? DateTimeOffset.UtcNow.AddMinutes(-1) : null));
+            int refreshes = 0;
+            var manager = new OpenAINativeAuthManager(new() { AuthStore = store, LoadCodexAuthJson = false, PersistCodexAuthJson = false },
+                (_, _, _) => { refreshes++; return Task.FromResult(new OAuthLoginResult(
+                    new("openai-codex", jwt, "renewed", DateTimeOffset.UtcNow.AddHours(1)) { AccountId = "first" }, new())); });
+            Assert.Equal("first", (await manager.TryGetValidBundleAsync(default))!.AccountId);
+            await store.SaveAsync(new("openai-codex", "other", "", DateTimeOffset.UtcNow.AddHours(2)) { AccountId = "second" });
+            Assert.Equal("first", (await manager.TryGetValidBundleAsync(default))!.AccountId);
+            Assert.Equal(expiring ? 1 : 0, refreshes);
+            await manager.LogoutAsync(default);
+            Assert.Null(await manager.TryGetValidBundleAsync(default));
+            Assert.Equal("second", Assert.Single(await store.ListAsync("openai-codex")).AccountId);
+        } finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
     [Fact]
     public async Task ChatGptExplicitSignInCanSelectADifferentAccount() {
         string path = Path.Combine(Path.GetTempPath(), "ix-explicit-account-" + Guid.NewGuid().ToString("N") + ".json");
