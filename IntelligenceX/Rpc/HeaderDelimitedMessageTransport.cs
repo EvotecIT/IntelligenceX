@@ -1,3 +1,4 @@
+using IntelligenceX.Utils;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -38,7 +39,7 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
             await _output.WriteAsync(header, 0, header.Length, cancellationToken).ConfigureAwait(false);
             await _output.WriteAsync(payload, 0, payload.Length, cancellationToken).ConfigureAwait(false);
             await _output.FlushAsync(cancellationToken).ConfigureAwait(false);
-            MessageSent?.Invoke(this, message);
+            ObserverDispatcher.Raise(MessageSent, this, message);
         } finally {
             _sendLock.Release();
         }
@@ -53,7 +54,7 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
             if (message is null) {
                 break;
             }
-            MessageReceived?.Invoke(this, message);
+            ObserverDispatcher.Raise(MessageReceived, this, message);
             onMessage(message);
         }
     }

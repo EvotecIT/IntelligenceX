@@ -23,7 +23,11 @@ internal sealed class ResponseBudgetStream : Stream {
         using var stream = new ResponseBudgetStream(await content.ReadAsStreamAsync().ConfigureAwait(false), maximum);
         using var registration = cancellationToken.Register(stream.Dispose);
         using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer, 81920, cancellationToken).ConfigureAwait(false);
+        try {
+            await stream.CopyToAsync(buffer, 81920, cancellationToken).ConfigureAwait(false);
+        } catch (Exception) when (cancellationToken.IsCancellationRequested) {
+            throw new OperationCanceledException(cancellationToken);
+        }
         cancellationToken.ThrowIfCancellationRequested();
         buffer.Position = 0;
         using var reader = new StreamReader(buffer, Encoding.UTF8, true);

@@ -76,16 +76,15 @@ public sealed class CopilotClient : IDisposable
     public static async Task<CopilotClient> StartAsync(CopilotClientOptions? options = null, CancellationToken cancellationToken = default) {
         options ??= new CopilotClientOptions();
         options.Validate();
-        var client = new CopilotClient(options);
+        var client = await StartWithRetryAsync(options, cancellationToken).ConfigureAwait(false);
         try {
-            await client.StartWithRetryAsync(cancellationToken).ConfigureAwait(false);
             var handshakeToken = CreateTimeoutToken(options.ConnectTimeout, cancellationToken, out var handshake);
             try {
                 await client.CallAsync("connect", JsonValue.From(new JsonArray().Add(new JsonObject())), handshakeToken).ConfigureAwait(false);
             } finally { handshake?.Dispose(); }
             return client;
-        } catch {
-            client.Dispose();
+        } catch (Exception error) {
+            DisposeFailedClient(client, error);
             throw;
         }
     }
@@ -213,27 +212,40 @@ public sealed class CopilotClient : IDisposable
         }
     }
 
-    private async Task StartWithRetryAsync(CancellationToken cancellationToken) {
-        var retries = _options.ConnectRetryCount;
-        var delay = _options.ConnectRetryInitialDelay;
+    private static async Task<CopilotClient> StartWithRetryAsync(CopilotClientOptions options, CancellationToken cancellationToken) {
+        var retries = options.ConnectRetryCount;
+        var delay = options.ConnectRetryInitialDelay;
         Exception? lastError = null;
 
         for (var attempt = 0; attempt <= retries; attempt++) {
             cancellationToken.ThrowIfCancellationRequested();
+            var client = new CopilotClient(options);
             try {
-                await StartCoreAsync(cancellationToken).ConfigureAwait(false);
-                return;
+                await client.StartCoreAsync(cancellationToken).ConfigureAwait(false);
+                return client;
             } catch (Exception ex) {
                 lastError = ex;
+                // A failed attempt owns its process/socket and cancellation lifetime. Dispose
+                // it before creating another attempt so no replaced connection is orphaned.
+                DisposeFailedClient(client, ex);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (attempt >= retries) {
                     throw;
                 }
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                delay = NextDelay(delay, _options.ConnectRetryMaxDelay);
+                delay = NextDelay(delay, options.ConnectRetryMaxDelay);
             }
         }
 
         throw lastError ?? new InvalidOperationException("Failed to start Copilot client.");
+    }
+
+    private static void DisposeFailedClient(CopilotClient client, Exception startupError) {
+        try { client.Dispose(); }
+        catch (Exception cleanupError) {
+            // A failed termination prevents retry; retain both causes instead of hiding startup.
+            throw new AggregateException("Copilot startup and cleanup both failed.", startupError, cleanupError);
+        }
     }
 
     private async Task StartCoreAsync(CancellationToken cancellationToken) {
@@ -261,16 +273,18 @@ public sealed class CopilotClient : IDisposable
 
         var resolvedPath = await ResolveCliPathOrInstallAsync(_options, cancellationToken).ConfigureAwait(false);
         var startInfo = BuildStartInfo(_options, resolvedPath);
-        _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         try {
-            if (!_process.Start()) {
+            if (!process.Start()) {
                 throw new InvalidOperationException("Failed to start Copilot CLI process.");
             }
         } catch (Exception ex) {
+            process.Dispose();
             var message = "Copilot CLI not found or failed to start. Install it and log in, set CopilotClientOptions.CliPath, " +
                           "or enable CopilotClientOptions.AutoInstallCli.";
             throw new InvalidOperationException(message, ex);
         }
+        _process = process;
 
         if (_options.UseStdio) {
             InitializeTransport(_process.StandardOutput.BaseStream, _process.StandardInput.BaseStream);
@@ -304,10 +318,10 @@ public sealed class CopilotClient : IDisposable
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _cts.Token);
             await _transport.SendAsync(message, linked.Token).ConfigureAwait(false);
         }, includeProtocolVersion: true);
-        _rpc.CallStarted += (_, args) => RpcCallStarted?.Invoke(this, args);
-        _rpc.CallCompleted += (_, args) => RpcCallCompleted?.Invoke(this, args);
-        _transport.MessageReceived += (_, message) => ProtocolMessageReceived?.Invoke(this, message);
-        _transport.MessageSent += (_, message) => ProtocolMessageSent?.Invoke(this, message);
+        _rpc.CallStarted += (_, args) => ObserverDispatcher.Raise(RpcCallStarted, this, args);
+        _rpc.CallCompleted += (_, args) => ObserverDispatcher.Raise(RpcCallCompleted, this, args);
+        _transport.MessageReceived += (_, message) => ObserverDispatcher.Raise(ProtocolMessageReceived, this, message);
+        _transport.MessageSent += (_, message) => ObserverDispatcher.Raise(ProtocolMessageSent, this, message);
         _rpc.RequestReceived += OnRequestReceived;
         _rpc.NotificationReceived += OnNotificationReceived;
         _readerTask = Task.Run(async () => {
@@ -534,7 +548,7 @@ public sealed class CopilotClient : IDisposable
             if (line is null) {
                 throw new InvalidOperationException("Copilot CLI exited before reporting a port.");
             }
-            StandardOutputReceived?.Invoke(this, line);
+            ObserverDispatcher.Raise(StandardOutputReceived, this, line);
             var match = regex.Match(line);
             if (match.Success && int.TryParse(match.Groups[1].Value, out var port)) {
                 return port;
@@ -549,7 +563,7 @@ public sealed class CopilotClient : IDisposable
             if (line is null) {
                 break;
             }
-            StandardErrorReceived?.Invoke(this, line);
+            ObserverDispatcher.Raise(StandardErrorReceived, this, line);
         }
     }
 

@@ -9,6 +9,31 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class CopilotDocumentContractsTests {
+    [Theory]
+    [InlineData("success")]
+    [InlineData("failure")]
+    [InlineData("cancellation")]
+    public async Task RpcCompletionObserversCannotReplaceTheResultOrOriginalError(string outcome) {
+        using var cancellation = new CancellationTokenSource();
+        var cause = new IOException("connection failed");
+        JsonRpcClient? rpc = null;
+        using var owner = rpc = new JsonRpcClient(line => {
+            if (outcome == "failure") throw cause;
+            if (outcome == "cancellation") { cancellation.Cancel(); cancellation.Token.ThrowIfCancellationRequested(); }
+            var request = JsonLite.Parse(line).AsObject()!;
+            rpc!.HandleLine(JsonLite.Serialize(new JsonObject().Add("id", request.GetInt64("id")!.Value).Add("result", new JsonObject().Add("value", "ok"))));
+            return Task.CompletedTask;
+        });
+        var completed = new List<IntelligenceX.Telemetry.RpcCallCompletedEventArgs>();
+        rpc.CallCompleted += (_, _) => throw new InvalidOperationException("observer");
+        rpc.CallCompleted += (_, args) => completed.Add(args);
+        Task<JsonValue?> Run() => rpc.CallAsync("fixture", new JsonObject(), cancellation.Token);
+        if (outcome == "success") Assert.Equal("ok", (await Run())!.AsObject()!.GetString("value"));
+        else if (outcome == "failure") Assert.Same(cause, await Assert.ThrowsAsync<IOException>(Run));
+        else Assert.Equal(cancellation.Token, (await Assert.ThrowsAnyAsync<OperationCanceledException>(Run)).CancellationToken);
+        Assert.Equal(outcome == "success", Assert.Single(completed).Success);
+    }
+
     [Fact]
     public async Task TerminalConnectionFailureRejectsPendingQueuedAndFutureRpcCalls() {
         int writes = 0;

@@ -1,3 +1,4 @@
+using IntelligenceX.Utils;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -166,9 +167,7 @@ public sealed class CopilotSession : IDisposable {
     internal void Dispatch(CopilotSessionEvent evt) {
         Action<CopilotSessionEvent>[] handlers;
         lock (_handlersLock) handlers = _handlers.ToArray();
-        foreach (var handler in handlers) {
-            handler(evt);
-        }
+        ObserverDispatcher.Dispatch(handlers, evt);
     }
 
     /// <summary>

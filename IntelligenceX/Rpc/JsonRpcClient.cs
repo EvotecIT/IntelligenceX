@@ -1,3 +1,4 @@
+using IntelligenceX.Utils;
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
@@ -52,7 +53,7 @@ internal sealed class JsonRpcClient : IDisposable {
 
         var started = DateTime.UtcNow;
         var id = Interlocked.Increment(ref _nextId);
-        CallStarted?.Invoke(this, new RpcCallStartedEventArgs(method, @params, id));
+        ObserverDispatcher.Raise(CallStarted, this, new RpcCallStartedEventArgs(method, @params, id));
         var tcs = new TaskCompletionSource<JsonValue?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending.TryAdd(id, new PendingCall(method, tcs));
 
@@ -81,12 +82,12 @@ internal sealed class JsonRpcClient : IDisposable {
 
             var result = await tcs.Task.ConfigureAwait(false);
             var duration = DateTime.UtcNow - started;
-            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, true, null, id));
+            ObserverDispatcher.Raise(CallCompleted, this, new RpcCallCompletedEventArgs(method, duration, true, null, id));
             return result;
         } catch (Exception ex) {
             _pending.TryRemove(id, out _);
             var duration = DateTime.UtcNow - started;
-            CallCompleted?.Invoke(this, new RpcCallCompletedEventArgs(method, duration, false, ex, id));
+            ObserverDispatcher.Raise(CallCompleted, this, new RpcCallCompletedEventArgs(method, duration, false, ex, id));
             throw;
         }
     }

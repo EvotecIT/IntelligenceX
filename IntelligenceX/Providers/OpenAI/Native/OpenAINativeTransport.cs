@@ -121,15 +121,15 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
         var loginId = Guid.NewGuid().ToString("N");
         string? authUrl = null;
 
-        LoginStarted?.Invoke(this, new LoginEventArgs("chatgpt", loginId));
+        ObserverDispatcher.Raise(LoginStarted, this, new LoginEventArgs("chatgpt", loginId));
         var bundle = await _auth.LoginAsync(url => {
             authUrl = url;
             onUrl?.Invoke(url);
-            LoginStarted?.Invoke(this, new LoginEventArgs("chatgpt", loginId, url));
+            ObserverDispatcher.Raise(LoginStarted, this, new LoginEventArgs("chatgpt", loginId, url));
         }, onPrompt, useLocalListener, timeout, cancellationToken).ConfigureAwait(false);
 
         bundle.AccountId ??= JwtDecoder.TryGetAccountId(bundle.AccessToken);
-        LoginCompleted?.Invoke(this, new LoginEventArgs("chatgpt", loginId, authUrl));
+        ObserverDispatcher.Raise(LoginCompleted, this, new LoginEventArgs("chatgpt", loginId, authUrl));
 
         var raw = new JsonObject()
             .Add("loginId", loginId)
@@ -177,7 +177,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
         var turnId = Guid.NewGuid().ToString("N");
 
         var rpcParameters = JsonValue.From(body);
-        RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("responses.create", rpcParameters));
+        ObserverDispatcher.Raise(RpcCallStarted, this, new RpcCallStartedEventArgs("responses.create", rpcParameters));
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
             TurnInfo turn;
@@ -195,10 +195,10 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
                         resolvedModel, turnId, options, cancellationToken)
                     .ConfigureAwait(false);
             }
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, true));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, true));
             return turn;
         } catch (Exception ex) {
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, false, ex));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, false, ex));
             throw;
         }
     }
@@ -289,10 +289,15 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
 
         using var stream = new ResponseBudgetStream(await response.Content.ReadAsStreamAsync().ConfigureAwait(false), options.MaxResponseBytes);
         using var cancellationRegistration = cancellationToken.Register(stream.Dispose);
-        await OpenAINativeSseParser.ParseAsync(stream, evt => {
-            HandleStreamEvent(evt, delta, streamedOutputs, ref status, ref completedResponse, ref streamError);
-            return Task.CompletedTask;
-        }, cancellationToken, _options.AllowSensitiveDiagnostics).ConfigureAwait(false);
+        try {
+            await OpenAINativeSseParser.ParseAsync(stream, evt => {
+                HandleStreamEvent(evt, delta, streamedOutputs, ref status, ref completedResponse, ref streamError);
+                return Task.CompletedTask;
+            }, cancellationToken, _options.AllowSensitiveDiagnostics).ConfigureAwait(false);
+        } catch (Exception) when (cancellationToken.IsCancellationRequested) {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (!string.IsNullOrWhiteSpace(streamError)) {
             throw new InvalidOperationException(streamError);
@@ -462,7 +467,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
             var piece = evt.GetString("delta");
             if (!string.IsNullOrEmpty(piece)) {
                 delta.Append(piece);
-                DeltaReceived?.Invoke(this, piece!);
+                ObserverDispatcher.Raise(DeltaReceived, this, piece!);
             }
             return;
         }
@@ -471,7 +476,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
             var piece = evt.GetString("delta");
             if (!string.IsNullOrEmpty(piece)) {
                 delta.Append(piece);
-                DeltaReceived?.Invoke(this, piece!);
+                ObserverDispatcher.Raise(DeltaReceived, this, piece!);
             }
             return;
         }

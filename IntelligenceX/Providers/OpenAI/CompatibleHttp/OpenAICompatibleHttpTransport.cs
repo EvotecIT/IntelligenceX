@@ -104,7 +104,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport, 
         AddAuthHeader(request);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("models.list", JsonValue.From(new JsonObject().Add("url", _modelsUrl.ToString()))));
+        ObserverDispatcher.Raise(RpcCallStarted, this, new RpcCallStartedEventArgs("models.list", JsonValue.From(new JsonObject().Add("url", _modelsUrl.ToString()))));
         try {
             using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
             var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
@@ -114,11 +114,11 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport, 
 
             var value = JsonLite.Parse(payload);
             var obj = value?.AsObject() ?? new JsonObject();
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, true));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, true));
             var primary = ModelListResult.FromJson(obj);
             return await TryMergeLmStudioCatalogAsync(primary, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) {
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, false, ex));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, false, ex));
             throw;
         }
     }
@@ -301,8 +301,8 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport, 
         _options.ApiKey = apiKey.Trim();
         _options.BasicUsername = null;
         _options.BasicPassword = null;
-        LoginStarted?.Invoke(this, new LoginEventArgs("apikey"));
-        LoginCompleted?.Invoke(this, new LoginEventArgs("apikey"));
+        ObserverDispatcher.Raise(LoginStarted, this, new LoginEventArgs("apikey"));
+        ObserverDispatcher.Raise(LoginCompleted, this, new LoginEventArgs("apikey"));
         return Task.CompletedTask;
     }
 
@@ -399,12 +399,12 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport, 
         var normalizedRequestMessages = NormalizeToolReplayMessages(requestMessages);
         var body = BuildChatCompletionsRequest(state.Model, normalizedRequestMessages, options, streaming: _options.Streaming);
         var rpcParams = JsonValue.From(body);
-        RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("chat.completions.create", rpcParams));
+        ObserverDispatcher.Raise(RpcCallStarted, this, new RpcCallStartedEventArgs("chat.completions.create", rpcParams));
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
             var response = await SendChatCompletionsAsync(body, options.MaxResponseBytes, cancellationToken).ConfigureAwait(false);
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("chat.completions.create", sw.Elapsed, true));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("chat.completions.create", sw.Elapsed, true));
 
             // Update history with the messages we sent + the assistant message we received.
             lock (_threadsLock) {
@@ -415,7 +415,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport, 
 
             return response.Turn;
         } catch (Exception ex) {
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("chat.completions.create", sw.Elapsed, false, ex));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("chat.completions.create", sw.Elapsed, false, ex));
             throw;
         }
     }
@@ -473,6 +473,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport, 
             } catch (Exception) when (cancellationToken.IsCancellationRequested) {
                 throw new OperationCanceledException(cancellationToken);
             }
+            cancellationToken.ThrowIfCancellationRequested();
             if (line is null) {
                 break;
             }
@@ -517,7 +518,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport, 
             var deltaContent = ExtractDeltaContentText(delta);
             if (!string.IsNullOrEmpty(deltaContent)) {
                 content.Append(deltaContent);
-                DeltaReceived?.Invoke(this, deltaContent!);
+                ObserverDispatcher.Raise(DeltaReceived, this, deltaContent!);
             }
 
             var deltaToolCalls = delta.GetArray("tool_calls") ?? ExtractDeltaToolCallsFromContent(delta);

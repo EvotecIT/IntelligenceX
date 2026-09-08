@@ -360,18 +360,26 @@ public sealed class IntelligenceXClient : IDisposable
         if (options.ResponseFormat is not null && TransportKind != OpenAITransportKind.Native && TransportKind != OpenAITransportKind.CompatibleHttp) {
             throw new NotSupportedException("This transport does not support explicit JSON-schema response formats.");
         }
-        if (options.Ephemeral && _transport is not Transport.ILocalThreadLifetime)
+        bool ephemeral = options.Ephemeral;
+        if (ephemeral && _transport is not Transport.ILocalThreadLifetime)
             throw new NotSupportedException("This transport cannot guarantee ephemeral local conversation state.");
-        if (options.NewThread || options.Ephemeral) {
-            _currentThreadId = null;
-        }
         EnsureFileSafety(input, options);
 
         var workspace = options.Workspace;
         var model = options.Model ?? _defaultModel;
         options.Model ??= model;
-        await EnsureThreadAsync(model, cancellationToken).ConfigureAwait(false);
-        string operationThreadId = _currentThreadId!;
+        string operationThreadId;
+        if (ephemeral) {
+            // Temporary work never selects its thread on the shared client, including while
+            // callbacks or other callers select a normal conversation during the operation.
+            var temporary = await _transport.StartThreadAsync(model, _defaultWorkingDirectory, _defaultApprovalPolicy,
+                null, cancellationToken).ConfigureAwait(false);
+            operationThreadId = temporary.Id;
+        } else {
+            if (options.NewThread) _currentThreadId = null;
+            await EnsureThreadAsync(model, cancellationToken).ConfigureAwait(false);
+            operationThreadId = _currentThreadId!;
+        }
         var cwd = options.WorkingDirectory ?? _defaultWorkingDirectory;
         var approval = options.ApprovalPolicy ?? _defaultApprovalPolicy;
         var sandbox = options.SandboxPolicy ?? _defaultSandboxPolicy;
@@ -391,19 +399,18 @@ public sealed class IntelligenceXClient : IDisposable
         var startedAtUtc = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
         try {
-            var turn = await _transport.StartTurnAsync(_currentThreadId!, input, options, cwd, approval, sandbox, cancellationToken)
+            var turn = await _transport.StartTurnAsync(operationThreadId, input, options, cwd, approval, sandbox, cancellationToken)
                 .ConfigureAwait(false);
             stopwatch.Stop();
-            RaiseTurnCompleted(_currentThreadId!, options, model, cwd, startedAtUtc, stopwatch.Elapsed, turn, success: true, error: null);
+            RaiseTurnCompleted(operationThreadId, options, model, cwd, startedAtUtc, stopwatch.Elapsed, turn, success: true, error: null);
             return turn;
         } catch (Exception ex) {
             stopwatch.Stop();
-            RaiseTurnCompleted(_currentThreadId!, options, model, cwd, startedAtUtc, stopwatch.Elapsed, turn: null, success: false, error: ex);
+            RaiseTurnCompleted(operationThreadId, options, model, cwd, startedAtUtc, stopwatch.Elapsed, turn: null, success: false, error: ex);
             throw;
         } finally {
-            if (options.Ephemeral) {
+            if (ephemeral) {
                 ((Transport.ILocalThreadLifetime)_transport).ForgetThread(operationThreadId);
-                if (_currentThreadId == operationThreadId) _currentThreadId = null;
             }
         }
     }
@@ -465,14 +472,14 @@ public sealed class IntelligenceXClient : IDisposable
         await StartNewThreadAsync(model, _defaultWorkingDirectory, _defaultApprovalPolicy, null, cancellationToken).ConfigureAwait(false);
     }
 
-    private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => RpcCallStarted?.Invoke(this, args);
-    private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => RpcCallCompleted?.Invoke(this, args);
+    private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => ObserverDispatcher.Raise(RpcCallStarted, this, args);
+    private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => ObserverDispatcher.Raise(RpcCallCompleted, this, args);
     private void RaiseTurnCompleted(string threadId, Chat.ChatOptions options, string model, string? workingDirectory,
         DateTimeOffset startedAtUtc, TimeSpan duration, TurnInfo? turn, bool success, Exception? error) {
         var completedAtUtc = startedAtUtc + duration;
         var surface = NormalizeOptional(options.TelemetrySurface) ?? "chat";
         var feature = NormalizeOptional(options.TelemetryFeature);
-        TurnCompleted?.Invoke(this, new IntelligenceXTurnCompletedEventArgs(
+        ObserverDispatcher.Raise(TurnCompleted, this, new IntelligenceXTurnCompletedEventArgs(
             threadId,
             model,
             _transport.Kind,
@@ -486,11 +493,11 @@ public sealed class IntelligenceXClient : IDisposable
             success,
             error));
     }
-    private void OnLoginStarted(object? sender, LoginEventArgs args) => LoginStarted?.Invoke(this, args);
-    private void OnLoginCompleted(object? sender, LoginEventArgs args) => LoginCompleted?.Invoke(this, args);
-    private void OnProtocolLineReceived(object? sender, string line) => ProtocolLineReceived?.Invoke(this, line);
-    private void OnStandardErrorReceived(object? sender, string line) => StandardErrorReceived?.Invoke(this, line);
-    private void OnDeltaReceived(object? sender, string text) => DeltaReceived?.Invoke(this, text);
+    private void OnLoginStarted(object? sender, LoginEventArgs args) => ObserverDispatcher.Raise(LoginStarted, this, args);
+    private void OnLoginCompleted(object? sender, LoginEventArgs args) => ObserverDispatcher.Raise(LoginCompleted, this, args);
+    private void OnProtocolLineReceived(object? sender, string line) => ObserverDispatcher.Raise(ProtocolLineReceived, this, line);
+    private void OnStandardErrorReceived(object? sender, string line) => ObserverDispatcher.Raise(StandardErrorReceived, this, line);
+    private void OnDeltaReceived(object? sender, string text) => ObserverDispatcher.Raise(DeltaReceived, this, text);
 
     private static string? NormalizeOptional(string? value) {
         var trimmed = value?.Trim();
