@@ -6,6 +6,54 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class AuthStoreAccountLifecycleTests {
     [Fact]
+    public async Task ChatGptExplicitSignInCanSelectADifferentAccount() {
+        string path = Path.Combine(Path.GetTempPath(), "ix-explicit-account-" + Guid.NewGuid().ToString("N") + ".json");
+        try {
+            var store = new FileAuthBundleStore(path);
+            await store.SaveAsync(new("openai-codex", "first", "", null) { AccountId = "first" });
+            var manager = new OpenAINativeAuthManager(new() { AuthStore = store,
+                LoadCodexAuthJson = false, PersistCodexAuthJson = false }, null, _ => Task.FromResult(
+                    new OAuthLoginResult(new("openai-codex", "approved-second", "", null) { AccountId = "second" }, new())));
+            Assert.Equal("first", (await manager.TryGetValidBundleAsync(default))!.AccountId);
+            await manager.LoginAsync(null, null, false, TimeSpan.FromMinutes(1), default);
+            Assert.Equal("approved-second", (await manager.TryGetValidBundleAsync(default))!.AccessToken);
+            await manager.LogoutAsync(default);
+            Assert.Equal("first", (await store.GetAsync("openai-codex", "first"))!.AccessToken);
+            Assert.Null(await store.GetAsync("openai-codex", "second"));
+        } finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ChatGptRetainsSelectedAccountWhenItsCredentialIsRemoved(bool ambientEnabled) {
+        string directory = Path.Combine(Path.GetTempPath(), "ix-account-selection-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "store.json"), ambient = Path.Combine(directory, "auth.json");
+        try {
+            var store = new FileAuthBundleStore(path);
+            await store.SaveAsync(new("openai-codex", "first", "", null) { AccountId = "first" });
+            var manager = new OpenAINativeAuthManager(new() { AuthStore = store, CodexHome = directory,
+                LoadCodexAuthJson = ambientEnabled, PreferCurrentCodexSession = ambientEnabled, PersistCodexAuthJson = false });
+            Assert.Equal("first", (await manager.TryGetValidBundleAsync(default))!.AccountId);
+            await store.SaveAsync(new("openai-codex", "second", "", null) { AccountId = "second" });
+            if (ambientEnabled) await File.WriteAllTextAsync(ambient,
+                "{\"tokens\":{\"access_token\":\"ambient\",\"refresh_token\":\"refresh\",\"account_id\":\"second\"}}");
+            await store.RemoveAsync("openai-codex", "first");
+            Assert.Null(await manager.TryGetValidBundleAsync(default));
+            Assert.Null(await manager.TryGetValidBundleAsync(default));
+            await store.SaveAsync(new("openai-codex", "first-rotated", "", null) { AccountId = "first" });
+            Assert.Equal("first-rotated", (await manager.TryGetValidBundleAsync(default))!.AccessToken);
+            await manager.LogoutAsync(default);
+            Assert.Equal("second", (await store.GetAsync("openai-codex", "second"))!.AccessToken);
+        } finally {
+            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(ambient)) File.Delete(ambient);
+            Directory.Delete(directory);
+        }
+    }
+
+    [Fact]
     public async Task ChatGptAmbientAccountLogoutDoesNotDeleteTheStoreDefault() {
         string directory = Path.Combine(Path.GetTempPath(), "ix-ambient-logout-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);

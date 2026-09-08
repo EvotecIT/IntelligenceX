@@ -113,8 +113,12 @@ public sealed class CopilotNativeAuthenticationTests {
             Assert.Equal(1, refreshes);
             await new FileAuthBundleStore(path).SaveAsync(new("copilot", "host-rotated", "", null) { AccountId = "42" });
             Assert.Equal("host-rotated", await first.GetAccessTokenAsync());
+            await new FileAuthBundleStore(path).SaveAsync(new("copilot", "other-account", "", null) { AccountId = "99" });
             await second.LogoutAsync();
             await Assert.ThrowsAsync<InvalidOperationException>(() => first.GetAccessTokenAsync());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => first.GetAccessTokenAsync());
+            await first.LogoutAsync();
+            Assert.Equal("other-account", (await new FileAuthBundleStore(path).GetAsync("copilot", "99"))!.AccessToken);
         } finally { if (File.Exists(path)) File.Delete(path); }
     }
 

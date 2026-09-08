@@ -13,6 +13,8 @@ internal sealed class OpenAINativeAuthManager {
 
     private readonly OpenAINativeOptions _options;
     private volatile bool _signedOut;
+    private string? _selectedAccountId;
+    private string? SelectedAccountId => _options.AuthAccountId ?? Volatile.Read(ref _selectedAccountId);
     private int _logoutGeneration;
     private readonly object _stateLock = new();
     private readonly SemaphoreSlim _storeGate;
@@ -76,6 +78,7 @@ internal sealed class OpenAINativeAuthManager {
             await SaveBundleAsync(result.Bundle, operation, cancellationToken).ConfigureAwait(false);
             lock (_stateLock) {
                 EnsureCurrentOperation(operation, result.Bundle.AccountId, cancellationToken);
+                _selectedAccountId = result.Bundle.AccountId;
                 _signedOut = false;
             }
         } finally { _storeGate.Release(); }
@@ -93,7 +96,7 @@ internal sealed class OpenAINativeAuthManager {
         try {
             var selected = await ReadCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            _storeEpoch.Invalidate(selected?.AccountId ?? _options.AuthAccountId);
+            _storeEpoch.Invalidate(selected?.AccountId ?? SelectedAccountId);
             if (selected is not null)
                 await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, selected.AccountId, cancellationToken).ConfigureAwait(false);
         } finally { _storeGate.Release(); }
@@ -223,7 +226,7 @@ internal sealed class OpenAINativeAuthManager {
 
     private async Task<AuthBundle?> GetStoredBundleAsync(CancellationToken cancellationToken) {
         var storedBundle = await _options.AuthStore
-            .GetAsync(OpenAICodexDefaults.Provider, _options.AuthAccountId, cancellationToken)
+            .GetAsync(OpenAICodexDefaults.Provider, SelectedAccountId, cancellationToken)
             .ConfigureAwait(false);
         if (storedBundle is not null && string.IsNullOrWhiteSpace(storedBundle.AccountId)) {
             storedBundle.AccountId = JwtDecoder.TryGetAccountId(storedBundle.AccessToken);
@@ -239,10 +242,18 @@ internal sealed class OpenAINativeAuthManager {
 
     private async Task<AuthBundle?> ReadCurrentBundleAsync(CancellationToken cancellationToken) {
         var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
-        return SelectPreferredBundle(
-            storedBundle,
-            TryGetCodexBundle(),
-            _options.PreferCurrentCodexSession && string.IsNullOrWhiteSpace(_options.AuthAccountId));
+        var codexBundle = TryGetCodexBundle();
+        lock (_stateLock) {
+            // Selection belongs to this authentication lifetime. Missing credentials must not
+            // switch an existing conversation to another stored or ambient account on retry.
+            string? accountId = SelectedAccountId;
+            AuthBundle? Match(AuthBundle? bundle) => string.IsNullOrWhiteSpace(accountId)
+                || string.Equals(bundle?.AccountId, accountId, StringComparison.OrdinalIgnoreCase) ? bundle : null;
+            var selected = SelectPreferredBundle(Match(storedBundle), Match(codexBundle),
+                _options.PreferCurrentCodexSession && string.IsNullOrWhiteSpace(_options.AuthAccountId));
+            if (selected is not null) _selectedAccountId ??= selected.AccountId;
+            return selected;
+        }
     }
 
     // A request captures this before sending; a delayed 401 must not start a new authentication lifetime.

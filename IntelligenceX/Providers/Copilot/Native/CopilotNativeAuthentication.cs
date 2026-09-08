@@ -22,6 +22,7 @@ public sealed class CopilotNativeAuthentication : IDisposable {
     private readonly SemaphoreSlim _gate;
     private readonly AuthStoreCoordination.CredentialEpoch _storeEpoch;
     private AuthBundle? _bundle;
+    private string? _selectedAccountId;
     private volatile bool _signedOut;
     private int _logoutGeneration;
     private readonly object _stateLock = new();
@@ -69,12 +70,15 @@ public sealed class CopilotNativeAuthentication : IDisposable {
         try {
             if (_signedOut) throw new InvalidOperationException("Copilot is signed out. Sign in before sending requests.");
             if (_options.AuthStore is not null)
-                _bundle = await _options.AuthStore.GetAsync(Provider, _options.AccountId ?? _bundle?.AccountId, cancellationToken).ConfigureAwait(false);
+                _bundle = await _options.AuthStore.GetAsync(Provider, _options.AccountId ?? _selectedAccountId, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (_bundle is not null) {
                 if (!string.Equals(_bundle.Provider, Provider, StringComparison.OrdinalIgnoreCase) ||
-                    (!string.IsNullOrWhiteSpace(_options.AccountId) && _bundle.AccountId != _options.AccountId))
+                    (!string.IsNullOrWhiteSpace(_options.AccountId ?? _selectedAccountId) && _bundle.AccountId != (_options.AccountId ?? _selectedAccountId)))
                     throw new InvalidOperationException("The authentication store returned a different provider or account.");
+                // Retain selection even when a later store read finds that this credential was removed.
+                // Otherwise a retry can silently adopt another account from the same store.
+                _selectedAccountId ??= _bundle.AccountId;
                 if (_bundle.ExpiresAt.HasValue && _bundle.ExpiresAt.Value <= DateTimeOffset.UtcNow.AddMinutes(1)) {
                     using var flow = CreateDeviceFlow();
                     var renewed = await flow.RefreshAsync(_bundle, _options.GitHubClientSecret, cancellationToken).ConfigureAwait(false);
@@ -120,7 +124,7 @@ public sealed class CopilotNativeAuthentication : IDisposable {
                 lock (_stateLock) {
                     if (generation != _logoutGeneration || !_storeEpoch.IsCurrent(storeEpoch, bundle.AccountId))
                         throw new InvalidOperationException("Sign-in was superseded by logout.");
-                    _bundle = bundle; _signedOut = false;
+                    _bundle = bundle; _selectedAccountId = bundle.AccountId; _signedOut = false;
                 }
             } finally { _gate.Release(); }
         }, cancellationToken).ConfigureAwait(false);
@@ -148,13 +152,14 @@ public sealed class CopilotNativeAuthentication : IDisposable {
             await _gate.WaitAsync(token).ConfigureAwait(false);
             try {
                 if (_options.AuthStore is not null && _options.TokenProvider is null && string.IsNullOrWhiteSpace(_options.GitHubToken)) {
-                    var selected = _bundle ?? await _options.AuthStore.GetAsync(Provider, _options.AccountId, token).ConfigureAwait(false);
+                    string? accountId = _options.AccountId ?? _selectedAccountId;
+                    var selected = _bundle ?? await _options.AuthStore.GetAsync(Provider, accountId, token).ConfigureAwait(false);
                     token.ThrowIfCancellationRequested();
                     if (selected is not null && string.Equals(selected.Provider, Provider, StringComparison.OrdinalIgnoreCase) &&
-                        (string.IsNullOrWhiteSpace(_options.AccountId) || selected.AccountId == _options.AccountId)) {
+                        (string.IsNullOrWhiteSpace(accountId) || selected.AccountId == accountId)) {
                         _storeEpoch.Invalidate(selected.AccountId);
                         await _options.AuthStore.RemoveAsync(Provider, selected.AccountId, token).ConfigureAwait(false);
-                    } else if (selected is null) _storeEpoch.Invalidate(_options.AccountId);
+                    } else if (selected is null) _storeEpoch.Invalidate(accountId);
                 }
                 _bundle = null;
             } finally { _gate.Release(); }
