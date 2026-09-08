@@ -28,6 +28,23 @@ public interface IAuthBundleStore {
     /// <param name="cancellationToken">Cancellation token.</param>
     Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default);
 
+}
+
+/// <summary>Optional account-removal capability for stores that support persistent sign-out.</summary>
+public interface IRemovableAuthBundleStore : IAuthBundleStore {
     /// <summary>Removes only the specified provider and account. A null account selects only the provider's accountless entry.</summary>
     Task RemoveAsync(string provider, string? accountId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Operations that require an optional authentication-store capability.</summary>
+public static class AuthBundleStoreExtensions {
+    /// <summary>Removes a stored account, or reports that the configured store does not support persistent sign-out.</summary>
+    /// <exception cref="System.NotSupportedException">The store does not implement <see cref="IRemovableAuthBundleStore"/>.</exception>
+    public static Task RemoveAsync(this IAuthBundleStore store, string provider, string? accountId, CancellationToken cancellationToken = default) {
+        if (store is null) throw new System.ArgumentNullException(nameof(store));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (store is not IRemovableAuthBundleStore removable)
+            throw new System.NotSupportedException("The authentication store must implement IRemovableAuthBundleStore for persistent sign-out.");
+        return removable.RemoveAsync(provider, accountId, cancellationToken);
+    }
 }

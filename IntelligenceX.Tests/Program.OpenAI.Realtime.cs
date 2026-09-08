@@ -368,7 +368,7 @@ internal static partial class Program {
         }
     }
 
-    private sealed class TestRealtimeAuthStore : IAuthBundleStore {
+    private sealed class TestRealtimeAuthStore : IRemovableAuthBundleStore {
         private readonly AuthBundle _bundle;
 
         internal TestRealtimeAuthStore(AuthBundle bundle) {

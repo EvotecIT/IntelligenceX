@@ -153,7 +153,7 @@ await client.ChatAsync("Stream a short answer.");
 
 ## Native Copilot
 
-Use IntelligenceXClient with OpenAITransportKind.CopilotNative for model discovery, streaming, and tool conversations over HTTPS. See [Providers](providers.md#copilot) for credential, device sign-in, treatment, and migration examples.
+Use IntelligenceXClient with OpenAITransportKind.CopilotNative for model discovery, streaming, and tool conversations over HTTPS. See [Providers](/docs/library/providers/#copilot) for credential, device sign-in, treatment, and migration examples.
 
 ## Config overrides
 

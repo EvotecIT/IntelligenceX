@@ -278,7 +278,7 @@ public sealed class NativeDocumentTransportTests {
         EnableModelFallback = false, EnableToolSchemaFallback = false, AllowSensitiveDiagnostics = false,
         ImageGeneration = new() { Enabled = false }
     };
-    private sealed class Store : IAuthBundleStore {
+    private sealed class Store : IRemovableAuthBundleStore {
         private readonly AuthBundle _bundle = new("openai-codex", "test-token", "", DateTimeOffset.UtcNow.AddHours(1)) { AccountId = "test-account" };
         public Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) => Task.FromResult<AuthBundle?>(_bundle);
         public Task<IReadOnlyList<AuthBundle>> ListAsync(string provider, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthBundle>>(new[] { _bundle });

@@ -13,7 +13,7 @@ namespace IntelligenceX.OpenAI.Auth;
 /// <summary>
 /// File-based authentication bundle store with optional encryption.
 /// </summary>
-public sealed class FileAuthBundleStore : IAuthBundleStore {
+public sealed class FileAuthBundleStore : IRemovableAuthBundleStore {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> StoreGates = new(
         Path.DirectorySeparatorChar == '\\' ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private readonly string _path;

@@ -25,12 +25,12 @@ public sealed class CopilotNativeAuthentication : IDisposable {
     private readonly object _stateLock = new();
     private string? _verifiedToken;
 
-    /// <summary>Creates a credential owner. A supplied HTTP client remains owned by the caller.</summary>
+    /// <summary>Creates a credential owner. A supplied HTTP client takes precedence over the options handler and remains owned by the caller.</summary>
     public CopilotNativeAuthentication(CopilotNativeOptions options, HttpClient? httpClient = null) {
         if (options is null) throw new ArgumentNullException(nameof(options));
         options.Validate(); _options = options.Snapshot();
         _gate = AuthStoreCoordination.GetGate(_options.AuthStore);
-        _http = httpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
+        _http = httpClient ?? new HttpClient(_options.HttpMessageHandler ?? new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
         _ownsHttp = httpClient is null;
     }
 

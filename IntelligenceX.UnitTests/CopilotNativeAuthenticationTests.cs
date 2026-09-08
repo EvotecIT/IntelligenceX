@@ -6,6 +6,50 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class CopilotNativeAuthenticationTests {
+    [Fact]
+    public async Task StoreWithoutRemovalCapabilityStillSupportsAuthenticationAndReportsPersistentLogoutGap() {
+        var store = new LegacyStore();
+        using var auth = new CopilotNativeAuthentication(new() { AuthStore = store });
+        Assert.Equal("stored-token", await auth.GetAccessTokenAsync());
+        await Assert.ThrowsAsync<NotSupportedException>(() => auth.LogoutAsync());
+        Assert.Equal("stored-token", (await store.GetAsync("copilot"))!.AccessToken);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => auth.GetAccessTokenAsync());
+    }
+
+    // Implements the pre-existing custom-store contract without an account-removal member.
+    private sealed class LegacyStore : IAuthBundleStore {
+        private AuthBundle _bundle = new("copilot", "stored-token", "", null);
+        public Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) => Task.FromResult<AuthBundle?>(_bundle);
+        public Task<IReadOnlyList<AuthBundle>> ListAsync(string provider, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthBundle>>(new[] { _bundle });
+        public Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) { _bundle = bundle; return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task StandaloneAuthenticationUsesAndDisposesConfiguredHandler() {
+        var handler = new OwnedHandler();
+        using (var auth = new CopilotNativeAuthentication(new() {
+            GitHubToken = "host-token", AccountId = "42", HttpMessageHandler = handler,
+            GitHubApiBaseUrl = "https://auth.invalid/"
+        })) {
+            Assert.Equal("host-token", await auth.GetAccessTokenAsync());
+            Assert.Equal(1, handler.Requests);
+            Assert.False(handler.Disposed);
+        }
+        Assert.True(handler.Disposed);
+    }
+
+    private sealed class OwnedHandler : HttpMessageHandler {
+        internal int Requests;
+        internal bool Disposed;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+            Requests++;
+            Assert.Equal("auth.invalid", request.RequestUri!.Host);
+            Assert.Equal("host-token", request.Headers.Authorization!.Parameter);
+            return Task.FromResult(Json("{\"id\":42}"));
+        }
+        protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing); }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -96,7 +140,7 @@ public sealed class CopilotNativeAuthenticationTests {
         } finally { store.Complete.TrySetResult(true); }
     }
 
-    private sealed class DelayedStore : IAuthBundleStore {
+    private sealed class DelayedStore : IRemovableAuthBundleStore {
         internal AuthBundle? Bundle = new("copilot", "expired", "refresh", DateTimeOffset.UtcNow.AddMinutes(-1)) { AccountId = "42" };
         internal readonly TaskCompletionSource<bool> Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource<bool> Complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -197,7 +241,7 @@ public sealed class CopilotNativeAuthenticationTests {
         await Assert.ThrowsAsync<InvalidOperationException>(() => auth.GetAccessTokenAsync());
     }
 
-    private sealed class Store(AuthBundle? initial) : IAuthBundleStore {
+    private sealed class Store(AuthBundle? initial) : IRemovableAuthBundleStore {
         internal AuthBundle? Bundle = initial;
         internal int Saves;
         public Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) => Task.FromResult(Bundle);

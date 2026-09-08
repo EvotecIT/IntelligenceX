@@ -66,9 +66,9 @@ internal sealed class OpenAINativeAuthManager {
 
     public async Task LogoutAsync(CancellationToken cancellationToken) {
         var selected = await TryGetCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
+        _signedOut = true;
         if (selected is not null)
             await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, selected.AccountId, cancellationToken).ConfigureAwait(false);
-        _signedOut = true;
     }
 
     public async Task<AuthBundle> RefreshAsync(AuthBundle bundle, CancellationToken cancellationToken) {

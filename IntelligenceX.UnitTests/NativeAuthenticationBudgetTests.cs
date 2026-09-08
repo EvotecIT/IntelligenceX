@@ -65,7 +65,7 @@ public sealed class NativeAuthenticationBudgetTests {
         Assert.All(bodies, body => Assert.Throws<ObjectDisposedException>(() => body.ReadAsStream()));
     }
 
-    private sealed class Store(bool refreshable) : IAuthBundleStore {
+    private sealed class Store(bool refreshable) : IRemovableAuthBundleStore {
         private AuthBundle _bundle = new("openai-codex", "stale", refreshable ? "refresh" : "", DateTimeOffset.UtcNow.AddHours(1)) { AccountId = "fixture-account" };
         public int Saves { get; private set; }
         public Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) => Task.FromResult<AuthBundle?>(_bundle);
