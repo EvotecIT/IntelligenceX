@@ -67,11 +67,6 @@ on:
         required: false
         default: ''
         type: string
-      copilot_launcher:
-        description: 'Copilot launcher: binary, gh, or auto'
-        required: false
-        default: ''
-        type: string
       openai_transport:
         description: 'OpenAI transport: native or appserver'
         required: false
@@ -527,36 +522,6 @@ on:
         required: false
         default: ''
         type: string
-      copilot_cli_path:
-        description: 'Copilot CLI path'
-        required: false
-        default: ''
-        type: string
-      copilot_cli_url:
-        description: 'Copilot CLI URL (host:port)'
-        required: false
-        default: ''
-        type: string
-      copilot_cli_workdir:
-        description: 'Copilot CLI working directory'
-        required: false
-        default: ''
-        type: string
-      copilot_auto_install:
-        description: 'Allow auto-install of Copilot CLI'
-        required: false
-        default: false
-        type: boolean
-      copilot_auto_install_method:
-        description: 'Auto-install method (Auto/Winget/Brew/Npm/Script)'
-        required: false
-        default: 'Auto'
-        type: string
-      copilot_auto_install_prerelease:
-        description: 'Auto-install prerelease Copilot CLI'
-        required: false
-        default: false
-        type: boolean
     secrets:
       INTELLIGENCEX_AUTH_B64: { required: false }
       ANTHROPIC_API_KEY: { required: false }
@@ -576,7 +541,6 @@ jobs:
       INPUT_MODEL: ${{ inputs.model }}
       INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
       INPUT_COPILOT_MODEL: ${{ inputs.copilot_model }}
-      INPUT_COPILOT_LAUNCHER: ${{ inputs.copilot_launcher }}
       INPUT_OPENAI_TRANSPORT: ${{ inputs.openai_transport }}
       INPUT_OPENAI_ACCOUNT_ID: ${{ inputs.openai_account_id }}
       INPUT_OPENAI_ACCOUNT_IDS: ${{ inputs.openai_account_ids }}
@@ -662,12 +626,6 @@ jobs:
       CODEX_APP_SERVER_PATH: ${{ inputs.codex_path }}
       CODEX_APP_SERVER_ARGS: ${{ inputs.codex_args }}
       CODEX_APP_SERVER_CWD: ${{ inputs.codex_cwd }}
-      COPILOT_CLI_PATH: ${{ inputs.copilot_cli_path }}
-      COPILOT_CLI_URL: ${{ inputs.copilot_cli_url }}
-      COPILOT_CLI_WORKDIR: ${{ inputs.copilot_cli_workdir }}
-      COPILOT_AUTO_INSTALL: ${{ inputs.copilot_auto_install }}
-      COPILOT_AUTO_INSTALL_METHOD: ${{ inputs.copilot_auto_install_method }}
-      COPILOT_AUTO_INSTALL_PRERELEASE: ${{ inputs.copilot_auto_install_prerelease }}
     permissions:
       contents: read
       pull-requests: write

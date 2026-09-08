@@ -23,21 +23,21 @@ flowchart TD
   classDef optional fill:#FBCFE8,stroke:#BE185D,color:#500724,stroke-width:2px;
 
   APP["Your .NET app"] --> CORE["IntelligenceX.OpenAI"]
-  APP --> COPI["IntelligenceX.Copilot"]
+  CORE --> COPI["Native Copilot HTTP"]
   CORE --> NATIVE["Native transport"]
   CORE --> APPSERVER["AppServer transport"]
   CORE --> HTTP["Compatible HTTP transport"]
   CORE --> TOOLCALL["Tool-calling orchestration"]
   TOOLCALL --> TOOLS["IntelligenceX.Tools contract"]
   TOOLS --> PACKS["IntelligenceX.Tools.* packs"]
-  COPI --> COPCLI["Copilot CLI transport"]
-  COPI --> COPDIR["Copilot Direct transport (experimental)"]
+
+
 
   class APP app;
   class CORE core;
   class NATIVE,APPSERVER,HTTP provider;
   class TOOLCALL,TOOLS,PACKS tools;
-  class COPI,COPCLI,COPDIR optional;
+  class COPI provider;
 ```
 
 ## Quick start (app-server)
@@ -151,35 +151,9 @@ using var subscription = client.SubscribeDelta(text => Console.Write(text));
 await client.ChatAsync("Stream a short answer.");
 ```
 
-## Copilot chat client
+## Native Copilot
 
-```csharp
-using IntelligenceX.Copilot;
-
-var options = new CopilotChatClientOptions {
-    Transport = CopilotTransportKind.Cli,
-    DefaultModel = "gpt-5.3-codex"
-};
-
-await using var chat = await CopilotChatClient.StartAsync(options);
-var answer = await chat.ChatAsync("Summarize the latest PR");
-Console.WriteLine(answer);
-```
-
-```csharp
-using IntelligenceX.Copilot;
-
-var options = new CopilotChatClientOptions {
-    Transport = CopilotTransportKind.Direct,
-    DefaultModel = "gpt-5.3-codex"
-};
-options.Direct.Url = "https://example.internal/copilot/chat";
-options.Direct.Token = Environment.GetEnvironmentVariable("COPILOT_DIRECT_TOKEN");
-
-await using var chat = await CopilotChatClient.StartAsync(options);
-var answer = await chat.ChatAsync("Summarize the latest PR");
-Console.WriteLine(answer);
-```
+Use IntelligenceXClient with OpenAITransportKind.CopilotNative for model discovery, streaming, and tool conversations over HTTPS. See [Providers](providers.md#copilot) for credential, device sign-in, treatment, and migration examples.
 
 ## Config overrides
 
@@ -197,8 +171,8 @@ Add `.intelligencex/config.json` (or set `INTELLIGENCEX_CONFIG_PATH`) to avoid h
     "appServerArgs": "app-server"
   },
   "copilot": {
-    "cliPath": "copilot",
-    "autoInstall": false
+    "baseUrl": "https://api.githubcopilot.com/",
+    "tokenEnvironmentVariable": "COPILOT_GITHUB_TOKEN"
   }
 }
 ```

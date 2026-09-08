@@ -10,13 +10,13 @@ IX Chat supports three runtime transports in the desktop app:
 | Runtime Mode | Transport | Auth | Typical Use |
 |---|---|---|---|
 | ChatGPT Runtime | `native` | ChatGPT sign-in | OpenAI-native chat runtime |
-| Copilot Subscription | `copilot-cli` | GitHub Copilot sign-in | Use Copilot subscription without API keys |
+| Copilot Subscription | `copilot-native` | GitHub credential | Native Copilot HTTPS with COPILOT_GITHUB_TOKEN |
 | Compatible HTTP | `compatible-http` | Optional API key | LM Studio, Ollama, Azure OpenAI, and other OpenAI-compatible endpoints |
 
 Important:
 - Runtime selection and sign-in are related but distinct.
 - API keys are used only in `compatible-http`.
-- `copilot-cli` uses Copilot subscription authentication, not API keys.
+- `copilot-native` reads the service credential from `COPILOT_GITHUB_TOKEN`; compatible endpoint keys and ChatGPT login are separate.
 - You can stay signed in to ChatGPT while using non-native runtime modes.
 
 ## Chat App (Runtime Selection)
@@ -27,7 +27,7 @@ For the WinUI desktop app (`Build/Run-ChatApp.ps1`):
 2. Use one of the primary actions:
    - **Use ChatGPT Runtime** (`native`)
    - **Use LM Studio Runtime** (`compatible-http` + LM Studio base URL)
-   - **Use Copilot Subscription** (`copilot-cli`)
+   - **Use Copilot Subscription** (`copilot-native`)
 3. Runtime actions apply immediately in-process and show an in-progress state; runtime switches do not auto-restart the sidecar.
 4. Click **Refresh Models** after switching runtime or changing endpoint details when you want a forced re-probe.
 5. Use **Show Advanced Runtime** when you need explicit transport/base URL/API key/manual model overrides.
@@ -39,19 +39,19 @@ Advanced presets:
 
 Notes:
 - `Refresh Models` applies pending runtime field changes first, then refreshes discovery.
-- For `compatible-http` and `copilot-cli`, the app auto-selects the first discovered model only when no model is set. Explicit/manual model IDs are preserved.
+- For `compatible-http` and `copilot-native`, the app auto-selects the first discovered model only when no model is set. Explicit/manual model IDs are preserved.
 - If you choose `Manual model input` in **Discovered models**, type the exact model id in the **Model** field and click **Apply Runtime**.
 - Leaving API key empty keeps the currently saved compatible-http key unchanged.
 - Use **Clear Saved API Key** to remove the saved compatible-http key from the active profile.
 - Compatible HTTP auth modes: `Bearer` (API key), `Basic` (username/password), or `None`.
 - Anthropic/Gemini entries are bridge presets (experimental): IX Chat targets your configured compatible endpoint and does not do native subscription login itself.
-- ChatGPT sign-in and account switching are native-runtime controls. In non-native modes (`compatible-http`/`copilot-cli`) the menu hides sign-in actions and chat is not gated on ChatGPT login state.
+- ChatGPT sign-in and account switching are native-runtime controls. In non-native modes (`compatible-http`/`copilot-native`) the menu hides sign-in actions and chat is not gated on ChatGPT login state.
 - The panel shows active runtime/model status so you can confirm what is currently used.
 - While a runtime switch is running, runtime buttons are temporarily disabled to avoid duplicate apply requests.
 
 Reasoning controls:
 - `native` and most `compatible-http` presets expose reasoning controls (`minimal|low|medium|high|xhigh`) as provider hints.
-- `copilot-cli` currently does not expose reasoning controls.
+- `copilot-native` currently does not expose reasoning controls.
 - Experimental Anthropic/Gemini bridge presets currently use provider-default reasoning.
 
 ## Model Discovery and Runtime Detection
@@ -106,7 +106,7 @@ Copilot subscription example:
 ```powershell
 pwsh ./Build/Run-Chat.ps1 `
   -AllowRoot C:\Support\GitHub `
-  -OpenAITransport copilot-cli `
+  -OpenAITransport copilot-native `
   -Model gpt-5.3-codex
 ```
 
@@ -129,7 +129,7 @@ Copilot subscription service example:
 
 ```powershell
 dotnet run --project IntelligenceX.Chat/IntelligenceX.Chat.Service/IntelligenceX.Chat.Service.csproj --framework net10.0-windows -- `
-  --openai-transport copilot-cli `
+  --openai-transport copilot-native `
   --model gpt-5.3-codex `
   --allow-root C:\Support\GitHub
 ```

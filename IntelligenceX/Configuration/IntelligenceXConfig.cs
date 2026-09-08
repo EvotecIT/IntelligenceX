@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using IntelligenceX.Copilot;
+using IntelligenceX.Copilot.Native;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer;
@@ -459,7 +459,8 @@ public sealed class OpenAIConfig {
         return value.Trim().ToLowerInvariant() switch {
             "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
             "compatible-http" or "compatiblehttp" or "http" or "local" or "ollama" or "lmstudio" or "lm-studio" => OpenAITransportKind.CompatibleHttp,
-            "copilot" or "copilot-cli" or "github-copilot" or "githubcopilot" => OpenAITransportKind.CopilotCli,
+            "copilot" or "copilot-native" or "github-copilot" or "githubcopilot" => OpenAITransportKind.CopilotNative,
+            "copilot-cli" => throw new ArgumentException("Copilot CLI has been retired. Select copilot-native and configure a GitHub credential."),
             _ => OpenAITransportKind.Native
         };
     }
@@ -484,44 +485,39 @@ public sealed class OpenAIConfig {
 /// </summary>
 public sealed class CopilotConfig {
     /// <summary>
-    /// Path to the Copilot CLI executable.
+    /// Copilot inference API root.
     /// </summary>
-    public string? CliPath { get; set; }
+    public string? BaseUrl { get; set; }
     /// <summary>
-    /// Download URL for the Copilot CLI.
+    /// Environment variable containing the GitHub credential for this product.
     /// </summary>
-    public string? CliUrl { get; set; }
+    public string? TokenEnvironmentVariable { get; set; }
     /// <summary>
-    /// Automatically installs the Copilot CLI when missing.
+    /// Registered GitHub app client ID for native device sign-in.
     /// </summary>
-    public bool? AutoInstall { get; set; }
+    public string? GitHubClientId { get; set; }
 
     internal void ReadFrom(JsonObject obj) {
-        CliPath = obj.GetString("cliPath") ?? CliPath;
-        CliUrl = obj.GetString("cliUrl") ?? CliUrl;
-        AutoInstall = ReadBool(obj, "autoInstall", AutoInstall);
+        if (obj.TryGetValue("cliPath", out _) || obj.TryGetValue("cliUrl", out _) || obj.TryGetValue("autoInstall", out _))
+            throw new ArgumentException("Copilot CLI configuration has been retired. Configure copilot.baseUrl and copilot.tokenEnvironmentVariable for native HTTP.");
+        BaseUrl = obj.GetString("baseUrl") ?? BaseUrl;
+        TokenEnvironmentVariable = obj.GetString("tokenEnvironmentVariable") ?? TokenEnvironmentVariable;
+        GitHubClientId = obj.GetString("githubClientId") ?? GitHubClientId;
     }
 
     /// <summary>
-    /// Applies settings to a <see cref="CopilotClientOptions"/> instance.
+    /// Applies settings to a <see cref="CopilotNativeOptions"/> instance.
     /// </summary>
     /// <param name="options">Copilot client options to populate.</param>
-    public void ApplyTo(CopilotClientOptions options) {
-        if (!string.IsNullOrWhiteSpace(CliPath)) {
-            options.CliPath = CliPath;
+    public void ApplyTo(CopilotNativeOptions options) {
+        if (options is null) throw new ArgumentNullException(nameof(options));
+        if (!string.IsNullOrWhiteSpace(BaseUrl)) options.BaseUrl = BaseUrl!;
+        if (!string.IsNullOrWhiteSpace(GitHubClientId)) options.GitHubClientId = GitHubClientId;
+        if (!string.IsNullOrWhiteSpace(TokenEnvironmentVariable)) {
+            string variable = TokenEnvironmentVariable!;
+            options.UseEnvironmentCredentials = false;
+            options.TokenProvider = _ => System.Threading.Tasks.Task.FromResult(Environment.GetEnvironmentVariable(variable)
+                ?? throw new InvalidOperationException("The configured Copilot token environment variable is empty."));
         }
-        if (!string.IsNullOrWhiteSpace(CliUrl)) {
-            options.CliUrl = CliUrl;
-        }
-        if (AutoInstall.HasValue) {
-            options.AutoInstallCli = AutoInstall.Value;
-        }
-    }
-
-    private static bool? ReadBool(JsonObject obj, string key, bool? current) {
-        if (!obj.TryGetValue(key, out var value) || value is null) {
-            return current;
-        }
-        return value.AsBoolean();
     }
 }

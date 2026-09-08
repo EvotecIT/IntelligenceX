@@ -40,12 +40,12 @@ Token or app permissions are insufficient.
 ### Copilot Authentication Fails
 
 1. Verify Copilot access at [github.com/settings/copilot](https://github.com/settings/copilot)
-2. In IX Chat, select **Use Copilot Subscription** (transport `copilot-cli`)
-3. Use **Sign In** in the app and finish the browser flow
-4. Click **Refresh Models** after login
+2. In IX Chat, select **Use Copilot Subscription** (transport `copilot-native`)
+3. Set `COPILOT_GITHUB_TOKEN` for the service to a GitHub credential with Copilot access and restart the service
+4. Click **Refresh Models** after configuring the credential
 
 Notes:
-- `copilot-cli` uses subscription login, not API key fields.
+- `copilot-native` uses a GitHub credential authorized for Copilot from `COPILOT_GITHUB_TOKEN`.
 - `compatible-http` + `https://api.githubcopilot.com/v1` is a different path and expects API-key style auth.
 
 ### Compatible HTTP (Local Providers)
@@ -67,7 +67,7 @@ Common issues when using `compatible-http` (local/self-hosted OpenAI-style endpo
 
 In **Options -> Runtime**, use this mapping:
 - **Use ChatGPT Runtime** -> `native`
-- **Use Copilot Subscription** -> `copilot-cli`
+- **Use Copilot Subscription** -> `copilot-native`
 - **Use LM Studio Runtime** -> `compatible-http`
 
 Then:

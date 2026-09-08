@@ -79,16 +79,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
         return AccountInfo.FromJson(raw);
     }
 
-    public async Task LogoutAsync(CancellationToken cancellationToken) {
-        if (_options.AuthStore is FileAuthBundleStore fileStore) {
-            try {
-                fileStore.Delete();
-            } catch {
-                // Best-effort logout.
-            }
-        }
-        await Task.CompletedTask;
-    }
+    public Task LogoutAsync(CancellationToken cancellationToken) => _auth.LogoutAsync(cancellationToken);
 
     public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken) {
         var bundle = await EnsureAuthAsync(cancellationToken).ConfigureAwait(false);

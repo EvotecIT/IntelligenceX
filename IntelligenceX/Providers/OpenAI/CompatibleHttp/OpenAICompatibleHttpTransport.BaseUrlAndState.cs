@@ -10,7 +10,7 @@ using IntelligenceX.OpenAI.AppServer.Models;
 
 namespace IntelligenceX.OpenAI.CompatibleHttp;
 
-internal sealed partial class OpenAICompatibleHttpTransport {
+internal partial class OpenAICompatibleHttpTransport {
     private static Uri NormalizeBaseUrl(string baseUrl) {
         if (!Uri.TryCreate(baseUrl.Trim(), UriKind.Absolute, out var uri) || uri is null) {
             throw new ArgumentException("BaseUrl must be an absolute URI.", nameof(baseUrl));
@@ -85,6 +85,7 @@ internal sealed partial class OpenAICompatibleHttpTransport {
         }
 
         public string Model { get; set; }
+        public SemaphoreSlim TurnGate { get; } = new(1, 1);
         public List<JsonObject> Messages { get; } = new();
         public string? Instructions { get; private set; }
 

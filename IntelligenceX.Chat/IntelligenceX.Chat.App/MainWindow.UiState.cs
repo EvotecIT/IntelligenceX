@@ -407,7 +407,7 @@ public sealed partial class MainWindow : Window {
         var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();
         var preset = DetectCompatibleProviderPreset(baseUrl);
         var isNative = string.Equals(transport, TransportNative, StringComparison.OrdinalIgnoreCase);
-        var isCopilotCli = string.Equals(transport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase);
+        var isCopilotNative = string.Equals(transport, TransportCopilotNative, StringComparison.OrdinalIgnoreCase);
         var isCompatible = string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase);
         var copilotConnected = isCompatible
             && baseUrl.Contains("api.githubcopilot.com", StringComparison.OrdinalIgnoreCase);
@@ -434,7 +434,7 @@ public sealed partial class MainWindow : Window {
         return new {
             providerLabel = ResolveRuntimeProviderLabelForState(transport, preset, copilotConnected, baseUrl),
             compatiblePreset = preset,
-            supportsModelCatalog = isNative || isCopilotCli || isCompatible,
+            supportsModelCatalog = isNative || isCopilotNative || isCompatible,
             supportsReasoningControls,
             reasoningSupport,
             supportsNativeAccountSlots = isNative,

@@ -14,6 +14,27 @@ It provides assets for .NET Standard 2.0, .NET Framework 4.7.2, .NET 8, and .NET
 dotnet add package IntelligenceX
 ```
 
+## Native Copilot
+
+Copilot uses the same `IntelligenceXClient` as ChatGPT, with direct HTTPS and no Copilot CLI, native runtime, or extra provider package:
+
+```csharp
+using IntelligenceX.OpenAI;
+
+using var client = await IntelligenceXClient.ConnectAsync(new IntelligenceXClientOptions {
+    TransportKind = OpenAITransportKind.CopilotNative,
+    DefaultModel = "gpt-5.4"
+});
+var models = await client.ListModelsAsync();
+var turn = await client.ChatAsync("Summarize the supplied text.");
+Console.WriteLine(EasyChatResult.FromTurn(turn).Text);
+```
+
+Set `COPILOT_GITHUB_TOKEN` to a GitHub credential authorized for Copilot, or supply `CopilotOptions.GitHubToken`, `TokenProvider`, or an explicit `AuthStore`. Select a model returned by the account's model catalog. The SDK routes Responses and Chat Completions models through the shared streaming, tool-call, image, schema, usage, and local-history contracts.
+
+For interactive applications, configure the host's registered `GitHubClientId` and call `LoginCopilotAsync` with a callback that displays the user code and verification URL. Storage is opt-in; expiring stored credentials renew through that registered app. Authentication and inference entitlement are separate checks.
+
+The transport implements the Copilot client protocol, which is not a versioned public GitHub REST inference API. Model availability and protocol support can change. It rejects unsupported requests and does not install or fall back to a CLI. See the [provider guide and migration](https://github.com/EvotecIT/IntelligenceX/blob/master/Docs/library/providers.md#copilot) for options and replacements for the retired Copilot clients.
 ## GitHub notification example
 
 ```csharp

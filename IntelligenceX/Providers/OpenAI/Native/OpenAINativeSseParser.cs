@@ -8,7 +8,8 @@ using IntelligenceX.Json;
 namespace IntelligenceX.OpenAI.Native;
 
 internal static class OpenAINativeSseParser {
-    public static async Task ParseAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken, bool allowSensitiveDiagnostics = true) {
+    public static async Task ParseAsync(Stream stream, Func<JsonObject, Task> onEvent, CancellationToken cancellationToken,
+        bool allowSensitiveDiagnostics = true, bool stopOnTerminalResponse = false) {
         using var reader = new StreamReader(stream, Encoding.UTF8);
         var buffer = new StringBuilder();
         var charBuffer = new char[4096];
@@ -21,18 +22,18 @@ internal static class OpenAINativeSseParser {
             }
             buffer.Append(charBuffer, 0, read);
             NormalizeNewLines(buffer);
-            await DrainBufferAsync(buffer, onEvent, cancellationToken, allowSensitiveDiagnostics).ConfigureAwait(false);
+            if (await DrainBufferAsync(buffer, onEvent, cancellationToken, allowSensitiveDiagnostics, stopOnTerminalResponse).ConfigureAwait(false)) return;
         }
 
-        await DrainBufferAsync(buffer, onEvent, cancellationToken, allowSensitiveDiagnostics).ConfigureAwait(false);
+        await DrainBufferAsync(buffer, onEvent, cancellationToken, allowSensitiveDiagnostics, stopOnTerminalResponse).ConfigureAwait(false);
     }
 
-    private static async Task DrainBufferAsync(StringBuilder buffer, Func<JsonObject, Task> onEvent,
-        CancellationToken cancellationToken, bool allowSensitiveDiagnostics) {
+    private static async Task<bool> DrainBufferAsync(StringBuilder buffer, Func<JsonObject, Task> onEvent,
+        CancellationToken cancellationToken, bool allowSensitiveDiagnostics, bool stopOnTerminalResponse) {
         while (true) {
             var index = buffer.ToString().IndexOf("\n\n", StringComparison.Ordinal);
             if (index < 0) {
-                return;
+                return false;
             }
 
             var chunk = buffer.ToString(0, index);
@@ -67,6 +68,8 @@ internal static class OpenAINativeSseParser {
             }
             cancellationToken.ThrowIfCancellationRequested();
             await onEvent(obj).ConfigureAwait(false);
+            if (stopOnTerminalResponse && obj.GetString("type") is "response.completed" or "response.incomplete" or "response.failed" or "error")
+                return true;
         }
     }
 

@@ -15,7 +15,6 @@ internal static partial class Program {
         failed += Run("Header transport message", TestHeaderTransportMessage);
         failed += Run("Header transport truncated", TestHeaderTransportTruncated);
         failed += Run("Config load invalid JSON", TestConfigLoadInvalidJsonThrows);
-        failed += Run("Copilot idle event", TestCopilotIdleEvent);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage parse ignores legacy code review rate limit",
             TestChatGptUsageParseIgnoresLegacyCodeReviewRateLimit);

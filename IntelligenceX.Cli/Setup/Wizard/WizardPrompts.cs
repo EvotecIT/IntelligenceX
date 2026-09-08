@@ -413,7 +413,7 @@ internal static class WizardPrompts {
             .UseConverter(value => value switch {
                 SetupProviderCatalog.OpenAiProvider => "ChatGPT / OpenAI (recommended)",
                 SetupProviderCatalog.ClaudeProvider => "Claude / Anthropic (API key)",
-                SetupProviderCatalog.CopilotProvider => "GitHub Copilot (requires Copilot CLI)",
+                SetupProviderCatalog.CopilotProvider => "GitHub Copilot (native HTTP)",
                 _ => value
             });
         var selection = AnsiConsole.Prompt(prompt);
@@ -422,7 +422,11 @@ internal static class WizardPrompts {
 
     public static string? PromptModel(string provider, string? current) {
         if (string.Equals(provider, SetupProviderCatalog.CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
-            return null;
+            var copilotPrompt = new TextPrompt<string>("Copilot model ID (from your account's native model catalog):")
+                .Validate(value => !string.IsNullOrWhiteSpace(value)
+                    ? ValidationResult.Success() : ValidationResult.Error("A Copilot model ID is required."));
+            if (!string.IsNullOrWhiteSpace(current)) copilotPrompt.DefaultValue(current.Trim());
+            return AnsiConsole.Prompt(copilotPrompt).Trim();
         }
 
         var defaultModel = string.IsNullOrWhiteSpace(current)

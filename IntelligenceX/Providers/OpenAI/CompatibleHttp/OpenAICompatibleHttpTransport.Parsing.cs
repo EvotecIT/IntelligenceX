@@ -19,7 +19,7 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.CompatibleHttp;
 
-internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
+internal partial class OpenAICompatibleHttpTransport : IOpenAITransport {
     private static ChatCompletionResponse BuildTurnFromChatCompletions(JsonObject responseObj) {
         // OpenAI-compatible chat completions response shape.
         var choices = responseObj.GetArray("choices");
@@ -55,7 +55,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         var contentParts = message.GetArray("content");
         if (contentParts is null || contentParts.Count == 0) {
-            return null;
+            return message.GetString("refusal");
         }
 
         var builder = new StringBuilder();
@@ -136,7 +136,7 @@ internal sealed partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
         var contentParts = delta.GetArray("content");
         if (contentParts is null || contentParts.Count == 0) {
-            return null;
+            return delta.GetString("refusal");
         }
 
         var builder = new StringBuilder();

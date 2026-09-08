@@ -221,7 +221,12 @@ internal sealed partial class ReviewSettings {
     public string? Persona { get; set; }
     public string? Notes { get; set; }
     public ReviewAutoApproveSettings AutoApprove { get; } = new();
-    public string Model { get; set; } = OpenAIModelCatalog.DefaultModel;
+    private string _model = OpenAIModelCatalog.DefaultModel;
+    public string Model {
+        get => _model;
+        set { _model = value; ModelExplicitlyConfigured = true; }
+    }
+    internal bool ModelExplicitlyConfigured { get; private set; }
     public ReasoningEffort? ReasoningEffort { get; set; }
     public ReasoningSummary? ReasoningSummary { get; set; }
     public bool ReviewUsageSummary { get; set; }
@@ -490,58 +495,26 @@ internal sealed partial class ReviewSettings {
     public string? CodexPath { get; set; }
     public string? CodexArgs { get; set; }
     public string? CodexWorkingDirectory { get; set; }
-
-    public string? CopilotCliPath { get; set; }
-    public string? CopilotCliUrl { get; set; }
-    public string? CopilotWorkingDirectory { get; set; }
     /// <summary>
-    /// Optional Copilot-specific model override. When unset, the CLI default model is used.
+    /// Optional Copilot-specific model override. When unset, an explicitly configured review model is required.
     /// </summary>
     public string? CopilotModel { get; set; }
-    public string CopilotLauncher { get; set; } = "binary";
-    public bool CopilotAutoInstall { get; set; }
-    public string? CopilotAutoInstallMethod { get; set; }
-    public bool CopilotAutoInstallPrerelease { get; set; }
-    /// <summary>
-    /// Environment variables to forward from the host into the Copilot CLI process.
-    /// When <see cref="CopilotInheritEnvironment"/> is false, only these variables are forwarded.
-    /// When true, these variables override any inherited values.
-    /// </summary>
-    public IReadOnlyList<string> CopilotEnvAllowlist { get; set; } = Array.Empty<string>();
-    /// <summary>
-    /// Whether the Copilot CLI process should inherit the current environment.
-    /// </summary>
-    public bool CopilotInheritEnvironment { get; set; } = true;
-    /// <summary>
-    /// Additional environment variables to set for the Copilot CLI process.
-    /// </summary>
-    public IReadOnlyDictionary<string, string> CopilotEnv { get; set; } =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-    /// <summary>
-    /// Copilot transport selection (CLI or direct HTTP).
-    /// </summary>
-    public CopilotTransportKind CopilotTransport { get; set; } = CopilotTransportKind.Cli;
     /// <summary>
     /// Copilot direct HTTP endpoint URL (experimental).
     /// </summary>
-    public string? CopilotDirectUrl { get; set; }
+    public string? CopilotBaseUrl { get; set; }
     /// <summary>
     /// Copilot direct token value (experimental).
     /// </summary>
-    public string? CopilotDirectToken { get; set; }
+    public string? CopilotToken { get; set; }
     /// <summary>
     /// Environment variable that holds the Copilot direct token (experimental).
     /// </summary>
-    public string? CopilotDirectTokenEnv { get; set; }
-    /// <summary>
-    /// Additional headers to send with Copilot direct requests (experimental).
-    /// </summary>
-    public IReadOnlyDictionary<string, string> CopilotDirectHeaders { get; set; } =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    public string? CopilotTokenEnvironmentVariable { get; set; }
     /// <summary>
     /// Timeout for Copilot direct requests (seconds).
     /// </summary>
-    public int CopilotDirectTimeoutSeconds { get; set; } = 60;
+    public int CopilotRequestTimeoutSeconds { get; set; } = 600;
 
     public string? AzureOrganization { get; set; }
     public string? AzureProject { get; set; }

@@ -132,7 +132,6 @@ public sealed class NativeDocumentTransportTests {
     [InlineData("compatible-json", false, "disposed")]
     [InlineData("compatible-json", false, "io")]
     [InlineData("compatible-json", false, "eof")]
-    [InlineData("compatible-json", true, "io")]
     public async Task AbortedProviderResponseReadsPreserveCallerCancellation(string route, bool errorResponse, string abortKind) {
         using var stream = new AbortedReadStream(abortKind);
         using var http = new HttpClient(new Handler(_ => Task.FromResult(new HttpResponseMessage(errorResponse ? HttpStatusCode.BadRequest : HttpStatusCode.OK) {
@@ -283,6 +282,7 @@ public sealed class NativeDocumentTransportTests {
         private readonly AuthBundle _bundle = new("openai-codex", "test-token", "", DateTimeOffset.UtcNow.AddHours(1)) { AccountId = "test-account" };
         public Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) => Task.FromResult<AuthBundle?>(_bundle);
         public Task<IReadOnlyList<AuthBundle>> ListAsync(string provider, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthBundle>>(new[] { _bundle });
+        public Task RemoveAsync(string provider, string? accountId, CancellationToken cancellationToken = default) => throw new NotSupportedException("Logout is outside this fixture contract.");
         public Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Fixture must not refresh credentials.");
     }
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler {

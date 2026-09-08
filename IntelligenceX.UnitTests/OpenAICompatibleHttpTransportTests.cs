@@ -646,8 +646,10 @@ public sealed class OpenAICompatibleHttpTransportTests {
             BaseUrl = "http://127.0.0.1:11434", AllowInsecureHttp = true, Streaming = streaming
         }, http);
         var thread = await transport.StartThreadAsync("model", null, null, null, CancellationToken.None);
-        await Assert.ThrowsAsync<InvalidDataException>(() => transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"),
-            new ChatOptions { Model = "model", MaxResponseBytes = 1024 }, null, null, null, CancellationToken.None));
+        Task Run() => transport.StartTurnAsync(thread.Id, ChatInput.FromText("hello"),
+            new ChatOptions { Model = "model", MaxResponseBytes = 1024 }, null, null, null, CancellationToken.None);
+        if (error) Assert.Equal("Chat request failed (HTTP 400).", (await Assert.ThrowsAsync<InvalidOperationException>(Run)).Message);
+        else await Assert.ThrowsAsync<InvalidDataException>(Run);
     }
 
     private sealed class StubHandler : HttpMessageHandler {

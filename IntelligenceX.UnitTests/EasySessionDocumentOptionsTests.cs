@@ -30,12 +30,18 @@ public sealed class EasySessionDocumentOptionsTests {
     }
 
     [Theory]
-    [InlineData(256L)]
-    [InlineData(268435456L)]
-    public void SessionPreservesSmallerAndLargerCopilotReceiveBudgets(long maximum) {
-        var options = new EasySessionOptions { TransportKind = OpenAITransportKind.CopilotCli };
-        options.CopilotOptions.MaxReceivedBytes = maximum;
-        Assert.Equal(maximum, Build(options).CopilotOptions.MaxReceivedBytes);
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SessionPreservesNativeCopilotCredentialAndStreamingChoices(bool streaming) {
+        var options = new EasySessionOptions { TransportKind = OpenAITransportKind.CopilotNative };
+        options.CopilotOptions.Streaming = streaming;
+        options.CopilotOptions.GitHubToken = "test-token";
+        options.CopilotOptions.RequestTimeout = TimeSpan.FromSeconds(17);
+        var actual = Build(options).CopilotOptions;
+        Assert.Equal(streaming, actual.Streaming);
+        Assert.Equal("test-token", actual.GitHubToken);
+        Assert.Equal(TimeSpan.FromSeconds(17), actual.RequestTimeout);
+        Assert.NotSame(options.CopilotOptions, actual);
     }
 
     private static IntelligenceXClientOptions Build(EasySessionOptions options) =>

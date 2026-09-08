@@ -610,7 +610,7 @@
     var model = String(local.model || "").trim();
 
     var runtimeLabel = "ChatGPT";
-    if (transport === "copilot-cli") {
+    if (transport === "copilot-native") {
       runtimeLabel = "Copilot";
     } else if (transport === "compatible-http") {
       if (baseUrl.indexOf("127.0.0.1:1234") >= 0 || baseUrl.indexOf("localhost:1234") >= 0) {

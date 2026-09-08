@@ -60,10 +60,10 @@ public sealed partial class MainWindow : Window {
                 transport = TransportCompatibleHttp;
                 return true;
             case "copilot":
-            case "copilot-cli":
+            case "copilot-native":
             case "github-copilot":
             case "githubcopilot":
-                transport = TransportCopilotCli;
+                transport = TransportCopilotNative;
                 return true;
             default:
                 transport = TransportNative;
@@ -72,6 +72,9 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string NormalizeLocalProviderTransport(string? value) {
+        if (string.Equals(value?.Trim(), "copilot-cli", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("The saved profile uses the retired copilot-cli transport. Select copilot-native and configure a GitHub credential before using this profile.");
+        }
         return TryNormalizeLocalProviderTransport(value, out var normalized)
             ? normalized
             : TransportNative;
@@ -139,7 +142,7 @@ public sealed partial class MainWindow : Window {
             && IsLocalCompatibleRuntimePreset(DetectCompatibleProviderPreset(baseUrl));
         var supportsCatalogFallback =
             string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase);
+            || string.Equals(normalizedTransport, TransportCopilotNative, StringComparison.OrdinalIgnoreCase);
         if (!supportsCatalogFallback) {
             return normalizedConfiguredModel.Length == 0 ? null : normalizedConfiguredModel;
         }
@@ -233,20 +236,12 @@ public sealed partial class MainWindow : Window {
 
     private static bool SupportsLocalProviderReasoningControls(string? transport, string? baseUrl) {
         var normalizedTransport = NormalizeLocalProviderTransport(transport);
-        if (string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-        return true;
+        return normalizedTransport is TransportNative or TransportCompatibleHttp or TransportCopilotNative;
     }
 
     private static string DescribeLocalProviderReasoningSupport(string? transport, string? baseUrl) {
         if (SupportsLocalProviderReasoningControls(transport, baseUrl)) {
-            return "enabled (pass-through; provider may clamp unsupported values)";
-        }
-
-        var normalizedTransport = NormalizeLocalProviderTransport(transport);
-        if (string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
-            return "not exposed by Copilot subscription runtime";
+            return "enabled (pass-through; supported values depend on the selected model)";
         }
 
         return "not exposed by current runtime profile";
@@ -259,7 +254,7 @@ public sealed partial class MainWindow : Window {
         }
 
         if (string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(transport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
+            || string.Equals(transport, TransportCopilotNative, StringComparison.OrdinalIgnoreCase)) {
             return string.Empty;
         }
 

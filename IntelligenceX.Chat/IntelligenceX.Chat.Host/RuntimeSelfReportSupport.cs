@@ -81,7 +81,7 @@ internal static class RuntimeSelfReportSupport {
             OpenAITransportKind.Native => "native",
             OpenAITransportKind.AppServer => "appserver",
             OpenAITransportKind.CompatibleHttp => "compatible-http",
-            OpenAITransportKind.CopilotCli => "copilot-cli",
+            OpenAITransportKind.CopilotNative => "copilot-native",
             _ => transport.ToString().Trim().ToLowerInvariant()
         };
     }

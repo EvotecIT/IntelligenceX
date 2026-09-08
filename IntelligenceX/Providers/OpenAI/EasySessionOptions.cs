@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using IntelligenceX.Configuration;
-using IntelligenceX.Copilot;
+using IntelligenceX.Copilot.Native;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.Native;
@@ -43,9 +43,11 @@ public sealed class EasySessionOptions {
     /// </summary>
     public OpenAICompatibleHttpOptions CompatibleHttpOptions { get; } = new();
     /// <summary>
-    /// Copilot CLI transport options.
+    /// Native Copilot authentication and HTTP transport options.
     /// </summary>
-    public CopilotClientOptions CopilotOptions { get; } = CreateDefaultCopilotOptions();
+    public CopilotNativeOptions CopilotOptions { get; set; } = new();
+    /// <summary>Displays the GitHub verification URL and user code when native Copilot needs interactive sign-in.</summary>
+    public Action<IntelligenceX.Authentication.GitHub.GitHubDeviceAuthorization>? OnCopilotLoginCode { get; set; }
     /// <summary>
     /// Selected transport kind.
     /// </summary>
@@ -183,7 +185,7 @@ public sealed class EasySessionOptions {
             case OpenAITransportKind.CompatibleHttp:
                 CompatibleHttpOptions.Validate();
                 break;
-            case OpenAITransportKind.CopilotCli:
+            case OpenAITransportKind.CopilotNative:
                 CopilotOptions.Validate();
                 break;
             default:
@@ -218,12 +220,6 @@ public sealed class EasySessionOptions {
         return options;
     }
 
-    private static CopilotClientOptions CreateDefaultCopilotOptions() {
-        return new CopilotClientOptions {
-            AutoInstallCli = true,
-            AutoInstallMethod = CopilotCliInstallMethod.Auto
-        };
-    }
 
     private static OpenAINativeOptions CreateDefaultNativeOptions() {
         return new OpenAINativeOptions {

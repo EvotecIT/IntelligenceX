@@ -27,4 +27,7 @@ public interface IAuthBundleStore {
     /// <param name="bundle">Bundle to save.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default);
+
+    /// <summary>Removes only the specified provider and account. A null account selects only the provider's accountless entry.</summary>
+    Task RemoveAsync(string provider, string? accountId, CancellationToken cancellationToken = default);
 }

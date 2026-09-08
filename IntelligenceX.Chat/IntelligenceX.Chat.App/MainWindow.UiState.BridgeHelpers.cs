@@ -106,7 +106,7 @@ public sealed partial class MainWindow : Window {
         string compatiblePreset,
         bool copilotConnected,
         string baseUrl) {
-        if (string.Equals(transport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(transport, TransportCopilotNative, StringComparison.OrdinalIgnoreCase)) {
             return "GitHub Copilot subscription runtime";
         }
 

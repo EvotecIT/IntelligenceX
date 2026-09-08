@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -13,7 +14,10 @@ namespace IntelligenceX.OpenAI.Auth;
 /// File-based authentication bundle store with optional encryption.
 /// </summary>
 public sealed class FileAuthBundleStore : IAuthBundleStore {
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> StoreGates = new(
+        Path.DirectorySeparatorChar == '\\' ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private readonly string _path;
+    internal string CoordinationPath => _path;
     private readonly byte[]? _encryptionKey;
 
     /// <summary>
@@ -22,7 +26,7 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
     /// <param name="path">Optional override path.</param>
     /// <param name="encryptionKeyBase64">Optional base64 encryption key.</param>
     public FileAuthBundleStore(string? path = null, string? encryptionKeyBase64 = null) {
-        _path = path ?? AuthPaths.ResolveAuthPath();
+        _path = Path.GetFullPath(path ?? AuthPaths.ResolveAuthPath());
         _encryptionKey = ParseKey(encryptionKeyBase64 ?? Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_KEY"));
         if (_encryptionKey is not null && !SupportsEncryption()) {
             throw new PlatformNotSupportedException("Encrypted auth store requires .NET 8 or later.");
@@ -99,20 +103,37 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
     /// <param name="bundle">Bundle to save.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) {
-        var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false)
-                   ?? new AuthBundleFile(1, new Dictionary<string, AuthBundle>(StringComparer.OrdinalIgnoreCase));
-        var key = BuildKey(bundle.Provider, bundle.AccountId);
-        file.Bundles[key] = bundle;
-        await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
+        if (bundle is null) throw new ArgumentNullException(nameof(bundle));
+        var gate = StoreGates.GetOrAdd(_path, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false)
+                       ?? new AuthBundleFile(1, new Dictionary<string, AuthBundle>(StringComparer.OrdinalIgnoreCase));
+            file.Bundles[BuildKey(bundle.Provider, bundle.AccountId)] = bundle;
+            await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
+        } finally { gate.Release(); }
+    }
+
+    /// <summary>Removes one account without deleting other stored accounts or providers.</summary>
+    public async Task RemoveAsync(string provider, string? accountId, CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(provider)) throw new ArgumentException("A provider is required.", nameof(provider));
+        var gate = StoreGates.GetOrAdd(_path, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
+            if (file is not null && file.Bundles.Remove(BuildKey(provider, accountId)))
+                await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
+        } finally { gate.Release(); }
     }
 
     /// <summary>
     /// Deletes the auth store file if it exists.
     /// </summary>
     public void Delete() {
-        if (File.Exists(_path)) {
-            File.Delete(_path);
-        }
+        var gate = StoreGates.GetOrAdd(_path, _ => new SemaphoreSlim(1, 1));
+        gate.Wait();
+        try { if (File.Exists(_path)) File.Delete(_path); }
+        finally { gate.Release(); }
     }
 
     private async Task<AuthBundleFile?> ReadFileAsync(CancellationToken cancellationToken) {
@@ -144,7 +165,13 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
         if (!string.IsNullOrWhiteSpace(dir)) {
             Directory.CreateDirectory(dir);
         }
-        await WriteAllTextAsync(_path, content, cancellationToken).ConfigureAwait(false);
+        string temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try {
+            await WriteAllTextAsync(temporary, content, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.Exists(_path)) File.Replace(temporary, _path, null);
+            else File.Move(temporary, _path);
+        } finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
     private static string BuildKey(string provider, string? accountId) {
@@ -183,14 +210,12 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
 #endif
     }
 
-    private static Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken) {
-#if NETSTANDARD2_0 || NET472
+    private static async Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-        File.WriteAllText(path, content);
-        return Task.CompletedTask;
-#else
-        return File.WriteAllTextAsync(path, content, cancellationToken);
-#endif
+        using var stream = PrivateAuthFile.Create(path);
+        byte[] bytes = Encoding.UTF8.GetBytes(content);
+        await stream.WriteAsync(bytes, 0, bytes.Length, cancellationToken).ConfigureAwait(false);
+        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static string Encrypt(string plaintext, byte[] key) {

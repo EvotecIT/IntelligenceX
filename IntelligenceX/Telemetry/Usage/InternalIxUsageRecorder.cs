@@ -143,7 +143,7 @@ public sealed class InternalIxUsageRecorder : IDisposable {
 
     private static string ResolveTelemetryProviderId(OpenAITransportKind transportKind) {
         return transportKind switch {
-            OpenAITransportKind.CopilotCli => "copilot",
+            OpenAITransportKind.CopilotNative => "copilot",
             _ => StableProviderId
         };
     }

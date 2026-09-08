@@ -15,8 +15,8 @@ public sealed class MainWindowLocalProviderTransportTests {
     [InlineData("compatible-http", "compatible-http")]
     [InlineData("ollama", "compatible-http")]
     [InlineData("lmstudio", "compatible-http")]
-    [InlineData("copilot-cli", "copilot-cli")]
-    [InlineData("github-copilot", "copilot-cli")]
+    [InlineData("copilot-native", "copilot-native")]
+    [InlineData("github-copilot", "copilot-native")]
     public void TryNormalizeLocalProviderTransport_AcceptsKnownAliases(string value, string expectedTransport) {
         var parsed = MainWindow.TryNormalizeLocalProviderTransport(value, out var transport);
 
@@ -32,6 +32,7 @@ public sealed class MainWindowLocalProviderTransportTests {
     [InlineData("   ")]
     [InlineData("unsupported")]
     [InlineData("copilot-subscription")]
+    [InlineData("copilot-cli")]
     public void TryNormalizeLocalProviderTransport_RejectsUnknownValues(string value) {
         var parsed = MainWindow.TryNormalizeLocalProviderTransport(value, out var transport);
 

@@ -93,13 +93,10 @@ internal sealed partial class ChatServiceSession {
             opts.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = _options.OpenAIAllowInsecureHttpNonLoopback;
         }
 
-        if (opts.TransportKind == OpenAITransportKind.CopilotCli) {
-            opts.CopilotOptions.AutoInstallCli = true;
-            opts.CopilotOptions.AutoInstallMethod = CopilotCliInstallMethod.Auto;
-            var cliPath = Environment.GetEnvironmentVariable("COPILOT_CLI_PATH");
-            if (!string.IsNullOrWhiteSpace(cliPath)) {
-                opts.CopilotOptions.CliPath = cliPath;
-            }
+        if (opts.TransportKind == OpenAITransportKind.CopilotNative) {
+            // Credentials are resolved by the shared native owner; the host never launches a provider CLI.
+            var baseUrl = Environment.GetEnvironmentVariable("COPILOT_BASE_URL");
+            if (!string.IsNullOrWhiteSpace(baseUrl)) opts.CopilotOptions.BaseUrl = baseUrl;
         }
 
         return opts;
@@ -403,7 +400,7 @@ internal sealed partial class ChatServiceSession {
                     await WriteAsync(writer, new ErrorMessage {
                         Kind = ChatServiceMessageKind.Response,
                         RequestId = request.RequestId,
-                        Error = "openAITransport must be one of: native, appserver, compatible-http, copilot-cli.",
+                        Error = "openAITransport must be one of: native, appserver, compatible-http, copilot-native.",
                         Code = "invalid_argument"
                     }, cancellationToken).ConfigureAwait(false);
                     return new SetProfileResult(ReconnectClient: false, ModelChanged: false);

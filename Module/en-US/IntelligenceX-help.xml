@@ -127,6 +127,18 @@ running Codex app-server process. The cmdlet sets the active default client, so 
           <dev:defaultValue>None</dev:defaultValue>
         </command:parameter>
         <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
+          <maml:name>CopilotOptions</maml:name>
+          <maml:description>
+            <maml:para>Native Copilot credential, store, endpoint, and device sign-in settings.</maml:para>
+          </maml:description>
+          <command:parameterValue required="false" variableLength="false">CopilotNativeOptions</command:parameterValue>
+          <dev:type>
+            <maml:name>CopilotNativeOptions</maml:name>
+            <maml:uri />
+          </dev:type>
+          <dev:defaultValue>None</dev:defaultValue>
+        </command:parameter>
+        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
           <maml:name>Diagnostics</maml:name>
           <maml:description>
             <maml:para>Enable diagnostics output (RPC calls, login events, stderr).</maml:para>
@@ -184,7 +196,7 @@ running Codex app-server process. The cmdlet sets the active default client, so 
             <command:parameterValue required="false" variableLength="false">Native</command:parameterValue>
             <command:parameterValue required="false" variableLength="false">AppServer</command:parameterValue>
             <command:parameterValue required="false" variableLength="false">CompatibleHttp</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">CopilotCli</command:parameterValue>
+            <command:parameterValue required="false" variableLength="false">CopilotNative</command:parameterValue>
           </command:parameterValueGroup>
           <dev:type>
             <maml:name>OpenAITransportKind</maml:name>
@@ -215,6 +227,18 @@ running Codex app-server process. The cmdlet sets the active default client, so 
         <command:parameterValue required="false" variableLength="false">String</command:parameterValue>
         <dev:type>
           <maml:name>String</maml:name>
+          <maml:uri />
+        </dev:type>
+        <dev:defaultValue>None</dev:defaultValue>
+      </command:parameter>
+      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
+        <maml:name>CopilotOptions</maml:name>
+        <maml:description>
+          <maml:para>Native Copilot credential, store, endpoint, and device sign-in settings.</maml:para>
+        </maml:description>
+        <command:parameterValue required="false" variableLength="false">CopilotNativeOptions</command:parameterValue>
+        <dev:type>
+          <maml:name>CopilotNativeOptions</maml:name>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>None</dev:defaultValue>
@@ -277,7 +301,7 @@ running Codex app-server process. The cmdlet sets the active default client, so 
           <command:parameterValue required="false" variableLength="false">Native</command:parameterValue>
           <command:parameterValue required="false" variableLength="false">AppServer</command:parameterValue>
           <command:parameterValue required="false" variableLength="false">CompatibleHttp</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">CopilotCli</command:parameterValue>
+          <command:parameterValue required="false" variableLength="false">CopilotNative</command:parameterValue>
         </command:parameterValueGroup>
         <dev:type>
           <maml:name>OpenAITransportKind</maml:name>
@@ -825,96 +849,17 @@ so scripts can validate config before writing changes.</maml:para>
   </command:command>
   <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10" xmlns:MSHelp="http://msdn.microsoft.com/mshelp" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10">
     <command:details>
-      <command:name>Get-IntelligenceXCopilotInstall</command:name>
-      <command:verb>Get</command:verb>
-      <command:noun>IntelligenceXCopilotInstall</command:noun>
-      <maml:description>
-        <maml:para>Shows platform-specific installation commands for GitHub Copilot CLI.</maml:para>
-        <maml:para>This cmdlet does not install anything. It returns suggested install command metadata&#xD;
-so you can preview, log, or execute it manually.</maml:para>
-      </maml:description>
-    </command:details>
-    <maml:description>
-      <maml:para>Shows platform-specific installation commands for GitHub Copilot CLI.</maml:para>
-      <maml:para>This cmdlet does not install anything. It returns suggested install command metadata&#xD;
-so you can preview, log, or execute it manually.</maml:para>
-    </maml:description>
-    <command:syntax>
-      <command:syntaxItem parameterSetName="__AllParameterSets">
-        <maml:name>Get-IntelligenceXCopilotInstall</maml:name>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>Prerelease</maml:name>
-          <maml:description>
-            <maml:para>Returns commands for installing prerelease builds.</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-          <dev:type>
-            <maml:name>SwitchParameter</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-      </command:syntaxItem>
-    </command:syntax>
-    <command:parameters>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>Prerelease</maml:name>
-        <maml:description>
-          <maml:para>Returns commands for installing prerelease builds.</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-        <dev:type>
-          <maml:name>SwitchParameter</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-    </command:parameters>
-    <command:inputTypes>
-      <command:inputType>
-        <dev:type>
-          <maml:name>None</maml:name>
-        </dev:type>
-      </command:inputType>
-    </command:inputTypes>
-    <command:returnValues>
-      <command:returnValue>
-        <dev:type>
-          <maml:name>IntelligenceX.Copilot.CopilotCliInstallCommand</maml:name>
-        </dev:type>
-      </command:returnValue>
-    </command:returnValues>
-    <maml:alertSet>
-      <maml:alert>
-        <maml:para></maml:para>
-      </maml:alert>
-    </maml:alertSet>
-    <command:examples>
-      <command:example>
-        <maml:title>EXAMPLE 1</maml:title>
-        <dev:code>Get-IntelligenceXCopilotInstall -Prerelease</dev:code>
-        <dev:remarks>
-          <maml:para></maml:para>
-        </dev:remarks>
-      </command:example>
-    </command:examples>
-    <command:relatedLinks />
-  </command:command>
-  <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10" xmlns:MSHelp="http://msdn.microsoft.com/mshelp" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10">
-    <command:details>
       <command:name>Get-IntelligenceXHealth</command:name>
       <command:verb>Get</command:verb>
       <command:noun>IntelligenceXHealth</command:noun>
       <maml:description>
-        <maml:para>Runs health checks for OpenAI app-server and optional Copilot CLI.</maml:para>
-        <maml:para>Returns health status for the active IntelligenceX client and, optionally, a Copilot CLI&#xD;
-instance using explicit or config-derived options.</maml:para>
+        <maml:para>Checks the active IntelligenceX connection and optional native Copilot access.</maml:para>
+        <maml:para>Copilot checks use direct HTTPS model discovery. No CLI installation or process is required.</maml:para>
       </maml:description>
     </command:details>
     <maml:description>
-      <maml:para>Runs health checks for OpenAI app-server and optional Copilot CLI.</maml:para>
-      <maml:para>Returns health status for the active IntelligenceX client and, optionally, a Copilot CLI&#xD;
-instance using explicit or config-derived options.</maml:para>
+      <maml:para>Checks the active IntelligenceX connection and optional native Copilot access.</maml:para>
+      <maml:para>Copilot checks use direct HTTPS model discovery. No CLI installation or process is required.</maml:para>
     </maml:description>
     <command:syntax>
       <command:syntaxItem parameterSetName="__AllParameterSets">
@@ -922,7 +867,7 @@ instance using explicit or config-derived options.</maml:para>
         <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="True (ByValue)" position="named" aliases="None">
           <maml:name>Client</maml:name>
           <maml:description>
-            <maml:para>OpenAI/app-server client instance. Defaults to the active client.</maml:para>
+            <maml:para>Client to check. Defaults to the active client.</maml:para>
           </maml:description>
           <command:parameterValue required="false" variableLength="false">IntelligenceXClient</command:parameterValue>
           <dev:type>
@@ -934,7 +879,7 @@ instance using explicit or config-derived options.</maml:para>
         <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
           <maml:name>Copilot</maml:name>
           <maml:description>
-            <maml:para>Run a Copilot CLI health check.</maml:para>
+            <maml:para>Also check Copilot model access using native HTTP.</maml:para>
           </maml:description>
           <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
           <dev:type>
@@ -944,76 +889,9 @@ instance using explicit or config-derived options.</maml:para>
           <dev:defaultValue>None</dev:defaultValue>
         </command:parameter>
         <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>CopilotAutoInstall</maml:name>
+          <maml:name>CopilotBaseUrl</maml:name>
           <maml:description>
-            <maml:para>Auto-install Copilot CLI if missing.</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-          <dev:type>
-            <maml:name>SwitchParameter</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>CopilotCliPath</maml:name>
-          <maml:description>
-            <maml:para>Copilot CLI path.</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">String</command:parameterValue>
-          <dev:type>
-            <maml:name>String</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>CopilotCliUrl</maml:name>
-          <maml:description>
-            <maml:para>Copilot CLI URL (host:port).</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">String</command:parameterValue>
-          <dev:type>
-            <maml:name>String</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>CopilotInstallMethod</maml:name>
-          <maml:description>
-            <maml:para>Copilot auto-install method to use when -CopilotAutoInstall is set.</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">CopilotCliInstallMethod</command:parameterValue>
-          <command:parameterValueGroup>
-            <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">Winget</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">Homebrew</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">Npm</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">Script</command:parameterValue>
-          </command:parameterValueGroup>
-          <dev:type>
-            <maml:name>CopilotCliInstallMethod</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>CopilotInstallPrerelease</maml:name>
-          <maml:description>
-            <maml:para>Copilot auto-install prerelease.</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-          <dev:type>
-            <maml:name>SwitchParameter</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>CopilotWorkingDirectory</maml:name>
-          <maml:description>
-            <maml:para>Copilot CLI working directory.</maml:para>
+            <maml:para>Optional explicitly trusted Copilot HTTPS API root.</maml:para>
           </maml:description>
           <command:parameterValue required="false" variableLength="false">String</command:parameterValue>
           <dev:type>
@@ -1040,7 +918,7 @@ instance using explicit or config-derived options.</maml:para>
       <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="True (ByValue)" position="named" aliases="None">
         <maml:name>Client</maml:name>
         <maml:description>
-          <maml:para>OpenAI/app-server client instance. Defaults to the active client.</maml:para>
+          <maml:para>Client to check. Defaults to the active client.</maml:para>
         </maml:description>
         <command:parameterValue required="false" variableLength="false">IntelligenceXClient</command:parameterValue>
         <dev:type>
@@ -1052,7 +930,7 @@ instance using explicit or config-derived options.</maml:para>
       <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
         <maml:name>Copilot</maml:name>
         <maml:description>
-          <maml:para>Run a Copilot CLI health check.</maml:para>
+          <maml:para>Also check Copilot model access using native HTTP.</maml:para>
         </maml:description>
         <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
         <dev:type>
@@ -1062,76 +940,9 @@ instance using explicit or config-derived options.</maml:para>
         <dev:defaultValue>None</dev:defaultValue>
       </command:parameter>
       <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>CopilotAutoInstall</maml:name>
+        <maml:name>CopilotBaseUrl</maml:name>
         <maml:description>
-          <maml:para>Auto-install Copilot CLI if missing.</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-        <dev:type>
-          <maml:name>SwitchParameter</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>CopilotCliPath</maml:name>
-        <maml:description>
-          <maml:para>Copilot CLI path.</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">String</command:parameterValue>
-        <dev:type>
-          <maml:name>String</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>CopilotCliUrl</maml:name>
-        <maml:description>
-          <maml:para>Copilot CLI URL (host:port).</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">String</command:parameterValue>
-        <dev:type>
-          <maml:name>String</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>CopilotInstallMethod</maml:name>
-        <maml:description>
-          <maml:para>Copilot auto-install method to use when -CopilotAutoInstall is set.</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">CopilotCliInstallMethod</command:parameterValue>
-        <command:parameterValueGroup>
-          <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">Winget</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">Homebrew</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">Npm</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">Script</command:parameterValue>
-        </command:parameterValueGroup>
-        <dev:type>
-          <maml:name>CopilotCliInstallMethod</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>CopilotInstallPrerelease</maml:name>
-        <maml:description>
-          <maml:para>Copilot auto-install prerelease.</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-        <dev:type>
-          <maml:name>SwitchParameter</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>CopilotWorkingDirectory</maml:name>
-        <maml:description>
-          <maml:para>Copilot CLI working directory.</maml:para>
+          <maml:para>Optional explicitly trusted Copilot HTTPS API root.</maml:para>
         </maml:description>
         <command:parameterValue required="false" variableLength="false">String</command:parameterValue>
         <dev:type>
@@ -1178,7 +989,7 @@ instance using explicit or config-derived options.</maml:para>
     <command:examples>
       <command:example>
         <maml:title>EXAMPLE 1</maml:title>
-        <dev:code>Get-IntelligenceXHealth -CopilotCliPath 'C:\Path'</dev:code>
+        <dev:code>Get-IntelligenceXHealth -Client 'Value'</dev:code>
         <dev:remarks>
           <maml:para></maml:para>
         </dev:remarks>
@@ -2307,145 +2118,6 @@ initialization before login, chat, or review operations.</maml:para>
       <command:example>
         <maml:title>EXAMPLE 1</maml:title>
         <dev:code>Initialize-IntelligenceX -Name 'Name' -Title 'Value' -Version '1.0.0'</dev:code>
-        <dev:remarks>
-          <maml:para></maml:para>
-        </dev:remarks>
-      </command:example>
-    </command:examples>
-    <command:relatedLinks />
-  </command:command>
-  <command:command xmlns:maml="http://schemas.microsoft.com/maml/2004/10" xmlns:dev="http://schemas.microsoft.com/maml/dev/2004/10" xmlns:MSHelp="http://msdn.microsoft.com/mshelp" xmlns:command="http://schemas.microsoft.com/maml/dev/command/2004/10">
-    <command:details>
-      <command:name>Install-IntelligenceXCopilotCli</command:name>
-      <command:verb>Install</command:verb>
-      <command:noun>IntelligenceXCopilotCli</command:noun>
-      <maml:description>
-        <maml:para>Installs GitHub Copilot CLI using a selected install strategy.</maml:para>
-        <maml:para>Executes the platform-specific installer command and optionally returns command metadata.&#xD;
-Supports WhatIf/Confirm through ShouldProcess.</maml:para>
-      </maml:description>
-    </command:details>
-    <maml:description>
-      <maml:para>Installs GitHub Copilot CLI using a selected install strategy.</maml:para>
-      <maml:para>Executes the platform-specific installer command and optionally returns command metadata.&#xD;
-Supports WhatIf/Confirm through ShouldProcess.</maml:para>
-    </maml:description>
-    <command:syntax>
-      <command:syntaxItem parameterSetName="__AllParameterSets">
-        <maml:name>Install-IntelligenceXCopilotCli</maml:name>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>Method</maml:name>
-          <maml:description>
-            <maml:para>Install method to use (Auto, Winget, Brew, Apt, etc. depending on platform).</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">CopilotCliInstallMethod</command:parameterValue>
-          <command:parameterValueGroup>
-            <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">Winget</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">Homebrew</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">Npm</command:parameterValue>
-            <command:parameterValue required="false" variableLength="false">Script</command:parameterValue>
-          </command:parameterValueGroup>
-          <dev:type>
-            <maml:name>CopilotCliInstallMethod</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>PassThru</maml:name>
-          <maml:description>
-            <maml:para>Returns the resolved install command object after successful execution.</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-          <dev:type>
-            <maml:name>SwitchParameter</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-        <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-          <maml:name>Prerelease</maml:name>
-          <maml:description>
-            <maml:para>Installs a prerelease build when available.</maml:para>
-          </maml:description>
-          <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-          <dev:type>
-            <maml:name>SwitchParameter</maml:name>
-            <maml:uri />
-          </dev:type>
-          <dev:defaultValue>None</dev:defaultValue>
-        </command:parameter>
-      </command:syntaxItem>
-    </command:syntax>
-    <command:parameters>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>Method</maml:name>
-        <maml:description>
-          <maml:para>Install method to use (Auto, Winget, Brew, Apt, etc. depending on platform).</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">CopilotCliInstallMethod</command:parameterValue>
-        <command:parameterValueGroup>
-          <command:parameterValue required="false" variableLength="false">Auto</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">Winget</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">Homebrew</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">Npm</command:parameterValue>
-          <command:parameterValue required="false" variableLength="false">Script</command:parameterValue>
-        </command:parameterValueGroup>
-        <dev:type>
-          <maml:name>CopilotCliInstallMethod</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>PassThru</maml:name>
-        <maml:description>
-          <maml:para>Returns the resolved install command object after successful execution.</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-        <dev:type>
-          <maml:name>SwitchParameter</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-      <command:parameter required="false" variableLength="false" globbing="false" pipelineInput="False" position="named" aliases="None">
-        <maml:name>Prerelease</maml:name>
-        <maml:description>
-          <maml:para>Installs a prerelease build when available.</maml:para>
-        </maml:description>
-        <command:parameterValue required="false" variableLength="false">SwitchParameter</command:parameterValue>
-        <dev:type>
-          <maml:name>SwitchParameter</maml:name>
-          <maml:uri />
-        </dev:type>
-        <dev:defaultValue>None</dev:defaultValue>
-      </command:parameter>
-    </command:parameters>
-    <command:inputTypes>
-      <command:inputType>
-        <dev:type>
-          <maml:name>None</maml:name>
-        </dev:type>
-      </command:inputType>
-    </command:inputTypes>
-    <command:returnValues>
-      <command:returnValue>
-        <dev:type>
-          <maml:name>IntelligenceX.Copilot.CopilotCliInstallCommand</maml:name>
-        </dev:type>
-      </command:returnValue>
-    </command:returnValues>
-    <maml:alertSet>
-      <maml:alert>
-        <maml:para></maml:para>
-      </maml:alert>
-    </maml:alertSet>
-    <command:examples>
-      <command:example>
-        <maml:title>EXAMPLE 1</maml:title>
-        <dev:code>Install-IntelligenceXCopilotCli -Method 'Value'</dev:code>
         <dev:remarks>
           <maml:para></maml:para>
         </dev:remarks>

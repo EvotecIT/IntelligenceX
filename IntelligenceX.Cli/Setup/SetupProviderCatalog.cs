@@ -171,7 +171,7 @@ internal static class SetupProviderCatalog {
         }
 
         if (string.Equals(provider, CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
-            return "Copilot setup relies on GitHub Copilot CLI instead of a managed provider secret in setup.";
+            return "Copilot uses native HTTP. Configure the COPILOT_GITHUB_TOKEN repository secret with a GitHub credential authorized for Copilot; setup does not upload this credential.";
         }
 
         return null;

@@ -115,7 +115,7 @@ internal static partial class WizardRunner {
                 state.SkipSecret = true;
                 state.ManualSecret = false;
                 state.ManualSecretStdout = false;
-                state.OpenAiModel = null;
+                state.OpenAiModel = ResolveSuggestedModelForProvider(previousProvider, state.Provider, state.OpenAiModel);
                 state.OpenAiAccountId = null;
                 state.OpenAiAccountIds = null;
                 state.OpenAiAccountRotation = "first-available";
@@ -131,9 +131,7 @@ internal static partial class WizardRunner {
             } else {
                 state.OpenAiModel = ResolveSuggestedModelForProvider(previousProvider, state.Provider, state.OpenAiModel);
             }
-            if (!string.Equals(state.Provider, SetupProviderCatalog.CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
-                state.OpenAiModel = WizardPrompts.PromptModel(state.Provider, state.OpenAiModel);
-            }
+            state.OpenAiModel = WizardPrompts.PromptModel(state.Provider, state.OpenAiModel);
             if (state.WithConfig && state.ConfigMode == ConfigMode.Preset && SetupProviderCatalog.SupportsOpenAiAccountRouting(state.Provider)) {
                 state.OpenAiAccountId = WizardPrompts.PromptOpenAiAccountId(state.OpenAiAccountId);
                 state.OpenAiAccountIds = WizardPrompts.PromptOpenAiAccountIds(state.OpenAiAccountIds, state.OpenAiAccountId);

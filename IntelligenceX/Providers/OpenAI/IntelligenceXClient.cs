@@ -112,6 +112,9 @@ public sealed class IntelligenceXClient : IDisposable
 
         IOpenAITransport transport;
         switch (options.TransportKind) {
+            case OpenAITransportKind.CopilotNative:
+                transport = new IntelligenceX.Copilot.Native.CopilotNativeTransport(options.CopilotOptions);
+                break;
             case OpenAITransportKind.AppServer: {
                     var client = await AppServerClient.StartAsync(options.AppServerOptions, cancellationToken).ConfigureAwait(false);
                     transport = new AppServerTransport(client);
@@ -119,9 +122,6 @@ public sealed class IntelligenceXClient : IDisposable
                 }
             case OpenAITransportKind.CompatibleHttp:
                 transport = new OpenAICompatibleHttpTransport(options.CompatibleHttpOptions);
-                break;
-            case OpenAITransportKind.CopilotCli:
-                transport = new CopilotCliTransport(options.CopilotOptions);
                 break;
             default:
                 transport = new OpenAINativeTransport(options.NativeOptions);
@@ -355,9 +355,9 @@ public sealed class IntelligenceXClient : IDisposable
         options ??= new Chat.ChatOptions();
         if (options.MaxResponseBytes.HasValue && options.MaxResponseBytes.Value < 1)
             throw new ArgumentOutOfRangeException(nameof(options.MaxResponseBytes));
-        if (options.MaxResponseBytes.HasValue && TransportKind != OpenAITransportKind.Native && TransportKind != OpenAITransportKind.CompatibleHttp)
+        if (options.MaxResponseBytes.HasValue && TransportKind != OpenAITransportKind.Native && TransportKind != OpenAITransportKind.CompatibleHttp && TransportKind != OpenAITransportKind.CopilotNative)
             throw new NotSupportedException("This transport does not support response wire byte limits.");
-        if (options.ResponseFormat is not null && TransportKind != OpenAITransportKind.Native && TransportKind != OpenAITransportKind.CompatibleHttp) {
+        if (options.ResponseFormat is not null && TransportKind != OpenAITransportKind.Native && TransportKind != OpenAITransportKind.CompatibleHttp && TransportKind != OpenAITransportKind.CopilotNative) {
             throw new NotSupportedException("This transport does not support explicit JSON-schema response formats.");
         }
         bool ephemeral = options.Ephemeral;
@@ -426,6 +426,17 @@ public sealed class IntelligenceXClient : IDisposable
         _defaultApprovalPolicy = _defaultApprovalPolicy ?? "auto";
         _defaultSandboxPolicy = new SandboxPolicy("workspace", allowNetwork, new[] { workingDirectory });
         return this;
+    }
+
+    /// <summary>Signs in to native Copilot through the host's registered GitHub app, without launching a CLI.</summary>
+    /// <param name="onCode">Displays the verification URL and user code. The application decides how to present them.</param>
+    /// <param name="cancellationToken">Cancels sign-in and polling.</param>
+    /// <returns>The verified GitHub account associated with the new credential.</returns>
+    public Task<AccountInfo> LoginCopilotAsync(Action<IntelligenceX.Authentication.GitHub.GitHubDeviceAuthorization> onCode,
+        CancellationToken cancellationToken = default) {
+        if (_transport is not IntelligenceX.Copilot.Native.CopilotNativeTransport copilot)
+            throw new NotSupportedException("Copilot sign-in requires the native Copilot transport.");
+        return copilot.Authentication.LoginAsync(onCode, cancellationToken);
     }
 
     /// <summary>

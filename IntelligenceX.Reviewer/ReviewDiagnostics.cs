@@ -260,8 +260,8 @@ internal static class ReviewDiagnostics {
         } else if (classification.Category == ReviewErrorCategory.Auth &&
                    settings.Provider == ReviewProvider.Copilot) {
             sb.AppendLine();
-            sb.AppendLine("> Copilot CLI authentication is missing or not usable in this non-interactive runner.");
-            sb.AppendLine("> Sign in on the runner, use a self-hosted runner with a persisted Copilot CLI session, or configure Copilot direct transport.");
+            sb.AppendLine("> Copilot authentication is missing or not usable in this non-interactive runner.");
+            sb.AppendLine("> Configure a GitHub credential with Copilot access using the selected token environment variable.");
         }
         sb.AppendLine();
         sb.AppendLine("_Re-run the workflow once connectivity is restored. Set `REVIEW_FAIL_OPEN=false` to keep failures blocking._");
@@ -337,10 +337,7 @@ internal static class ReviewDiagnostics {
 
     internal static string DescribeTransport(ReviewSettings settings) {
         return settings.Provider switch {
-            ReviewProvider.Copilot => settings.CopilotTransport switch {
-                CopilotTransportKind.Direct => "direct",
-                _ => "cli"
-            },
+            ReviewProvider.Copilot => "native-http",
             ReviewProvider.OpenAI => settings.OpenAITransport switch {
                 OpenAITransportKind.Native => "native",
                 _ => "appserver"
@@ -357,9 +354,7 @@ internal static class ReviewDiagnostics {
             if (!string.IsNullOrWhiteSpace(model)) {
                 return model!;
             }
-            return settings.CopilotTransport == CopilotTransportKind.Direct
-                ? "Copilot direct model required"
-                : "Copilot CLI default";
+            return "Copilot model required";
         }
         return settings.Model;
     }

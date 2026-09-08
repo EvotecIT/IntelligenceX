@@ -70,6 +70,7 @@ public sealed class NativeAuthenticationBudgetTests {
         public int Saves { get; private set; }
         public Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) => Task.FromResult<AuthBundle?>(_bundle);
         public Task<IReadOnlyList<AuthBundle>> ListAsync(string provider, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<AuthBundle>>(new[] { _bundle });
+        public Task RemoveAsync(string provider, string? accountId, CancellationToken cancellationToken = default) => throw new NotSupportedException("Logout is outside this fixture contract.");
         public Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) { Saves++; _bundle = bundle; return Task.CompletedTask; }
     }
 

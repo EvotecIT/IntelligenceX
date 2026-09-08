@@ -47,8 +47,8 @@ public sealed partial class MainWindow : Window {
             return ResolveNativeUsageIdentity(accountId);
         }
 
-        if (string.Equals(_localProviderTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
-            return new ActiveUsageIdentity("copilot-cli", "GitHub Copilot Subscription");
+        if (string.Equals(_localProviderTransport, TransportCopilotNative, StringComparison.OrdinalIgnoreCase)) {
+            return new ActiveUsageIdentity("copilot-native", "GitHub Copilot Subscription");
         }
 
         var baseUrl = (_localProviderBaseUrl ?? string.Empty).Trim();

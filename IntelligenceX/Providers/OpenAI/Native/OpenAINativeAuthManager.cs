@@ -12,6 +12,7 @@ internal sealed class OpenAINativeAuthManager {
         new(StringComparer.OrdinalIgnoreCase);
 
     private readonly OpenAINativeOptions _options;
+    private volatile bool _signedOut;
     private readonly OAuthLoginService _oauth = new();
     private readonly Func<OAuthConfig, AuthBundle, CancellationToken, Task<OAuthLoginResult>> _refreshOAuthAsync;
 
@@ -59,7 +60,15 @@ internal sealed class OpenAINativeAuthManager {
 
         var result = await _oauth.LoginAsync(loginOptions).ConfigureAwait(false);
         await SaveBundleAsync(result.Bundle, cancellationToken).ConfigureAwait(false);
+        _signedOut = false;
         return result.Bundle;
+    }
+
+    public async Task LogoutAsync(CancellationToken cancellationToken) {
+        var selected = await TryGetCurrentBundleAsync(cancellationToken).ConfigureAwait(false);
+        if (selected is not null)
+            await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, selected.AccountId, cancellationToken).ConfigureAwait(false);
+        _signedOut = true;
     }
 
     public async Task<AuthBundle> RefreshAsync(AuthBundle bundle, CancellationToken cancellationToken) {
@@ -180,6 +189,7 @@ internal sealed class OpenAINativeAuthManager {
     }
 
     private async Task<AuthBundle?> TryGetCurrentBundleAsync(CancellationToken cancellationToken) {
+        if (_signedOut) return null;
         var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
         return SelectPreferredBundle(
             storedBundle,

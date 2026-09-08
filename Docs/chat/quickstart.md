@@ -52,9 +52,9 @@ On first launch, IX Chat will:
 2. Open **Options -> Runtime**
 3. Pick a runtime mode:
    - **Use ChatGPT Runtime** (native)
-   - **Use Copilot Subscription** (`copilot-cli`)
+   - **Use Copilot Subscription** (`copilot-native`)
    - **Use LM Studio Runtime** (compatible-http)
-4. Complete browser sign-in when prompted (ChatGPT or Copilot subscription path)
+4. Complete browser sign-in for ChatGPT. For native Copilot, set `COPILOT_GITHUB_TOKEN` for the service to a GitHub credential with Copilot access, then restart the service.
 5. For compatible-http providers, configure base URL/API key in **Show Advanced Runtime** if needed
 6. Click **Refresh Models** and verify the active runtime badge
 

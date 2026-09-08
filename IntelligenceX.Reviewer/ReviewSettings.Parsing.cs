@@ -379,31 +379,6 @@ internal sealed partial class ReviewSettings {
         return ChatEnumParser.ParseReasoningEffort(value);
     }
 
-    private static CopilotTransportKind ParseCopilotTransport(string? value, CopilotTransportKind fallback) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return fallback;
-        }
-        var normalized = value.Trim().ToLowerInvariant();
-        return normalized switch {
-            "direct" or "api" or "http" => CopilotTransportKind.Direct,
-            "cli" => CopilotTransportKind.Cli,
-            _ => fallback
-        };
-    }
-
-    internal static string NormalizeCopilotLauncher(string? value, string fallback) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return fallback;
-        }
-        var normalized = value.Trim().ToLowerInvariant();
-        return normalized switch {
-            "binary" or "cli" or "copilot" => "binary",
-            "gh" or "github" or "github-cli" or "github_cli" => "gh",
-            "auto" => "auto",
-            _ => fallback
-        };
-    }
-
     private static bool ParseBoolean(string? value, bool fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
