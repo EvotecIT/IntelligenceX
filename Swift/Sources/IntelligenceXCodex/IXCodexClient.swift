@@ -476,28 +476,28 @@ public actor IXCodexClient {
         }
         switch format {
         case .functionNestedParameters, .functionNestedInputSchema:
-            var function: [String: IXJSONValue] = [
+            let function: [String: IXJSONValue] = [
                 "name": .string(tool.name),
                 "description": .string(tool.description),
                 schemaKey: tool.parameters,
+                // Responses may normalize omitted strictness into strict mode,
+                // changing optional fields into mandatory arguments.
+                "strict": .bool(tool.strict),
             ]
-            if tool.strict {
-                function["strict"] = .bool(true)
-            }
             return .object([
                 "type": .string("function"),
                 "function": .object(function),
             ])
         case .functionFlatParameters, .functionFlatInputSchema:
-            var function: [String: IXJSONValue] = [
+            let function: [String: IXJSONValue] = [
                 "type": .string("function"),
                 "name": .string(tool.name),
                 "description": .string(tool.description),
                 schemaKey: tool.parameters,
+                // Responses may normalize omitted strictness into strict mode,
+                // changing optional fields into mandatory arguments.
+                "strict": .bool(tool.strict),
             ]
-            if tool.strict {
-                function["strict"] = .bool(true)
-            }
             return .object(function)
         case .customParameters, .customInputSchema:
             return .object([
