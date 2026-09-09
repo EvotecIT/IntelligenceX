@@ -259,6 +259,8 @@ public struct IXCodexUsage: Sendable, Equatable {
 
 public struct IXCodexTurn: Sendable, Equatable {
     public let responseID: String?
+    /// Processing tier reported by the server; nil when omitted.
+    public let serviceTier: String?
     public let status: String
     public let text: String
     public let toolCalls: [IXCodexToolCall]
@@ -270,6 +272,7 @@ public struct IXCodexTurn: Sendable, Equatable {
 
     public init(
         responseID: String? = nil,
+        serviceTier: String? = nil,
         status: String = "completed",
         text: String,
         toolCalls: [IXCodexToolCall] = [],
@@ -279,6 +282,7 @@ public struct IXCodexTurn: Sendable, Equatable {
         usage: IXCodexUsage? = nil
     ) {
         self.responseID = responseID
+        self.serviceTier = serviceTier
         self.status = status
         self.text = text
         self.toolCalls = toolCalls
@@ -291,6 +295,7 @@ public struct IXCodexTurn: Sendable, Equatable {
 
     init(
         responseID: String?,
+        serviceTier: String?,
         status: String,
         text: String,
         toolCalls: [IXCodexToolCall],
@@ -301,6 +306,7 @@ public struct IXCodexTurn: Sendable, Equatable {
         replayItems: [IXJSONValue]
     ) {
         self.responseID = responseID
+        self.serviceTier = serviceTier
         self.status = status
         self.text = text
         self.toolCalls = toolCalls
@@ -313,6 +319,8 @@ public struct IXCodexTurn: Sendable, Equatable {
 }
 
 public struct IXCodexRunResult: Sendable, Equatable {
+    /// Distinct server-reported tiers across Responses calls in this run.
+    public let serviceTiers: [String]
     public let turn: IXCodexTurn
     public let toolCalls: [IXCodexToolCall]
     public let usage: IXCodexUsage?
@@ -320,8 +328,10 @@ public struct IXCodexRunResult: Sendable, Equatable {
     public init(
         turn: IXCodexTurn,
         toolCalls: [IXCodexToolCall],
-        usage: IXCodexUsage? = nil
+        usage: IXCodexUsage? = nil,
+        serviceTiers: [String] = []
     ) {
+        self.serviceTiers = serviceTiers
         self.turn = turn
         self.toolCalls = toolCalls
         self.usage = usage
@@ -368,18 +378,35 @@ public struct IXCodexModel: Sendable, Equatable, Identifiable {
     public let description: String?
     public let supportedReasoningEfforts: [IXCodexReasoningOption]
     public let defaultReasoningEffort: IXCodexReasoningEffort?
+    /// Nil means the catalog did not declare supported inputs.
+    public let inputModalities: [String]?
+    public let serviceTiers: [IXCodexServiceTierOption]
+    public let supportsTextVerbosity: Bool?
+    public let supportsReasoningSummaryParameter: Bool?
+
+    public var supportsImageInput: Bool? {
+        inputModalities.map { $0.contains("image") }
+    }
 
     public init(
         id: String,
         displayName: String? = nil,
         description: String? = nil,
         supportedReasoningEfforts: [IXCodexReasoningOption] = [],
-        defaultReasoningEffort: IXCodexReasoningEffort? = nil
+        defaultReasoningEffort: IXCodexReasoningEffort? = nil,
+        inputModalities: [String]? = nil,
+        serviceTiers: [IXCodexServiceTierOption] = [],
+        supportsTextVerbosity: Bool? = nil,
+        supportsReasoningSummaryParameter: Bool? = nil
     ) {
         self.id = id
         self.displayName = displayName ?? id
         self.description = description
         self.supportedReasoningEfforts = supportedReasoningEfforts
         self.defaultReasoningEffort = defaultReasoningEffort
+        self.inputModalities = inputModalities
+        self.serviceTiers = serviceTiers
+        self.supportsTextVerbosity = supportsTextVerbosity
+        self.supportsReasoningSummaryParameter = supportsReasoningSummaryParameter
     }
 }
