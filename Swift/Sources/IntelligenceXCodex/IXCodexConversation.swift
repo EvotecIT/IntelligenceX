@@ -82,6 +82,7 @@ public actor IXCodexConversation {
         executor: (any IXCodexToolExecuting)? = nil,
         model: String? = nil,
         reasoningEffort: IXCodexReasoningEffort? = nil,
+        responseOptions: IXCodexResponseOptions = .init(),
         webSearch: IXCodexWebSearchOptions? = nil,
         imageGeneration: IXCodexImageGenerationOptions? = nil,
         maximumToolRounds: Int = 6,
@@ -102,6 +103,7 @@ public actor IXCodexConversation {
                 executor: executor,
                 model: model,
                 reasoningEffort: reasoningEffort,
+                responseOptions: responseOptions,
                 webSearch: webSearch,
                 imageGeneration: imageGeneration,
                 maximumToolRounds: maximumToolRounds,
@@ -131,6 +133,7 @@ public actor IXCodexConversation {
         executor: (any IXCodexToolExecuting)?,
         model: String?,
         reasoningEffort: IXCodexReasoningEffort?,
+        responseOptions: IXCodexResponseOptions,
         webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
         maximumToolRounds: Int,
@@ -157,6 +160,7 @@ public actor IXCodexConversation {
         pendingHistory.append(userMessage)
         var allCalls: [IXCodexToolCall] = []
         var aggregateUsage: IXCodexUsage?
+        var serviceTiers: [String] = []
         var availableTools = tools
         let guardedTextDelta: IXCodexTextDeltaHandler?
         if let onTextDelta {
@@ -200,6 +204,7 @@ public actor IXCodexConversation {
                     tools: availableTools,
                     model: model,
                     reasoningEffort: reasoningEffort,
+                    responseOptions: responseOptions,
                     webSearch: webSearch,
                     imageGeneration: imageGeneration,
                     onTextDelta: guardedTextDelta
@@ -242,6 +247,7 @@ public actor IXCodexConversation {
                         tools: availableTools,
                         model: model,
                         reasoningEffort: reasoningEffort,
+                        responseOptions: responseOptions,
                         webSearch: webSearch,
                         imageGeneration: imageGeneration,
                         onTextDelta: guardedTextDelta
@@ -259,6 +265,9 @@ public actor IXCodexConversation {
                 turn.toolCalls,
                 areOfferedBy: availableTools
             )
+            if let tier = turn.serviceTier, !serviceTiers.contains(tier) {
+                serviceTiers.append(tier)
+            }
             if let usage = turn.usage {
                 aggregateUsage = aggregateUsage?.adding(usage) ?? usage
             }
@@ -268,7 +277,8 @@ public actor IXCodexConversation {
                 return IXCodexRunResult(
                     turn: turn,
                     toolCalls: allCalls,
-                    usage: aggregateUsage
+                    usage: aggregateUsage,
+                    serviceTiers: serviceTiers
                 )
             }
             guard round < maximumToolRounds, let executor else {
@@ -388,7 +398,8 @@ public actor IXCodexConversation {
                 return IXCodexRunResult(
                     turn: IXCodexTurn(text: completionText),
                     toolCalls: allCalls,
-                    usage: aggregateUsage
+                    usage: aggregateUsage,
+                    serviceTiers: serviceTiers
                 )
             }
             if let continuationTools {

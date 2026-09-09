@@ -6,7 +6,7 @@ import FoundationNetworking
 public actor IXCodexClient {
     static let maximumBufferedStreamingResponseBytes = 32 * 1_024 * 1_024
 
-    private enum ToolWireFormat: CaseIterable {
+    enum ToolWireFormat: CaseIterable {
         case functionNestedParameters
         case functionNestedInputSchema
         case functionFlatParameters
@@ -19,6 +19,8 @@ public actor IXCodexClient {
     private let authSession: IXCodexAuthSession
     private let httpClient: any IXHTTPClient
     private var preferredToolWireFormat: ToolWireFormat?
+    private var modelCapabilities: [String: IXCodexModel] = [:]
+    private var modelCapabilitiesAccountID: String?
 
     public init(
         configuration: IXCodexConfiguration = IXCodexConfiguration(),
@@ -89,11 +91,25 @@ public actor IXCodexClient {
                             ?? object["name"]?.stringValue,
                         description: object["description"]?.stringValue,
                         supportedReasoningEfforts: reasoning,
-                        defaultReasoningEffort: defaultEffortValue.flatMap(IXCodexReasoningEffort.init(rawValue:))
+                        defaultReasoningEffort: defaultEffortValue.flatMap(IXCodexReasoningEffort.init(rawValue:)),
+                        inputModalities: object["input_modalities"]?.arrayValue?.compactMap(\.stringValue),
+                        serviceTiers: (object["service_tiers"]?.arrayValue ?? []).compactMap { value in
+                            guard let id = value["id"]?.stringValue else { return nil }
+                            return IXCodexServiceTierOption(id: id,
+                                name: value["name"]?.stringValue,
+                                description: value["description"]?.stringValue)
+                        },
+                        supportsTextVerbosity: object["support_verbosity"]?.boolValue,
+                        supportsReasoningSummaryParameter: object["supports_reasoning_summary_parameter"]?.boolValue
                     )
                 }
                 try Task.checkCancellation()
-                if !models.isEmpty { return models }
+                if !models.isEmpty {
+                    modelCapabilitiesAccountID = accountID
+                    modelCapabilities = Dictionary(models.map { ($0.id, $0) },
+                        uniquingKeysWith: { _, latest in latest })
+                    return models
+                }
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -165,6 +181,7 @@ public actor IXCodexClient {
         tools: [IXCodexToolDefinition],
         model: String?,
         reasoningEffort: IXCodexReasoningEffort?,
+        responseOptions: IXCodexResponseOptions = .init(),
         webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
         onTextDelta: IXCodexTextDeltaHandler? = nil,
@@ -180,6 +197,7 @@ public actor IXCodexClient {
                 tools: tools,
                 model: requestedModel,
                 reasoningEffort: reasoningEffort ?? configuration.defaultReasoningEffort,
+                responseOptions: responseOptions,
                 webSearch: webSearch,
                 imageGeneration: imageGeneration,
                 onTextDelta: onTextDelta,
@@ -196,6 +214,7 @@ public actor IXCodexClient {
                         tools: tools,
                         model: fallback,
                         reasoningEffort: reasoningEffort ?? configuration.defaultReasoningEffort,
+                        responseOptions: responseOptions,
                         webSearch: webSearch,
                         imageGeneration: imageGeneration,
                         onTextDelta: onTextDelta,
@@ -262,6 +281,7 @@ public actor IXCodexClient {
         tools: [IXCodexToolDefinition],
         model: String,
         reasoningEffort: IXCodexReasoningEffort,
+        responseOptions: IXCodexResponseOptions,
         webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
         onTextDelta: IXCodexTextDeltaHandler?,
@@ -271,6 +291,9 @@ public actor IXCodexClient {
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse("ChatGPT account ID is missing from the OAuth token")
         }
+        let responseOptions = modelCapabilitiesAccountID == accountID
+            ? modelCapabilities[model]?.supportedResponseOptions(responseOptions) ?? responseOptions
+            : responseOptions
         let formats: [ToolWireFormat]
         if tools.isEmpty {
             formats = [.functionNestedParameters]
@@ -289,6 +312,7 @@ public actor IXCodexClient {
                 tools: tools,
                 model: model,
                 reasoningEffort: reasoningEffort,
+                responseOptions: responseOptions,
                 webSearch: webSearch,
                 imageGeneration: imageGeneration,
                 toolWireFormat: format
@@ -319,6 +343,7 @@ public actor IXCodexClient {
                     tools: tools,
                     model: model,
                     reasoningEffort: reasoningEffort,
+                    responseOptions: responseOptions,
                     webSearch: webSearch,
                     imageGeneration: imageGeneration,
                     onTextDelta: onTextDelta,
@@ -401,112 +426,6 @@ public actor IXCodexClient {
             return
         }
         await handler(delta)
-    }
-
-    private func buildRequestBody(
-        input: [IXJSONValue],
-        sessionID: String,
-        instructions: String,
-        tools: [IXCodexToolDefinition],
-        model: String,
-        reasoningEffort: IXCodexReasoningEffort,
-        webSearch: IXCodexWebSearchOptions?,
-        imageGeneration: IXCodexImageGenerationOptions?,
-        toolWireFormat: ToolWireFormat
-    ) -> IXJSONValue {
-        var object: [String: IXJSONValue] = [
-            "model": .string(model),
-            "store": .bool(false),
-            "stream": .bool(true),
-            "instructions": .string(instructions),
-            "input": .array(input),
-            "text": .object(["verbosity": .string("medium")]),
-            "reasoning": .object([
-                "effort": .string(reasoningEffort.rawValue),
-                "summary": .string("auto"),
-            ]),
-            "prompt_cache_key": .string(sessionID),
-        ]
-        var include: [IXJSONValue] = [.string("reasoning.encrypted_content")]
-        var serializedTools = tools.map { serializeTool($0, format: toolWireFormat) }
-        if let webSearch {
-            serializedTools.insert(serializeWebSearch(webSearch), at: 0)
-            include.append(.string("web_search_call.action.sources"))
-        }
-        if let imageGeneration {
-            serializedTools.insert(serializeImageGeneration(imageGeneration), at: 0)
-        }
-        object["include"] = .array(include)
-        if !serializedTools.isEmpty {
-            object["tools"] = .array(serializedTools)
-        }
-        let hasSelectableTools = !tools.isEmpty || webSearch != nil
-        if hasSelectableTools {
-            object["tool_choice"] = webSearch?.requiresSearch == true
-                ? .object(["type": .string("web_search")])
-                : .string("auto")
-            object["parallel_tool_calls"] = .bool(true)
-        }
-        return .object(object)
-    }
-
-    private func serializeWebSearch(
-        _ options: IXCodexWebSearchOptions
-    ) -> IXJSONValue {
-        .object([
-            "type": .string("web_search"),
-            "search_context_size": .string(options.contextSize.rawValue),
-            "external_web_access": .bool(options.allowsLiveInternetAccess),
-        ])
-    }
-
-    private func serializeImageGeneration(_ options: IXCodexImageGenerationOptions) -> IXJSONValue {
-        var object: [String: IXJSONValue] = ["type": .string("image_generation")]
-        if let quality = options.quality { object["quality"] = .string(quality) }
-        if let size = options.size { object["size"] = .string(size) }
-        if let outputFormat = options.outputFormat { object["output_format"] = .string(outputFormat) }
-        if let background = options.background { object["background"] = .string(background) }
-        return .object(object)
-    }
-
-    private func serializeTool(_ tool: IXCodexToolDefinition, format: ToolWireFormat) -> IXJSONValue {
-        let schemaKey = switch format {
-        case .functionNestedInputSchema, .functionFlatInputSchema, .customInputSchema: "input_schema"
-        default: "parameters"
-        }
-        switch format {
-        case .functionNestedParameters, .functionNestedInputSchema:
-            var function: [String: IXJSONValue] = [
-                "name": .string(tool.name),
-                "description": .string(tool.description),
-                schemaKey: tool.parameters,
-            ]
-            if tool.strict {
-                function["strict"] = .bool(true)
-            }
-            return .object([
-                "type": .string("function"),
-                "function": .object(function),
-            ])
-        case .functionFlatParameters, .functionFlatInputSchema:
-            var function: [String: IXJSONValue] = [
-                "type": .string("function"),
-                "name": .string(tool.name),
-                "description": .string(tool.description),
-                schemaKey: tool.parameters,
-            ]
-            if tool.strict {
-                function["strict"] = .bool(true)
-            }
-            return .object(function)
-        case .customParameters, .customInputSchema:
-            return .object([
-                "type": .string("custom"),
-                "name": .string(tool.name),
-                "description": .string(tool.description),
-                schemaKey: tool.parameters,
-            ])
-        }
     }
 
     private func fallbackModels(excluding currentModel: String) async -> [String] {
@@ -628,6 +547,7 @@ public actor IXCodexClient {
         }
         return IXCodexTurn(
             responseID: response?["id"]?.stringValue,
+            serviceTier: response?["service_tier"]?.stringValue,
             status: response?["status"]?.stringValue ?? "completed",
             text: normalizedText,
             toolCalls: calls.uniquedByID(),
