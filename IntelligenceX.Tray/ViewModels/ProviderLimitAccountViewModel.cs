@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using IntelligenceX.Telemetry.Limits;
 
 namespace IntelligenceX.Tray.ViewModels;
 
@@ -10,6 +11,9 @@ public sealed class ProviderLimitAccountViewModel : ViewModelBase {
     }
 
     public string Label { get; set; } = string.Empty;
+    public string ProviderId { get; set; } = string.Empty;
+    public ProviderLimitAccountSnapshot? Snapshot { get; set; }
+    public bool CanManageResets => !string.IsNullOrWhiteSpace(Snapshot?.AccountId);
     public string? PlanLabel { get; set; }
     public string? StatusLabel { get; set; }
     public string Summary { get; set; } = string.Empty;

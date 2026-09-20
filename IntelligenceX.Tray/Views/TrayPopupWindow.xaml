@@ -249,7 +249,7 @@
                                                  IsChecked="{Binding IsSelected, Mode=OneWay}"
                                                  Click="OnProviderTabClick"
                                                  Tag="{Binding}">
-                                        <Grid Width="106" Height="60">
+                                        <Grid Width="106" Height="42">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="*" />
@@ -280,9 +280,9 @@
                                             <StackPanel Grid.Row="1"
                                                         Orientation="Horizontal"
                                                         VerticalAlignment="Bottom"
-                                                        Margin="0,6,0,0">
+                                                        Margin="0,3,0,0">
                                                 <TextBlock Text="{Binding PulseProviderMetricText}"
-                                                           FontSize="18"
+                                                           FontSize="13"
                                                            FontWeight="SemiBold"
                                                            Foreground="{StaticResource PrimaryTextBrush}"
                                                            TextTrimming="CharacterEllipsis"

@@ -99,6 +99,9 @@ public static class ProviderLimitForecasting {
     public static ProviderLimitWindowForecast? BuildForecast(ProviderLimitWindow? window, DateTimeOffset nowUtc) {
         if (window is null
             || !window.UsedPercent.HasValue
+            || double.IsNaN(window.UsedPercent.Value)
+            || double.IsInfinity(window.UsedPercent.Value)
+            || window.UsedPercent.Value < 0d
             || !window.ResetsAt.HasValue
             || !window.WindowDuration.HasValue
             || window.WindowDuration.Value <= TimeSpan.Zero) {
@@ -176,7 +179,10 @@ public static class ProviderLimitForecasting {
 
         var recommendedIndex = SelectRecommendedIndex(advisories);
         if (recommendedIndex < 0) {
-            recommendedIndex = 0;
+            return advisories
+                .OrderBy(static advisory => GetDisplayPriority(advisory))
+                .ThenBy(static advisory => advisory.DisplayLabel, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         var recommended = advisories[recommendedIndex];
@@ -226,6 +232,23 @@ public static class ProviderLimitForecasting {
         var advisoryWindows = GetAdvisoryWindows(account.Windows);
 
         foreach (var window in advisoryWindows) {
+            // A past reset timestamp is not proof that the next window has started.
+            // Keep the account visible, but do not recommend it using the old capacity.
+            if (window.ResetsAt <= nowUtc) {
+                return new ProviderLimitAccountAdvisory(
+                    account.AccountId, displayLabel, account.PlanLabel, window.Label,
+                    "Refresh needed", "A reported reset time has passed. Refresh limits to confirm the current window.",
+                    double.MaxValue, isRecommended: false, account.IsSelected);
+            }
+            if (!window.UsedPercent.HasValue
+                || double.IsNaN(window.UsedPercent.Value)
+                || double.IsInfinity(window.UsedPercent.Value)
+                || window.UsedPercent.Value < 0d) {
+                return new ProviderLimitAccountAdvisory(
+                    account.AccountId, displayLabel, account.PlanLabel, window.Label,
+                    "Unknown", "Usage is not reported for every limit window. Refresh limits before choosing this account.",
+                    double.MaxValue, isRecommended: false, account.IsSelected);
+            }
             var forecast = BuildForecast(window, nowUtc);
             var windowRisk = forecast?.ProjectedUsedPercentAtReset
                              ?? window.UsedPercent

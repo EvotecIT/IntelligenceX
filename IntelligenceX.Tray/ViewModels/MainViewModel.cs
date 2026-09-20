@@ -86,6 +86,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private GitHubRepositoryClusterSummaryData _latestGitHubRepositoryClusterSummary = GitHubRepositoryClusterSummaryData.Empty;
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
+    private bool _isInitializing = true;
     private bool _isCodexDiagnosticsLoading;
     private bool _isCodexPathRepairRunning;
     private bool _isCodexCleanupRunning;
@@ -240,7 +241,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public bool ShowCombinedGitHubPulse => ShowUsageContent
                                            && SelectedProvider is { ProviderId: "__all__" }
                                            && GitHub.HasObservabilitySummary;
-    public bool ShowLoadingOverlay => IsLoading && ShowUsageContent && !HasUsageProviders;
+    public bool ShowLoadingOverlay => (_isInitializing || IsLoading) && !HasUsageProviders && !ShowGitHubContent;
 
     public string HeaderTitle {
         get {
@@ -607,21 +608,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public RelayCommand ToggleSelectedProviderFavoriteCommand { get; }
 
     public async Task InitializeAsync() {
-        _ = RefreshCodexDiagnosticsAsync();
-        var cachedUsageSnapshot = await LoadBestCachedUsageSnapshotAsync().ConfigureAwait(true);
-        var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot(cachedUsageSnapshot);
-        ConfigureRefreshTimer();
-        RefreshGitHubProfileIfReady();
+        try {
+            _ = RefreshCodexDiagnosticsAsync();
+            var cachedUsageSnapshot = await LoadBestCachedUsageSnapshotAsync().ConfigureAwait(true);
+            var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot(cachedUsageSnapshot);
+            ConfigureRefreshTimer();
+            RefreshGitHubProfileIfReady();
 
-        if (loadedCachedUsageSnapshot) {
-            if (ShouldRunStartupWarmRefreshAfterCache(cachedUsageSnapshot)) {
-                _ = RefreshStartupUsageAfterCacheAsync();
+            if (loadedCachedUsageSnapshot) {
+                if (ShouldRunStartupWarmRefreshAfterCache(cachedUsageSnapshot)) {
+                    _ = RefreshStartupUsageAfterCacheAsync();
+                }
+                return;
             }
-
-            return;
+            await RefreshStartupUsageWithoutCacheAsync().ConfigureAwait(true);
+        } finally {
+            _isInitializing = false;
+            OnPropertyChanged(nameof(ShowLoadingOverlay));
         }
-
-        _ = RefreshStartupUsageWithoutCacheAsync();
     }
 
     private async Task RefreshStartupUsageAfterCacheAsync() {

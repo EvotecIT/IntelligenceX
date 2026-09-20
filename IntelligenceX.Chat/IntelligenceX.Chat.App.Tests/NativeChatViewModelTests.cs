@@ -606,9 +606,12 @@ public sealed class NativeChatViewModelTests {
 
         Assert.True(result.IsAuthenticated);
         Assert.Equal("Signed in: user@example.com", model.SignInText);
+        Assert.Equal("user@example.com", model.AuthenticatedAccountId);
         Assert.Equal(NativeAuthenticationState.SignedIn, model.AuthenticationState);
         Assert.False(model.CanStartSignIn);
         Assert.Equal("Ready", model.StatusText);
+        model.InvalidateAuthenticationState();
+        Assert.Null(model.AuthenticatedAccountId);
     }
 
     /// <summary>

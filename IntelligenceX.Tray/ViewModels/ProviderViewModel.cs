@@ -1370,6 +1370,8 @@ public sealed class ProviderViewModel : ViewModelBase {
         foreach (var advisory in advisories) {
             var accountSnapshot = FindAccountSnapshot(accountSnapshots, advisory);
             var accountViewModel = new ProviderLimitAccountViewModel {
+                ProviderId = snapshot.ProviderId,
+                Snapshot = accountSnapshot,
                 Label = advisory.DisplayLabel,
                 PlanLabel = advisory.PlanLabel,
                 StatusLabel = advisory.StatusLabel,

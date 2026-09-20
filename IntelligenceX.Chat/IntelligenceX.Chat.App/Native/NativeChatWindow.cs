@@ -30,6 +30,7 @@ internal sealed partial class NativeChatWindow : Window {
     private Border _runtimeStatusChip = null!;
     private TextBlock _signInText = null!;
     private TextBlock _runtimeStatusText = null!;
+    private TextBlock _runtimeContextText = null!;
     private TextBlock _workspaceTitleText = null!;
     private TextBlock _workspaceSubtitleText = null!;
     private ListView _sidebarItemsPanel = null!;
@@ -97,6 +98,7 @@ internal sealed partial class NativeChatWindow : Window {
 
             if (args.PropertyName is nameof(NativeChatViewModel.SignInText)
                 or nameof(NativeChatViewModel.StatusText)
+                or nameof(NativeChatViewModel.AuthenticatedAccountId)
                 or nameof(NativeChatViewModel.AuthenticationState)) {
                 UpdateViewStateFromViewModel(refreshEmptyState: true);
             }

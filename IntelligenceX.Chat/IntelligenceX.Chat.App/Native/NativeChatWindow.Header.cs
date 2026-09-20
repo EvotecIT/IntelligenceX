@@ -59,12 +59,13 @@ internal sealed partial class NativeChatWindow {
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = NativeControlBrushes.TextPrimary
         });
-        titleStack.Children.Add(new TextBlock {
-            Text = "Conversations, tools, and evidence",
+        _runtimeContextText = new TextBlock {
+            Text = "Checking account and model…",
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = NativeControlBrushes.TextSecondary
-        });
+        };
+        titleStack.Children.Add(_runtimeContextText);
         Grid.SetColumn(titleStack, 1);
         titleGrid.Children.Add(titleStack);
         Grid.SetColumn(titleGrid, 0);
@@ -199,6 +200,7 @@ internal sealed partial class NativeChatWindow {
             if (_viewModel.AuthenticationState == NativeAuthenticationState.SignedIn) {
                 _viewModel.SetHostStatus(string.Empty);
             }
+            UpdateRuntimeContext();
         } catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) {
             // Window shutdown owns cancellation of the background readiness refresh.
         } catch (Exception ex) {
@@ -229,6 +231,7 @@ internal sealed partial class NativeChatWindow {
     }
 
     private void ApplyAuthenticationChrome() {
+        UpdateRuntimeContext();
         var (background, border, foreground) = _viewModel.AuthenticationState switch {
             NativeAuthenticationState.SignedIn => (NativeControlBrushes.SuccessSoft, NativeControlBrushes.SuccessBorder, NativeControlBrushes.Success),
             NativeAuthenticationState.Checking => (NativeControlBrushes.AccentSoft, NativeControlBrushes.InfoBorder, NativeControlBrushes.Accent),
@@ -244,6 +247,18 @@ internal sealed partial class NativeChatWindow {
         _runtimeStatusChip.Background = needsSignIn ? NativeControlBrushes.WarningSoft : NativeControlBrushes.SurfaceMuted;
         _runtimeStatusChip.BorderBrush = needsSignIn ? NativeControlBrushes.WarningBorder : NativeControlBrushes.Border;
         _runtimeStatusText.Foreground = needsSignIn ? NativeControlBrushes.WarningText : NativeControlBrushes.TextSecondary;
+    }
+
+    private void UpdateRuntimeContext() {
+        if (_runtimeContextText is null) {
+            return;
+        }
+        _runtimeContextText.Text = NativeRuntimeContextFormatter.Format(
+            _runtime.SessionPolicy?.RuntimeIdentity,
+            _conversationStore.ActiveProfileName,
+            _viewModel.AuthenticatedAccountId,
+            _viewModel.AuthenticationState == NativeAuthenticationState.SignedIn);
+        ToolTipService.SetToolTip(_runtimeContextText, _runtimeContextText.Text);
     }
 
 }

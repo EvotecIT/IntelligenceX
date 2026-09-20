@@ -15,7 +15,7 @@ namespace IntelligenceX.Chat.App.Native;
 /// <summary>
 /// Native chat view model with no WebView or HTML dependency.
 /// </summary>
-internal sealed class NativeChatViewModel : INotifyPropertyChanged {
+internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
     private static readonly TimeSpan SignInCheckTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan InteractiveSignInTimeout = TimeSpan.FromSeconds(190);
 
@@ -131,6 +131,9 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             }
 
             _authenticationState = value;
+            if (value != NativeAuthenticationState.SignedIn) {
+                AuthenticatedAccountId = null;
+            }
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanSend));
             OnPropertyChanged(nameof(CanStartSignIn));
@@ -805,6 +808,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                     ? "Signed in"
                     : "Signed in: " + result.AccountId!.Trim();
                 AuthenticationState = NativeAuthenticationState.SignedIn;
+                AuthenticatedAccountId = result.AccountId;
                 StatusText = ResolveReadyStatus();
                 return;
             }

@@ -1,4 +1,6 @@
 using System.Windows.Controls;
+using System.Windows;
+using IntelligenceX.Tray.ViewModels;
 
 namespace IntelligenceX.Tray.Views;
 
@@ -9,5 +11,12 @@ namespace IntelligenceX.Tray.Views;
 public partial class AccountLimitsSummaryControl : UserControl {
     public AccountLimitsSummaryControl() {
         InitializeComponent();
+    }
+
+    private void ManageResets_Click(object sender, RoutedEventArgs e) {
+        if (sender is FrameworkElement { DataContext: ProviderLimitAccountViewModel { Snapshot: { } snapshot } account }
+            && account.CanManageResets) {
+            new BankedResetsWindow(account.ProviderId, snapshot) { Owner = Window.GetWindow(this) }.ShowDialog();
+        }
     }
 }

@@ -128,6 +128,10 @@
                                                Visibility="{Binding HasDetailText, Converter={StaticResource VisibleWhenTrue}}" />
                                 </StackPanel>
                             </Expander>
+                            <Button Content="Banked resets" Style="{DynamicResource RefreshButtonStyle}" HorizontalAlignment="Right" Padding="10,5" Margin="0,4,0,0"
+                                    Click="ManageResets_Click"
+                                    ToolTip="View or record reset credits for this account. This does not redeem a reset."
+                                    Visibility="{Binding CanManageResets, Converter={StaticResource VisibleWhenTrue}}" />
                         </StackPanel>
                     </Border>
                 </DataTemplate>

@@ -157,6 +157,14 @@ internal static partial class Program {
             TestProviderLimitForecastingDescribesAccountRunway);
         failed += Run("Provider limit forecasting keeps unavailable accounts visible",
             TestProviderLimitForecastingKeepsUnavailableAccountsVisible);
+        failed += Run("Provider limit advisory requires capacity evidence",
+            TestProviderLimitAdvisoryRequiresCapacityEvidence);
+        failed += Run("Banked reset planner preserves evidence and account scope",
+            TestBankedResetPlannerPreservesEvidenceAndAccountScope);
+        failed += Run("Banked reset planner does not infer window activation",
+            TestBankedResetPlannerDoesNotInferWindowActivation);
+        failed += Run("Banked reset inventory round trips and preserves invalid data",
+            TestBankedResetInventoryRoundTripAndCorruptionSafety);
         failed += Run("Provider limit forecasting uses watch closely for pace risk",
             TestProviderLimitForecastingUsesWatchCloselyForPaceRisk);
         failed += Run("Provider limit forecasting keeps early weekly pace as tight",
