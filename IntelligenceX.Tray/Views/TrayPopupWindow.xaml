@@ -114,7 +114,7 @@
                                            VerticalAlignment="Center" />
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource AppFont}"
+                                <TextBlock x:Name="AppTitleText" FontFamily="{StaticResource AppFont}"
                                            FontSize="19" FontWeight="SemiBold"
                                            Foreground="{StaticResource PrimaryTextBrush}"
                                            Text="IX Tray"

@@ -58,7 +58,7 @@ internal sealed partial class NativeChatWindow : Window {
     private long _transcriptScrollRecoveryVersion;
 
     public NativeChatWindow() {
-        Title = "IX Chat";
+        Title = IntelligenceX.Desktop.DesktopBuildIdentity.DisplayName("IX Chat");
         var profileName = ChatServiceLaunchProfileMapper.NormalizeProfileName(
             Environment.GetEnvironmentVariable("IXCHAT_PROFILE"));
         _conversationStore = new NativeConversationStateStore(profileName: profileName);

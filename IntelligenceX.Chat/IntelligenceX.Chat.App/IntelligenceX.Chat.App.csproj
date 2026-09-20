@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <AssemblyMetadata Include="IntelligenceXPreviewLabel" Value="$(IntelligenceXPreviewLabel)" Condition="'$(IntelligenceXPreviewLabel)' != ''" />
+  </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

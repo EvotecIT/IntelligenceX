@@ -32,6 +32,8 @@ public partial class TrayPopupWindow : Window {
 
     public TrayPopupWindow() {
         InitializeComponent();
+        Title = IntelligenceX.Desktop.DesktopBuildIdentity.DisplayName("IX Tray");
+        AppTitleText.Text = Title;
         ApplyAdaptiveSizing();
     }
 
