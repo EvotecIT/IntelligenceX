@@ -13,7 +13,7 @@ namespace IntelligenceX.Tests;
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
     private static void TestProviderLimitsSynchronizeOnlyMatchingCodexCredentials() {
-        foreach (var scenario in new[] { "matching", "different-account", "newer-login" }) {
+        foreach (var scenario in new[] { "matching", "different-account", "newer-login", "export-disabled" }) {
             var directory = Path.Combine(Path.GetTempPath(), "ix-limit-sync-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             try {
@@ -39,7 +39,8 @@ internal static partial class Program {
                     }).GetAwaiter().GetResult();
                 }
                 var options = new OpenAINativeOptions {
-                    AuthStore = store, AuthAccountId = "shared", CodexHome = directory, ChatGptApiBaseUrl = server.BaseUri.ToString()
+                    AuthStore = store, AuthAccountId = "shared", CodexHome = directory, ChatGptApiBaseUrl = server.BaseUri.ToString(),
+                    PersistCodexAuthJson = scenario != "export-disabled"
                 };
                 options.OAuth.TokenUrl = new Uri(server.BaseUri, "/token").ToString();
                 var result = ProviderLimitSnapshotService.FetchCodexAsync("codex", options, CancellationToken.None).GetAwaiter().GetResult();
@@ -68,7 +69,7 @@ internal static partial class Program {
                     Interlocked.Increment(ref refreshRequests);
                     return new HttpResponse("{\"access_token\":\"renewed\",\"refresh_token\":\"rotated\",\"expires_in\":3600}");
                 }
-                var account = request.Headers["ChatGPT-Account-Id"];
+                var account = request.Headers.TryGetValue("ChatGPT-Account-Id", out var requestedAccount) ? requestedAccount : "legacy";
                 usageRequests.Add(account);
                 if (account == "current") {
                     return new HttpResponse("private-response-body", StatusCode: 401, StatusText: "Unauthorized");
@@ -114,6 +115,13 @@ internal static partial class Program {
             AssertEqual(1, refreshRequests, "expired account refreshed through OAuth");
             AssertEqual("rotated", store.GetAsync("openai-codex", "renew").GetAwaiter().GetResult()!.RefreshToken, "rotated token saved in IX store");
             AssertEqual("unchanged-active-codex-login", File.ReadAllText(codexPath), "background refresh does not switch Codex login");
+            store.SaveAsync(new AuthBundle("openai-codex", "opaque-legacy", "legacy-refresh", DateTimeOffset.UtcNow.AddMinutes(30)))
+                .GetAwaiter().GetResult();
+            options.AuthAccountId = "legacy";
+            var identified = ProviderLimitSnapshotService.FetchCodexAsync("codex", options, CancellationToken.None).GetAwaiter().GetResult();
+            AssertEqual("legacy", identified.Accounts.Single(account => account.IsSelected).AccountId,
+                "usage-reported identity establishes current legacy account");
+            AssertEqual("legacy", identified.AccountLabel, "top-level reading uses the identified current account");
         } finally {
             Directory.Delete(directory, recursive: true);
         }

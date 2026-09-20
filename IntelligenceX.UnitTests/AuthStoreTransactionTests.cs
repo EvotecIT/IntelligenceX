@@ -19,7 +19,7 @@ public sealed class AuthStoreTransactionTests : IDisposable {
     }
 
     [Fact]
-    public async Task RefreshHoldsTransactionAndReusesRotatedCredentials() {
+    public async Task RefreshSerializesOneAccountWithoutBlockingTheStore() {
         var original = Bundle("account");
         await Store().SaveAsync(original);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -31,14 +31,14 @@ public sealed class AuthStoreTransactionTests : IDisposable {
         }, CancellationToken.None);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         try {
-            // An independent OS handle cannot acquire the transaction while OAuth is running.
-            Assert.Throws<IOException>(() => {
-                using var competingLock = new FileStream(StorePath + ".lock", FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            });
+            await Store().SaveAsync(Bundle("other")).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(2, (await Store().ListAsync("openai-codex")).Count);
+            await Store().RefreshAsync(Bundle("other"), (_, _) => Task.FromResult(Bundle("other", "other-rotated")),
+                CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
             using var canceled = new CancellationTokenSource();
-            var waitingSave = Store().SaveAsync(Bundle("other"), canceled.Token);
+            var waitingRefresh = Store().RefreshAsync(original, (_, _) => throw new InvalidOperationException("Concurrent refresh"), canceled.Token);
             canceled.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waitingSave);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waitingRefresh);
         } finally {
             release.TrySetResult();
         }
@@ -47,6 +47,29 @@ public sealed class AuthStoreTransactionTests : IDisposable {
         Assert.Equal("rotated", reused.RefreshToken);
         await Store().SaveAsync(Bundle("other"));
         Assert.Equal(2, (await Store().ListAsync("openai-codex")).Count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LoginOrDeletionDuringRefreshWinsAtCommit(bool delete) {
+        var original = Bundle("account");
+        await Store().SaveAsync(original);
+        var pending = Store().RefreshAsync(original, async (current, _) => {
+            // Match the real OAuth path, which mutates its input bundle.
+            current.AccessToken = "rotated";
+            current.RefreshToken = "rotated";
+            if (delete) Store().Delete();
+            else await Store().SaveAsync(Bundle("account", "new-login"));
+            return current;
+        }, CancellationToken.None);
+        if (delete) {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => pending);
+            Assert.False(File.Exists(StorePath));
+        } else {
+            Assert.Equal("new-login", (await pending).RefreshToken);
+            Assert.Equal("new-login", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+        }
     }
 
     [Fact]

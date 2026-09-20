@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Auth;
@@ -133,13 +134,15 @@ public static class CodexAuthStore {
             Directory.CreateDirectory(dir);
         }
         var content = BuildAuthJson(bundle, lastRefresh, openAiApiKey);
+        using var transaction = AuthFileTransaction.AcquireAsync(path + ".lock", CancellationToken.None).GetAwaiter().GetResult();
         File.WriteAllText(path, content);
     }
 
     /// <summary>
     /// Keeps a shared, rotated login in sync without creating a Codex login, switching accounts,
     /// or overwriting credentials changed since refresh started. Holds an exclusive handle
-    /// across comparison and update so another file writer cannot interleave those operations.
+    /// across comparison and update; IX login exports use the same sidecar transaction.
+    /// Other applications need not honor this sidecar, so this is not a cross-application transaction.
     /// </summary>
     internal static void UpdateMatchingAuthJson(AuthBundle bundle, string? previousAccountId,
         string? previousRefreshToken, string? codexHome) {
@@ -148,6 +151,7 @@ public static class CodexAuthStore {
             return;
         }
         var path = ResolveAuthPath(codexHome);
+        using var transaction = AuthFileTransaction.AcquireAsync(path + ".lock", CancellationToken.None).GetAwaiter().GetResult();
         if (!File.Exists(path)) {
             return;
         }

@@ -30,12 +30,13 @@ public partial class BankedResetsWindow : Window {
     private async void Add_Click(object sender, RoutedEventArgs e) {
         if (string.IsNullOrWhiteSpace(_account.AccountId)) return;
         if (!Enum.TryParse<ResetCreditScope>((ScopePicker.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out var scope)) return;
-        DateTimeOffset? expiry = ExpiryPicker.SelectedDate is { } date
-            ? new DateTimeOffset(DateTime.SpecifyKind(date.Date.AddDays(1), DateTimeKind.Local)).AddTicks(-1)
-            : null;
-        var credit = new BankedResetCredit(Guid.NewGuid().ToString("N"), _providerId, _account.AccountId,
-            scope, ResetCreditEvidence.Manual, DateTimeOffset.UtcNow, expiry);
-        await RunAsync(() => _store.Save(credit));
+        var date = ExpiryPicker.SelectedDate;
+        await RunAsync(() => {
+            DateTimeOffset? expiry = date.HasValue ? BankedResetExpiry.ResolveLocalDateEnd(date.Value, TimeZoneInfo.Local) : null;
+            var credit = new BankedResetCredit(Guid.NewGuid().ToString("N"), _providerId, _account.AccountId,
+                scope, ResetCreditEvidence.Manual, DateTimeOffset.UtcNow, expiry);
+            _store.Save(credit);
+        });
     }
 
     private async void RecordUsed_Click(object sender, RoutedEventArgs e) {

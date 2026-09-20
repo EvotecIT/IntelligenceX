@@ -22,7 +22,6 @@ public sealed partial class ProviderLimitSnapshotService {
         string requestedProviderId,
         OpenAINativeOptions options,
         CancellationToken cancellationToken) {
-        options.PersistCodexAuthJson = true;
         options.PreserveCodexLoginOnRefresh = true;
         var bundles = await ListOpenAiBundlesAsync(options.AuthStore, cancellationToken).ConfigureAwait(false);
         if (bundles.Count == 0) {
@@ -34,8 +33,7 @@ public sealed partial class ProviderLimitSnapshotService {
         var accounts = new List<ProviderLimitAccountSnapshot>();
         var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         using var usageService = new ChatGptUsageService(options);
-        // Keep refreshes sequential: the file auth store writes the whole collection when a
-        // token is renewed. Prefer the newest saved credential when provider aliases overlap.
+        // Bound request concurrency and prefer the newest saved credential when provider aliases overlap.
         foreach (var bundle in bundles.OrderByDescending(static value => value.ExpiresAt ?? DateTimeOffset.MinValue)) {
             cancellationToken.ThrowIfCancellationRequested();
             var accountId = NormalizeOptional(bundle.AccountId) ?? NormalizeOptional(JwtDecoder.TryGetAccountId(bundle.AccessToken));
@@ -57,9 +55,12 @@ public sealed partial class ProviderLimitSnapshotService {
                     throw new InvalidOperationException("Usage response account did not match the requested account.");
                 }
 
+                var resolvedAccountId = returnedAccountId ?? accountId;
+                isSelected = resolvedAccountId is not null
+                    && string.Equals(resolvedAccountId, options.AuthAccountId, StringComparison.OrdinalIgnoreCase);
                 var presentation = BuildOpenAiLimitPresentation(snapshot);
                 accounts.Add(new ProviderLimitAccountSnapshot(
-                    returnedAccountId ?? accountId,
+                    resolvedAccountId,
                     NormalizeOptional(snapshot.Email) ?? email ?? returnedAccountId ?? accountId,
                     presentation.PlanLabel, presentation.Windows, presentation.Summary, presentation.DetailMessage,
                     DateTimeOffset.UtcNow, isSelected));
