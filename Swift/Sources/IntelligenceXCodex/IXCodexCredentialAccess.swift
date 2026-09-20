@@ -292,18 +292,13 @@ actor IXCodexCredentialAccess {
         _ = try await operation.value
     }
 
-    /// Releases rollback history once a credential write has become the
-    /// caller-visible settled value. Older overlapping writes cannot overwrite
-    /// it because all store operations remain serialized by the same tail.
-    func finalize(_ authorizationID: UUID) async {
-        let previous = tail
-        let writeLedger = writeLedger
-        let operation = Task {
-            await previous.value
-            writeLedger.finalize(authorizationID)
+    /// Settles a completed write synchronously with the caller's generation
+    /// check. The ledger and authorization locks also serialize cancellation;
+    /// a revoked write retains its rollback history instead of becoming final.
+    nonisolated func finalize(_ authorization: IXCodexCredentialWriteAuthorization) -> Bool {
+        authorization.commitIfValid {
+            writeLedger.finalize(authorization.id)
         }
-        tail = operation
-        await operation.value
     }
 
     func delete() async throws {

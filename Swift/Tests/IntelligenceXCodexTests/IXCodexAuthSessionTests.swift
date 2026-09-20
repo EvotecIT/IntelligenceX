@@ -390,7 +390,7 @@ final class IXCodexAuthSessionTests: XCTestCase {
             authorizedBy: authorization
         )
         XCTAssertTrue(committed)
-        await access.finalize(authorization.id)
+        XCTAssertTrue(access.finalize(authorization))
         try await access.revoke([authorization.id])
 
         let persisted = await store.load()

@@ -163,3 +163,77 @@ private actor AuthorizationRequestCounter {
     await #expect(throws: CancellationError.self) { try await refresh.value }
     #expect(await store.load() == original)
 }
+
+@Test func unsupportedModelFallbackCannotReplayConversationAfterAccountSwitch() async throws {
+    let store = IXMemoryCodexCredentialStore(bundle: .init(accessToken: "old", refreshToken: "r", accountID: "old-account"))
+    let catalog = SuspendedHTTPResponse(response: .json(200, ["models": [["id": "fallback"]]]))
+    let requests = AuthorizationRequestCounter()
+    var configuration = IXCodexConfiguration()
+    configuration.modelURLs = [URL(string: "https://example.test/models")!]
+    configuration.fallbackModels = ["fallback"]
+    let http = IXClosureHTTPClient { request in
+        if request.url?.path == "/models" { return try await catalog.send(request) }
+        await requests.record()
+        return .json(400, ["message": "model is not supported for this ChatGPT account"])
+    }
+    let auth = IXCodexAuthSession(configuration: configuration, credentialStore: store, httpClient: http)
+    let client = IXCodexClient(configuration: configuration, authSession: auth, httpClient: http)
+    let turn = Task {
+        try await client.response(input: [.string("private old conversation")], sessionID: "old-session",
+            instructions: "Private instructions", tools: [], model: nil, reasoningEffort: nil,
+            webSearch: nil, imageGeneration: nil)
+    }
+    await catalog.waitUntilRequested()
+    try await auth.signOut()
+    await store.save(.init(accessToken: "new", refreshToken: "new-r", accountID: "new-account"))
+    await catalog.release()
+    await #expect(throws: CancellationError.self) { try await turn.value }
+    #expect(await requests.count == 1)
+}
+
+@Test func revokedWriteCannotFinalizeAndRetainsItsRollback() async throws {
+    let original = IXCodexAuthBundle(accessToken: "original", refreshToken: "r")
+    let fresh = IXCodexAuthBundle(accessToken: "fresh", refreshToken: "r")
+    let store = IXMemoryCodexCredentialStore(bundle: original)
+    let access = IXCodexCredentialAccess(store: store)
+    let authorization = IXCodexCredentialWriteAuthorization()
+    #expect(try await access.save(fresh, authorizedBy: authorization))
+    authorization.invalidate()
+    #expect(!access.finalize(authorization))
+    try await access.revoke([authorization.id])
+    #expect(await store.load() == original)
+}
+
+@Test(arguments: [false, true]) func authorizationBeginningDuringRollbackCannotAdoptANewerGeneration(device: Bool) async throws {
+    let original = IXCodexAuthBundle(accessToken: "original", refreshToken: "r", accountID: "account")
+    let store = SuspendedCredentialStore(bundle: original, suspendSaveOnce: true)
+    let requests = AuthorizationRequestCounter()
+    let auth = IXCodexAuthSession(credentialStore: store, httpClient: IXClosureHTTPClient { _ in
+        await requests.record()
+        return .json(200, ["access_token": "fresh", "refresh_token": "fresh-r"])
+    })
+    let redirect = URL(string: "http://localhost:1455/auth/callback")!
+    let initial = try await auth.beginBrowserAuthorization(redirectURL: redirect)
+    let lease = try await auth.requestAuthorization()
+    let completion = Task {
+        try await auth.completeBrowserAuthorization(initial,
+            callbackURL: URL(string: "\(redirect)?code=test&state=\(initial.state)")!)
+    }
+    await store.waitUntilSaveStarted()
+    let supersededBegin = Task {
+        if device { _ = try await auth.beginDeviceAuthorization() }
+        else { _ = try await auth.beginBrowserAuthorization(redirectURL: redirect) }
+    }
+    // Observe the actual generation transition, without timing assumptions.
+    while true {
+        do { try await auth.validateRequestGeneration(lease) }
+        catch is CancellationError { break }
+        await Task.yield()
+    }
+    _ = try await auth.beginBrowserAuthorization(redirectURL: redirect)
+    await store.releaseSave()
+    await #expect(throws: CancellationError.self) { try await completion.value }
+    await #expect(throws: CancellationError.self) { try await supersededBegin.value }
+    #expect(await requests.count == 1)
+    #expect(await store.currentBundle() == original)
+}

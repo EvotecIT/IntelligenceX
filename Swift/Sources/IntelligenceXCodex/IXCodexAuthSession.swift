@@ -99,8 +99,9 @@ public actor IXCodexAuthSession {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
-        try await revokeCredentialWrites()
         let expectedGeneration = authGeneration
+        try await revokeCredentialWrites()
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         let verifier = IXCodexPKCE.verifier(randomBytes: randomBytes(32))
         let state = IXCodexPKCE.state(randomBytes: randomBytes(32))
         var components = URLComponents(
@@ -176,8 +177,9 @@ public actor IXCodexAuthSession {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
-        try await revokeCredentialWrites()
         let expectedGeneration = authGeneration
+        try await revokeCredentialWrites()
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         var request = URLRequest(url: configuration.deviceAuthorizationURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -567,37 +569,31 @@ public actor IXCodexAuthSession {
             credentialWriteAuthorizations.removeValue(forKey: authorization.id)
             credentialMutationDepth -= 1
         }
-        let committed: Bool
-        do {
-            committed = try await withTaskCancellationHandler {
-                try await credentialAccess.save(
+        return try await withTaskCancellationHandler {
+            do {
+                let committed = try await credentialAccess.save(
                     bundle,
                     authorizedBy: authorization,
                     replacing: expectedWriteSnapshot
                 )
-            } onCancel: {
-                authorization.invalidate()
-            }
-        } catch {
-            try validateAuthorization(expectedGeneration: expectedGeneration)
-            throw error
-        }
-        guard committed,
-              authGeneration == expectedGeneration,
-              !Task.isCancelled else {
-            authorization.invalidate()
-            do {
-                try await credentialAccess.revoke([authorization.id])
+                guard committed,
+                      authGeneration == expectedGeneration,
+                      !Task.isCancelled,
+                      credentialAccess.finalize(authorization) else {
+                    authorization.invalidate()
+                    try await credentialAccess.revoke([authorization.id])
+                    throw CancellationError()
+                }
+                // Finalization and returning the settled value cannot suspend:
+                // a newer sign-in must not revoke a write between these steps.
+                return bundle
             } catch {
-                try validateAuthorization(
-                    expectedGeneration: expectedGeneration
-                )
+                try validateAuthorization(expectedGeneration: expectedGeneration)
                 throw error
             }
-            throw CancellationError()
+        } onCancel: {
+            authorization.invalidate()
         }
-        await credentialAccess.finalize(authorization.id)
-        return bundle
     }
 
     private func invalidateCredentialWrites() {

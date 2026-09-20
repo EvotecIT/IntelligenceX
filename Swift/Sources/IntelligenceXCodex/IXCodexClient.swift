@@ -242,6 +242,7 @@ public actor IXCodexClient {
         retryUnauthorized: Bool = true
     ) async throws -> IXCodexTurn {
         try IXCodexToolSchemaValidator.validate(tools)
+        let authorization = try await requestBundle(nil)
         let requestedModel = model ?? configuration.defaultModel
         do {
             return try await sendResponse(
@@ -255,11 +256,12 @@ public actor IXCodexClient {
                 webSearch: webSearch,
                 imageGeneration: imageGeneration,
                 onTextDelta: onTextDelta,
-                retryUnauthorized: retryUnauthorized
+                retryUnauthorized: retryUnauthorized,
+                recoveredBundle: authorization
             )
         } catch let error as IXCodexError where
             model == nil && isUnsupportedModel(error) {
-            for fallback in await fallbackModels(excluding: requestedModel) {
+            for fallback in try await fallbackModels(excluding: requestedModel, authorization: authorization) {
                 do {
                     return try await sendResponse(
                         input: input,
@@ -272,7 +274,8 @@ public actor IXCodexClient {
                         webSearch: webSearch,
                         imageGeneration: imageGeneration,
                         onTextDelta: onTextDelta,
-                        retryUnauthorized: retryUnauthorized
+                        retryUnauthorized: retryUnauthorized,
+                        recoveredBundle: authorization
                     )
                 } catch let retryError as IXCodexError where isUnsupportedModel(retryError) {
                     continue
@@ -366,6 +369,8 @@ public actor IXCodexClient {
         }
         var lastError: IXCodexError?
         for format in formats {
+            try await authSession.validateRequestGeneration(authorization)
+            try Task.checkCancellation()
             let body = buildRequestBody(
                 input: input,
                 sessionID: sessionID,
@@ -492,7 +497,10 @@ public actor IXCodexClient {
         await handler(delta)
     }
 
-    private func fallbackModels(excluding currentModel: String) async -> [String] {
+    private func fallbackModels(
+        excluding currentModel: String,
+        authorization: IXCodexAuthSession.RequestAuthorization
+    ) async throws -> [String] {
         var result: [String] = []
         var seen = Set([currentModel.lowercased()])
         func append(_ value: String) {
@@ -501,8 +509,15 @@ public actor IXCodexClient {
             result.append(trimmed)
         }
         configuration.fallbackModels.forEach(append)
-        if let discovered = try? await models() {
+        do {
+            let discovered = try await models(retryUnauthorized: true, recoveredBundle: authorization)
             discovered.map(\.id).forEach(append)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // An unavailable catalog can use configured fallbacks only while
+            // the original conversation still belongs to this authorization.
+            try await authSession.validateRequestGeneration(authorization)
         }
         return result
     }
