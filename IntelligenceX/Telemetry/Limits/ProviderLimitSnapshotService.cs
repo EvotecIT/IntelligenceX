@@ -156,7 +156,7 @@ public sealed partial class ProviderLimitSnapshotService {
             accountSnapshots);
     }
 
-    private static void AddOpenAiStatusWindows(
+    internal static void AddOpenAiStatusWindows(
         ICollection<ProviderLimitWindow> windows,
         string keyPrefix,
         string scopeLabel,
@@ -169,12 +169,12 @@ public sealed partial class ProviderLimitSnapshotService {
             windows,
             keyPrefix + "-primary",
             status.PrimaryWindow,
-            ComposeOpenAiWindowLabel(scopeLabel, DescribeOpenAiWindow(status.PrimaryWindow?.LimitWindowSeconds, "5-hour")));
+            ComposeOpenAiWindowLabel(scopeLabel, DescribeOpenAiWindow(status.PrimaryWindow?.LimitWindowSeconds, "Primary window")));
         AddOpenAiWindow(
             windows,
             keyPrefix + "-secondary",
             status.SecondaryWindow,
-            ComposeOpenAiWindowLabel(scopeLabel, DescribeOpenAiWindow(status.SecondaryWindow?.LimitWindowSeconds, "Weekly")));
+            ComposeOpenAiWindowLabel(scopeLabel, DescribeOpenAiWindow(status.SecondaryWindow?.LimitWindowSeconds, "Secondary window")));
     }
 
     private static void AddOpenAiAdditionalRateLimitWindows(
@@ -376,19 +376,19 @@ public sealed partial class ProviderLimitSnapshotService {
         }
 
         var seconds = limitWindowSeconds.Value;
-        if (seconds >= 6 * 24 * 60 * 60) {
+        if (seconds == 7 * 24 * 60 * 60) {
             return "weekly";
         }
-        if (seconds >= 4 * 60 * 60 && seconds <= 6 * 60 * 60) {
-            return "5-hour";
+        if (seconds % (24 * 60 * 60) == 0) {
+            return (seconds / 86400L).ToString(CultureInfo.InvariantCulture) + "-day";
         }
-        if (seconds >= 60 * 60) {
+        if (seconds % (60 * 60) == 0) {
             return (seconds / 3600L).ToString(CultureInfo.InvariantCulture) + "-hour";
         }
-        if (seconds >= 60) {
+        if (seconds % 60 == 0) {
             return (seconds / 60L).ToString(CultureInfo.InvariantCulture) + "-minute";
         }
-        return fallbackLabel;
+        return seconds.ToString(CultureInfo.InvariantCulture) + "-second";
     }
 
     private static string ComposeOpenAiWindowLabel(string scopeLabel, string windowLabel) {
