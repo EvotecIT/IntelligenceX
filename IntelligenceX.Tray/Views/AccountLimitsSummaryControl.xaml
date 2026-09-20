@@ -98,7 +98,7 @@
                             </Grid>
                             <Border Background="{DynamicResource PulseWarningPanelBrush}" CornerRadius="6" Padding="10,7" Margin="0,12,0,0"
                                     Visibility="{Binding HasWindows, Converter={StaticResource VisibleWhenFalse}}">
-                                <TextBlock Text="Live limits unavailable" FontSize="12" Foreground="{DynamicResource WarningBrush}" />
+                                <TextBlock Text="Live limits unavailable" FontSize="12" Foreground="{DynamicResource PrimaryTextBrush}" />
                             </Border>
                             <ItemsControl ItemsSource="{Binding Windows}" Margin="0,4,0,0">
                                 <ItemsControl.ItemTemplate>
@@ -111,7 +111,7 @@
                                                     <TextBlock Text="{Binding CompactLabel}" FontSize="12" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource SecondaryTextBrush}" />
                                                     <TextBlock Text="{Binding ResetText}" FontSize="11" TextWrapping="Wrap"
-                                                               Foreground="{DynamicResource TertiaryTextBrush}" />
+                                                               Foreground="{DynamicResource SecondaryTextBrush}" />
                                                 </StackPanel>
                                             </DockPanel>
                                             <ProgressBar Style="{StaticResource CapacityBar}" Minimum="0" Maximum="100" Value="{Binding RemainingPercent, Mode=OneWay}"
