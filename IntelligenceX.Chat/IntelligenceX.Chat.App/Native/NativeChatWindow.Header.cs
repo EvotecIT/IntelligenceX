@@ -87,6 +87,11 @@ internal sealed partial class NativeChatWindow {
         settingsButton.Click += async (_, _) => await OpenSharedSettingsWorkspaceAsync().ConfigureAwait(true);
         rightStack.Children.Add(settingsButton);
 
+        var trayButton = new Button { Content = "Tray", MinHeight = 30 };
+        ToolTipService.SetToolTip(trayButton, "Open IX Tray for account capacity and banked resets. This does not switch the chat account.");
+        trayButton.Click += (_, _) => OpenTray();
+        rightStack.Children.Add(trayButton);
+
         _signInText = new TextBlock {
             Text = _viewModel.SignInText,
             FontSize = 12,

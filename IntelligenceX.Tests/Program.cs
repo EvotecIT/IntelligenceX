@@ -3,6 +3,7 @@ namespace IntelligenceX.Tests;
 internal static partial class Program {
     private static int Main() {
         var failed = 0;
+        failed += Run("Desktop companion resolves only paired bundle", TestDesktopCompanionResolvesOnlyPairedBundle);
         failed += Run("Parse basic object", TestParseBasicObject);
         failed += Run("Serialize roundtrip", TestSerializeRoundtrip);
         failed += Run("Escape handling", TestEscapeHandling);

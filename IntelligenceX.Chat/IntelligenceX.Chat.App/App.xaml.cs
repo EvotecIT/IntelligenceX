@@ -40,10 +40,17 @@ public sealed class App : Application, IXamlMetadataProvider {
         StartupLog.Write("App.OnLaunched enter");
         EnsureXamlResources();
         _window = CreateLaunchWindow(ChatAppLaunchModeResolver.Resolve(Environment.GetEnvironmentVariable));
+        ChatAppActivation.OpenRequested += OnOpenRequested;
+        _window.Closed += (_, _) => ChatAppActivation.OpenRequested -= OnOpenRequested;
 
         _window.Activate();
         StartupLog.Write("Window activated");
         WindowForegroundActivator.EnsureWindowForeground(_window);
+    }
+
+    private void OnOpenRequested() {
+        var window = _window;
+        window?.DispatcherQueue.TryEnqueue(() => WindowForegroundActivator.EnsureWindowForeground(window));
     }
 
     private static Window CreateLaunchWindow(ChatAppLaunchMode launchMode) =>

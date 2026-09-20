@@ -9,8 +9,18 @@ namespace IntelligenceX.Tray.Views;
 /// Inspection never changes the account used by a chat or provider session.
 /// </summary>
 public partial class AccountLimitsSummaryControl : UserControl {
+    private readonly System.Windows.Threading.DispatcherTimer _readingAgeTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+
     public AccountLimitsSummaryControl() {
         InitializeComponent();
+        _readingAgeTimer.Tick += (_, _) => RefreshReadingAge();
+        Loaded += (_, _) => { RefreshReadingAge(); _readingAgeTimer.Start(); };
+        Unloaded += (_, _) => _readingAgeTimer.Stop();
+        IsVisibleChanged += (_, _) => RefreshReadingAge();
+    }
+
+    private void RefreshReadingAge() {
+        if (IsVisible && DataContext is ProviderViewModel provider) provider.RefreshLimitReadingAge();
     }
 
     private void ManageResets_Click(object sender, RoutedEventArgs e) {

@@ -77,7 +77,7 @@ internal static class ProviderFilterDefaults {
 /// <summary>
 /// Holds aggregated usage data for a single provider or the combined "All" view.
 /// </summary>
-public sealed class ProviderViewModel : ViewModelBase {
+public sealed partial class ProviderViewModel : ViewModelBase {
     private string _providerId = string.Empty;
     private string _displayName = string.Empty;
     private string _shortName = string.Empty;
@@ -1323,6 +1323,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     public void ApplyLimitSnapshot(ProviderLimitSnapshot? snapshot) {
+        _latestLimitSnapshot = snapshot;
         LimitWindows.Clear();
         LimitAccounts.Clear();
         if (snapshot is null) {

@@ -146,12 +146,20 @@ public static class ProviderLimitForecasting {
 
     public static IReadOnlyList<ProviderLimitAccountAdvisory> BuildAccountAdvisories(
         ProviderLimitSnapshot? snapshot,
-        DateTimeOffset? nowUtc = null) {
+        DateTimeOffset? nowUtc = null) => BuildAccountAdvisories(snapshot, nowUtc, TimeSpan.FromMinutes(10));
+
+    /// <summary>Builds account advice using an explicit freshness policy, without treating cached capacity as current.</summary>
+    public static IReadOnlyList<ProviderLimitAccountAdvisory> BuildAccountAdvisories(
+        ProviderLimitSnapshot? snapshot,
+        DateTimeOffset? nowUtc,
+        TimeSpan maximumReadingAge) {
         if (snapshot is null) {
             return Array.Empty<ProviderLimitAccountAdvisory>();
         }
 
-        var effectiveNow = nowUtc ?? snapshot.RetrievedAtUtc;
+        var effectiveNow = nowUtc ?? DateTimeOffset.UtcNow;
+        var readingAge = maximumReadingAge;
+        if (readingAge <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maximumReadingAge));
         var accounts = snapshot.Accounts.Count > 0
             ? snapshot.Accounts
             : new[] {
@@ -167,7 +175,7 @@ public static class ProviderLimitForecasting {
             };
 
         var advisories = accounts
-            .Select(account => BuildAccountAdvisory(account, effectiveNow))
+            .Select(account => BuildAccountAdvisory(account, effectiveNow, readingAge))
             .Where(static advisory => advisory is not null)
             .Cast<ProviderLimitAccountAdvisory>()
             .OrderBy(static advisory => advisory.RiskScore)
@@ -205,7 +213,8 @@ public static class ProviderLimitForecasting {
 
     private static ProviderLimitAccountAdvisory? BuildAccountAdvisory(
         ProviderLimitAccountSnapshot account,
-        DateTimeOffset nowUtc) {
+        DateTimeOffset nowUtc,
+        TimeSpan maximumReadingAge) {
         if (account is null) {
             return null;
         }
@@ -227,6 +236,12 @@ public static class ProviderLimitForecasting {
         }
 
         ProviderLimitWindow? hottestWindow = null;
+        if (account.RetrievedAtUtc > nowUtc || nowUtc - account.RetrievedAtUtc > maximumReadingAge) {
+            return new ProviderLimitAccountAdvisory(
+                account.AccountId, displayLabel, account.PlanLabel, null,
+                "Stale", "Refresh account limits before choosing an account; this reading is not current.",
+                double.MaxValue, isRecommended: false, account.IsSelected);
+        }
         ProviderLimitWindowForecast? hottestForecast = null;
         var riskScore = double.MaxValue;
         var advisoryWindows = GetAdvisoryWindows(account.Windows);

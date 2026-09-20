@@ -96,6 +96,8 @@
                                     <TextBlock Text="{Binding BadgeText}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
                                 </Border>
                             </Grid>
+                            <TextBlock Text="{Binding ReadingText}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource SecondaryTextBrush}" />
                             <Border Background="{DynamicResource PulseWarningPanelBrush}" CornerRadius="6" Padding="10,7" Margin="0,12,0,0"
                                     Visibility="{Binding HasWindows, Converter={StaticResource VisibleWhenFalse}}">
                                 <TextBlock Text="Live limits unavailable" FontSize="12" Foreground="{DynamicResource PrimaryTextBrush}" />

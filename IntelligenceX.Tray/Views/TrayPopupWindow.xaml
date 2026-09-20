@@ -134,6 +134,9 @@
                         </Grid>
                     </Border>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Chat" Style="{StaticResource RefreshButtonStyle}"
+                                Click="OnOpenChat" ToolTip="Open IX Chat without changing accounts"
+                                AutomationProperties.Name="Open IX Chat" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding ToggleSelectedProviderFavoriteCommand}"
                                 IsEnabled="{Binding CanToggleFavoriteSelectedProvider}"

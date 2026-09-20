@@ -256,6 +256,10 @@ public partial class App : Application {
         if (itemStyle is not null) openItem.Style = itemStyle;
         openItem.Click += (_, _) => ShowPopup();
 
+        var chatItem = new System.Windows.Controls.MenuItem { Header = "Open IX Chat" };
+        if (itemStyle is not null) chatItem.Style = itemStyle;
+        chatItem.Click += (_, _) => CompanionActions.OpenChat();
+
         var refreshItem = new System.Windows.Controls.MenuItem { Header = "Refresh Now" };
         if (itemStyle is not null) refreshItem.Style = itemStyle;
         refreshItem.Click += async (_, _) => {
@@ -356,6 +360,7 @@ public partial class App : Application {
         quitItem.Click += (_, _) => ExitApplication();
 
         menu.Items.Add(openItem);
+        menu.Items.Add(chatItem);
         menu.Items.Add(refreshItem);
         menu.Items.Add(themeItem);
         menu.Items.Add(accentItem);

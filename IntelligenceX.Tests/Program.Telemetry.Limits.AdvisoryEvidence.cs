@@ -29,5 +29,14 @@ internal static partial class Program {
             AssertEqual(windows.Length == 0 ? "Unavailable" : "Refresh needed", result.StatusLabel,
                 "missing and passed-reset readings have explicit states");
         }
+
+        var staleAccount = new ProviderLimitAccountSnapshot("stale", "Stale account", null,
+            new[] { new ProviderLimitWindow("weekly", "Weekly", 0d, now.AddDays(2)) },
+            null, null, now.AddHours(-1), isSelected: true);
+        var staleSnapshot = new ProviderLimitSnapshot("codex", "Codex", "API", null, null,
+            staleAccount.Windows, null, null, now, new[] { staleAccount });
+        var staleAdvice = ProviderLimitForecasting.BuildAccountAdvisories(staleSnapshot, now).Single();
+        AssertEqual("Stale", staleAdvice.StatusLabel, "per-account freshness overrides provider refresh time");
+        AssertEqual(false, staleAdvice.IsRecommended, "stale capacity is not recommended");
     }
 }
