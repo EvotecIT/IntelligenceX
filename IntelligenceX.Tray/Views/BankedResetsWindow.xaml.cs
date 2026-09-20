@@ -10,6 +10,9 @@ public partial class BankedResetsWindow : Window {
     private readonly string _providerId;
     private readonly ProviderLimitAccountSnapshot _account;
     private readonly BankedResetInventoryStore _store;
+    private readonly System.Windows.Threading.DispatcherTimer _evidenceTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private IReadOnlyList<BankedResetCredit>? _credits;
+    private bool _isClosed;
 
     public BankedResetsWindow(string providerId, ProviderLimitAccountSnapshot account, BankedResetInventoryStore? store = null) {
         InitializeComponent();
@@ -17,7 +20,9 @@ public partial class BankedResetsWindow : Window {
         _account = account;
         _store = store ?? new BankedResetInventoryStore();
         AccountText.Text = account.AccountLabel ?? account.AccountId;
-        Loaded += async (_, _) => await RunAsync(null);
+        Loaded += async (_, _) => { await RunAsync(null); if (!_isClosed) _evidenceTimer.Start(); };
+        _evidenceTimer.Tick += (_, _) => { if (IsVisible && ContentPanel.IsEnabled) RenderEvidence(); };
+        Closed += (_, _) => { _isClosed = true; _evidenceTimer.Stop(); };
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RunAsync(null);
@@ -63,28 +68,37 @@ public partial class BankedResetsWindow : Window {
         ContentPanel.IsEnabled = false;
         StatusText.Text = "Reading inventory…";
         try {
-            var credits = await Task.Run(() => {
+            _credits = await Task.Run(() => {
                 update?.Invoke();
                 return _store.Load();
             });
-            var now = DateTimeOffset.UtcNow;
-            CreditList.ItemsSource = credits
-                .Where(c => string.Equals(c.ProviderId, _providerId, StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(c.AccountId, _account.AccountId, StringComparison.Ordinal))
-                .OrderBy(c => c.RecordedUsedAtUtc.HasValue)
-                .ThenBy(c => c.ExpiresAtUtc ?? DateTimeOffset.MaxValue)
-                .Select(c => new CreditRow(c, now)).ToArray();
-            AdviceText.Text = BankedResetPlanner.Build(_providerId, _account, credits, now, TimeSpan.FromMinutes(10)).Summary;
+            RenderEvidence();
             StatusText.Text = "Inventory loaded. Account limits are the reading from when this window opened.";
         } catch (Exception ex) when (ex is System.IO.IOException or System.IO.InvalidDataException or UnauthorizedAccessException
                                         or System.Text.Json.JsonException or ArgumentException or NotSupportedException) {
             // Avoid displaying local paths or raw serialized data from an invalid inventory.
             StatusText.Text = "Inventory could not be read or saved. It may be busy or invalid. Retry; existing data is not replaced with an empty inventory.";
             AdviceText.Text = "Reset inventory unavailable. Do not infer a zero balance.";
+            _credits = null;
             CreditList.ItemsSource = null;
         } finally {
             ContentPanel.IsEnabled = true;
         }
+    }
+
+    private void RenderEvidence() {
+        if (_credits is null) return;
+        var now = DateTimeOffset.UtcNow;
+        var selectedId = (CreditList.SelectedItem as CreditRow)?.Credit.Id;
+        var rows = _credits
+            .Where(c => string.Equals(c.ProviderId, _providerId, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(c.AccountId, _account.AccountId, StringComparison.Ordinal))
+            .OrderBy(c => c.RecordedUsedAtUtc.HasValue)
+            .ThenBy(c => c.ExpiresAtUtc ?? DateTimeOffset.MaxValue)
+            .Select(c => new CreditRow(c, now)).ToArray();
+        CreditList.ItemsSource = rows;
+        CreditList.SelectedItem = rows.FirstOrDefault(row => row.Credit.Id == selectedId);
+        AdviceText.Text = BankedResetPlanner.Build(_providerId, _account, _credits, now, TimeSpan.FromMinutes(10)).Summary;
     }
 
     private sealed class CreditRow {

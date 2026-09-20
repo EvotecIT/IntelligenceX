@@ -19,8 +19,10 @@ using System.ComponentModel;
 namespace IntelligenceX.Tray;
 
 public partial class App : Application {
-    private const string SingleInstanceMutexName = "Local\\IntelligenceX.Tray.SingleInstance";
-    private const string ShowPopupEventName = "Local\\IntelligenceX.Tray.ShowPopup";
+    private static readonly string InstanceIdentity = IntelligenceX.Desktop.DesktopAppInstanceIdentity.ForInstallation(
+        IntelligenceX.Desktop.DesktopCompanion.Tray, AppContext.BaseDirectory);
+    private static readonly string SingleInstanceMutexName = "Local\\" + InstanceIdentity + ".SingleInstance";
+    private static readonly string ShowPopupEventName = "Local\\" + InstanceIdentity + ".ShowPopup";
 
     private TaskbarIcon? _trayIcon;
     private TrayPopupWindow? _popupWindow;

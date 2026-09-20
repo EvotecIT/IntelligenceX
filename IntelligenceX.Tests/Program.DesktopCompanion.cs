@@ -19,6 +19,11 @@ internal static partial class Program {
             var unrelated = Path.Combine(root, "Unrelated");
             Directory.CreateDirectory(unrelated);
             AssertEqual(true, DesktopCompanionLauncher.ResolveExecutable(unrelated, DesktopCompanion.Tray) is null, "does not search arbitrary parents");
+            var identity = DesktopAppInstanceIdentity.ForInstallation(DesktopCompanion.Tray, tray);
+            AssertEqual(identity, DesktopAppInstanceIdentity.ForInstallation(DesktopCompanion.Tray, tray.ToUpperInvariant() + Path.DirectorySeparatorChar), "path casing and separator do not duplicate instances");
+            AssertEqual(false, identity == DesktopAppInstanceIdentity.ForInstallation(DesktopCompanion.Tray, unrelated), "installations have independent activation");
+            AssertEqual(false, identity == DesktopAppInstanceIdentity.ForInstallation(DesktopCompanion.Chat, tray), "apps have independent activation");
+            AssertEqual(false, identity == DesktopAppInstanceIdentity.ForInstallation(DesktopCompanion.Tray, tray, "diagnostic"), "modes have independent activation");
         } finally {
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }

@@ -1,5 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
+using IntelligenceX.Desktop;
 using Microsoft.Windows.AppLifecycle;
 
 namespace IntelligenceX.Chat.App;
@@ -12,8 +11,7 @@ internal static class ChatAppActivation {
     internal static bool RegisterOrRedirect() {
         var mode = ChatAppLaunchModeResolver.Resolve(Environment.GetEnvironmentVariable);
         // Development/preview copies must never activate an unrelated installed build.
-        var directory = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar).ToUpperInvariant();
-        var key = "IntelligenceX.Chat." + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(directory))) + "." + mode;
+        var key = DesktopAppInstanceIdentity.ForInstallation(DesktopCompanion.Chat, AppContext.BaseDirectory, mode.ToString());
         var current = AppInstance.GetCurrent();
         _instance = AppInstance.FindOrRegisterForKey(key);
         if (!_instance.IsCurrent) {
