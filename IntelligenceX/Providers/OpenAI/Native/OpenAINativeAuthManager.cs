@@ -67,6 +67,15 @@ internal sealed class OpenAINativeAuthManager {
         }
         var previousRefreshToken = bundle.RefreshToken;
         var previousAccountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
+        if (_options.AuthStore is FileAuthBundleStore fileStore) {
+            var refreshedBundle = await fileStore.RefreshAsync(bundle, async (current, token) => {
+                var result = await _oauth.RefreshAsync(_options.OAuth, current, token).ConfigureAwait(false);
+                result.Bundle.AccountId ??= current.AccountId ?? JwtDecoder.TryGetAccountId(result.Bundle.AccessToken);
+                return result.Bundle;
+            }, cancellationToken).ConfigureAwait(false);
+            ExportCodexBundle(refreshedBundle, previousRefreshToken, previousAccountId);
+            return refreshedBundle;
+        }
         var refreshed = await _oauth.RefreshAsync(_options.OAuth, bundle, cancellationToken).ConfigureAwait(false);
         await SaveBundleAsync(refreshed.Bundle, cancellationToken, previousRefreshToken, previousAccountId).ConfigureAwait(false);
         return refreshed.Bundle;
@@ -76,7 +85,10 @@ internal sealed class OpenAINativeAuthManager {
         string? previousRefreshToken = null, string? previousAccountId = null) {
         bundle.AccountId ??= JwtDecoder.TryGetAccountId(bundle.AccessToken);
         await _options.AuthStore.SaveAsync(bundle, cancellationToken).ConfigureAwait(false);
+        ExportCodexBundle(bundle, previousRefreshToken, previousAccountId);
+    }
 
+    private void ExportCodexBundle(AuthBundle bundle, string? previousRefreshToken, string? previousAccountId) {
         if (_options.PersistCodexAuthJson && !string.IsNullOrWhiteSpace(bundle.IdToken)) {
             try {
                 if (_options.PreserveCodexLoginOnRefresh) {

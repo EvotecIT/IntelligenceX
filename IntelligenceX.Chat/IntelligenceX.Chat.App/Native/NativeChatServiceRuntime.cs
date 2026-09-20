@@ -110,7 +110,12 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         }
     }
 
-    public async Task<NativeLoginResult> EnsureLoginAsync(
+    public Task<NativeLoginResult> EnsureLoginAsync(
+        Func<string, Task> status,
+        CancellationToken cancellationToken) =>
+        RunAuthenticationAsync(() => EnsureLoginCoreAsync(status, cancellationToken), cancellationToken);
+
+    private async Task<NativeLoginResult> EnsureLoginCoreAsync(
         Func<string, Task> status,
         CancellationToken cancellationToken) {
         status ??= _ => Task.CompletedTask;
@@ -132,7 +137,27 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         return new NativeLoginResult(login.IsAuthenticated, login.AccountId);
     }
 
-    public async Task<NativeLoginResult> StartLoginAsync(
+    public Task<NativeLoginResult> StartLoginAsync(
+        NativeLoginCallbacks callbacks,
+        CancellationToken cancellationToken) =>
+        RunAuthenticationAsync(() => StartLoginCoreAsync(callbacks, cancellationToken), cancellationToken);
+
+    private async Task<NativeLoginResult> RunAuthenticationAsync(
+        Func<Task<NativeLoginResult>> authenticate, CancellationToken cancellationToken) {
+        await _metadataLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            Volatile.Write(ref _metadata, null);
+            return await authenticate().ConfigureAwait(false);
+        } finally {
+            // Connection initialization can populate metadata during authentication.
+            // Invalidate it before the new account is published, even on failure.
+            // The shared lock also prevents a pre-login refresh from republishing old evidence.
+            Volatile.Write(ref _metadata, null);
+            _metadataLock.Release();
+        }
+    }
+
+    private async Task<NativeLoginResult> StartLoginCoreAsync(
         NativeLoginCallbacks callbacks,
         CancellationToken cancellationToken) {
         callbacks ??= new NativeLoginCallbacks();

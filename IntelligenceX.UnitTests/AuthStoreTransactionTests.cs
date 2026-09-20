@@ -1,0 +1,109 @@
+using IntelligenceX.OpenAI.Auth;
+using Xunit;
+
+namespace IntelligenceX.UnitTests;
+
+public sealed class AuthStoreTransactionTests : IDisposable {
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ix-auth-transactions-" + Guid.NewGuid().ToString("N"));
+    private string StorePath => Path.Combine(_directory, "auth.json");
+    private FileAuthBundleStore Store() => new(StorePath);
+    private static AuthBundle Bundle(string account, string token = "original") =>
+        new("openai-codex", token, token, DateTimeOffset.UtcNow.AddHours(1)) { AccountId = account };
+
+    [Fact]
+    public async Task ConcurrentStoresPreserveEveryAccount() {
+        await Task.WhenAll(Enumerable.Range(0, 32).Select(i => Store().SaveAsync(Bundle("account-" + i))));
+        var accounts = await Store().ListAsync("openai-codex");
+        Assert.Equal(32, accounts.Count);
+        Assert.Equal(32, accounts.Select(a => a.AccountId).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task RefreshHoldsTransactionAndReusesRotatedCredentials() {
+        var original = Bundle("account");
+        await Store().SaveAsync(original);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refresh = Store().RefreshAsync(original, async (_, _) => {
+            entered.SetResult();
+            await release.Task;
+            return Bundle("account", "rotated");
+        }, CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try {
+            // An independent OS handle cannot acquire the transaction while OAuth is running.
+            Assert.Throws<IOException>(() => {
+                using var competingLock = new FileStream(StorePath + ".lock", FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            });
+            using var canceled = new CancellationTokenSource();
+            var waitingSave = Store().SaveAsync(Bundle("other"), canceled.Token);
+            canceled.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waitingSave);
+        } finally {
+            release.TrySetResult();
+        }
+        Assert.Equal("rotated", (await refresh).RefreshToken);
+        var reused = await Store().RefreshAsync(original, (_, _) => throw new InvalidOperationException("Old token replayed"), CancellationToken.None);
+        Assert.Equal("rotated", reused.RefreshToken);
+        await Store().SaveAsync(Bundle("other"));
+        Assert.Equal(2, (await Store().ListAsync("openai-codex")).Count);
+    }
+
+    [Fact]
+    public async Task NewLoginWinsOverAStaleRefreshSnapshot() {
+        var old = Bundle("account");
+        await Store().SaveAsync(old);
+        await Store().SaveAsync(Bundle("account", "new-login"));
+        var result = await Store().RefreshAsync(old, (_, _) => throw new InvalidOperationException("Old token replayed"), CancellationToken.None);
+        Assert.Equal("new-login", result.AccessToken);
+    }
+
+    [Fact]
+    public async Task DeletedAccountIsNotRestoredByRefresh() {
+        var old = Bundle("account");
+        await Store().SaveAsync(old);
+        Store().Delete();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Store().RefreshAsync(old,
+            (_, _) => Task.FromResult(Bundle("account", "rotated")), CancellationToken.None));
+        Assert.False(File.Exists(StorePath));
+    }
+
+    [Fact]
+    public async Task RefreshCanIdentifyALegacyAccountWithoutAnId() {
+        var legacy = Bundle("account");
+        legacy.AccountId = null;
+        await Store().SaveAsync(legacy);
+        var updated = await Store().RefreshAsync(legacy,
+            (_, _) => Task.FromResult(Bundle("account", "identified")), CancellationToken.None);
+        Assert.Equal("account", updated.AccountId);
+        Assert.Single(await Store().ListAsync("openai-codex"));
+        Assert.Equal("identified", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+    }
+
+    [Fact]
+    public async Task RefreshCannotReplaceAnotherAccountIdentity() {
+        var original = Bundle("account");
+        await Store().SaveAsync(original);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Store().RefreshAsync(original,
+            (_, _) => Task.FromResult(Bundle("different", "rotated")), CancellationToken.None));
+        Assert.Equal("original", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+        Assert.Null(await Store().GetAsync("openai-codex", "different"));
+    }
+
+    [Fact]
+    public async Task FailedRefreshPreservesOriginalInventoryAndReleasesLock() {
+        var old = Bundle("account");
+        await Store().SaveAsync(old);
+        var before = await File.ReadAllBytesAsync(StorePath);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Store().RefreshAsync(old,
+            (_, _) => throw new InvalidOperationException("Synthetic provider failure"), CancellationToken.None));
+        Assert.Equal(before, await File.ReadAllBytesAsync(StorePath));
+        await Store().SaveAsync(Bundle("other"));
+        Assert.Equal("original", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
+    public void Dispose() {
+        if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
+    }
+}

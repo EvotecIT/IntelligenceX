@@ -9,6 +9,6 @@ public static class DesktopBuildIdentity {
     public static string DisplayName(string productName) {
         var label = Assembly.GetEntryAssembly()?.GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(attribute => attribute.Key == "IntelligenceXPreviewLabel")?.Value;
-        return string.IsNullOrWhiteSpace(label) ? productName : productName + " · " + label.Trim();
+        return label is null || string.IsNullOrWhiteSpace(label) ? productName : productName + " · " + label.Trim();
     }
 }
