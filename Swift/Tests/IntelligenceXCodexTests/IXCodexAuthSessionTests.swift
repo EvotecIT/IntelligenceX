@@ -628,6 +628,8 @@ final class IXCodexAuthSessionTests: XCTestCase {
 
 actor SuspendedCredentialStore: IXCodexCredentialStoring {
     private var bundle: IXCodexAuthBundle?
+    private var revision = Data(UUID().uuidString.utf8)
+    private var unreadable: Bool
     private var shouldSuspendLoad: Bool
     private var shouldSuspendSave: Bool
     private var shouldFailLoad: Bool
@@ -644,9 +646,11 @@ actor SuspendedCredentialStore: IXCodexCredentialStoring {
         suspendLoadOnce: Bool = false,
         suspendSaveOnce: Bool = false,
         failLoadOnce: Bool = false,
-        failDeleteOnce: Bool = false
+        failDeleteOnce: Bool = false,
+        unreadable: Bool = false
     ) {
         self.bundle = bundle
+        self.unreadable = unreadable
         shouldSuspendLoad = suspendLoadOnce
         shouldSuspendSave = suspendSaveOnce
         shouldFailLoad = failLoadOnce
@@ -668,6 +672,8 @@ actor SuspendedCredentialStore: IXCodexCredentialStoring {
         return bundle
     }
 
+    func suspendNextSave() { shouldSuspendSave = true; saveStarted = false }
+
     private func suspendSaveIfNeeded() async {
         if shouldSuspendSave {
             shouldSuspendSave = false
@@ -678,16 +684,27 @@ actor SuspendedCredentialStore: IXCodexCredentialStoring {
         }
     }
 
+    func snapshot() async throws -> IXCodexCredentialSnapshot {
+        _ = try await load()
+        return .init(bundle: unreadable ? nil : bundle, revision: revision, isUnreadable: unreadable)
+    }
+
     func save(_ bundle: IXCodexAuthBundle) async {
         await suspendSaveIfNeeded()
         self.bundle = bundle
+        unreadable = false
+        revision = Data(UUID().uuidString.utf8)
     }
 
-    func replace(_ expected: IXCodexAuthBundle?, with replacement: IXCodexAuthBundle?) async throws -> Bool {
+    func replace(_ expected: IXCodexCredentialSnapshot, with replacement: IXCodexAuthBundle?) async throws -> IXCodexCredentialSnapshot? {
         await suspendSaveIfNeeded()
-        guard bundle == expected else { return false }
-        if let replacement { bundle = replacement } else { try delete() }
-        return true
+        guard revision == expected.revision else { return nil }
+        if let replacement {
+            bundle = replacement
+            revision = Data(UUID().uuidString.utf8)
+            unreadable = false
+        } else { try delete() }
+        return .init(bundle: bundle, revision: revision)
     }
 
     func delete() throws {
@@ -696,6 +713,8 @@ actor SuspendedCredentialStore: IXCodexCredentialStoring {
             throw CredentialStoreFailure.deleteFailed
         }
         bundle = nil
+        unreadable = false
+        revision = Data(UUID().uuidString.utf8)
     }
 
     func waitUntilLoadStarted() async {

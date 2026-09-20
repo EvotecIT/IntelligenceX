@@ -251,9 +251,10 @@ func staleRefreshCannotOverwriteReplacementCredentials(otherAccount: Bool, token
     await credentials.save(replacement)
     await transport.release()
     if tokenReused && !otherAccount {
-        // A same-account reused-token recovery may refresh the current bundle.
+        // Another writer already refreshed the same account; reuse its valid bundle.
         #expect(try await recovery.value.bundle.accountID == "account")
-        #expect(await transport.count == 2)
+        #expect(await credentials.load() == replacement)
+        #expect(await transport.count == 1)
     } else {
         await #expect(throws: CancellationError.self) { try await recovery.value }
         #expect(await credentials.load() == replacement)

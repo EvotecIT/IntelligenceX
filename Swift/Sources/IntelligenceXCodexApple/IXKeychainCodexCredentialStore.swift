@@ -36,113 +36,85 @@ public actor IXKeychainCodexCredentialStore: IXCodexCredentialStoring {
     }
 
     public func load() throws -> IXCodexAuthBundle? {
-        var query = baseQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound {
-            return nil
-        }
-        guard status == errSecSuccess, let data = result as? Data else {
-            throw IXKeychainError(operation: "read", status: status)
-        }
-        try updateAccessibility(operation: "migrate")
-        return try JSONDecoder().decode(IXCodexAuthBundle.self, from: data)
+        try snapshot().validatedBundle()
     }
 
-    public func save(_ bundle: IXCodexAuthBundle) throws {
-        let data = try JSONEncoder().encode(bundle)
+    public func save(_ bundle: IXCodexAuthBundle) throws { try write(bundle) }
+
+    // Retain a token-free tombstone so a delete/recreate cycle cannot reuse an
+    // earlier absent revision. Removing credentials never removes their epoch.
+    public func delete() throws { try write(nil) }
+
+    private func write(_ bundle: IXCodexAuthBundle?) throws {
         let update: [String: Any] = [
-            kSecValueData as String: data,
+            kSecValueData as String: try encoded(bundle),
             kSecAttrGeneric as String: revision(),
             kSecAttrAccessible as String: accessibility.securityValue,
         ]
-        let status = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
+        var status = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
         if status == errSecItemNotFound {
-            var insert = baseQuery
-            insert[kSecValueData as String] = data
-            insert[kSecAttrGeneric as String] = revision()
-            insert[kSecAttrAccessible as String] = accessibility.securityValue
-            let insertStatus = SecItemAdd(insert as CFDictionary, nil)
-            guard insertStatus == errSecSuccess else {
-                throw IXKeychainError(operation: "save", status: insertStatus)
+            status = SecItemAdd(baseQuery.merging(update) { _, new in new } as CFDictionary, nil)
+            if status == errSecDuplicateItem {
+                status = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
             }
-            return
         }
-        guard status == errSecSuccess else {
-            throw IXKeychainError(operation: "update", status: status)
-        }
+        guard status == errSecSuccess else { throw IXKeychainError(operation: "write", status: status) }
     }
 
-    /// The revision attribute makes the Keychain update/delete query itself
-    /// conditional, including when another actor or process writes this item.
     public func replace(
-        _ expected: IXCodexAuthBundle?, with replacement: IXCodexAuthBundle?
-    ) throws -> Bool {
-        guard let current = try versionedItem() else {
-            guard expected == nil else { return false }
-            guard let replacement else { return true }
-            var insert = baseQuery
-            insert[kSecValueData as String] = try JSONEncoder().encode(replacement)
-            insert[kSecAttrGeneric as String] = revision()
-            insert[kSecAttrAccessible as String] = accessibility.securityValue
-            let status = SecItemAdd(insert as CFDictionary, nil)
-            if status == errSecDuplicateItem { return false }
-            guard status == errSecSuccess else { throw IXKeychainError(operation: "insert", status: status) }
-            return true
-        }
-        guard current.bundle == expected else { return false }
-        var query = baseQuery
-        query[kSecAttrGeneric as String] = current.revision
+        _ expected: IXCodexCredentialSnapshot, with replacement: IXCodexAuthBundle?
+    ) throws -> IXCodexCredentialSnapshot? {
+        let nextRevision = revision()
+        let update: [String: Any] = [
+            kSecValueData as String: try encoded(replacement),
+            kSecAttrGeneric as String: nextRevision,
+            kSecAttrAccessible as String: accessibility.securityValue,
+        ]
         let status: OSStatus
-        if let replacement {
-            status = SecItemUpdate(query as CFDictionary, [
-                kSecValueData as String: try JSONEncoder().encode(replacement),
-                kSecAttrGeneric as String: revision(),
-                kSecAttrAccessible as String: accessibility.securityValue,
-            ] as CFDictionary)
+        if let expectedRevision = expected.revision {
+            var query = baseQuery
+            query[kSecAttrGeneric as String] = expectedRevision
+            status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+            if status == errSecItemNotFound { return nil }
         } else {
-            status = SecItemDelete(query as CFDictionary)
+            status = SecItemAdd(baseQuery.merging(update) { _, new in new } as CFDictionary, nil)
+            if status == errSecDuplicateItem { return nil }
         }
-        if status == errSecItemNotFound { return false }
         guard status == errSecSuccess else { throw IXKeychainError(operation: "replace", status: status) }
-        return true
+        return .init(bundle: replacement, revision: nextRevision)
     }
 
     private func revision() -> Data { Data(UUID().uuidString.utf8) }
+    private func encoded(_ bundle: IXCodexAuthBundle?) throws -> Data {
+        try bundle.map { try JSONEncoder().encode($0) } ?? Data("null".utf8)
+    }
 
-    private func versionedItem() throws -> (bundle: IXCodexAuthBundle, revision: Data)? {
+    public func snapshot() throws -> IXCodexCredentialSnapshot {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
+        if status == errSecItemNotFound { return .init(bundle: nil, revision: nil) }
         guard status == errSecSuccess,
               let item = result as? [String: Any],
               let data = item[kSecValueData as String] as? Data else {
             throw IXKeychainError(operation: "read revision", status: status)
         }
         if let revision = item[kSecAttrGeneric as String] as? Data, !revision.isEmpty {
-            return (try JSONDecoder().decode(IXCodexAuthBundle.self, from: data), revision)
+            try updateAccessibility(operation: "migrate")
+            if data == Data("null".utf8) { return .init(bundle: nil, revision: revision) }
+            let bundle = try? JSONDecoder().decode(IXCodexAuthBundle.self, from: data)
+            return .init(bundle: bundle, revision: revision, isUnreadable: bundle == nil)
         }
-        // Legacy entries have no revision. Change metadata only, then re-read
-        // both the credentials and revision. A concurrent writer's credentials
-        // must never be copied back from the pre-migration read.
+        // Metadata-only migration invalidates older observations without ever
+        // restoring token bytes captured before a concurrent write.
         let migration = SecItemUpdate(baseQuery as CFDictionary,
             [kSecAttrGeneric as String: revision()] as CFDictionary)
-        if migration == errSecItemNotFound { return nil }
+        if migration == errSecItemNotFound { return .init(bundle: nil, revision: nil) }
         guard migration == errSecSuccess else { throw IXKeychainError(operation: "migrate revision", status: migration) }
-        return try versionedItem()
-    }
-
-    public func delete() throws {
-        let status = SecItemDelete(baseQuery as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw IXKeychainError(operation: "delete", status: status)
-        }
+        return try snapshot()
     }
 
     private var baseQuery: [String: Any] {

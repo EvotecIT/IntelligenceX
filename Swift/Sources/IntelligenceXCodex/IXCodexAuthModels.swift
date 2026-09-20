@@ -33,30 +33,52 @@ public struct IXCodexAuthBundle: Codable, Equatable, Sendable {
     }
 }
 
+/// An opaque storage revision and its decoded credentials. An unreadable value
+/// still carries a revision so a fresh sign-in can atomically repair it.
+public struct IXCodexCredentialSnapshot: Equatable, Sendable {
+    public let bundle: IXCodexAuthBundle?
+    public let revision: Data?
+    public let isUnreadable: Bool
+
+    public init(bundle: IXCodexAuthBundle?, revision: Data?, isUnreadable: Bool = false) {
+        self.bundle = bundle
+        self.revision = revision
+        self.isUnreadable = isUnreadable
+    }
+
+    public func validatedBundle() throws -> IXCodexAuthBundle? {
+        guard !isUnreadable else {
+            throw IXCodexError.invalidResponse("Stored ChatGPT credentials are unreadable. Sign in again.")
+        }
+        return bundle
+    }
+}
+
 public protocol IXCodexCredentialStoring: Sendable {
     func load() async throws -> IXCodexAuthBundle?
     func save(_ bundle: IXCodexAuthBundle) async throws
     func delete() async throws
-    /// Atomically replaces (or deletes) the value only if it still equals `expected`.
-    /// Implementations must serialize comparison and mutation across every writer
-    /// sharing their backing storage; a separate load followed by save is unsafe.
-    func replace(_ expected: IXCodexAuthBundle?, with replacement: IXCodexAuthBundle?) async throws -> Bool
+    func snapshot() async throws -> IXCodexCredentialSnapshot
+    /// Atomically replaces the exact observed revision, returning the newly
+    /// committed snapshot, or nil if another write superseded it. Every write,
+    /// including identical values and deletions, must create a new revision.
+    func replace(_ expected: IXCodexCredentialSnapshot, with replacement: IXCodexAuthBundle?) async throws -> IXCodexCredentialSnapshot?
 }
 
 public actor IXMemoryCodexCredentialStore: IXCodexCredentialStoring {
     private var bundle: IXCodexAuthBundle?
+    private var revision = Data(UUID().uuidString.utf8)
 
-    public init(bundle: IXCodexAuthBundle? = nil) {
-        self.bundle = bundle
-    }
-
+    public init(bundle: IXCodexAuthBundle? = nil) { self.bundle = bundle }
     public func load() -> IXCodexAuthBundle? { bundle }
-    public func save(_ bundle: IXCodexAuthBundle) { self.bundle = bundle }
-    public func delete() { bundle = nil }
-    public func replace(_ expected: IXCodexAuthBundle?, with replacement: IXCodexAuthBundle?) -> Bool {
-        guard bundle == expected else { return false }
+    public func snapshot() -> IXCodexCredentialSnapshot { .init(bundle: bundle, revision: revision) }
+    public func save(_ bundle: IXCodexAuthBundle) { self.bundle = bundle; revision = Data(UUID().uuidString.utf8) }
+    public func delete() { bundle = nil; revision = Data(UUID().uuidString.utf8) }
+    public func replace(_ expected: IXCodexCredentialSnapshot, with replacement: IXCodexAuthBundle?) -> IXCodexCredentialSnapshot? {
+        guard revision == expected.revision else { return nil }
         bundle = replacement
-        return true
+        revision = Data(UUID().uuidString.utf8)
+        return snapshot()
     }
 }
 
