@@ -33,6 +33,10 @@ public actor IXCodexClient {
     }
 
     public func models() async throws -> [IXCodexModel] {
+        try await models(retryUnauthorized: true)
+    }
+
+    private func models(retryUnauthorized: Bool) async throws -> [IXCodexModel] {
         let bundle = try await authSession.validBundle()
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse("ChatGPT account ID is missing from the OAuth token")
@@ -118,7 +122,26 @@ public actor IXCodexClient {
             }
         }
         try Task.checkCancellation()
-        if let lastError { throw lastError }
+        if let lastError {
+            if let authError = lastError as? IXCodexError, authError.requiresReauthorization {
+                let current = try await authSession.currentBundle()
+                guard let current, current.accountID == accountID else {
+                    throw CancellationError()
+                }
+                let credentialsChanged = current.accessToken != bundle.accessToken
+                if retryUnauthorized {
+                    // Another request may already have refreshed the rejected
+                    // credential. Reuse that bundle instead of rotating it again.
+                    let refreshed = try await authSession.validBundle(forceRefresh: !credentialsChanged)
+                    guard refreshed.accountID == accountID else { throw CancellationError() }
+                    return try await models(retryUnauthorized: false)
+                }
+                // A second replacement supersedes this bounded attempt. Its
+                // stale rejection must not revoke the latest authorization.
+                if credentialsChanged { throw CancellationError() }
+            }
+            throw lastError
+        }
         try Task.checkCancellation()
         return [IXCodexModel(id: configuration.defaultModel)]
     }
