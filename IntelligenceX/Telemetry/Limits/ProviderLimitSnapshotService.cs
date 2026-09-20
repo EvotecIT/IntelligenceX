@@ -133,27 +133,13 @@ public sealed partial class ProviderLimitSnapshotService {
         }
     }
 
-    private static async Task<ProviderLimitSnapshot> FetchCodexAsync(string requestedProviderId, CancellationToken cancellationToken) {
+    private static Task<ProviderLimitSnapshot> FetchCodexAsync(string requestedProviderId, CancellationToken cancellationToken) {
         var options = new OpenAINativeOptions {
-            UserAgent = "IntelligenceX/0.1.0"
+            UserAgent = "IntelligenceX/0.1.0",
+            PersistCodexAuthJson = false
         };
         options.AuthAccountId = TryResolveCurrentCodexAccountId(options.CodexHome);
-        var snapshot = await FetchPreferredOpenAiSnapshotAsync(options, cancellationToken).ConfigureAwait(false);
-        var primary = BuildOpenAiLimitPresentation(snapshot);
-        var selectedAccountKey = BuildOpenAiAccountKey(snapshot.AccountId, snapshot.Email, accessToken: null);
-        var accountSnapshots = await FetchCodexAccountSnapshotsAsync(options, snapshot, selectedAccountKey, cancellationToken).ConfigureAwait(false);
-
-        return new ProviderLimitSnapshot(
-            requestedProviderId,
-            UsageTelemetryProviderCatalog.ResolveDisplayTitle("codex"),
-            "OpenAI usage API",
-            primary.PlanLabel,
-            primary.AccountLabel,
-            primary.Windows,
-            primary.Summary,
-            primary.DetailMessage,
-            DateTimeOffset.UtcNow,
-            accountSnapshots);
+        return FetchCodexAsync(requestedProviderId, options, cancellationToken);
     }
 
     internal static void AddOpenAiStatusWindows(
@@ -189,85 +175,6 @@ public sealed partial class ProviderLimitSnapshotService {
             var scopeLabel = DescribeOpenAiAdditionalRateLimit(additionalRateLimit);
             AddOpenAiStatusWindows(windows, "additional-" + i.ToString(CultureInfo.InvariantCulture), scopeLabel, additionalRateLimit.RateLimit);
         }
-    }
-
-    private static async Task<IReadOnlyList<ProviderLimitAccountSnapshot>> FetchCodexAccountSnapshotsAsync(
-        OpenAINativeOptions options,
-        ChatGptUsageSnapshot selectedSnapshot,
-        string? selectedAccountKey,
-        CancellationToken cancellationToken) {
-        var bundles = await ListOpenAiBundlesAsync(options.AuthStore, cancellationToken).ConfigureAwait(false);
-        if (bundles.Count == 0) {
-            return Array.Empty<ProviderLimitAccountSnapshot>();
-        }
-
-        var results = new List<ProviderLimitAccountSnapshot>();
-        var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var client = new ChatGptUsageClient();
-
-        foreach (var bundle in bundles) {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var accountId = NormalizeOptional(bundle.AccountId) ?? NormalizeOptional(JwtDecoder.TryGetAccountId(bundle.AccessToken));
-            var email = NormalizeOptional(JwtDecoder.TryGetEmail(bundle.IdToken ?? bundle.AccessToken));
-            var detectedAccountLabel = email ?? accountId;
-            var key = BuildOpenAiAccountKey(accountId, email, bundle.AccessToken);
-            if (!seenKeys.Add(key)) {
-                continue;
-            }
-
-            ChatGptUsageSnapshot snapshot;
-            if (selectedAccountKey is not null && string.Equals(selectedAccountKey, key, StringComparison.OrdinalIgnoreCase)) {
-                snapshot = selectedSnapshot;
-            } else {
-                try {
-                    snapshot = await client.GetUsageAsync(
-                            options.ChatGptApiBaseUrl,
-                            bundle.AccessToken,
-                            accountId,
-                            options.UserAgent,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                } catch (Exception ex) {
-                    results.Add(new ProviderLimitAccountSnapshot(
-                        accountId: accountId,
-                        accountLabel: detectedAccountLabel,
-                        planLabel: null,
-                        windows: Array.Empty<ProviderLimitWindow>(),
-                        summary: "Detected locally, but live limits are unavailable.",
-                        detailMessage: BuildUnavailableOpenAiAccountDetail(bundle, ex),
-                        retrievedAtUtc: DateTimeOffset.UtcNow,
-                        isSelected: selectedAccountKey is not null && string.Equals(selectedAccountKey, key, StringComparison.OrdinalIgnoreCase)));
-                    continue;
-                }
-            }
-
-            var presentation = BuildOpenAiLimitPresentation(snapshot);
-            results.Add(new ProviderLimitAccountSnapshot(
-                accountId: NormalizeOptional(snapshot.AccountId) ?? accountId,
-                accountLabel: presentation.AccountLabel,
-                planLabel: presentation.PlanLabel,
-                windows: presentation.Windows,
-                summary: presentation.Summary,
-                detailMessage: presentation.DetailMessage,
-                retrievedAtUtc: DateTimeOffset.UtcNow,
-                isSelected: selectedAccountKey is not null && string.Equals(selectedAccountKey, key, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        return results;
-    }
-
-    private static async Task<IReadOnlyList<AuthBundle>> ListOpenAiBundlesAsync(IAuthBundleStore authStore, CancellationToken cancellationToken) {
-        var providers = new[] { OpenAICodexDefaults.Provider, "openai", "chatgpt" };
-        var bundles = new List<AuthBundle>();
-        foreach (var provider in providers) {
-            var entries = await authStore.ListAsync(provider, cancellationToken).ConfigureAwait(false);
-            if (entries.Count > 0) {
-                bundles.AddRange(entries);
-            }
-        }
-
-        return bundles;
     }
 
     private static OpenAiLimitPresentation BuildOpenAiLimitPresentation(ChatGptUsageSnapshot snapshot) {
@@ -306,42 +213,9 @@ public sealed partial class ProviderLimitSnapshotService {
             windows.Count == 0 ? "No live rate-limit windows were returned by OpenAI." : null);
     }
 
-    private static async Task<ChatGptUsageSnapshot> FetchPreferredOpenAiSnapshotAsync(
-        OpenAINativeOptions options,
-        CancellationToken cancellationToken) {
-        if (!string.IsNullOrWhiteSpace(options.AuthAccountId)) {
-            try {
-                using var preferredUsageService = new ChatGptUsageService(options);
-                return await preferredUsageService.GetUsageSnapshotAsync(cancellationToken).ConfigureAwait(false);
-            } catch (OperationCanceledException) {
-                throw;
-            } catch {
-                options.AuthAccountId = null;
-            }
-        }
-
-        using var fallbackUsageService = new ChatGptUsageService(options);
-        return await fallbackUsageService.GetUsageSnapshotAsync(cancellationToken).ConfigureAwait(false);
-    }
-
     private static string? TryResolveCurrentCodexAccountId(string? codexHome) {
         var authPath = CodexAuthStore.ResolveAuthPath(codexHome);
         return NormalizeOptional(CodexAuthStore.TryReadProfile(authPath)?.AccountId);
-    }
-
-    private static string BuildUnavailableOpenAiAccountDetail(AuthBundle bundle, Exception ex) {
-        if (bundle.ExpiresAt.HasValue && bundle.ExpiresAt.Value <= DateTimeOffset.UtcNow) {
-            return "Local login expired on "
-                   + bundle.ExpiresAt.Value.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture)
-                   + ". Reauthenticate this account to load live limits.";
-        }
-
-        var message = NormalizeOptional(ex.Message);
-        if (!string.IsNullOrWhiteSpace(message)) {
-            return "Live limits request failed: " + message;
-        }
-
-        return "Live limits request failed for this account.";
     }
 
     private static string BuildOpenAiAccountKey(string? accountId, string? email, string? accessToken) {

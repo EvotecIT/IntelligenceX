@@ -22,6 +22,15 @@ internal sealed class OpenAINativeAuthManager {
             return null;
         }
 
+        return await GetValidBundleAsync(bundle, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Refreshes a discovered bundle in its original store without selecting another account.
+    /// Codex auth export remains governed by the caller's persistence option.
+    /// </summary>
+    internal async Task<AuthBundle> GetValidBundleAsync(AuthBundle bundle, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
         if (IsExpiring(bundle)) {
             bundle = await RefreshAsync(bundle, cancellationToken).ConfigureAwait(false);
         }

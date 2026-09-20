@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 #pragma warning disable CS1591
 
@@ -45,7 +46,7 @@ public sealed class ProviderLimitSnapshot {
     public string? DetailMessage { get; }
     public DateTimeOffset RetrievedAtUtc { get; }
     public IReadOnlyList<ProviderLimitAccountSnapshot> Accounts { get; }
-    public bool IsAvailable => Windows.Count > 0;
+    public bool IsAvailable => Windows.Count > 0 || Accounts.Any(static account => account.IsAvailable);
 }
 
 /// <summary>

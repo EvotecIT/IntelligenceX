@@ -21,6 +21,9 @@
             <TextBlock Text="{Binding LimitStatusDisplayText}" FontSize="11" TextWrapping="Wrap"
                        Foreground="{StaticResource SecondaryTextBrush}"
                        Visibility="{Binding HasLimitStatusDisplayText, Converter={StaticResource VisibleWhenTrue}}" />
+            <TextBlock Text="{Binding LimitAccountsOverviewText}" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0"
+                       Foreground="{StaticResource SecondaryTextBrush}"
+                       Visibility="{Binding HasLimitAccountsOverview, Converter={StaticResource VisibleWhenTrue}}" />
             <ItemsControl ItemsSource="{Binding LimitAccounts}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:ProviderLimitAccountViewModel}">
