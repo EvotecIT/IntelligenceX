@@ -12,9 +12,11 @@ internal sealed partial class NativeChatWindow {
             Padding = new Thickness(22, 12, 22, 12)
         };
         var header = new Grid {
-            ColumnSpacing = 16
+            ColumnSpacing = 16,
+            RowSpacing = 10
         };
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         shell.Child = header;
@@ -122,20 +124,21 @@ internal sealed partial class NativeChatWindow {
         _runtimeStatusText = new TextBlock {
             Text = _viewModel.StatusText,
             FontSize = 12,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 190,
-            Foreground = NativeControlBrushes.Success
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = NativeControlBrushes.TextSecondary
         };
         _runtimeStatusChip = new Border {
             Padding = new Thickness(10, 6, 10, 6),
             CornerRadius = new CornerRadius(6),
-            Background = NativeControlBrushes.SuccessSoft,
-            BorderBrush = NativeControlBrushes.Rgb(174, 222, 197),
+            Background = NativeControlBrushes.SurfaceMuted,
+            BorderBrush = NativeControlBrushes.Border,
             BorderThickness = new Thickness(1),
             Child = _runtimeStatusText
         };
-        rightStack.Children.Add(_runtimeStatusChip);
-        Grid.SetColumn(rightStack, 2);
+        Grid.SetRow(_runtimeStatusChip, 1);
+        Grid.SetColumnSpan(_runtimeStatusChip, 2);
+        header.Children.Add(_runtimeStatusChip);
+        Grid.SetColumn(rightStack, 1);
         header.Children.Add(rightStack);
 
         return shell;

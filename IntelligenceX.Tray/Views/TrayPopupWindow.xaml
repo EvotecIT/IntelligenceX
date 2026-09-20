@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:IntelligenceX.Tray.ViewModels"
         xmlns:conv="clr-namespace:IntelligenceX.Tray.Converters"
+        xmlns:views="clr-namespace:IntelligenceX.Tray.Views"
         Title="IntelligenceX Usage"
         Width="720" Height="760"
         WindowStyle="None"
@@ -390,6 +391,9 @@
                     <StackPanel x:Name="ProviderContentPanel"
                                 DataContext="{Binding SelectedProvider}"
                                 Margin="16,12,16,8">
+
+                        <views:AccountLimitsSummaryControl
+                            Visibility="{Binding ShowProviderPulseHeader, Converter={StaticResource BoolToVis}}" />
 
                         <Border Style="{StaticResource CardStyle}"
                                 Padding="16"
