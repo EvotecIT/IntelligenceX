@@ -41,19 +41,23 @@ import Testing
 private actor ModelAuthorizationTransport {
     let holdFirstModel: Bool
     let rejectFresh: Bool
+    let heldModelNumber: Int
+    let heldPath: String
     var refreshes = 0
     var modelTokens: [String] = []
     private var pending: CheckedContinuation<Void, Never>?
     private var started: CheckedContinuation<Void, Never>?
-    init(holdFirstModel: Bool = true, rejectFresh: Bool = false) {
+    init(holdFirstModel: Bool = true, rejectFresh: Bool = false, heldModelNumber: Int = 1, heldPath: String = "/models") {
         self.holdFirstModel = holdFirstModel
         self.rejectFresh = rejectFresh
+        self.heldModelNumber = heldModelNumber
+        self.heldPath = heldPath
     }
     func send(_ request: URLRequest) async throws -> IXHTTPResponse {
         let token = request.value(forHTTPHeaderField: "Authorization") ?? ""
-        if request.url?.path == "/models" {
+        if request.url?.path == heldPath {
             modelTokens.append(token)
-            if holdFirstModel && modelTokens.count == 1 {
+            if holdFirstModel && modelTokens.count == heldModelNumber {
                 await withCheckedContinuation { continuation in
                     pending = continuation; started?.resume(); started = nil
                 }
@@ -95,4 +99,75 @@ func modelCatalogDoesNotRetryAcrossAccountReplacement(signOut: Bool) async throw
     await transport.release()
     await #expect(throws: CancellationError.self) { try await catalog.value }
     #expect(await transport.refreshes == 0)
+}
+
+@Test(arguments: [false, true])
+func modelCatalogRecoveryChecksCredentialsAtTheRefreshDecision(accountChanged: Bool) async throws {
+    let rejected = IXCodexAuthBundle(accessToken: "old", refreshToken: "refresh",
+        expiresAt: .distantFuture, accountID: "account")
+    let credentials = SuspendedCredentialStore(bundle: rejected, suspendLoadOnce: true)
+    let transport = ModelAuthorizationTransport(holdFirstModel: false)
+    let http = IXClosureHTTPClient { request in try await transport.send(request) }
+    let auth = IXCodexAuthSession(credentialStore: credentials, httpClient: http)
+    let recovery = Task { try await auth.recoverRejectedBundle(rejected) }
+    await credentials.waitUntilLoadStarted()
+    await credentials.save(.init(accessToken: "fresh", refreshToken: "next",
+        expiresAt: .distantFuture, accountID: accountChanged ? "other-account" : "account"))
+    await credentials.releaseLoad()
+    if accountChanged {
+        await #expect(throws: CancellationError.self) { try await recovery.value }
+    } else {
+        #expect(try await recovery.value.accessToken == "fresh")
+    }
+    #expect(await transport.refreshes == 0)
+}
+
+@Test func modelCatalogDoesNotRevokeASecondReplacementDuringRetry() async throws {
+    let credentials = IXMemoryCodexCredentialStore(bundle: .init(
+        accessToken: "old", refreshToken: "refresh", expiresAt: .distantFuture, accountID: "account"))
+    let transport = ModelAuthorizationTransport(rejectFresh: true, heldModelNumber: 2)
+    var configuration = IXCodexConfiguration()
+    configuration.modelURLs = [URL(string: "https://example.test/models")!]
+    let http = IXClosureHTTPClient { request in try await transport.send(request) }
+    let auth = IXCodexAuthSession(configuration: configuration, credentialStore: credentials, httpClient: http)
+    let client = IXCodexClient(configuration: configuration, authSession: auth, httpClient: http)
+    let catalog = Task { try await client.models() }
+    await transport.waitUntilModelStarted()
+    await credentials.save(.init(accessToken: "newest", refreshToken: "newest-refresh",
+        expiresAt: .distantFuture, accountID: "account"))
+    await transport.release()
+    await #expect(throws: CancellationError.self) { try await catalog.value }
+    #expect(await transport.modelTokens == ["Bearer old", "Bearer fresh"])
+    #expect(await transport.refreshes == 1)
+    #expect(try await auth.currentBundle()?.accessToken == "newest")
+}
+
+@Test(arguments: ["usage", "compact", "responses"], [false, true])
+func rejectedRequestRecoveryPreservesAuthorizationAcrossSiblingRoutes(route: String, duringRetry: Bool) async throws {
+    let credentials = IXMemoryCodexCredentialStore(bundle: .init(
+        accessToken: "old", refreshToken: "refresh", expiresAt: .distantFuture, accountID: "account"))
+    let transport = ModelAuthorizationTransport(rejectFresh: true,
+        heldModelNumber: duringRetry ? 2 : 1, heldPath: "/" + route)
+    var configuration = IXCodexConfiguration()
+    configuration.accountUsageURL = URL(string: "https://example.test/usage")!
+    configuration.compactionURL = URL(string: "https://example.test/compact")!
+    configuration.responsesURL = URL(string: "https://example.test/responses")!
+    let http = IXClosureHTTPClient { request in try await transport.send(request) }
+    let auth = IXCodexAuthSession(configuration: configuration, credentialStore: credentials, httpClient: http)
+    let client = IXCodexClient(configuration: configuration, authSession: auth, httpClient: http)
+    let request = Task {
+        switch route {
+        case "usage": _ = try await client.accountUsage()
+        case "compact": _ = try await client.compact(input: [], sessionID: "session", instructions: "", model: "test")
+        default: _ = try await client.response(input: [], sessionID: "session", instructions: "", tools: [],
+            model: "test", reasoningEffort: nil, webSearch: nil, imageGeneration: nil)
+        }
+    }
+    await transport.waitUntilModelStarted()
+    await credentials.save(.init(accessToken: "replacement", refreshToken: "replacement-refresh",
+        expiresAt: .distantFuture, accountID: duringRetry ? "account" : "other-account"))
+    await transport.release()
+    await #expect(throws: CancellationError.self) { try await request.value }
+    #expect(await transport.modelTokens == (duringRetry ? ["Bearer old", "Bearer fresh"] : ["Bearer old"]))
+    #expect(await transport.refreshes == (duringRetry ? 1 : 0))
 }

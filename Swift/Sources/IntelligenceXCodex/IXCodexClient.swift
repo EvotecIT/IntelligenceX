@@ -36,8 +36,11 @@ public actor IXCodexClient {
         try await models(retryUnauthorized: true)
     }
 
-    private func models(retryUnauthorized: Bool) async throws -> [IXCodexModel] {
-        let bundle = try await authSession.validBundle()
+    private func models(
+        retryUnauthorized: Bool,
+        recoveredBundle: IXCodexAuthBundle? = nil
+    ) async throws -> [IXCodexModel] {
+        let bundle = try await requestBundle(recoveredBundle)
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse("ChatGPT account ID is missing from the OAuth token")
         }
@@ -124,21 +127,18 @@ public actor IXCodexClient {
         try Task.checkCancellation()
         if let lastError {
             if let authError = lastError as? IXCodexError, authError.requiresReauthorization {
-                let current = try await authSession.currentBundle()
-                guard let current, current.accountID == accountID else {
-                    throw CancellationError()
-                }
-                let credentialsChanged = current.accessToken != bundle.accessToken
                 if retryUnauthorized {
-                    // Another request may already have refreshed the rejected
-                    // credential. Reuse that bundle instead of rotating it again.
-                    let refreshed = try await authSession.validBundle(forceRefresh: !credentialsChanged)
-                    guard refreshed.accountID == accountID else { throw CancellationError() }
-                    return try await models(retryUnauthorized: false)
+                    let recovered = try await authSession.recoverRejectedBundle(bundle)
+                    guard recovered.accountID == accountID else { throw CancellationError() }
+                    return try await models(retryUnauthorized: false, recoveredBundle: recovered)
                 }
                 // A second replacement supersedes this bounded attempt. Its
                 // stale rejection must not revoke the latest authorization.
-                if credentialsChanged { throw CancellationError() }
+                let current = try await authSession.currentBundle()
+                guard let current, current.accountID == accountID,
+                      current.accessToken == bundle.accessToken else {
+                    throw CancellationError()
+                }
             }
             throw lastError
         }
@@ -149,7 +149,14 @@ public actor IXCodexClient {
     public func accountUsage(
         retryUnauthorized: Bool = true
     ) async throws -> IXCodexAccountUsage {
-        let bundle = try await authSession.validBundle()
+        try await accountUsage(retryUnauthorized: retryUnauthorized, recoveredBundle: nil)
+    }
+
+    private func accountUsage(
+        retryUnauthorized: Bool,
+        recoveredBundle: IXCodexAuthBundle?
+    ) async throws -> IXCodexAccountUsage {
+        let bundle = try await requestBundle(recoveredBundle)
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse(
                 "ChatGPT account ID is missing from the OAuth token"
@@ -172,13 +179,26 @@ public actor IXCodexClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let response = try await httpClient.send(request)
         if response.statusCode == 401 && retryUnauthorized {
-            _ = try await authSession.validBundle(forceRefresh: true)
-            return try await accountUsage(retryUnauthorized: false)
+            let recovered = try await authSession.recoverRejectedBundle(bundle)
+            return try await accountUsage(retryUnauthorized: false, recoveredBundle: recovered)
         }
+        try await validateRejectedRetry(response, bundle: bundle)
         guard (200..<300).contains(response.statusCode) else {
             throw responseError(response)
         }
         return try IXCodexAccountUsage.decode(response.body)
+    }
+
+    private func requestBundle(_ recovered: IXCodexAuthBundle?) async throws -> IXCodexAuthBundle {
+        if let recovered { return recovered }
+        return try await authSession.validBundle()
+    }
+
+    private func validateRejectedRetry(_ response: IXHTTPResponse, bundle: IXCodexAuthBundle) async throws {
+        guard response.statusCode == 401 else { return }
+        let current = try await authSession.currentBundle()
+        guard let current, current.accountID == bundle.accountID,
+              current.accessToken == bundle.accessToken else { throw CancellationError() }
     }
 
     private func modelCatalogURL(from url: URL) -> URL {
@@ -256,9 +276,10 @@ public actor IXCodexClient {
         sessionID: String,
         instructions: String,
         model: String?,
-        retryUnauthorized: Bool = true
+        retryUnauthorized: Bool = true,
+        recoveredBundle: IXCodexAuthBundle? = nil
     ) async throws -> [IXJSONValue] {
-        let bundle = try await authSession.validBundle()
+        let bundle = try await requestBundle(recoveredBundle)
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse(
                 "ChatGPT account ID is missing from the OAuth token"
@@ -282,15 +303,17 @@ public actor IXCodexClient {
         ]).encodedData()
         let response = try await httpClient.send(request)
         if response.statusCode == 401 && retryUnauthorized {
-            _ = try await authSession.validBundle(forceRefresh: true)
+            let recovered = try await authSession.recoverRejectedBundle(bundle)
             return try await compact(
                 input: input,
                 sessionID: sessionID,
                 instructions: instructions,
                 model: model,
-                retryUnauthorized: false
+                retryUnauthorized: false,
+                recoveredBundle: recovered
             )
         }
+        try await validateRejectedRetry(response, bundle: bundle)
         guard (200..<300).contains(response.statusCode) else {
             throw responseError(response)
         }
@@ -308,9 +331,10 @@ public actor IXCodexClient {
         webSearch: IXCodexWebSearchOptions?,
         imageGeneration: IXCodexImageGenerationOptions?,
         onTextDelta: IXCodexTextDeltaHandler?,
-        retryUnauthorized: Bool
+        retryUnauthorized: Bool,
+        recoveredBundle: IXCodexAuthBundle? = nil
     ) async throws -> IXCodexTurn {
-        let bundle = try await authSession.validBundle()
+        let bundle = try await requestBundle(recoveredBundle)
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse("ChatGPT account ID is missing from the OAuth token")
         }
@@ -358,7 +382,7 @@ public actor IXCodexClient {
                 response = try await httpClient.send(request)
             }
             if response.statusCode == 401 && retryUnauthorized {
-                _ = try await authSession.validBundle(forceRefresh: true)
+                let recovered = try await authSession.recoverRejectedBundle(bundle)
                 return try await sendResponse(
                     input: input,
                     sessionID: sessionID,
@@ -370,9 +394,11 @@ public actor IXCodexClient {
                     webSearch: webSearch,
                     imageGeneration: imageGeneration,
                     onTextDelta: onTextDelta,
-                    retryUnauthorized: false
+                    retryUnauthorized: false,
+                    recoveredBundle: recovered
                 )
             }
+            try await validateRejectedRetry(response, bundle: bundle)
             guard (200..<300).contains(response.statusCode) else {
                 let error = responseError(response)
                 lastError = error

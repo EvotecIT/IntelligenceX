@@ -243,17 +243,36 @@ public actor IXCodexAuthSession {
     }
 
     public func validBundle(forceRefresh: Bool = false) async throws -> IXCodexAuthBundle {
+        try await validBundle(forceRefresh: forceRefresh, rejectedBundle: nil)
+    }
+
+    /// Recovers a rejected request without rotating a concurrently replaced token.
+    /// The account and token comparison belongs to the same credential read that
+    /// decides whether to start a refresh.
+    func recoverRejectedBundle(_ rejected: IXCodexAuthBundle) async throws -> IXCodexAuthBundle {
+        try await validBundle(forceRefresh: false, rejectedBundle: rejected)
+    }
+
+    private func validBundle(
+        forceRefresh: Bool,
+        rejectedBundle: IXCodexAuthBundle?
+    ) async throws -> IXCodexAuthBundle {
         let expectedGeneration = authGeneration
         try validateCredentialRead()
         guard let existing = try await loadCredentialBundle(
             expectedGeneration: expectedGeneration
         ) else {
+            if rejectedBundle != nil { throw CancellationError() }
             throw IXCodexError.authenticationRequired
         }
         guard authGeneration == expectedGeneration, !Task.isCancelled else {
             throw CancellationError()
         }
-        guard forceRefresh || existing.needsRefresh(at: now()) else {
+        if let rejectedBundle, existing.accountID != rejectedBundle.accountID {
+            throw CancellationError()
+        }
+        let rejectedCurrentToken = rejectedBundle.map { $0.accessToken == existing.accessToken } ?? false
+        guard forceRefresh || rejectedCurrentToken || existing.needsRefresh(at: now()) else {
             return existing
         }
         if let refreshTask {
