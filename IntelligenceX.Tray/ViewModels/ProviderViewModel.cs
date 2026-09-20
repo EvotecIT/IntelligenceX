@@ -1381,6 +1381,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                         ? "Live limits unavailable"
                     : null,
                 IsExpanded = advisory.IsRecommended || advisory.IsSelected,
+                IsRecommended = advisory.IsRecommended,
                 BadgeText = advisory.IsRecommended
                     ? (advisory.IsSelected ? "Best current" : "Recommended")
                     : (advisory.IsSelected ? "Current" : null)

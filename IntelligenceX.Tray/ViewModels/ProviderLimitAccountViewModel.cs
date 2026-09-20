@@ -16,6 +16,7 @@ public sealed class ProviderLimitAccountViewModel : ViewModelBase {
     public string? DetailText { get; set; }
     public string? BadgeText { get; set; }
     public string? WindowSummaryText { get; set; }
+    public bool IsRecommended { get; set; }
     public ObservableCollection<ProviderLimitWindowViewModel> Windows { get; } = [];
 
     public bool IsExpanded {

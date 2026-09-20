@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:IntelligenceX.Tray.ViewModels"
         xmlns:conv="clr-namespace:IntelligenceX.Tray.Converters"
         xmlns:views="clr-namespace:IntelligenceX.Tray.Views"
-        Title="IntelligenceX Usage"
+        Title="IX Tray"
         Width="720" Height="760"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -117,7 +117,7 @@
                                 <TextBlock FontFamily="{StaticResource AppFont}"
                                            FontSize="19" FontWeight="SemiBold"
                                            Foreground="{StaticResource PrimaryTextBrush}"
-                                           Text="Usage Pulse"
+                                           Text="IX Tray"
                                            TextTrimming="CharacterEllipsis" />
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                     <TextBlock FontFamily="{StaticResource AppFont}"

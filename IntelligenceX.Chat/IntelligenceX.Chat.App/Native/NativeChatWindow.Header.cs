@@ -53,8 +53,8 @@ internal sealed partial class NativeChatWindow {
             MaxWidth = 500
         };
         titleStack.Children.Add(new TextBlock {
-            Text = "IntelligenceX Chat",
-            FontSize = 18,
+            Text = "IX Chat",
+            FontSize = 21,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = NativeControlBrushes.TextPrimary
@@ -232,16 +232,20 @@ internal sealed partial class NativeChatWindow {
 
     private void ApplyAuthenticationChrome() {
         var (background, border, foreground) = _viewModel.AuthenticationState switch {
-            NativeAuthenticationState.SignedIn => (NativeControlBrushes.SuccessSoft, NativeControlBrushes.Rgb(174, 222, 197), NativeControlBrushes.Success),
-            NativeAuthenticationState.Checking => (NativeControlBrushes.AccentSoft, NativeControlBrushes.Rgb(191, 210, 252), NativeControlBrushes.Accent),
-            NativeAuthenticationState.Failed => (NativeControlBrushes.Rgb(255, 237, 237), NativeControlBrushes.Rgb(248, 184, 184), NativeControlBrushes.Rgb(172, 45, 45)),
-            NativeAuthenticationState.Required => (NativeControlBrushes.Rgb(255, 247, 224), NativeControlBrushes.Rgb(242, 211, 143), NativeControlBrushes.Rgb(138, 91, 18)),
+            NativeAuthenticationState.SignedIn => (NativeControlBrushes.SuccessSoft, NativeControlBrushes.SuccessBorder, NativeControlBrushes.Success),
+            NativeAuthenticationState.Checking => (NativeControlBrushes.AccentSoft, NativeControlBrushes.InfoBorder, NativeControlBrushes.Accent),
+            NativeAuthenticationState.Failed => (NativeControlBrushes.ErrorSoft, NativeControlBrushes.ErrorBorder, NativeControlBrushes.ErrorText),
+            NativeAuthenticationState.Required => (NativeControlBrushes.WarningSoft, NativeControlBrushes.WarningBorder, NativeControlBrushes.WarningText),
             _ => (NativeControlBrushes.SurfaceMuted, NativeControlBrushes.Border, NativeControlBrushes.TextSecondary)
         };
 
         _signInStatusChip.Background = background;
         _signInStatusChip.BorderBrush = border;
         _signInText.Foreground = foreground;
+        var needsSignIn = _viewModel.AuthenticationState is NativeAuthenticationState.Failed or NativeAuthenticationState.Required;
+        _runtimeStatusChip.Background = needsSignIn ? NativeControlBrushes.WarningSoft : NativeControlBrushes.SurfaceMuted;
+        _runtimeStatusChip.BorderBrush = needsSignIn ? NativeControlBrushes.WarningBorder : NativeControlBrushes.Border;
+        _runtimeStatusText.Foreground = needsSignIn ? NativeControlBrushes.WarningText : NativeControlBrushes.TextSecondary;
     }
 
     private static Border BuildTopBarChip(string text, Microsoft.UI.Xaml.Media.Brush background, Microsoft.UI.Xaml.Media.Brush foreground) =>

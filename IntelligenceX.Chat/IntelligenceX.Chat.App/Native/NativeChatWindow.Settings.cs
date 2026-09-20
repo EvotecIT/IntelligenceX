@@ -32,7 +32,7 @@ internal sealed partial class NativeChatWindow {
             openOptionsOnLaunch: true,
             pipeName: _runtime.PipeName,
             profileName: _conversationStore.ActiveProfileName) {
-            Title = "IntelligenceX Chat - Runtime settings"
+            Title = "IX Chat · Runtime settings"
         };
         _settingsWindow = settingsWindow;
         settingsWindow.Closed += (_, _) => {

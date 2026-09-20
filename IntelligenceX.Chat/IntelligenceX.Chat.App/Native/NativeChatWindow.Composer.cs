@@ -132,13 +132,14 @@ internal sealed partial class NativeChatWindow {
         _checkSignInButton.Visibility = Visibility.Visible;
         _signInButton.Visibility = Visibility.Visible;
         _signInStatusChip.Visibility = Visibility.Visible;
-        _runtimeStatusChip.Visibility = Visibility.Visible;
+        _runtimeStatusChip.Visibility = string.IsNullOrWhiteSpace(_viewModel.StatusText) ? Visibility.Collapsed : Visibility.Visible;
         _exportButton.IsEnabled = _viewModel.Transcript.Count > 0;
     }
 
     private void UpdateViewStateFromViewModel(bool refreshEmptyState) {
         _signInText.Text = _viewModel.SignInText;
         _runtimeStatusText.Text = _viewModel.StatusText;
+        _runtimeStatusChip.Visibility = string.IsNullOrWhiteSpace(_viewModel.StatusText) ? Visibility.Collapsed : Visibility.Visible;
         ApplyAuthenticationChrome();
         if (!string.Equals(_composer.Text, _viewModel.Draft, StringComparison.Ordinal)) {
             _composer.Text = _viewModel.Draft;
