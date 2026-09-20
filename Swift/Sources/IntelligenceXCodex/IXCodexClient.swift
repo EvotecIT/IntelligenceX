@@ -49,6 +49,7 @@ public actor IXCodexClient {
         var authorizationError: IXCodexError?
         for url in configuration.modelURLs {
             do {
+                try await authSession.validateRequestGeneration(authorization)
                 try Task.checkCancellation()
                 var request = URLRequest(url: modelCatalogURL(from: url))
                 request.httpMethod = "GET"
@@ -123,6 +124,7 @@ public actor IXCodexClient {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                try await authSession.validateRequestGeneration(authorization)
                 try Task.checkCancellation()
                 lastError = error
                 if let rejection = error as? IXCodexError, rejection.requiresReauthorization {

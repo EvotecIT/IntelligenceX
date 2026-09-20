@@ -36,10 +36,12 @@ private final class IXCodexCredentialWriteLedger: @unchecked Sendable {
     struct Commit: Sendable {
         let authorizationID: UUID
         let previousBundle: IXCodexAuthBundle?
+        let writtenBundle: IXCodexAuthBundle
         var isRevoked = false
     }
 
     struct Rollback: Sendable {
+        let writtenBundle: IXCodexAuthBundle
         let previousBundle: IXCodexAuthBundle?
         let commitCount: Int
     }
@@ -73,6 +75,7 @@ private final class IXCodexCredentialWriteLedger: @unchecked Sendable {
                 rollbackCount += 1
             }
             return Rollback(
+                writtenBundle: commits.last!.writtenBundle,
                 previousBundle: previousBundle,
                 commitCount: rollbackCount
             )
@@ -188,10 +191,10 @@ actor IXCodexCredentialAccess {
             }
             guard authorization.isValid else { return false }
             // The network refresh may have completed after another process or
-            // session replaced credentials. Compare within serialized storage.
+            // session replaced credentials. The store owns the atomic comparison.
             if let expectedBundle, previousBundle != expectedBundle { return false }
             do {
-                try await store.save(bundle)
+                guard try await store.replace(previousBundle, with: bundle) else { return false }
             } catch {
                 readGate.failClosed()
                 throw error
@@ -202,16 +205,13 @@ actor IXCodexCredentialAccess {
             let committed = authorization.commitIfValid {
                 writeLedger.record(.init(
                     authorizationID: authorization.id,
-                    previousBundle: previousBundle
+                    previousBundle: previousBundle,
+                    writtenBundle: bundle
                 ))
             }
             guard committed else {
                 do {
-                    if let previousBundle {
-                        try await store.save(previousBundle)
-                    } else {
-                        try await store.delete()
-                    }
+                    _ = try await store.replace(bundle, with: previousBundle)
                     readGate.allowReads()
                 } catch {
                     readGate.failClosed()
@@ -246,11 +246,7 @@ actor IXCodexCredentialAccess {
             }
             guard rollback.commitCount > 0 else { return false }
             do {
-                if let previousBundle = rollback.previousBundle {
-                    try await store.save(previousBundle)
-                } else {
-                    try await store.delete()
-                }
+                _ = try await store.replace(rollback.writtenBundle, with: rollback.previousBundle)
             } catch {
                 readGate.failClosed()
                 throw error

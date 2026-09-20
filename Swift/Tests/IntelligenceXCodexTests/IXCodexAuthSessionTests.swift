@@ -668,7 +668,7 @@ actor SuspendedCredentialStore: IXCodexCredentialStoring {
         return bundle
     }
 
-    func save(_ bundle: IXCodexAuthBundle) async {
+    private func suspendSaveIfNeeded() async {
         if shouldSuspendSave {
             shouldSuspendSave = false
             saveStarted = true
@@ -676,7 +676,18 @@ actor SuspendedCredentialStore: IXCodexCredentialStoring {
             saveStartContinuation = nil
             await withCheckedContinuation { saveReleaseContinuation = $0 }
         }
+    }
+
+    func save(_ bundle: IXCodexAuthBundle) async {
+        await suspendSaveIfNeeded()
         self.bundle = bundle
+    }
+
+    func replace(_ expected: IXCodexAuthBundle?, with replacement: IXCodexAuthBundle?) async throws -> Bool {
+        await suspendSaveIfNeeded()
+        guard bundle == expected else { return false }
+        if let replacement { bundle = replacement } else { try delete() }
+        return true
     }
 
     func delete() throws {

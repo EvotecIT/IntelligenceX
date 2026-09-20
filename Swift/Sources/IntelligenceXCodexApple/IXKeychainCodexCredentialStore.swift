@@ -55,12 +55,14 @@ public actor IXKeychainCodexCredentialStore: IXCodexCredentialStoring {
         let data = try JSONEncoder().encode(bundle)
         let update: [String: Any] = [
             kSecValueData as String: data,
+            kSecAttrGeneric as String: revision(),
             kSecAttrAccessible as String: accessibility.securityValue,
         ]
         let status = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
         if status == errSecItemNotFound {
             var insert = baseQuery
             insert[kSecValueData as String] = data
+            insert[kSecAttrGeneric as String] = revision()
             insert[kSecAttrAccessible as String] = accessibility.securityValue
             let insertStatus = SecItemAdd(insert as CFDictionary, nil)
             guard insertStatus == errSecSuccess else {
@@ -71,6 +73,69 @@ public actor IXKeychainCodexCredentialStore: IXCodexCredentialStoring {
         guard status == errSecSuccess else {
             throw IXKeychainError(operation: "update", status: status)
         }
+    }
+
+    /// The revision attribute makes the Keychain update/delete query itself
+    /// conditional, including when another actor or process writes this item.
+    public func replace(
+        _ expected: IXCodexAuthBundle?, with replacement: IXCodexAuthBundle?
+    ) throws -> Bool {
+        guard let current = try versionedItem() else {
+            guard expected == nil else { return false }
+            guard let replacement else { return true }
+            var insert = baseQuery
+            insert[kSecValueData as String] = try JSONEncoder().encode(replacement)
+            insert[kSecAttrGeneric as String] = revision()
+            insert[kSecAttrAccessible as String] = accessibility.securityValue
+            let status = SecItemAdd(insert as CFDictionary, nil)
+            if status == errSecDuplicateItem { return false }
+            guard status == errSecSuccess else { throw IXKeychainError(operation: "insert", status: status) }
+            return true
+        }
+        guard current.bundle == expected else { return false }
+        var query = baseQuery
+        query[kSecAttrGeneric as String] = current.revision
+        let status: OSStatus
+        if let replacement {
+            status = SecItemUpdate(query as CFDictionary, [
+                kSecValueData as String: try JSONEncoder().encode(replacement),
+                kSecAttrGeneric as String: revision(),
+                kSecAttrAccessible as String: accessibility.securityValue,
+            ] as CFDictionary)
+        } else {
+            status = SecItemDelete(query as CFDictionary)
+        }
+        if status == errSecItemNotFound { return false }
+        guard status == errSecSuccess else { throw IXKeychainError(operation: "replace", status: status) }
+        return true
+    }
+
+    private func revision() -> Data { Data(UUID().uuidString.utf8) }
+
+    private func versionedItem() throws -> (bundle: IXCodexAuthBundle, revision: Data)? {
+        var query = baseQuery
+        query[kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess,
+              let item = result as? [String: Any],
+              let data = item[kSecValueData as String] as? Data else {
+            throw IXKeychainError(operation: "read revision", status: status)
+        }
+        if let revision = item[kSecAttrGeneric as String] as? Data, !revision.isEmpty {
+            return (try JSONDecoder().decode(IXCodexAuthBundle.self, from: data), revision)
+        }
+        // Legacy entries have no revision. Change metadata only, then re-read
+        // both the credentials and revision. A concurrent writer's credentials
+        // must never be copied back from the pre-migration read.
+        let migration = SecItemUpdate(baseQuery as CFDictionary,
+            [kSecAttrGeneric as String: revision()] as CFDictionary)
+        if migration == errSecItemNotFound { return nil }
+        guard migration == errSecSuccess else { throw IXKeychainError(operation: "migrate revision", status: migration) }
+        return try versionedItem()
     }
 
     public func delete() throws {

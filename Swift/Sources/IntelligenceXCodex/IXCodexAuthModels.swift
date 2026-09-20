@@ -37,6 +37,10 @@ public protocol IXCodexCredentialStoring: Sendable {
     func load() async throws -> IXCodexAuthBundle?
     func save(_ bundle: IXCodexAuthBundle) async throws
     func delete() async throws
+    /// Atomically replaces (or deletes) the value only if it still equals `expected`.
+    /// Implementations must serialize comparison and mutation across every writer
+    /// sharing their backing storage; a separate load followed by save is unsafe.
+    func replace(_ expected: IXCodexAuthBundle?, with replacement: IXCodexAuthBundle?) async throws -> Bool
 }
 
 public actor IXMemoryCodexCredentialStore: IXCodexCredentialStoring {
@@ -49,6 +53,11 @@ public actor IXMemoryCodexCredentialStore: IXCodexCredentialStoring {
     public func load() -> IXCodexAuthBundle? { bundle }
     public func save(_ bundle: IXCodexAuthBundle) { self.bundle = bundle }
     public func delete() { bundle = nil }
+    public func replace(_ expected: IXCodexAuthBundle?, with replacement: IXCodexAuthBundle?) -> Bool {
+        guard bundle == expected else { return false }
+        bundle = replacement
+        return true
+    }
 }
 
 public struct IXCodexDeviceCode: Equatable, Sendable {
