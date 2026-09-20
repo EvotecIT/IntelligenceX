@@ -71,6 +71,9 @@ private final class IXCodexCredentialWriteLedger: @unchecked Sendable {
             var previousBundle: IXCodexAuthBundle?
             for commit in commits.reversed() {
                 guard commit.isRevoked else { break }
+                // Another owner may have written between our commits. Undo
+                // only the contiguous suffix, preserving that external value.
+                if rollbackCount > 0, previousBundle != commit.writtenBundle { break }
                 previousBundle = commit.previousBundle
                 rollbackCount += 1
             }
@@ -179,16 +182,15 @@ actor IXCodexCredentialAccess {
             guard authorization.isValid else { return false }
             let hadReadablePrevious = readGate.isReadable
             let previousBundle: IXCodexAuthBundle?
-            if hadReadablePrevious {
-                do {
-                    previousBundle = try await store.load()
-                } catch {
-                    readGate.failClosed()
-                    throw error
-                }
-            } else {
-                previousBundle = nil
+            do {
+                // Even when public reads are quarantined, a new sign-in must
+                // compare against the actual current value to recover safely.
+                previousBundle = try await store.load()
+            } catch {
+                readGate.failClosed()
+                throw error
             }
+            let rollbackBundle = hadReadablePrevious ? previousBundle : nil
             guard authorization.isValid else { return false }
             // The network refresh may have completed after another process or
             // session replaced credentials. The store owns the atomic comparison.
@@ -205,13 +207,13 @@ actor IXCodexCredentialAccess {
             let committed = authorization.commitIfValid {
                 writeLedger.record(.init(
                     authorizationID: authorization.id,
-                    previousBundle: previousBundle,
+                    previousBundle: rollbackBundle,
                     writtenBundle: bundle
                 ))
             }
             guard committed else {
                 do {
-                    _ = try await store.replace(bundle, with: previousBundle)
+                    _ = try await store.replace(bundle, with: rollbackBundle)
                     readGate.allowReads()
                 } catch {
                     readGate.failClosed()
