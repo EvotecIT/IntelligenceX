@@ -38,13 +38,14 @@ public actor IXCodexClient {
 
     private func models(
         retryUnauthorized: Bool,
-        recoveredBundle: IXCodexAuthBundle? = nil
+        recoveredBundle: IXCodexAuthSession.RecoveredAuthorization? = nil
     ) async throws -> [IXCodexModel] {
         let bundle = try await requestBundle(recoveredBundle)
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse("ChatGPT account ID is missing from the OAuth token")
         }
         var lastError: Error?
+        var authorizationError: IXCodexError?
         for url in configuration.modelURLs {
             do {
                 try Task.checkCancellation()
@@ -122,14 +123,17 @@ public actor IXCodexClient {
             } catch {
                 try Task.checkCancellation()
                 lastError = error
+                if let rejection = error as? IXCodexError, rejection.requiresReauthorization {
+                    authorizationError = rejection
+                }
             }
         }
         try Task.checkCancellation()
-        if let lastError {
+        if let lastError = authorizationError ?? lastError {
             if let authError = lastError as? IXCodexError, authError.requiresReauthorization {
                 if retryUnauthorized {
                     let recovered = try await authSession.recoverRejectedBundle(bundle)
-                    guard recovered.accountID == accountID else { throw CancellationError() }
+                    guard recovered.bundle.accountID == accountID else { throw CancellationError() }
                     return try await models(retryUnauthorized: false, recoveredBundle: recovered)
                 }
                 // A second replacement supersedes this bounded attempt. Its
@@ -154,7 +158,7 @@ public actor IXCodexClient {
 
     private func accountUsage(
         retryUnauthorized: Bool,
-        recoveredBundle: IXCodexAuthBundle?
+        recoveredBundle: IXCodexAuthSession.RecoveredAuthorization?
     ) async throws -> IXCodexAccountUsage {
         let bundle = try await requestBundle(recoveredBundle)
         guard let accountID = bundle.accountID else {
@@ -189,8 +193,8 @@ public actor IXCodexClient {
         return try IXCodexAccountUsage.decode(response.body)
     }
 
-    private func requestBundle(_ recovered: IXCodexAuthBundle?) async throws -> IXCodexAuthBundle {
-        if let recovered { return recovered }
+    private func requestBundle(_ recovered: IXCodexAuthSession.RecoveredAuthorization?) async throws -> IXCodexAuthBundle {
+        if let recovered { return try await authSession.validateRecoveredAuthorization(recovered) }
         return try await authSession.validBundle()
     }
 
@@ -277,7 +281,7 @@ public actor IXCodexClient {
         instructions: String,
         model: String?,
         retryUnauthorized: Bool = true,
-        recoveredBundle: IXCodexAuthBundle? = nil
+        recoveredBundle: IXCodexAuthSession.RecoveredAuthorization? = nil
     ) async throws -> [IXJSONValue] {
         let bundle = try await requestBundle(recoveredBundle)
         guard let accountID = bundle.accountID else {
@@ -332,7 +336,7 @@ public actor IXCodexClient {
         imageGeneration: IXCodexImageGenerationOptions?,
         onTextDelta: IXCodexTextDeltaHandler?,
         retryUnauthorized: Bool,
-        recoveredBundle: IXCodexAuthBundle? = nil
+        recoveredBundle: IXCodexAuthSession.RecoveredAuthorization? = nil
     ) async throws -> IXCodexTurn {
         let bundle = try await requestBundle(recoveredBundle)
         guard let accountID = bundle.accountID else {

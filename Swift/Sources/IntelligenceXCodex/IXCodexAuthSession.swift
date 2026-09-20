@@ -249,26 +249,46 @@ public actor IXCodexAuthSession {
     /// Recovers a rejected request without rotating a concurrently replaced token.
     /// The account and token comparison belongs to the same credential read that
     /// decides whether to start a refresh.
-    func recoverRejectedBundle(_ rejected: IXCodexAuthBundle) async throws -> IXCodexAuthBundle {
-        try await validBundle(forceRefresh: false, rejectedBundle: rejected)
+    struct RecoveredAuthorization: Sendable {
+        let bundle: IXCodexAuthBundle
+        let generation: UInt64
+    }
+
+    func recoverRejectedBundle(_ rejected: IXCodexAuthBundle) async throws -> RecoveredAuthorization {
+        let generation = authGeneration
+        let bundle = try await validBundle(forceRefresh: false, rejectedBundle: rejected)
+        try validateAuthorization(expectedGeneration: generation)
+        guard bundle.accountID == rejected.accountID else { throw CancellationError() }
+        return RecoveredAuthorization(bundle: bundle, generation: generation)
+    }
+
+    /// Re-read current credentials without losing the recovered request's
+    /// account or authorization generation. A sign-out or interactive sign-in
+    /// cancels the retry even when the replacement belongs to the same account.
+    func validateRecoveredAuthorization(_ recovered: RecoveredAuthorization) async throws -> IXCodexAuthBundle {
+        try validateAuthorization(expectedGeneration: recovered.generation)
+        let bundle = try await validBundle(forceRefresh: false, expectedAccount: recovered.bundle.accountID)
+        try validateAuthorization(expectedGeneration: recovered.generation)
+        return bundle
     }
 
     private func validBundle(
         forceRefresh: Bool,
-        rejectedBundle: IXCodexAuthBundle?
+        rejectedBundle: IXCodexAuthBundle? = nil,
+        expectedAccount: String? = nil
     ) async throws -> IXCodexAuthBundle {
         let expectedGeneration = authGeneration
         try validateCredentialRead()
         guard let existing = try await loadCredentialBundle(
             expectedGeneration: expectedGeneration
         ) else {
-            if rejectedBundle != nil { throw CancellationError() }
+            if rejectedBundle != nil || expectedAccount != nil { throw CancellationError() }
             throw IXCodexError.authenticationRequired
         }
         guard authGeneration == expectedGeneration, !Task.isCancelled else {
             throw CancellationError()
         }
-        if let rejectedBundle, existing.accountID != rejectedBundle.accountID {
+        if let account = rejectedBundle?.accountID ?? expectedAccount, existing.accountID != account {
             throw CancellationError()
         }
         let rejectedCurrentToken = rejectedBundle.map { $0.accessToken == existing.accessToken } ?? false
@@ -281,6 +301,9 @@ public actor IXCodexAuthSession {
                 try validateAuthorization(
                     expectedGeneration: expectedGeneration
                 )
+                if let account = rejectedBundle?.accountID ?? expectedAccount, bundle.accountID != account {
+                    throw CancellationError()
+                }
                 return bundle
             } catch {
                 try validateAuthorization(
@@ -301,6 +324,9 @@ public actor IXCodexAuthSession {
             let bundle = try await task.value
             if authGeneration == expectedGeneration { refreshTask = nil }
             try validateAuthorization(expectedGeneration: expectedGeneration)
+            if let account = rejectedBundle?.accountID ?? expectedAccount, bundle.accountID != account {
+                throw CancellationError()
+            }
             return bundle
         } catch {
             if authGeneration == expectedGeneration { refreshTask = nil }
@@ -482,6 +508,9 @@ public actor IXCodexAuthSession {
         let idToken = object["id_token"]?.stringValue ?? previous?.idToken
         let accountID = IXJWTClaims.accountID(accessToken: accessToken, idToken: idToken)
             ?? previous?.accountID
+        if let previousAccount = previous?.accountID, accountID != previousAccount {
+            throw CancellationError()
+        }
         let bundle = IXCodexAuthBundle(
             accessToken: accessToken,
             refreshToken: refreshToken,

@@ -117,7 +117,7 @@ func modelCatalogRecoveryChecksCredentialsAtTheRefreshDecision(accountChanged: B
     if accountChanged {
         await #expect(throws: CancellationError.self) { try await recovery.value }
     } else {
-        #expect(try await recovery.value.accessToken == "fresh")
+        #expect(try await recovery.value.bundle.accessToken == "fresh")
     }
     #expect(await transport.refreshes == 0)
 }
@@ -170,4 +170,67 @@ func rejectedRequestRecoveryPreservesAuthorizationAcrossSiblingRoutes(route: Str
     await #expect(throws: CancellationError.self) { try await request.value }
     #expect(await transport.modelTokens == (duringRetry ? ["Bearer old", "Bearer fresh"] : ["Bearer old"]))
     #expect(await transport.refreshes == (duringRetry ? 1 : 0))
+}
+
+@Test(arguments: [false, true])
+func recoveredAuthorizationIsRevokedBeforeReplay(signOut: Bool) async throws {
+    let rejected = IXCodexAuthBundle(accessToken: "old", refreshToken: "refresh",
+        expiresAt: .distantFuture, accountID: "account")
+    let credentials = IXMemoryCodexCredentialStore(bundle: rejected)
+    let transport = ModelAuthorizationTransport(holdFirstModel: false)
+    let http = IXClosureHTTPClient { request in try await transport.send(request) }
+    let configuration = IXCodexConfiguration()
+    let auth = IXCodexAuthSession(configuration: configuration, credentialStore: credentials, httpClient: http)
+    let recovered = try await auth.recoverRejectedBundle(rejected)
+    if signOut { try await auth.signOut() }
+    else {
+        _ = try await auth.beginBrowserAuthorization(redirectURL:
+            URL(string: "http://localhost:\(configuration.browserCallbackPorts[0])/auth/callback")!)
+    }
+    await #expect(throws: CancellationError.self) { try await auth.validateRecoveredAuthorization(recovered) }
+}
+
+@Test func modelCatalogRecoversEarlierAuthorizationFailureWhenFallbackFails() async throws {
+    let credentials = IXMemoryCodexCredentialStore(bundle: .init(accessToken: "old", refreshToken: "refresh",
+        expiresAt: .distantFuture, accountID: "account"))
+    let transport = ModelAuthorizationTransport(holdFirstModel: false)
+    let http = IXClosureHTTPClient { request in
+        if request.url?.path == "/fallback" { return .init(statusCode: 503, body: Data()) }
+        return try await transport.send(request)
+    }
+    var configuration = IXCodexConfiguration()
+    configuration.modelURLs = [URL(string: "https://example.test/models")!, URL(string: "https://example.test/fallback")!]
+    let auth = IXCodexAuthSession(configuration: configuration, credentialStore: credentials, httpClient: http)
+    let client = IXCodexClient(configuration: configuration, authSession: auth, httpClient: http)
+    #expect(try await client.models().map(\.id) == ["test-model"])
+    #expect(await transport.refreshes == 1)
+}
+
+@Test func rejectedRecoveryCannotPersistAnAccountChangingRefresh() async throws {
+    let rejected = IXCodexAuthBundle(accessToken: "old", refreshToken: "refresh",
+        expiresAt: .distantFuture, accountID: "account")
+    let credentials = IXMemoryCodexCredentialStore(bundle: rejected)
+    let payload = Data(#"{"https://api.openai.com/auth":{"chatgpt_account_id":"other-account"}}"#.utf8)
+        .base64EncodedString().replacingOccurrences(of: "=", with: "")
+    let token = "e30.\(payload).signature"
+    let http = IXClosureHTTPClient { _ in
+        .init(statusCode: 200, body: try JSONSerialization.data(withJSONObject: [
+            "access_token": token, "refresh_token": "next", "expires_in": 3600]))
+    }
+    let auth = IXCodexAuthSession(credentialStore: credentials, httpClient: http)
+    await #expect(throws: CancellationError.self) { try await auth.recoverRejectedBundle(rejected) }
+    #expect(try await auth.currentBundle()?.accessToken == "old")
+}
+
+@Test func rejectedRecoveryRefreshesAnExpiredReplacementInsteadOfSendingIt() async throws {
+    let rejected = IXCodexAuthBundle(accessToken: "old", refreshToken: "refresh",
+        expiresAt: .distantFuture, accountID: "account")
+    let credentials = IXMemoryCodexCredentialStore(bundle: .init(accessToken: "expired-replacement",
+        refreshToken: "replacement-refresh", expiresAt: .distantPast, accountID: "account"))
+    let transport = ModelAuthorizationTransport(holdFirstModel: false)
+    let http = IXClosureHTTPClient { request in try await transport.send(request) }
+    let auth = IXCodexAuthSession(credentialStore: credentials, httpClient: http)
+    let recovered = try await auth.recoverRejectedBundle(rejected)
+    #expect(recovered.bundle.accessToken == "fresh")
+    #expect(await transport.refreshes == 1)
 }
