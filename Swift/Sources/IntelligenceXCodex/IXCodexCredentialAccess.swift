@@ -164,7 +164,8 @@ actor IXCodexCredentialAccess {
     @discardableResult
     func save(
         _ bundle: IXCodexAuthBundle,
-        authorizedBy authorization: IXCodexCredentialWriteAuthorization
+        authorizedBy authorization: IXCodexCredentialWriteAuthorization,
+        replacing expectedBundle: IXCodexAuthBundle? = nil
     ) async throws -> Bool {
         let previous = tail
         let store = store
@@ -186,6 +187,9 @@ actor IXCodexCredentialAccess {
                 previousBundle = nil
             }
             guard authorization.isValid else { return false }
+            // The network refresh may have completed after another process or
+            // session replaced credentials. Compare within serialized storage.
+            if let expectedBundle, previousBundle != expectedBundle { return false }
             do {
                 try await store.save(bundle)
             } catch {

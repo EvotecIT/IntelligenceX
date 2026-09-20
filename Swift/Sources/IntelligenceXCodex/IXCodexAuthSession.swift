@@ -249,26 +249,43 @@ public actor IXCodexAuthSession {
     /// Recovers a rejected request without rotating a concurrently replaced token.
     /// The account and token comparison belongs to the same credential read that
     /// decides whether to start a refresh.
-    struct RecoveredAuthorization: Sendable {
+    struct RequestAuthorization: Sendable {
         let bundle: IXCodexAuthBundle
         let generation: UInt64
     }
 
-    func recoverRejectedBundle(_ rejected: IXCodexAuthBundle) async throws -> RecoveredAuthorization {
+    func requestAuthorization() async throws -> RequestAuthorization {
         let generation = authGeneration
-        let bundle = try await validBundle(forceRefresh: false, rejectedBundle: rejected)
+        let bundle = try await validBundle()
         try validateAuthorization(expectedGeneration: generation)
-        guard bundle.accountID == rejected.accountID else { throw CancellationError() }
-        return RecoveredAuthorization(bundle: bundle, generation: generation)
+        return RequestAuthorization(bundle: bundle, generation: generation)
     }
 
-    /// Re-read current credentials without losing the recovered request's
-    /// account or authorization generation. A sign-out or interactive sign-in
-    /// cancels the retry even when the replacement belongs to the same account.
-    func validateRecoveredAuthorization(_ recovered: RecoveredAuthorization) async throws -> IXCodexAuthBundle {
+    func recoverRejectedBundle(_ rejected: RequestAuthorization) async throws -> RequestAuthorization {
+        try validateAuthorization(expectedGeneration: rejected.generation)
+        let bundle = try await validBundle(forceRefresh: false, rejectedBundle: rejected.bundle)
+        try validateAuthorization(expectedGeneration: rejected.generation)
+        guard bundle.accountID == rejected.bundle.accountID else { throw CancellationError() }
+        return RequestAuthorization(bundle: bundle, generation: rejected.generation)
+    }
+
+    /// Preserve the initial request's generation through credential refresh and
+    /// replay, including a same-account interactive replacement.
+    func validateRecoveredAuthorization(_ recovered: RequestAuthorization) async throws -> RequestAuthorization {
         try validateAuthorization(expectedGeneration: recovered.generation)
         let bundle = try await validBundle(forceRefresh: false, expectedAccount: recovered.bundle.accountID)
         try validateAuthorization(expectedGeneration: recovered.generation)
+        return RequestAuthorization(bundle: bundle, generation: recovered.generation)
+    }
+
+    func validateRequestGeneration(_ authorization: RequestAuthorization) throws {
+        try validateAuthorization(expectedGeneration: authorization.generation)
+    }
+
+    func currentRequestBundle(_ authorization: RequestAuthorization) async throws -> IXCodexAuthBundle? {
+        try validateAuthorization(expectedGeneration: authorization.generation)
+        let bundle = try await currentBundle()
+        try validateAuthorization(expectedGeneration: authorization.generation)
         return bundle
     }
 
@@ -454,7 +471,8 @@ public actor IXCodexAuthSession {
             ), reloaded.refreshToken != existing.refreshToken else {
                 throw IXCodexError.requestFailed(status: 401, message: message)
             }
-            guard authGeneration == expectedGeneration, !Task.isCancelled else {
+            guard authGeneration == expectedGeneration, !Task.isCancelled,
+                  reloaded.accountID == existing.accountID else {
                 throw CancellationError()
             }
             return try await refresh(
@@ -533,7 +551,8 @@ public actor IXCodexAuthSession {
             committed = try await withTaskCancellationHandler {
                 try await credentialAccess.save(
                     bundle,
-                    authorizedBy: authorization
+                    authorizedBy: authorization,
+                    replacing: previous
                 )
             } onCancel: {
                 authorization.invalidate()

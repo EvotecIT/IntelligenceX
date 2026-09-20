@@ -109,7 +109,7 @@ func modelCatalogRecoveryChecksCredentialsAtTheRefreshDecision(accountChanged: B
     let transport = ModelAuthorizationTransport(holdFirstModel: false)
     let http = IXClosureHTTPClient { request in try await transport.send(request) }
     let auth = IXCodexAuthSession(credentialStore: credentials, httpClient: http)
-    let recovery = Task { try await auth.recoverRejectedBundle(rejected) }
+    let recovery = Task { try await auth.recoverRejectedBundle(.init(bundle: rejected, generation: 0)) }
     await credentials.waitUntilLoadStarted()
     await credentials.save(.init(accessToken: "fresh", refreshToken: "next",
         expiresAt: .distantFuture, accountID: accountChanged ? "other-account" : "account"))
@@ -181,7 +181,7 @@ func recoveredAuthorizationIsRevokedBeforeReplay(signOut: Bool) async throws {
     let http = IXClosureHTTPClient { request in try await transport.send(request) }
     let configuration = IXCodexConfiguration()
     let auth = IXCodexAuthSession(configuration: configuration, credentialStore: credentials, httpClient: http)
-    let recovered = try await auth.recoverRejectedBundle(rejected)
+    let recovered = try await auth.recoverRejectedBundle(.init(bundle: rejected, generation: 0))
     if signOut { try await auth.signOut() }
     else {
         _ = try await auth.beginBrowserAuthorization(redirectURL:
@@ -218,7 +218,7 @@ func recoveredAuthorizationIsRevokedBeforeReplay(signOut: Bool) async throws {
             "access_token": token, "refresh_token": "next", "expires_in": 3600]))
     }
     let auth = IXCodexAuthSession(credentialStore: credentials, httpClient: http)
-    await #expect(throws: CancellationError.self) { try await auth.recoverRejectedBundle(rejected) }
+    await #expect(throws: CancellationError.self) { try await auth.recoverRejectedBundle(.init(bundle: rejected, generation: 0)) }
     #expect(try await auth.currentBundle()?.accessToken == "old")
 }
 
@@ -230,7 +230,87 @@ func recoveredAuthorizationIsRevokedBeforeReplay(signOut: Bool) async throws {
     let transport = ModelAuthorizationTransport(holdFirstModel: false)
     let http = IXClosureHTTPClient { request in try await transport.send(request) }
     let auth = IXCodexAuthSession(credentialStore: credentials, httpClient: http)
-    let recovered = try await auth.recoverRejectedBundle(rejected)
+    let recovered = try await auth.recoverRejectedBundle(.init(bundle: rejected, generation: 0))
     #expect(recovered.bundle.accessToken == "fresh")
     #expect(await transport.refreshes == 1)
+}
+
+@Test(arguments: [false, true], [false, true])
+func staleRefreshCannotOverwriteReplacementCredentials(otherAccount: Bool, tokenReused: Bool) async throws {
+    let initial = IXCodexAuthBundle(accessToken: "old", refreshToken: "refresh",
+        expiresAt: .distantFuture, accountID: "account")
+    let credentials = IXMemoryCodexCredentialStore(bundle: initial)
+    let transport = SuspendedRefreshTransport(tokenReused: tokenReused)
+    let http = IXClosureHTTPClient { request in try await transport.send(request) }
+    let auth = IXCodexAuthSession(credentialStore: credentials, httpClient: http)
+    let authorization = try await auth.requestAuthorization()
+    let recovery = Task { try await auth.recoverRejectedBundle(authorization) }
+    await transport.waitUntilStarted()
+    let replacement = IXCodexAuthBundle(accessToken: "replacement", refreshToken: "replacement-refresh",
+        expiresAt: .distantFuture, accountID: otherAccount ? "other-account" : "account")
+    await credentials.save(replacement)
+    await transport.release()
+    if tokenReused && !otherAccount {
+        // A same-account reused-token recovery may refresh the current bundle.
+        #expect(try await recovery.value.bundle.accountID == "account")
+        #expect(await transport.count == 2)
+    } else {
+        await #expect(throws: CancellationError.self) { try await recovery.value }
+        #expect(await credentials.load() == replacement)
+        #expect(await transport.count == 1)
+    }
+}
+
+@Test(arguments: ["models", "usage", "compact", "responses"])
+func startingInteractiveAuthorizationCancelsAnEarlierRejectedRequest(route: String) async throws {
+    let credentials = IXMemoryCodexCredentialStore(bundle: .init(accessToken: "old", refreshToken: "refresh",
+        expiresAt: .distantFuture, accountID: "account"))
+    let transport = ModelAuthorizationTransport(rejectFresh: true, heldPath: "/" + route)
+    var configuration = IXCodexConfiguration()
+    configuration.modelURLs = [URL(string: "https://example.test/models")!]
+    configuration.accountUsageURL = URL(string: "https://example.test/usage")!
+    configuration.compactionURL = URL(string: "https://example.test/compact")!
+    configuration.responsesURL = URL(string: "https://example.test/responses")!
+    let http = IXClosureHTTPClient { request in try await transport.send(request) }
+    let auth = IXCodexAuthSession(configuration: configuration, credentialStore: credentials, httpClient: http)
+    let client = IXCodexClient(configuration: configuration, authSession: auth, httpClient: http)
+    let request = Task {
+        switch route {
+        case "models": _ = try await client.models()
+        case "usage": _ = try await client.accountUsage()
+        case "compact": _ = try await client.compact(input: [], sessionID: "session", instructions: "", model: "test")
+        default: _ = try await client.response(input: [], sessionID: "session", instructions: "", tools: [],
+            model: "test", reasoningEffort: nil, webSearch: nil, imageGeneration: nil)
+        }
+    }
+    await transport.waitUntilModelStarted()
+    _ = try await auth.beginBrowserAuthorization(redirectURL:
+        URL(string: "http://localhost:\(configuration.browserCallbackPorts[0])/auth/callback")!)
+    await transport.release()
+    await #expect(throws: CancellationError.self) { try await request.value }
+    #expect(await transport.refreshes == 0)
+    #expect(await transport.modelTokens == ["Bearer old"])
+}
+
+private actor SuspendedRefreshTransport {
+    let tokenReused: Bool
+    var count = 0
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var started: CheckedContinuation<Void, Never>?
+    init(tokenReused: Bool) { self.tokenReused = tokenReused }
+    func send(_ request: URLRequest) async throws -> IXHTTPResponse {
+        count += 1
+        if count == 1 {
+            await withCheckedContinuation { waiting = $0; started?.resume(); started = nil }
+            if tokenReused {
+                return .init(statusCode: 401, body: Data(#"{"error":{"code":"refresh_token_reused","message":"refresh_token_reused"}}"#.utf8))
+            }
+        }
+        return .init(statusCode: 200, body: Data(#"{"access_token":"fresh","refresh_token":"next","expires_in":3600}"#.utf8))
+    }
+    func waitUntilStarted() async {
+        if waiting != nil { return }
+        await withCheckedContinuation { started = $0 }
+    }
+    func release() { waiting?.resume(); waiting = nil }
 }
