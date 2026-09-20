@@ -19,6 +19,7 @@ internal static partial class Program {
         failed += Run("Provider limit windows use reported durations", TestProviderLimitWindowsUseReportedDurations);
 #if INTELLIGENCEX_REVIEWER
         failed += Run("Provider limits refresh accounts independently", TestProviderLimitsRefreshAccountsIndependently);
+        failed += Run("Provider limits synchronize only matching Codex credentials", TestProviderLimitsSynchronizeOnlyMatchingCodexCredentials);
         failed += Run("Provider limits account refresh cancellation and empty store", TestProviderLimitsAccountRefreshCancellationAndEmptyStore);
 #endif
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);

@@ -65,18 +65,25 @@ internal sealed class OpenAINativeAuthManager {
         if (string.IsNullOrWhiteSpace(bundle.RefreshToken)) {
             throw new InvalidOperationException("Refresh token is missing. Re-run the ChatGPT login.");
         }
+        var previousRefreshToken = bundle.RefreshToken;
+        var previousAccountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
         var refreshed = await _oauth.RefreshAsync(_options.OAuth, bundle, cancellationToken).ConfigureAwait(false);
-        await SaveBundleAsync(refreshed.Bundle, cancellationToken).ConfigureAwait(false);
+        await SaveBundleAsync(refreshed.Bundle, cancellationToken, previousRefreshToken, previousAccountId).ConfigureAwait(false);
         return refreshed.Bundle;
     }
 
-    private async Task SaveBundleAsync(AuthBundle bundle, CancellationToken cancellationToken) {
+    private async Task SaveBundleAsync(AuthBundle bundle, CancellationToken cancellationToken,
+        string? previousRefreshToken = null, string? previousAccountId = null) {
         bundle.AccountId ??= JwtDecoder.TryGetAccountId(bundle.AccessToken);
         await _options.AuthStore.SaveAsync(bundle, cancellationToken).ConfigureAwait(false);
 
         if (_options.PersistCodexAuthJson && !string.IsNullOrWhiteSpace(bundle.IdToken)) {
             try {
-                CodexAuthStore.WriteAuthJson(bundle, _options.CodexHome);
+                if (_options.PreserveCodexLoginOnRefresh) {
+                    CodexAuthStore.UpdateMatchingAuthJson(bundle, previousAccountId, previousRefreshToken, _options.CodexHome);
+                } else {
+                    CodexAuthStore.WriteAuthJson(bundle, _options.CodexHome);
+                }
             } catch {
                 // Codex auth export is best-effort; ignore failures.
             }

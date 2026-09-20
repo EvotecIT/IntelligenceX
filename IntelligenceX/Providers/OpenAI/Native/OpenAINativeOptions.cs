@@ -108,6 +108,12 @@ public sealed class OpenAINativeOptions {
     /// Whether to persist codex auth JSON to disk.
     /// </summary>
     public bool PersistCodexAuthJson { get; set; } = true;
+
+    /// <summary>
+    /// Restricts background token renewal to updating an existing matching Codex credential
+    /// generation; it must not export another account or replace a newer login.
+    /// </summary>
+    internal bool PreserveCodexLoginOnRefresh { get; set; }
     /// <summary>
     /// Override path to the Codex home directory.
     /// </summary>

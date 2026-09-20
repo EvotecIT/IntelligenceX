@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using IntelligenceX.Json;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Native;
 using IntelligenceX.Telemetry.Limits;
@@ -11,6 +12,51 @@ namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
 internal static partial class Program {
+    private static void TestProviderLimitsSynchronizeOnlyMatchingCodexCredentials() {
+        foreach (var scenario in new[] { "matching", "different-account", "newer-login" }) {
+            var directory = Path.Combine(Path.GetTempPath(), "ix-limit-sync-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try {
+                var codexPath = Path.Combine(directory, "auth.json");
+                var codexId = scenario == "different-account" ? "unrelated" : "shared";
+                var original = new JsonObject().Add("custom_metadata", "preserved").Add("tokens", new JsonObject()
+                    .Add("account_id", codexId).Add("access_token", "old-access").Add("refresh_token", "refresh-shared"));
+                File.WriteAllText(codexPath, JsonLite.Serialize(JsonValue.From(original)));
+                using var server = new LocalHttpServer((HttpRequest request) => {
+                    if (request.Path == "/token") {
+                        if (scenario == "newer-login" && request.Body.Contains("refresh-shared")) {
+                            original.GetObject("tokens")!.Add("refresh_token", "newer-sign-in");
+                            File.WriteAllText(codexPath, JsonLite.Serialize(JsonValue.From(original)));
+                        }
+                        return new HttpResponse("{\"access_token\":\"renewed\",\"refresh_token\":\"rotated\",\"expires_in\":3600}");
+                    }
+                    return new HttpResponse("{\"rate_limit\":{\"primary_window\":{\"limit_window_seconds\":604800,\"used_percent\":20}}}");
+                });
+                var store = new FileAuthBundleStore(Path.Combine(directory, "ix-auth.json"));
+                foreach (var id in new[] { "other", "shared" }) {
+                    store.SaveAsync(new AuthBundle("openai-codex", "old-" + id, "refresh-" + id, DateTimeOffset.UtcNow.AddDays(-1)) {
+                        AccountId = id, IdToken = "fixture-id-token"
+                    }).GetAwaiter().GetResult();
+                }
+                var options = new OpenAINativeOptions {
+                    AuthStore = store, AuthAccountId = "shared", CodexHome = directory, ChatGptApiBaseUrl = server.BaseUri.ToString()
+                };
+                options.OAuth.TokenUrl = new Uri(server.BaseUri, "/token").ToString();
+                var result = ProviderLimitSnapshotService.FetchCodexAsync("codex", options, CancellationToken.None).GetAwaiter().GetResult();
+                var persisted = JsonLite.Parse(File.ReadAllText(codexPath)).AsObject()!;
+                AssertEqual(2, result.Accounts.Count(account => account.IsAvailable), "both accounts refreshed independently");
+                AssertEqual(codexId, persisted.GetObject("tokens")!.GetString("account_id"), "Codex account never switched");
+                AssertEqual("preserved", persisted.GetString("custom_metadata"), "unrelated Codex metadata retained");
+                AssertEqual(scenario == "matching" ? "rotated" : scenario == "newer-login" ? "newer-sign-in" : "refresh-shared",
+                    persisted.GetObject("tokens")!.GetString("refresh_token"), "only matching credential generation synchronized");
+                AssertEqual(scenario == "matching" ? "renewed" : "old-access",
+                    persisted.GetObject("tokens")!.GetString("access_token"), "nonmatching access token unchanged");
+            } finally {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
     private static void TestProviderLimitsRefreshAccountsIndependently() {
         var directory = Path.Combine(Path.GetTempPath(), "ix-limit-accounts-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);

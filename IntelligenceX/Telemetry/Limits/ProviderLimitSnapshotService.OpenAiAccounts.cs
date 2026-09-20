@@ -22,7 +22,8 @@ public sealed partial class ProviderLimitSnapshotService {
         string requestedProviderId,
         OpenAINativeOptions options,
         CancellationToken cancellationToken) {
-        options.PersistCodexAuthJson = false;
+        options.PersistCodexAuthJson = true;
+        options.PreserveCodexLoginOnRefresh = true;
         var bundles = await ListOpenAiBundlesAsync(options.AuthStore, cancellationToken).ConfigureAwait(false);
         if (bundles.Count == 0) {
             return BuildUnavailableSnapshot(requestedProviderId,

@@ -135,8 +135,7 @@ public sealed partial class ProviderLimitSnapshotService {
 
     private static Task<ProviderLimitSnapshot> FetchCodexAsync(string requestedProviderId, CancellationToken cancellationToken) {
         var options = new OpenAINativeOptions {
-            UserAgent = "IntelligenceX/0.1.0",
-            PersistCodexAuthJson = false
+            UserAgent = "IntelligenceX/0.1.0"
         };
         options.AuthAccountId = TryResolveCurrentCodexAccountId(options.CodexHome);
         return FetchCodexAsync(requestedProviderId, options, cancellationToken);
