@@ -69,6 +69,28 @@ public sealed class AuthStoreTransactionTests : IDisposable {
     }
 
     [Fact]
+    public async Task ReturnedRotationIsPersistedEvenIfCallerCancels() {
+        var original = Bundle("account");
+        await Store().SaveAsync(original);
+        using var cancellation = new CancellationTokenSource();
+        var rotated = await Store().RefreshAsync(original, (_, _) => {
+            cancellation.Cancel();
+            return Task.FromResult(Bundle("account", "rotated-before-cancellation"));
+        }, cancellation.Token);
+        Assert.Equal("rotated-before-cancellation", rotated.RefreshToken);
+        Assert.Equal(rotated.RefreshToken, (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+    }
+
+    [Fact]
+    public async Task SavePreservesExistingUnixCredentialPermissions() {
+        if (OperatingSystem.IsWindows()) return;
+        await Store().SaveAsync(Bundle("account"));
+        File.SetUnixFileMode(StorePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        await Store().SaveAsync(Bundle("other"));
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(StorePath));
+    }
+
+    [Fact]
     public async Task RefreshCanIdentifyALegacyAccountWithoutAnId() {
         var legacy = Bundle("account");
         legacy.AccountId = null;

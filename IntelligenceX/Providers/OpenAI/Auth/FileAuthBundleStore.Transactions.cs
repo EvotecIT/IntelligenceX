@@ -50,7 +50,9 @@ public sealed partial class FileAuthBundleStore {
         // Legacy entries may not have an account id until the provider reports one.
         file.Bundles.Remove(key);
         file.Bundles[updatedKey] = updated;
-        await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
+        // Once the provider returns rotated credentials, persist them even if the
+        // caller canceled meanwhile. Cancellation must not discard a usable token.
+        await WriteFileAsync(file, CancellationToken.None).ConfigureAwait(false);
         return updated;
     }
 }

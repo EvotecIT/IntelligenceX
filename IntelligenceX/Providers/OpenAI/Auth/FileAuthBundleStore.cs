@@ -149,15 +149,10 @@ public sealed partial class FileAuthBundleStore : IAuthBundleStore {
         if (!string.IsNullOrWhiteSpace(dir)) {
             Directory.CreateDirectory(dir);
         }
-        var temporaryPath = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try {
-            await WriteAllTextAsync(temporaryPath, content, cancellationToken).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (File.Exists(_path)) File.Replace(temporaryPath, _path, null);
-            else File.Move(temporaryPath, _path);
-        } finally {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
-        }
+        // Keep the existing file and its access restrictions. All cooperating store
+        // readers/writers hold the transaction lock; do not stage plaintext credentials
+        // in a new file with broader inherited/default permissions.
+        await WriteAllTextAsync(_path, content, cancellationToken).ConfigureAwait(false);
     }
 
     private static string BuildKey(string provider, string? accountId) {
