@@ -12,6 +12,7 @@ namespace IntelligenceX.Chat.App.Native;
 public sealed class NativeTranscriptMessageControl : UserControl {
     private readonly Border _shell;
     private readonly Border _accentBar;
+    private readonly TextBlock _avatarText;
     private readonly StackPanel _contentPanel;
     private readonly TextBlock _roleText;
     private readonly TextBlock _statusText;
@@ -35,11 +36,20 @@ public sealed class NativeTranscriptMessageControl : UserControl {
             FontSize = 12,
             Foreground = NativeControlBrushes.TextMuted
         };
+        _avatarText = new TextBlock {
+            Text = "IX",
+            FontSize = 11,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
         _accentBar = new Border {
-            Width = 3,
-            CornerRadius = new CornerRadius(2),
-            Background = NativeControlBrushes.Accent,
-            VerticalAlignment = VerticalAlignment.Stretch
+            Width = 28,
+            Height = 28,
+            CornerRadius = new CornerRadius(8),
+            Background = NativeControlBrushes.AccentSoft,
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = _avatarText
         };
         var body = new Grid {
             ColumnSpacing = 12
@@ -61,7 +71,7 @@ public sealed class NativeTranscriptMessageControl : UserControl {
         _shell = new Border {
             Margin = new Thickness(0, 0, 0, 10),
             Padding = new Thickness(15),
-            CornerRadius = new CornerRadius(7),
+            CornerRadius = new CornerRadius(12),
             BorderBrush = NativeControlBrushes.Border,
             BorderThickness = new Thickness(1),
             Background = NativeControlBrushes.Surface,
@@ -137,7 +147,7 @@ public sealed class NativeTranscriptMessageControl : UserControl {
             return;
         }
 
-        _roleText.Text = _item.IsUser ? "OPERATOR" : _item.Role.ToUpperInvariant();
+        _roleText.Text = _item.IsUser ? "You" : _item.IsAssistant ? "IX Chat" : _item.Role;
         _statusText.Text = string.IsNullOrWhiteSpace(_item.Status) ? FormatCreatedAt(_item.CreatedAt) : _item.Status;
         ApplyMessageChrome(_item);
     }
@@ -185,22 +195,27 @@ public sealed class NativeTranscriptMessageControl : UserControl {
         if (item.IsUser) {
             _shell.HorizontalAlignment = HorizontalAlignment.Stretch;
             _shell.MaxWidth = double.PositiveInfinity;
-            _shell.Margin = new Thickness(84, 0, 0, 12);
+            _shell.Margin = new Thickness(40, 0, 0, 24);
+            _shell.Padding = new Thickness(16);
+            _shell.BorderThickness = new Thickness(1);
             _shell.Background = NativeControlBrushes.UserBubble;
             _shell.BorderBrush = NativeControlBrushes.UserBorder;
-            _accentBar.Background = NativeControlBrushes.Accent;
+            _accentBar.Visibility = Visibility.Collapsed;
             _roleText.Foreground = NativeControlBrushes.Accent;
             return;
         }
 
         _shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         _shell.MaxWidth = double.PositiveInfinity;
-        _shell.Margin = new Thickness(0, 0, 72, 12);
-        _shell.Background = NativeControlBrushes.Surface;
+        _shell.Margin = new Thickness(0, 0, 0, 24);
+        _shell.Padding = new Thickness(0, 8, 0, 0);
+        _shell.BorderThickness = new Thickness(0);
+        _shell.Background = NativeControlBrushes.AppBackground;
         _shell.BorderBrush = NativeControlBrushes.Border;
-        _accentBar.Background = item.IsAssistant
-            ? NativeControlBrushes.AssistantAccent
-            : NativeControlBrushes.SystemAccent;
+        _accentBar.Visibility = Visibility.Visible;
+        _accentBar.Background = item.IsAssistant ? NativeControlBrushes.SuccessSoft : NativeControlBrushes.QuoteSoft;
+        _avatarText.Text = item.IsAssistant ? "IX" : "•";
+        _avatarText.Foreground = item.IsAssistant ? NativeControlBrushes.AssistantText : NativeControlBrushes.SystemText;
         _roleText.Foreground = item.IsAssistant
             ? NativeControlBrushes.AssistantText
             : NativeControlBrushes.SystemText;

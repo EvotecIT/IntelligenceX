@@ -60,7 +60,7 @@ internal sealed partial class NativeChatWindow {
             Foreground = NativeControlBrushes.TextPrimary
         });
         titleStack.Children.Add(new TextBlock {
-            Text = "Operator workspace for chat, evidence, and native artifacts",
+            Text = "Conversations, tools, and evidence",
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = NativeControlBrushes.TextSecondary
@@ -76,8 +76,6 @@ internal sealed partial class NativeChatWindow {
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Right
         };
-
-        rightStack.Children.Add(BuildTopBarChip("Model router", NativeControlBrushes.AccentSoft, NativeControlBrushes.Accent));
 
         var settingsButton = new Button {
             Content = "Settings",
@@ -248,17 +246,4 @@ internal sealed partial class NativeChatWindow {
         _runtimeStatusText.Foreground = needsSignIn ? NativeControlBrushes.WarningText : NativeControlBrushes.TextSecondary;
     }
 
-    private static Border BuildTopBarChip(string text, Microsoft.UI.Xaml.Media.Brush background, Microsoft.UI.Xaml.Media.Brush foreground) =>
-        new() {
-            Padding = new Thickness(10, 6, 10, 6),
-            CornerRadius = new CornerRadius(6),
-            Background = background,
-            BorderBrush = NativeControlBrushes.Border,
-            BorderThickness = new Thickness(1),
-            Child = new TextBlock {
-                Text = text,
-                FontSize = 12,
-                Foreground = foreground
-            }
-        };
 }

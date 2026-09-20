@@ -80,7 +80,7 @@ internal sealed partial class NativeChatWindow {
             BorderThickness = new Thickness(0, 0, 0, 1),
             BorderBrush = NativeControlBrushes.Border,
             Background = NativeControlBrushes.Surface,
-            Padding = new Thickness(24, 16, 24, 16)
+            Padding = new Thickness(24, 14, 24, 14)
         };
         var grid = new Grid {
             ColumnSpacing = 16
@@ -94,8 +94,9 @@ internal sealed partial class NativeChatWindow {
         };
         _workspaceTitleText = new TextBlock {
             Text = _viewModel.ActiveConversation.Title,
-            FontSize = 20,
+            FontSize = 18,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = NativeControlBrushes.TextPrimary
         };
         stack.Children.Add(_workspaceTitleText);
@@ -180,7 +181,6 @@ internal sealed partial class NativeChatWindow {
         }
 
         return new Grid {
-            MinHeight = 420,
             Children = {
                 stack
             }

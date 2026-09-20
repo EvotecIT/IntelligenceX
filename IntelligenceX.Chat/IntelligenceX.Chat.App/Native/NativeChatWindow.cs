@@ -34,7 +34,6 @@ internal sealed partial class NativeChatWindow : Window {
     private TextBlock _workspaceSubtitleText = null!;
     private ListView _sidebarItemsPanel = null!;
     private TextBox _sidebarSearchBox = null!;
-    private TextBlock _selectedContextText = null!;
     private Border _queuedTurnsPanel = null!;
     private TextBlock _queuedTurnsText = null!;
     private Button _runQueuedTurnButton = null!;
