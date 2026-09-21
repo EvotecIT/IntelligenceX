@@ -35,12 +35,14 @@ final class IXCodexCredentialWriteAuthorization: @unchecked Sendable {
 private final class IXCodexCredentialWriteLedger: @unchecked Sendable {
     struct Commit: Sendable {
         let authorizationID: UUID
-        let previousBundle: IXCodexAuthBundle?
+        let previousSnapshot: IXCodexCredentialSnapshot?
+        var writtenSnapshot: IXCodexCredentialSnapshot
         var isRevoked = false
     }
 
     struct Rollback: Sendable {
-        let previousBundle: IXCodexAuthBundle?
+        let writtenSnapshot: IXCodexCredentialSnapshot
+        let previousSnapshot: IXCodexCredentialSnapshot?
         let commitCount: Int
     }
 
@@ -66,26 +68,43 @@ private final class IXCodexCredentialWriteLedger: @unchecked Sendable {
                 return nil
             }
             var rollbackCount = 0
-            var previousBundle: IXCodexAuthBundle?
+            var previousSnapshot: IXCodexCredentialSnapshot?
             for commit in commits.reversed() {
                 guard commit.isRevoked else { break }
-                previousBundle = commit.previousBundle
+                // Another owner may have written between our commits. Undo
+                // only the contiguous suffix, preserving that external value.
+                if rollbackCount > 0, previousSnapshot != commit.writtenSnapshot { break }
+                previousSnapshot = commit.previousSnapshot
                 rollbackCount += 1
             }
             return Rollback(
-                previousBundle: previousBundle,
+                writtenSnapshot: commits.last!.writtenSnapshot,
+                previousSnapshot: previousSnapshot,
                 commitCount: rollbackCount
             )
         }
     }
 
-    func complete(_ rollback: Rollback) {
+    func complete(_ rollback: Rollback, restored: IXCodexCredentialSnapshot?) {
         lock.withLock {
             guard rollback.commitCount > 0,
                   rollback.commitCount <= commits.count else {
                 return
             }
             commits.removeLast(rollback.commitCount)
+            if let restored, let index = commits.indices.last,
+               commits[index].writtenSnapshot == rollback.previousSnapshot {
+                commits[index].writtenSnapshot = restored
+            }
+        }
+    }
+
+    func recordRestoration(previous: IXCodexCredentialSnapshot?, restored: IXCodexCredentialSnapshot?) {
+        lock.withLock {
+            if let restored, let index = commits.indices.last,
+               commits[index].writtenSnapshot == previous {
+                commits[index].writtenSnapshot = restored
+            }
         }
     }
 
@@ -143,17 +162,31 @@ actor IXCodexCredentialAccess {
     }
 
     func load() async throws -> IXCodexAuthBundle? {
+        try await snapshot().validatedBundle()
+    }
+
+    func snapshot() async throws -> IXCodexCredentialSnapshot {
+        try await readSnapshot(requireReadable: true)
+    }
+
+    func snapshotForWrite() async throws -> IXCodexCredentialSnapshot {
+        try await readSnapshot(requireReadable: false)
+    }
+
+    private func readSnapshot(requireReadable: Bool) async throws -> IXCodexCredentialSnapshot {
         let previous = tail
         let store = store
         let readGate = readGate
         let operation = Task {
             await previous.value
-            guard readGate.isReadable else {
+            guard !requireReadable || readGate.isReadable else {
                 throw IXCodexError.invalidResponse(
                     "Credential storage could not be restored. Sign in again."
                 )
             }
-            return try await store.load()
+            let snapshot = try await store.snapshot()
+            if requireReadable { _ = try snapshot.validatedBundle() }
+            return snapshot
         }
         tail = Task {
             _ = try? await operation.value
@@ -164,7 +197,8 @@ actor IXCodexCredentialAccess {
     @discardableResult
     func save(
         _ bundle: IXCodexAuthBundle,
-        authorizedBy authorization: IXCodexCredentialWriteAuthorization
+        authorizedBy authorization: IXCodexCredentialWriteAuthorization,
+        replacing expectedSnapshot: IXCodexCredentialSnapshot? = nil
     ) async throws -> Bool {
         let previous = tail
         let store = store
@@ -174,20 +208,22 @@ actor IXCodexCredentialAccess {
             await previous.value
             guard authorization.isValid else { return false }
             let hadReadablePrevious = readGate.isReadable
-            let previousBundle: IXCodexAuthBundle?
-            if hadReadablePrevious {
-                do {
-                    previousBundle = try await store.load()
-                } catch {
-                    readGate.failClosed()
-                    throw error
-                }
-            } else {
-                previousBundle = nil
-            }
-            guard authorization.isValid else { return false }
+            let previousSnapshot: IXCodexCredentialSnapshot
             do {
-                try await store.save(bundle)
+                // A fresh sign-in can repair undecodable stored bytes by their
+                // revision, without exposing or restoring those bytes.
+                previousSnapshot = try await store.snapshot()
+            } catch {
+                readGate.failClosed()
+                throw error
+            }
+            let rollbackSnapshot = hadReadablePrevious && !previousSnapshot.isUnreadable ? previousSnapshot : nil
+            guard authorization.isValid else { return false }
+            if let expectedSnapshot, previousSnapshot != expectedSnapshot { return false }
+            let writtenSnapshot: IXCodexCredentialSnapshot
+            do {
+                guard let written = try await store.replace(expectedSnapshot ?? previousSnapshot, with: bundle) else { return false }
+                writtenSnapshot = written
             } catch {
                 readGate.failClosed()
                 throw error
@@ -198,16 +234,14 @@ actor IXCodexCredentialAccess {
             let committed = authorization.commitIfValid {
                 writeLedger.record(.init(
                     authorizationID: authorization.id,
-                    previousBundle: previousBundle
+                    previousSnapshot: rollbackSnapshot,
+                    writtenSnapshot: writtenSnapshot
                 ))
             }
             guard committed else {
                 do {
-                    if let previousBundle {
-                        try await store.save(previousBundle)
-                    } else {
-                        try await store.delete()
-                    }
+                    let restored = try await store.replace(writtenSnapshot, with: rollbackSnapshot?.bundle)
+                    writeLedger.recordRestoration(previous: rollbackSnapshot, restored: restored)
                     readGate.allowReads()
                 } catch {
                     readGate.failClosed()
@@ -241,17 +275,14 @@ actor IXCodexCredentialAccess {
                 return false
             }
             guard rollback.commitCount > 0 else { return false }
+            let restored: IXCodexCredentialSnapshot?
             do {
-                if let previousBundle = rollback.previousBundle {
-                    try await store.save(previousBundle)
-                } else {
-                    try await store.delete()
-                }
+                restored = try await store.replace(rollback.writtenSnapshot, with: rollback.previousSnapshot?.bundle)
             } catch {
                 readGate.failClosed()
                 throw error
             }
-            writeLedger.complete(rollback)
+            writeLedger.complete(rollback, restored: restored)
             readGate.allowReads()
             return true
         }
@@ -261,18 +292,13 @@ actor IXCodexCredentialAccess {
         _ = try await operation.value
     }
 
-    /// Releases rollback history once a credential write has become the
-    /// caller-visible settled value. Older overlapping writes cannot overwrite
-    /// it because all store operations remain serialized by the same tail.
-    func finalize(_ authorizationID: UUID) async {
-        let previous = tail
-        let writeLedger = writeLedger
-        let operation = Task {
-            await previous.value
-            writeLedger.finalize(authorizationID)
+    /// Settles a completed write synchronously with the caller's generation
+    /// check. The ledger and authorization locks also serialize cancellation;
+    /// a revoked write retains its rollback history instead of becoming final.
+    nonisolated func finalize(_ authorization: IXCodexCredentialWriteAuthorization) -> Bool {
+        authorization.commitIfValid {
+            writeLedger.finalize(authorization.id)
         }
-        tail = operation
-        await operation.value
     }
 
     func delete() async throws {

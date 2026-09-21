@@ -11,6 +11,8 @@ public actor IXCodexAuthSession {
     private let randomBytes: @Sendable (Int) -> [UInt8]
     private var authGeneration: UInt64 = 0
     private var refreshTask: Task<IXCodexAuthBundle, Error>?
+    private var refreshSource: IXCodexCredentialSnapshot?
+    private var refreshID: UUID?
     private var credentialWriteAuthorizations:
         [UUID: IXCodexCredentialWriteAuthorization] = [:]
     private var credentialMutationDepth = 0
@@ -97,8 +99,9 @@ public actor IXCodexAuthSession {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
-        try await revokeCredentialWrites()
         let expectedGeneration = authGeneration
+        try await revokeCredentialWrites()
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         let verifier = IXCodexPKCE.verifier(randomBytes: randomBytes(32))
         let state = IXCodexPKCE.state(randomBytes: randomBytes(32))
         var components = URLComponents(
@@ -174,8 +177,9 @@ public actor IXCodexAuthSession {
         authGeneration &+= 1
         refreshTask?.cancel()
         refreshTask = nil
-        try await revokeCredentialWrites()
         let expectedGeneration = authGeneration
+        try await revokeCredentialWrites()
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         var request = URLRequest(url: configuration.deviceAuthorizationURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -243,25 +247,83 @@ public actor IXCodexAuthSession {
     }
 
     public func validBundle(forceRefresh: Bool = false) async throws -> IXCodexAuthBundle {
+        try await validBundle(forceRefresh: forceRefresh, rejectedBundle: nil)
+    }
+
+    /// Recovers a rejected request without rotating a concurrently replaced token.
+    /// The account and token comparison belongs to the same credential read that
+    /// decides whether to start a refresh.
+    struct RequestAuthorization: Sendable {
+        let bundle: IXCodexAuthBundle
+        let generation: UInt64
+    }
+
+    func requestAuthorization() async throws -> RequestAuthorization {
+        let generation = authGeneration
+        let bundle = try await validBundle()
+        try validateAuthorization(expectedGeneration: generation)
+        return RequestAuthorization(bundle: bundle, generation: generation)
+    }
+
+    func recoverRejectedBundle(_ rejected: RequestAuthorization) async throws -> RequestAuthorization {
+        try validateAuthorization(expectedGeneration: rejected.generation)
+        let bundle = try await validBundle(forceRefresh: false, rejectedBundle: rejected.bundle)
+        try validateAuthorization(expectedGeneration: rejected.generation)
+        guard bundle.accountID == rejected.bundle.accountID else { throw CancellationError() }
+        return RequestAuthorization(bundle: bundle, generation: rejected.generation)
+    }
+
+    /// Preserve the initial request's generation through credential refresh and
+    /// replay, including a same-account interactive replacement.
+    func validateRecoveredAuthorization(_ recovered: RequestAuthorization) async throws -> RequestAuthorization {
+        try validateAuthorization(expectedGeneration: recovered.generation)
+        let bundle = try await validBundle(forceRefresh: false, expectedAccount: recovered.bundle.accountID)
+        try validateAuthorization(expectedGeneration: recovered.generation)
+        return RequestAuthorization(bundle: bundle, generation: recovered.generation)
+    }
+
+    func validateRequestGeneration(_ authorization: RequestAuthorization) throws {
+        try validateAuthorization(expectedGeneration: authorization.generation)
+    }
+
+    func currentRequestBundle(_ authorization: RequestAuthorization) async throws -> IXCodexAuthBundle? {
+        try validateAuthorization(expectedGeneration: authorization.generation)
+        let bundle = try await currentBundle()
+        try validateAuthorization(expectedGeneration: authorization.generation)
+        return bundle
+    }
+
+    private func validBundle(
+        forceRefresh: Bool,
+        rejectedBundle: IXCodexAuthBundle? = nil,
+        expectedAccount: String? = nil
+    ) async throws -> IXCodexAuthBundle {
         let expectedGeneration = authGeneration
         try validateCredentialRead()
-        guard let existing = try await loadCredentialBundle(
-            expectedGeneration: expectedGeneration
-        ) else {
+        let sourceSnapshot = try await loadCredentialSnapshot(expectedGeneration: expectedGeneration)
+        guard let existing = sourceSnapshot.bundle else {
+            if rejectedBundle != nil || expectedAccount != nil { throw CancellationError() }
             throw IXCodexError.authenticationRequired
         }
         guard authGeneration == expectedGeneration, !Task.isCancelled else {
             throw CancellationError()
         }
-        guard forceRefresh || existing.needsRefresh(at: now()) else {
+        if let account = rejectedBundle?.accountID ?? expectedAccount, existing.accountID != account {
+            throw CancellationError()
+        }
+        let rejectedCurrentToken = rejectedBundle.map { $0.accessToken == existing.accessToken } ?? false
+        guard forceRefresh || rejectedCurrentToken || existing.needsRefresh(at: now()) else {
             return existing
         }
-        if let refreshTask {
+        if let refreshTask, refreshSource == sourceSnapshot {
             do {
                 let bundle = try await refreshTask.value
                 try validateAuthorization(
                     expectedGeneration: expectedGeneration
                 )
+                if let account = rejectedBundle?.accountID ?? expectedAccount, bundle.accountID != account {
+                    throw CancellationError()
+                }
                 return bundle
             } catch {
                 try validateAuthorization(
@@ -270,21 +332,28 @@ public actor IXCodexAuthSession {
                 throw error
             }
         }
+        refreshTask?.cancel()
+        let operationID = UUID()
         let task = Task {
             try await self.refresh(
-                existing,
+                sourceSnapshot,
                 retryAfterReload: true,
                 expectedGeneration: expectedGeneration
             )
         }
         refreshTask = task
+        refreshSource = sourceSnapshot
+        refreshID = operationID
         do {
             let bundle = try await task.value
-            if authGeneration == expectedGeneration { refreshTask = nil }
+            if refreshID == operationID { refreshTask = nil; refreshSource = nil; refreshID = nil }
             try validateAuthorization(expectedGeneration: expectedGeneration)
+            if let account = rejectedBundle?.accountID ?? expectedAccount, bundle.accountID != account {
+                throw CancellationError()
+            }
             return bundle
         } catch {
-            if authGeneration == expectedGeneration { refreshTask = nil }
+            if refreshID == operationID { refreshTask = nil; refreshSource = nil; refreshID = nil }
             try validateAuthorization(expectedGeneration: expectedGeneration)
             throw error
         }
@@ -392,28 +461,37 @@ public actor IXCodexAuthSession {
     }
 
     private func refresh(
-        _ existing: IXCodexAuthBundle,
+        _ sourceSnapshot: IXCodexCredentialSnapshot,
         retryAfterReload: Bool,
         expectedGeneration: UInt64
     ) async throws -> IXCodexAuthBundle {
+        guard let existing = sourceSnapshot.bundle else { throw IXCodexError.authenticationRequired }
         do {
             return try await requestToken(fields: [
                 "grant_type": "refresh_token",
                 "client_id": configuration.clientID,
                 "refresh_token": existing.refreshToken,
-            ], previous: existing, expectedGeneration: expectedGeneration)
+            ], previous: existing, expectedGeneration: expectedGeneration, replacing: sourceSnapshot)
         } catch let IXCodexError.requestFailed(_, message)
             where retryAfterReload && message.localizedCaseInsensitiveContains("refresh_token_reused") {
-            guard let reloaded = try await loadCredentialBundle(
-                expectedGeneration: expectedGeneration
-            ), reloaded.refreshToken != existing.refreshToken else {
+            let reloadedSnapshot = try await loadCredentialSnapshot(expectedGeneration: expectedGeneration)
+            guard let reloaded = reloadedSnapshot.bundle,
+                  reloaded.refreshToken != existing.refreshToken else {
                 throw IXCodexError.requestFailed(status: 401, message: message)
             }
-            guard authGeneration == expectedGeneration, !Task.isCancelled else {
+            guard authGeneration == expectedGeneration, !Task.isCancelled,
+                  reloaded.accountID == existing.accountID else {
                 throw CancellationError()
             }
+            // Another writer already refreshed these credentials. Reuse its
+            // valid value; only expired replacements need another exchange.
+            if !reloaded.needsRefresh(at: now()) { return reloaded }
+            if let shared = refreshTask, refreshSource == reloadedSnapshot {
+                return try await shared.value
+            }
+            if refreshSource == sourceSnapshot { refreshSource = reloadedSnapshot }
             return try await refresh(
-                reloaded,
+                reloadedSnapshot,
                 retryAfterReload: false,
                 expectedGeneration: expectedGeneration
             )
@@ -423,8 +501,16 @@ public actor IXCodexAuthSession {
     private func requestToken(
         fields: [String: String],
         previous: IXCodexAuthBundle?,
-        expectedGeneration: UInt64
+        expectedGeneration: UInt64,
+        replacing sourceSnapshot: IXCodexCredentialSnapshot? = nil
     ) async throws -> IXCodexAuthBundle {
+        let expectedWriteSnapshot: IXCodexCredentialSnapshot
+        if let sourceSnapshot {
+            expectedWriteSnapshot = sourceSnapshot
+        } else {
+            expectedWriteSnapshot = try await credentialAccess.snapshotForWrite()
+        }
+        try validateAuthorization(expectedGeneration: expectedGeneration)
         var request = URLRequest(url: configuration.tokenURL)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -463,6 +549,9 @@ public actor IXCodexAuthSession {
         let idToken = object["id_token"]?.stringValue ?? previous?.idToken
         let accountID = IXJWTClaims.accountID(accessToken: accessToken, idToken: idToken)
             ?? previous?.accountID
+        if let previousAccount = previous?.accountID, accountID != previousAccount {
+            throw CancellationError()
+        }
         let bundle = IXCodexAuthBundle(
             accessToken: accessToken,
             refreshToken: refreshToken,
@@ -480,36 +569,31 @@ public actor IXCodexAuthSession {
             credentialWriteAuthorizations.removeValue(forKey: authorization.id)
             credentialMutationDepth -= 1
         }
-        let committed: Bool
-        do {
-            committed = try await withTaskCancellationHandler {
-                try await credentialAccess.save(
-                    bundle,
-                    authorizedBy: authorization
-                )
-            } onCancel: {
-                authorization.invalidate()
-            }
-        } catch {
-            try validateAuthorization(expectedGeneration: expectedGeneration)
-            throw error
-        }
-        guard committed,
-              authGeneration == expectedGeneration,
-              !Task.isCancelled else {
-            authorization.invalidate()
+        return try await withTaskCancellationHandler {
             do {
-                try await credentialAccess.revoke([authorization.id])
-            } catch {
-                try validateAuthorization(
-                    expectedGeneration: expectedGeneration
+                let committed = try await credentialAccess.save(
+                    bundle,
+                    authorizedBy: authorization,
+                    replacing: expectedWriteSnapshot
                 )
+                guard committed,
+                      authGeneration == expectedGeneration,
+                      !Task.isCancelled,
+                      credentialAccess.finalize(authorization) else {
+                    authorization.invalidate()
+                    try await credentialAccess.revoke([authorization.id])
+                    throw CancellationError()
+                }
+                // Finalization and returning the settled value cannot suspend:
+                // a newer sign-in must not revoke a write between these steps.
+                return bundle
+            } catch {
+                try validateAuthorization(expectedGeneration: expectedGeneration)
                 throw error
             }
-            throw CancellationError()
+        } onCancel: {
+            authorization.invalidate()
         }
-        await credentialAccess.finalize(authorization.id)
-        return bundle
     }
 
     private func invalidateCredentialWrites() {
@@ -530,6 +614,17 @@ public actor IXCodexAuthSession {
     private func validateCredentialRead() throws {
         guard credentialMutationDepth == 0 else {
             throw CancellationError()
+        }
+    }
+
+    private func loadCredentialSnapshot(expectedGeneration: UInt64) async throws -> IXCodexCredentialSnapshot {
+        do {
+            let snapshot = try await credentialAccess.snapshot()
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            return snapshot
+        } catch {
+            try validateAuthorization(expectedGeneration: expectedGeneration)
+            throw error
         }
     }
 
