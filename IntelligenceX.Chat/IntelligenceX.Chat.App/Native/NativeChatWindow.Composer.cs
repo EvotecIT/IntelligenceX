@@ -120,6 +120,7 @@ internal sealed partial class NativeChatWindow {
     }
 
     private async Task SendAsync() {
+        if (_settingsOpening || _settingsWindow is not null) return;
         UpdateCommandState();
         var sendTask = _viewModel.SendDraftAsync();
         _activeSendTask = sendTask;
@@ -145,15 +146,16 @@ internal sealed partial class NativeChatWindow {
         key == VirtualKey.Enter && (shiftState & CoreVirtualKeyStates.Down) == 0;
 
     private void UpdateCommandState() {
-        _sendButton.IsEnabled = _viewModel.CanSend;
+        var runtimeAvailable = !_settingsOpening && _settingsWindow is null;
+        _sendButton.IsEnabled = runtimeAvailable && _viewModel.CanSend;
         _sendButton.Visibility = _viewModel.CanStop ? Visibility.Collapsed : Visibility.Visible;
         _stopButton.IsEnabled = _viewModel.CanStop;
         _stopButton.Visibility = _viewModel.CanStop ? Visibility.Visible : Visibility.Collapsed;
         _composerShell.Visibility = _viewModel.AuthenticationState == NativeAuthenticationState.SignedIn || _viewModel.CanStop
             ? Visibility.Visible : Visibility.Collapsed;
-        _checkSignInButton.IsEnabled = _viewModel.CanCheckSignIn;
-        _signInButton.IsEnabled = _viewModel.CanStartSignIn;
-        _runQueuedTurnButton.IsEnabled = _viewModel.CanRunQueuedTurn;
+        _checkSignInButton.IsEnabled = runtimeAvailable && _viewModel.CanCheckSignIn;
+        _signInButton.IsEnabled = runtimeAvailable && _viewModel.CanStartSignIn;
+        _runQueuedTurnButton.IsEnabled = runtimeAvailable && _viewModel.CanRunQueuedTurn;
         _clearQueuedTurnsButton.IsEnabled = _viewModel.CanClearQueuedTurns;
         var showEmptySignIn = _viewModel.Transcript.Count == 0
                               && _viewModel.AuthenticationState is NativeAuthenticationState.Failed or NativeAuthenticationState.Required;

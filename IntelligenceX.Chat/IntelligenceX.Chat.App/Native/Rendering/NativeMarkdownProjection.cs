@@ -104,53 +104,59 @@ internal static class NativeMarkdownProjection {
             headingLevel: heading.Level));
     }
 
-    private static void AddParagraph(ICollection<NativeTranscriptContent> result, MarkdownNativeParagraphBlock paragraph) {
-        if (string.IsNullOrWhiteSpace(paragraph.Text)) {
+    private static void AddParagraph(ICollection<NativeTranscriptContent> result, MarkdownNativeParagraphBlock paragraph) =>
+        AddInlineSegments(result, paragraph.Text, paragraph.InlineRuns, paragraph.SourceSpan?.StartLine);
+
+    private static void AddInlineSegments(ICollection<NativeTranscriptContent> result, string text,
+        IReadOnlyList<MarkdownNativeInline> inlines, int? sourceLine) {
+        if (string.IsNullOrWhiteSpace(text) && !inlines.Any(IsInlineImage)) {
             return;
         }
 
-        if (!paragraph.InlineRuns.Any(IsInlineImage)) {
+        if (!inlines.Any(IsInlineImage)) {
             result.Add(new NativeTranscriptContent(
                 NativeTranscriptContentKind.Paragraph,
-                paragraph.Text,
-                sourceLine: paragraph.SourceSpan?.StartLine,
-                inlines: ProjectInlines(paragraph.InlineRuns)));
+                text,
+                sourceLine: sourceLine,
+                inlines: ProjectInlines(inlines)));
             return;
         }
 
-        var segment = new List<MarkdownNativeInline>();
-        foreach (var inline in paragraph.InlineRuns) {
-            if (!TryProjectInlineImage(inline, out var image)) {
-                segment.Add(inline);
-                continue;
-            }
+        var segment = new List<NativeTranscriptInline>();
+        foreach (var inline in inlines) {
+            foreach (var part in ProjectInlineParts(inline)) {
+                if (part.Image is not { } image) {
+                    if (part.Inline is not null) segment.Add(part.Inline);
+                    continue;
+                }
 
-            AddInlineParagraphSegment(result, segment, paragraph.SourceSpan?.StartLine);
-            result.Add(new NativeTranscriptContent(
-                NativeTranscriptContentKind.Image,
-                image.AlternateText,
-                sourceLine: paragraph.SourceSpan?.StartLine,
-                image: image));
+                AddInlineParagraphSegment(result, segment, sourceLine);
+                result.Add(new NativeTranscriptContent(
+                    NativeTranscriptContentKind.Image,
+                    image.AlternateText,
+                    sourceLine: sourceLine,
+                    image: image));
+            }
         }
 
-        AddInlineParagraphSegment(result, segment, paragraph.SourceSpan?.StartLine);
+        AddInlineParagraphSegment(result, segment, sourceLine);
     }
 
     private static void AddInlineParagraphSegment(
         ICollection<NativeTranscriptContent> result,
-        List<MarkdownNativeInline> segment,
+        List<NativeTranscriptInline> segment,
         int? sourceLine) {
         if (segment.Count == 0) {
             return;
         }
 
-        var text = string.Concat(segment.Select(GetInlineText));
+        var text = string.Concat(segment.Select(GetProjectedInlineText));
         if (!string.IsNullOrWhiteSpace(text)) {
             result.Add(new NativeTranscriptContent(
                 NativeTranscriptContentKind.Paragraph,
                 text,
                 sourceLine: sourceLine,
-                inlines: ProjectInlines(segment)));
+                inlines: segment.ToArray()));
         }
         segment.Clear();
     }
@@ -158,7 +164,42 @@ internal static class NativeMarkdownProjection {
     private static bool IsInlineImage(MarkdownNativeInline inline) =>
         inline.Kind == MarkdownNativeInlineKind.Image
         || (inline.Kind == MarkdownNativeInlineKind.ImageLink
-            && inline.Children.Any(static child => child.Kind == MarkdownNativeInlineKind.Image));
+            && inline.Children.Any(static child => child.Kind == MarkdownNativeInlineKind.Image))
+        || inline.Children.Any(IsInlineImage);
+
+    private static IEnumerable<InlinePart> ProjectInlineParts(MarkdownNativeInline inline) {
+        if (TryProjectInlineImage(inline, out var image)) {
+            yield return new InlinePart(null, image);
+            yield break;
+        }
+        if (!inline.Children.Any(IsInlineImage)) {
+            yield return new InlinePart(ProjectInline(inline), null);
+            yield break;
+        }
+
+        var textChildren = new List<NativeTranscriptInline>();
+        foreach (var child in inline.Children) {
+            foreach (var part in ProjectInlineParts(child)) {
+                if (part.Image is not null) {
+                    if (textChildren.Count > 0) {
+                        yield return new InlinePart(WrapInlineChildren(inline, textChildren), null);
+                        textChildren.Clear();
+                    }
+                    yield return part;
+                } else if (part.Inline is not null) {
+                    textChildren.Add(part.Inline);
+                }
+            }
+        }
+        if (textChildren.Count > 0)
+            yield return new InlinePart(WrapInlineChildren(inline, textChildren), null);
+    }
+
+    private static NativeTranscriptInline WrapInlineChildren(MarkdownNativeInline source,
+        IReadOnlyList<NativeTranscriptInline> children) =>
+        new(source.Kind, source.Text, GetInlineTarget(source), children.ToArray());
+
+    private readonly record struct InlinePart(NativeTranscriptInline? Inline, NativeTranscriptImage? Image);
 
     private static bool TryProjectInlineImage(
         MarkdownNativeInline inline,
@@ -205,28 +246,43 @@ internal static class NativeMarkdownProjection {
         return string.Concat(inline.Children.Select(GetInlineText));
     }
 
+    private static string GetProjectedInlineText(NativeTranscriptInline inline) =>
+        inline.Children.Count == 0 ? inline.Text : string.Concat(inline.Children.Select(GetProjectedInlineText));
+
     private static void AddList(ICollection<NativeTranscriptContent> result, MarkdownNativeListBlock list) {
         var items = new List<NativeTranscriptListItem>(list.Items.Count);
         foreach (var item in list.Items) {
             var childContent = new List<NativeTranscriptContent>();
+            var leadText = item.Paragraphs.Count > 0 ? item.Paragraphs[0].Text : item.Text;
+            var leadRuns = item.Paragraphs.Count > 0 ? item.Paragraphs[0].InlineRuns : item.InlineRuns;
+            IReadOnlyList<NativeTranscriptInline> leadInlines = ProjectInlines(leadRuns);
+            if (leadRuns.Any(IsInlineImage)) {
+                var projectedLead = new List<NativeTranscriptContent>();
+                AddInlineSegments(projectedLead, leadText, leadRuns,
+                    item.Paragraphs.Count > 0 ? item.Paragraphs[0].SourceSpan?.StartLine : list.SourceSpan?.StartLine);
+                if (projectedLead.Count > 0 && projectedLead[0].Kind == NativeTranscriptContentKind.Paragraph) {
+                    leadText = projectedLead[0].Text;
+                    leadInlines = projectedLead[0].Inlines;
+                    projectedLead.RemoveAt(0);
+                } else {
+                    leadText = string.Empty;
+                    leadInlines = Array.Empty<NativeTranscriptInline>();
+                }
+                childContent.AddRange(projectedLead);
+            }
             for (var paragraphIndex = 1; paragraphIndex < item.Paragraphs.Count; paragraphIndex++) {
                 var paragraph = item.Paragraphs[paragraphIndex];
-                childContent.Add(new NativeTranscriptContent(
-                    NativeTranscriptContentKind.Paragraph,
-                    paragraph.Text,
-                    sourceLine: paragraph.SourceSpan?.StartLine,
-                    inlines: ProjectInlines(paragraph.InlineRuns)));
+                AddInlineSegments(childContent, paragraph.Text, paragraph.InlineRuns,
+                    paragraph.SourceSpan?.StartLine);
             }
 
             var nestedBlocks = item.Children
                 .Where(static child => child is not MarkdownNativeParagraphBlock)
                 .ToArray();
             childContent.AddRange(ProjectBlocks(nestedBlocks));
-            var leadText = item.Paragraphs.Count > 0 ? item.Paragraphs[0].Text : item.Text;
-            var leadRuns = item.Paragraphs.Count > 0 ? item.Paragraphs[0].InlineRuns : item.InlineRuns;
             items.Add(new NativeTranscriptListItem(
                 leadText,
-                ProjectInlines(leadRuns),
+                leadInlines,
                 item.IsTask,
                 item.Checked,
                 childContent));
@@ -411,18 +467,16 @@ internal static class NativeMarkdownProjection {
         if (inlines.Count == 0) return Array.Empty<NativeTranscriptInline>();
         var result = new NativeTranscriptInline[inlines.Count];
         for (var i = 0; i < inlines.Count; i++) {
-            var inline = inlines[i];
-            var target = inline.GetMetadata("target")
-                ?? inline.GetMetadata("source")
-                ?? inline.GetMetadata("htmlTarget");
-            result[i] = new NativeTranscriptInline(
-                inline.Kind,
-                inline.Text,
-                target,
-                ProjectInlines(inline.Children));
+            result[i] = ProjectInline(inlines[i]);
         }
         return result;
     }
+
+    private static NativeTranscriptInline ProjectInline(MarkdownNativeInline inline) =>
+        new(inline.Kind, inline.Text, GetInlineTarget(inline), ProjectInlines(inline.Children));
+
+    private static string? GetInlineTarget(MarkdownNativeInline inline) =>
+        inline.GetMetadata("target") ?? inline.GetMetadata("source") ?? inline.GetMetadata("htmlTarget");
 
     private static string FormatCalloutBadge(string? kind) {
         var normalized = string.IsNullOrWhiteSpace(kind) ? "Note" : kind.Trim().Replace('_', ' ').Replace('-', ' ');

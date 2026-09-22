@@ -18,14 +18,14 @@ public sealed partial class LocalExportArtifactWriterTests {
     public void WriteDocxTranscript_EmbedsAllowListedLocalImage() {
         var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
-            var imagesDirectory = Path.Combine(root, "images");
+            var imagesDirectory = Path.Combine(root, "images with spaces");
             Directory.CreateDirectory(imagesDirectory);
             var imagePath = Path.Combine(imagesDirectory, "dot.png");
             var imageBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY2Bg+P8fAAMCAf/Jsq3uAAAAAElFTkSuQmCC");
             File.WriteAllBytes(imagePath, imageBytes);
 
             var markdownImagePath = imagePath.Replace('\\', '/');
-            var markdown = "# Transcript\n\n![dot](" + markdownImagePath + ")";
+            var markdown = "# Transcript\n\n![dot](<" + markdownImagePath + ">)";
             var docxPath = Path.Combine(root, "transcript-allowlisted-image.docx");
 
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, new[] { imagesDirectory });

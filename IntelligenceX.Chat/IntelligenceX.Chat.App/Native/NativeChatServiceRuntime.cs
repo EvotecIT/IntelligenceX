@@ -32,6 +32,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private ChatServiceClient? _client;
     private ChatServiceTurnRunner? _turnRunner;
     private bool _detachOwnedServiceOnDispose;
+    private int _settingsOwnsPipe;
 
     private NativeRuntimeMetadata? _metadata;
 
@@ -265,6 +266,26 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
         _metadataLock.Dispose();
     }
 
+    /// <summary>Hands the single-client service pipe to the shared settings window without stopping the service.</summary>
+    internal async Task ReleaseClientForSettingsAsync(CancellationToken cancellationToken) {
+        await _metadataLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            await _connectLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try {
+                Volatile.Write(ref _settingsOwnsPipe, 1);
+                var client = Interlocked.Exchange(ref _client, null);
+                _turnRunner = null;
+                Volatile.Write(ref _metadata, null);
+                if (client is not null) {
+                    client.Disconnected -= OnClientDisconnected;
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
+            } finally { _connectLock.Release(); }
+        } finally { _metadataLock.Release(); }
+    }
+
+    internal void ResumeAfterSettings() => Volatile.Write(ref _settingsOwnsPipe, 0);
+
     private async Task<ChatServiceTurnRunner> EnsureTurnRunnerAsync(
         Func<string, Task> status,
         CancellationToken cancellationToken) {
@@ -275,6 +296,8 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private async Task<NativeChatServiceConnection> EnsureConnectedAsync(
         Func<string, Task> status,
         CancellationToken cancellationToken) {
+        if (Volatile.Read(ref _settingsOwnsPipe) != 0)
+            throw new InvalidOperationException("Runtime settings are using the chat service connection.");
         var existing = _client;
         if (existing is not null) {
             return new NativeChatServiceConnection(existing, SelectedProfileSynchronized: false);
@@ -282,6 +305,8 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
 
         await _connectLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
+            if (Volatile.Read(ref _settingsOwnsPipe) != 0)
+                throw new InvalidOperationException("Runtime settings are using the chat service connection.");
             if (_client is not null) {
                 return new NativeChatServiceConnection(_client, SelectedProfileSynchronized: false);
             }

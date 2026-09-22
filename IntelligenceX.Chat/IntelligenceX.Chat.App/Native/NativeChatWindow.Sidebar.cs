@@ -149,7 +149,8 @@ internal sealed partial class NativeChatWindow {
         AutomationProperties.SetName(addButton, "New conversation");
         ToolTipService.SetToolTip(addButton, "New conversation");
         addButton.Click += async (_, _) => {
-            _ = await _viewModel.CreateConversationAsync().ConfigureAwait(true);
+            _ = await TrackPersistenceTaskAsync(_viewModel.CreateConversationAsync()).ConfigureAwait(true);
+            if (_lifetimeCts.IsCancellationRequested) return;
             RefreshConversationChrome();
             _composer.Focus(FocusState.Programmatic);
         };
@@ -243,7 +244,8 @@ internal sealed partial class NativeChatWindow {
         AutomationProperties.SetName(button, conversation.Title);
         ToolTipService.SetToolTip(button, conversation.Title);
         button.Click += async (_, _) => {
-            _ = await _viewModel.SelectConversationAsync(conversation.Id).ConfigureAwait(true);
+            _ = await TrackPersistenceTaskAsync(_viewModel.SelectConversationAsync(conversation.Id)).ConfigureAwait(true);
+            if (_lifetimeCts.IsCancellationRequested) return;
             RefreshConversationChrome();
             _composer.Focus(FocusState.Programmatic);
         };

@@ -126,6 +126,11 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
             loadWarning = "History load failed; started a fresh chat. " + ex.Message;
             loadedState = null;
         }
+        if (!string.Equals(_profileName, targetProfileName, StringComparison.OrdinalIgnoreCase)) {
+            _sessionUserName = null;
+            _sessionAssistantPersona = null;
+            _sessionThemePreset = null;
+        }
         _profileName = targetProfileName;
         _pendingProfileName = null;
         _profileStateWasMissingAtLoad = profileStateWasMissing;
