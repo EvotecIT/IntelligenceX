@@ -145,7 +145,7 @@ internal sealed partial class NativeChatWindow {
         var detail = ResolveEmptyStateDetail();
         var stack = new StackPanel {
             Spacing = 10,
-            MaxWidth = 520,
+            MaxWidth = 440,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -163,18 +163,15 @@ internal sealed partial class NativeChatWindow {
             TextWrapping = TextWrapping.Wrap,
             Foreground = NativeControlBrushes.TextSecondary
         });
-        stack.Children.Add(new Border {
-            Height = 1,
-            Margin = new Thickness(0, 6, 0, 0),
-            Background = NativeControlBrushes.Border
-        });
-        stack.Children.Add(new TextBlock {
-            Text = detail,
-            FontSize = 12,
-            TextAlignment = TextAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = NativeControlBrushes.TextSecondary
-        });
+        if (_viewModel.AuthenticationState is NativeAuthenticationState.SignedIn or NativeAuthenticationState.Checking) {
+            stack.Children.Add(new TextBlock {
+                Text = detail,
+                FontSize = 12,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = NativeControlBrushes.TextSecondary
+            });
+        }
         var actions = BuildEmptyStateActions();
         if (actions != null) {
             stack.Children.Add(actions);
@@ -201,7 +198,7 @@ internal sealed partial class NativeChatWindow {
         return _viewModel.AuthenticationState switch {
             NativeAuthenticationState.Checking => "The native app is checking whether the chat service already has an authenticated account.",
             NativeAuthenticationState.SignedIn => "Ask a question, run a safe check, or request AD and Microsoft 365 evidence.",
-            NativeAuthenticationState.Required => "Use Sign in in the header, then continue with a normal operator request.",
+            NativeAuthenticationState.Required => "Connect your account to start a conversation.",
             NativeAuthenticationState.Failed => _viewModel.StatusText,
             _ => "The native shell is active. Account and runtime status will appear in the header."
         };

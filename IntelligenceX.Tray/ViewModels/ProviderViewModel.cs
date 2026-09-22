@@ -1324,6 +1324,13 @@ public sealed partial class ProviderViewModel : ViewModelBase {
 
     public void ApplyLimitSnapshot(ProviderLimitSnapshot? snapshot) {
         _latestLimitSnapshot = snapshot;
+        var expandedAccounts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var existingAccount in LimitAccounts) {
+            var expansionKey = GetLimitAccountExpansionKey(existingAccount.Snapshot, existingAccount.Label);
+            if (expansionKey is not null) {
+                expandedAccounts[expansionKey] = existingAccount.IsExpanded;
+            }
+        }
         LimitWindows.Clear();
         LimitAccounts.Clear();
         if (snapshot is null) {
@@ -1370,6 +1377,7 @@ public sealed partial class ProviderViewModel : ViewModelBase {
 
         foreach (var advisory in advisories) {
             var accountSnapshot = FindAccountSnapshot(accountSnapshots, advisory);
+            var expansionKey = GetLimitAccountExpansionKey(accountSnapshot, advisory.DisplayLabel);
             var accountViewModel = new ProviderLimitAccountViewModel {
                 ProviderId = snapshot.ProviderId,
                 Snapshot = accountSnapshot,
@@ -1383,7 +1391,9 @@ public sealed partial class ProviderViewModel : ViewModelBase {
                     : accountSnapshot is { IsAvailable: false }
                         ? "Live limits unavailable"
                     : null,
-                IsExpanded = advisory.IsRecommended || advisory.IsSelected,
+                IsExpanded = expansionKey is not null
+                             && expandedAccounts.TryGetValue(expansionKey, out var wasExpanded)
+                             && wasExpanded,
                 IsRecommended = advisory.IsRecommended,
                 BadgeText = advisory.IsRecommended
                     ? (advisory.IsSelected ? "Best current" : "Recommended")
@@ -1411,6 +1421,13 @@ public sealed partial class ProviderViewModel : ViewModelBase {
         if (snapshot.Accounts.Count <= 1) {
             PopulateLimitWindows(LimitWindows, snapshot.Windows, forecasts);
         }
+    }
+
+    private static string? GetLimitAccountExpansionKey(ProviderLimitAccountSnapshot? snapshot, string label) {
+        if (!string.IsNullOrWhiteSpace(snapshot?.AccountId)) {
+            return "id:" + snapshot.AccountId!.Trim();
+        }
+        return string.IsNullOrWhiteSpace(label) ? null : "label:" + label.Trim();
     }
 
     private static string? NormalizeLimitAccountDetail(string? detail, string? summary) {

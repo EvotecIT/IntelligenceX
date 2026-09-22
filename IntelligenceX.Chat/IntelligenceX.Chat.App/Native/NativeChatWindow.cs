@@ -23,6 +23,7 @@ internal sealed partial class NativeChatWindow : Window {
     private TextBox _composer = null!;
     private Button _sendButton = null!;
     private Button _stopButton = null!;
+    private Border _composerShell = null!;
     private Button _checkSignInButton = null!;
     private Button _signInButton = null!;
     private Button _exportButton = null!;
