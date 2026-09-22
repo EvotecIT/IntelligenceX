@@ -712,6 +712,41 @@ public sealed class NativeChatViewModelTests {
         Assert.False(model.CanStartSignIn);
     }
 
+    /// <summary>Confirms that completed OAuth sign-in resolves the account shown in the header.</summary>
+    [Fact]
+    public async Task StartSignInAsync_ReprobesAccountIdentityAfterOAuthCompletion() {
+        var checks = 0;
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("", null))) {
+            StartLoginHandler = _ => Task.FromResult(new NativeLoginResult(true, null)),
+            EnsureLoginHandler = _ => {
+                checks++;
+                return Task.FromResult(new NativeLoginResult(true, "account-123"));
+            }
+        };
+        var model = new NativeChatViewModel(runtime);
+
+        var result = await model.StartSignInAsync();
+
+        Assert.Equal(1, checks);
+        Assert.Equal("account-123", result.AccountId);
+        Assert.Equal("Signed in: account-123", model.SignInText);
+    }
+
+    /// <summary>Keeps a completed sign-in usable when the optional identity probe fails.</summary>
+    [Fact]
+    public async Task StartSignInAsync_KeepsSuccessfulLoginWhenIdentityProbeFails() {
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("", null))) {
+            StartLoginHandler = _ => Task.FromResult(new NativeLoginResult(true, null)),
+            EnsureLoginHandler = _ => throw new InvalidOperationException("probe unavailable")
+        };
+        var model = new NativeChatViewModel(runtime);
+
+        var result = await model.StartSignInAsync();
+
+        Assert.True(result.IsAuthenticated);
+        Assert.Equal(NativeAuthenticationState.SignedIn, model.AuthenticationState);
+    }
+
     /// <summary>
     /// Ensures selecting a persisted conversation restores its transcript and service thread context.
     /// </summary>

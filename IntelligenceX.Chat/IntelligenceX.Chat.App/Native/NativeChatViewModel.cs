@@ -433,6 +433,23 @@ internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
                     },
                     timeout.Token)
                 .ConfigureAwait(false);
+            if (result.IsAuthenticated && string.IsNullOrWhiteSpace(result.AccountId)) {
+                // The completion event confirms OAuth success but does not carry the
+                // account identity. Probe the now-authenticated service before updating
+                // the header; a failed probe must not undo a completed sign-in.
+                try {
+                    using var probe = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+                    probe.CancelAfter(SignInCheckTimeout);
+                    var confirmed = await _runtime.EnsureLoginAsync(SetRuntimeStatusAsync, probe.Token)
+                        .ConfigureAwait(false);
+                    if (confirmed.IsAuthenticated && !string.IsNullOrWhiteSpace(confirmed.AccountId))
+                        result = confirmed;
+                } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                    throw;
+                } catch (Exception ex) {
+                    StartupLog.Write("Native account identity check after sign-in failed: " + ex);
+                }
+            }
             ApplyLoginResult(result);
             return result;
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
