@@ -99,7 +99,8 @@ public partial class BankedResetsWindow : Window {
             .Select(c => new CreditRow(c, now)).ToArray();
         CreditList.ItemsSource = rows;
         CreditList.SelectedItem = rows.FirstOrDefault(row => row.Credit.Id == selectedId);
-        AdviceText.Text = BankedResetPlanner.Build(_providerId, _account, _credits, now, TimeSpan.FromMinutes(10)).Summary;
+        AdviceText.Text = BankedResetPlanner.Build(_providerId, _account, _credits, now,
+            ProviderLimitSnapshotService.MaximumRecommendedReadingAge).Summary;
     }
 
     private sealed class CreditRow {

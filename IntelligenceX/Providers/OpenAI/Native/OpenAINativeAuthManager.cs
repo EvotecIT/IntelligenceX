@@ -68,18 +68,32 @@ internal sealed class OpenAINativeAuthManager {
     }
 
     private async Task<AuthBundle> RefreshSpecificBundleAsync(AuthBundle bundle, CancellationToken cancellationToken) {
-        var previousRefreshToken = bundle.RefreshToken;
-        var previousAccountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
         if (_options.AuthStore is FileAuthBundleStore fileStore) {
+            var accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
+            if (!string.IsNullOrWhiteSpace(accountId)
+                && !string.Equals(bundle.Provider, OpenAICodexDefaults.Provider, StringComparison.OrdinalIgnoreCase)) {
+                // The file transaction gives a canonical entry priority over an
+                // alias. Reconcile that entry directly, not the alias whose
+                // refresh would return early before invoking the import callback.
+                var canonical = await fileStore.GetAsync(OpenAICodexDefaults.Provider, accountId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (canonical is not null && SameSelectedAccount(canonical, bundle)) bundle = canonical;
+            }
+            bundle = await ReconcileAmbientCredentialAsync(fileStore, bundle, cancellationToken).ConfigureAwait(false);
+            if (!IsExpiring(bundle)) return bundle;
+            var fileRefreshToken = bundle.RefreshToken;
+            var fileAccountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
             var refreshed = await fileStore.RefreshAsync(bundle, async (current, token) => {
                 var result = await _refreshOAuthAsync(_options.OAuth, current, token).ConfigureAwait(false);
                 result.Bundle.AccountId ??= current.AccountId ?? JwtDecoder.TryGetAccountId(result.Bundle.AccessToken);
                 return result.Bundle;
             }, cancellationToken).ConfigureAwait(false);
-            ExportCodexBundle(refreshed, previousAccountId, previousRefreshToken, refresh: true);
+            ExportCodexBundle(refreshed, fileAccountId, fileRefreshToken, refresh: true);
             return refreshed;
         }
 
+        var previousAccountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
+        var previousRefreshToken = bundle.RefreshToken;
         var result = await _refreshOAuthAsync(_options.OAuth, bundle, cancellationToken).ConfigureAwait(false);
         result.Bundle.AccountId ??= previousAccountId;
         if (!string.Equals(result.Bundle.AccountId, previousAccountId, StringComparison.OrdinalIgnoreCase))
@@ -189,6 +203,11 @@ internal sealed class OpenAINativeAuthManager {
                         .ConfigureAwait(false);
                     if (!SameSelectedAccount(fileCandidate, refreshCandidate))
                         throw new OpenAIAuthenticationRequiredException("The selected ChatGPT credential was replaced. Sign in before retrying.");
+                    // Codex may have rotated this same account since IX last saved it.
+                    // Import the newer ambient generation under the file store's
+                    // per-account transaction, so a concurrent IX login still wins.
+                    fileCandidate = await ReconcileAmbientCredentialAsync(fileStore, fileCandidate, cancellationToken)
+                        .ConfigureAwait(false);
                     if (!IsExpiring(fileCandidate) && !string.Equals(fileCandidate.AccessToken, current.AccessToken, StringComparison.Ordinal)) {
                         EnsureCurrentOperation(operation, fileCandidate.AccountId, cancellationToken);
                         return fileCandidate;
@@ -255,6 +274,23 @@ internal sealed class OpenAINativeAuthManager {
         }
         var now = DateTimeOffset.UtcNow;
         return now >= bundle.ExpiresAt.Value.Subtract(ExpirySkew);
+    }
+
+    private async Task<AuthBundle> ReconcileAmbientCredentialAsync(FileAuthBundleStore fileStore,
+        AuthBundle stored, CancellationToken cancellationToken) {
+        var ambient = TryGetCodexBundle();
+        if (ambient is null || !SameSelectedAccount(stored, ambient)
+            || string.IsNullOrWhiteSpace(ambient.AccountId)
+            || string.IsNullOrWhiteSpace(ambient.RefreshToken)
+            || (ambient.ExpiresAt ?? DateTimeOffset.MinValue) <= (stored.ExpiresAt ?? DateTimeOffset.MinValue)
+            || string.Equals(ambient.RefreshToken, stored.RefreshToken, StringComparison.Ordinal)) return stored;
+
+        // A new IX login wins if it replaced the expected generation. The file
+        // transaction also serializes this import with other cross-process refreshes.
+        return await fileStore.RefreshAsync(stored, (latest, _) => Task.FromResult(
+            SameSelectedAccount(latest, ambient)
+            && (ambient.ExpiresAt ?? DateTimeOffset.MinValue) > (latest.ExpiresAt ?? DateTimeOffset.MinValue)
+                ? ambient : latest), cancellationToken).ConfigureAwait(false);
     }
 
     private AuthBundle? TryGetCodexBundle() {

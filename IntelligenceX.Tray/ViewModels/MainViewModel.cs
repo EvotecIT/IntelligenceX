@@ -39,7 +39,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int UsageRootSafetySweepSeconds = 21600;
     private const int UsageChangeDebounceSeconds = 15;
     private const int RefreshHistoryDepth = 4;
-    private const int FreshLimitSnapshotWindowSeconds = 900;
     private const int GitHubWatchAutoSyncMinimumIntervalSeconds = 1800;
     private const int GitHubWatchSnapshotFreshnessSeconds = 21600;
     private const int GitHubWatchForkFreshnessSeconds = 86400;
@@ -1995,7 +1994,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         var age = DateTimeOffset.UtcNow - _lastLimitRefreshUtc;
-        if (age.TotalSeconds > FreshLimitSnapshotWindowSeconds) {
+        if (age > ProviderLimitSnapshotService.MaximumRecommendedReadingAge) {
             return false;
         }
 

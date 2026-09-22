@@ -146,6 +146,20 @@ public sealed class AuthStoreTransactionTests : IDisposable {
     }
 
     [Fact]
+    public async Task OpaqueLegacyAliasCannotBorrowAnotherCanonicalCredential() {
+        var unrelated = new AuthBundle("openai-codex", "unrelated", "unrelated-refresh", null);
+        var legacy = new AuthBundle("openai", "legacy", "legacy-refresh", null);
+        await Store().SaveAsync(unrelated);
+        await Store().SaveAsync(legacy);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Store().RefreshAsync(legacy,
+            (_, _) => Task.FromResult(new AuthBundle("openai", "rotated", "rotated-refresh", null)), default));
+
+        Assert.Equal("unrelated", (await Store().GetAsync("openai-codex"))!.AccessToken);
+        Assert.Equal("legacy", (await Store().GetAsync("openai"))!.AccessToken);
+    }
+
+    [Fact]
     public async Task LogoutCannotLeaveCanonicalCredentialFromInflightAliasRefresh() {
         var legacy = new AuthBundle("openai", "old", "old-refresh", DateTimeOffset.UtcNow.AddHours(1)) {
             AccountId = "account"

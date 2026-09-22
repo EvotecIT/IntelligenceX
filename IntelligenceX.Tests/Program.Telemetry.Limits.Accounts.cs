@@ -122,6 +122,12 @@ internal static partial class Program {
             AssertEqual("legacy", identified.Accounts.Single(account => account.IsSelected).AccountId,
                 "usage-reported identity establishes current legacy account");
             AssertEqual("legacy", identified.AccountLabel, "top-level reading uses the identified current account");
+            store.SaveAsync(new AuthBundle("openai", "another-opaque-alias", "other-refresh", DateTimeOffset.UtcNow.AddMinutes(30)))
+                .GetAwaiter().GetResult();
+            var coalesced = ProviderLimitSnapshotService.FetchCodexAsync("codex", options, CancellationToken.None).GetAwaiter().GetResult();
+            AssertEqual(6, coalesced.Accounts.Count, "provider-resolved aliases yield one row per account");
+            AssertEqual(1, coalesced.Accounts.Count(account => account.AccountId == "legacy" && account.IsSelected),
+                "resolved duplicate retains current-account selection");
         } finally {
             Directory.Delete(directory, recursive: true);
         }
@@ -152,6 +158,31 @@ internal static partial class Program {
             AssertThrows<OperationCanceledException>(() => ProviderLimitSnapshotService.FetchCodexAsync("codex", options,
                 cancellation.Token).GetAwaiter().GetResult(), "caller cancellation propagates even during final account request");
             AssertEqual(1, calls, "cancelled request is not retried with a fallback account");
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void TestProviderLimitsLargeInventoryReturnsWithinScanBudget() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-limit-scan-budget-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            using var server = new LocalHttpServer(_ => {
+                Thread.Sleep(400);
+                return new HttpResponse("{\"rate_limit\":{\"primary_window\":{\"used_percent\":20}}}");
+            });
+            var store = new FileAuthBundleStore(Path.Combine(directory, "ix-auth.json"));
+            for (var i = 0; i < 13; i++) {
+                store.SaveAsync(new AuthBundle("openai-codex", "access-" + i, "refresh-" + i,
+                    DateTimeOffset.UtcNow.AddHours(1)) { AccountId = "account-" + i }).GetAwaiter().GetResult();
+            }
+            var options = new OpenAINativeOptions { AuthStore = store, CodexHome = directory,
+                ChatGptApiBaseUrl = server.BaseUri.ToString() };
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            var result = ProviderLimitSnapshotService.FetchCodexAsync("codex", options, CancellationToken.None,
+                TimeSpan.FromMilliseconds(150)).GetAwaiter().GetResult();
+            AssertEqual(13, result.Accounts.Count, "queued accounts retain explicit unavailable rows at deadline");
+            AssertEqual(true, started.Elapsed < TimeSpan.FromSeconds(3), "scan deadline covers queued accounts");
         } finally {
             Directory.Delete(directory, recursive: true);
         }

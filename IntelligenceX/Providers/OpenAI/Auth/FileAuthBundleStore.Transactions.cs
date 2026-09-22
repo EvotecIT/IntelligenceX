@@ -46,7 +46,8 @@ public sealed partial class FileAuthBundleStore {
         using (var transaction = await AcquireTransactionAsync(cancellationToken).ConfigureAwait(false)) {
             var before = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
             if (!string.Equals(key, canonicalKey, StringComparison.OrdinalIgnoreCase)
-                && before is not null && before.Bundles.TryGetValue(canonicalKey, out var canonical))
+                && before is not null && before.Bundles.TryGetValue(canonicalKey, out var canonical)
+                && SameAccountIdentity(canonical, expected))
                 return canonical;
             // Older saves used a provider-only key even when the JWT contains an
             // account identity. The selected account's inferred identity may be
@@ -81,7 +82,8 @@ public sealed partial class FileAuthBundleStore {
         using var commit = await AcquireTransactionAsync(CancellationToken.None).ConfigureAwait(false);
         var file = await ReadFileAsync(CancellationToken.None).ConfigureAwait(false);
         if (!string.Equals(key, canonicalKey, StringComparison.OrdinalIgnoreCase)
-            && file is not null && file.Bundles.TryGetValue(canonicalKey, out var newerCanonical))
+            && file is not null && file.Bundles.TryGetValue(canonicalKey, out var newerCanonical)
+            && SameAccountIdentity(newerCanonical, expected))
             return newerCanonical;
         var latest = RequireAccount(file, key);
         if (!SameCredentials(latest, accessToken, refreshToken)) {

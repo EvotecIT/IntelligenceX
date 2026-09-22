@@ -21,6 +21,8 @@ namespace IntelligenceX.Telemetry.Limits;
 /// </summary>
 public sealed partial class ProviderLimitSnapshotService {
     private const int MaxConcurrentProviderFetches = 2;
+    /// <summary>Maximum age shared by Tray caching and reset-planning advice.</summary>
+    public static readonly TimeSpan MaximumRecommendedReadingAge = TimeSpan.FromMinutes(10);
     private readonly Func<string, CancellationToken, Task<ProviderLimitSnapshot>>? _fetchOverride;
 
     internal ProviderLimitSnapshotService(

@@ -13,6 +13,7 @@ namespace IntelligenceX.Telemetry.Limits;
 
 public sealed partial class ProviderLimitSnapshotService {
     private static readonly TimeSpan AccountLimitTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan AccountScanTimeout = TimeSpan.FromSeconds(90);
 
     /// <summary>
     /// Discovers saved accounts before making network requests. Each account retains its own
@@ -21,7 +22,8 @@ public sealed partial class ProviderLimitSnapshotService {
     internal static async Task<ProviderLimitSnapshot> FetchCodexAsync(
         string requestedProviderId,
         OpenAINativeOptions options,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken,
+        TimeSpan? scanTimeout = null) {
         options.PreserveCodexLoginOnRefresh = true;
         var bundles = await ListOpenAiBundlesAsync(options.AuthStore, cancellationToken).ConfigureAwait(false);
         if (bundles.Count == 0) {
@@ -44,23 +46,28 @@ public sealed partial class ProviderLimitSnapshotService {
             uniqueBundles.Add((bundle, accountId, email));
         }
 
-        // Five independent 30-second timeouts must not turn into a 150-second scan;
-        // Tray starts another automatic refresh after two minutes. Three in flight
-        // keeps the worst-case account phase to two bounded waves.
+        // Bound the whole inventory, including requests queued behind the semaphore.
+        // Tray starts another automatic refresh after two minutes.
+        using var scanCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        scanCancellation.CancelAfter(scanTimeout ?? AccountScanTimeout);
         using var concurrency = new SemaphoreSlim(3, 3);
         using var usageService = new ChatGptUsageService(options);
         var accounts = await Task.WhenAll(uniqueBundles.Select(async item => {
-            await concurrency.WaitAsync(cancellationToken).ConfigureAwait(false);
+            var acquired = false;
             try {
+                await concurrency.WaitAsync(scanCancellation.Token).ConfigureAwait(false);
+                acquired = true;
                 return await FetchAccountAsync(item.Bundle, item.AccountId, item.Email).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && scanCancellation.IsCancellationRequested) {
+                return UnavailableAccount(item.AccountId, item.Email, "The account scan reached its time limit. Retry to check this account.");
             } finally {
-                concurrency.Release();
+                if (acquired) concurrency.Release();
             }
         })).ConfigureAwait(false);
 
         async Task<ProviderLimitAccountSnapshot> FetchAccountAsync(AuthBundle bundle, string? accountId, string? email) {
             var isSelected = accountId is not null && string.Equals(accountId, options.AuthAccountId, StringComparison.OrdinalIgnoreCase);
-            using var accountCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var accountCancellation = CancellationTokenSource.CreateLinkedTokenSource(scanCancellation.Token);
             accountCancellation.CancelAfter(AccountLimitTimeout);
 
             try {
@@ -90,27 +97,55 @@ public sealed partial class ProviderLimitSnapshotService {
                     : bundle.ExpiresAt.HasValue && bundle.ExpiresAt.Value <= DateTimeOffset.UtcNow
                         ? "The saved login could not be refreshed. Retry, or sign in to this account again in IX Chat."
                         : "Live limits could not be read. Retry, or check this account's sign-in in IX Chat.";
-                return new ProviderLimitAccountSnapshot(accountId, email ?? accountId, null,
-                    Array.Empty<ProviderLimitWindow>(), "Saved account · live limits unavailable", detail,
-                    DateTimeOffset.UtcNow, isSelected);
+                return UnavailableAccount(accountId, email, detail);
             }
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        var distinctAccounts = CoalesceResolvedAccounts(accounts, options.AuthAccountId);
         // Top-level windows remain those of the current account when it is known; do not
         // silently present a healthy alternative as the user's current login.
-        var primary = accounts.FirstOrDefault(static account => account.IsSelected)
-                      ?? accounts.FirstOrDefault(static account => account.IsAvailable)
-                      ?? accounts.First();
-        var availableCount = accounts.Count(static account => account.IsAvailable);
-        var detailMessage = availableCount == accounts.Length
+        var primary = distinctAccounts.FirstOrDefault(static account => account.IsSelected)
+                      ?? distinctAccounts.FirstOrDefault(static account => account.IsAvailable)
+                      ?? distinctAccounts[0];
+        var availableCount = distinctAccounts.Count(static account => account.IsAvailable);
+        var detailMessage = availableCount == distinctAccounts.Count
             ? null
             : "Live limit windows available for " + availableCount.ToString(CultureInfo.InvariantCulture)
-              + " of " + accounts.Length.ToString(CultureInfo.InvariantCulture)
+              + " of " + distinctAccounts.Count.ToString(CultureInfo.InvariantCulture)
               + " saved accounts. See each account below for details.";
         return new ProviderLimitSnapshot(requestedProviderId, UsageTelemetryProviderCatalog.ResolveDisplayTitle("codex"),
             "OpenAI usage API", primary.PlanLabel, primary.AccountLabel, primary.Windows, primary.Summary,
-            detailMessage, DateTimeOffset.UtcNow, accounts);
+            detailMessage, DateTimeOffset.UtcNow, distinctAccounts);
+    }
+
+    private static ProviderLimitAccountSnapshot UnavailableAccount(string? accountId, string? email, string detail) =>
+        new(accountId, email ?? accountId, null, Array.Empty<ProviderLimitWindow>(),
+            "Saved account · live limits unavailable", detail, DateTimeOffset.UtcNow);
+
+    internal static IReadOnlyList<ProviderLimitAccountSnapshot> CoalesceResolvedAccounts(
+        IEnumerable<ProviderLimitAccountSnapshot> accounts, string? selectedAccountId) {
+        var rows = accounts.ToArray();
+        var result = new List<ProviderLimitAccountSnapshot>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows) {
+            var id = NormalizeOptional(row.AccountId);
+            // Only provider-confirmed identity is safe to merge: two unresolved
+            // credentials with the same display label need not be the same account.
+            if (id is null) {
+                result.Add(row);
+                continue;
+            }
+            if (!seen.Add(id)) continue;
+            var duplicates = rows.Where(other => string.Equals(other.AccountId, id, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var preferred = duplicates.Where(static other => other.IsAvailable)
+                .OrderByDescending(static other => other.RetrievedAtUtc).FirstOrDefault() ?? duplicates[0];
+            var selected = duplicates.Any(static other => other.IsSelected)
+                || string.Equals(id, selectedAccountId, StringComparison.OrdinalIgnoreCase);
+            result.Add(new ProviderLimitAccountSnapshot(id, preferred.AccountLabel, preferred.PlanLabel,
+                preferred.Windows, preferred.Summary, preferred.DetailMessage, preferred.RetrievedAtUtc, selected));
+        }
+        return result;
     }
 
     private static async Task<IReadOnlyList<AuthBundle>> ListOpenAiBundlesAsync(IAuthBundleStore authStore, CancellationToken cancellationToken) {

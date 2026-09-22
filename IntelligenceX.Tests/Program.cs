@@ -21,6 +21,7 @@ internal static partial class Program {
         failed += Run("Provider limits refresh accounts independently", TestProviderLimitsRefreshAccountsIndependently);
         failed += Run("Provider limits synchronize only matching Codex credentials", TestProviderLimitsSynchronizeOnlyMatchingCodexCredentials);
         failed += Run("Provider limits account refresh cancellation and empty store", TestProviderLimitsAccountRefreshCancellationAndEmptyStore);
+        failed += Run("Provider limits large inventory scan budget", TestProviderLimitsLargeInventoryReturnsWithinScanBudget);
 #endif
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage parse ignores legacy code review rate limit",
