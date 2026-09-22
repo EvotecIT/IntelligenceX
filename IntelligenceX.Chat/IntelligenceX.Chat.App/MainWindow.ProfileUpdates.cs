@@ -637,21 +637,24 @@ public sealed partial class MainWindow : Window {
     private ChatRequestOptions? BuildChatRequestOptions(ConversationRuntime? conversation = null) {
         var (disabledTools, disabledPackIds) = BuildToolExposureOverridesForRequest(_toolStates, _toolPackIds);
 
-        var configuredModel = string.IsNullOrWhiteSpace(conversation?.ModelOverride)
-            ? _localProviderModel
-            : conversation!.ModelOverride!;
-        var resolvedModel = ResolveChatRequestModelOverride(
-            _localProviderTransport,
-            _localProviderBaseUrl,
-            configuredModel,
-            _availableModels);
+        var runtimeOverridesActive = _appState.LocalProviderRuntimeOverrideActive;
+        var conversationModelOverride = string.IsNullOrWhiteSpace(conversation?.ModelOverride)
+            ? null
+            : conversation!.ModelOverride;
+        var resolvedModel = conversationModelOverride ?? (runtimeOverridesActive
+            ? ResolveChatRequestModelOverride(
+                _localProviderTransport,
+                _localProviderBaseUrl,
+                _localProviderModel,
+                _availableModels)
+            : null);
         var imageOverridesActive = _localProviderImageGenerationOverrideActive;
         return ChatRequestOptionsFactory.Create(new DesktopChatRequestSettings {
             Model = resolvedModel,
-            ReasoningEffort = _localProviderReasoningEffort,
-            ReasoningSummary = _localProviderReasoningSummary,
-            TextVerbosity = _localProviderTextVerbosity,
-            Temperature = _localProviderTemperature,
+            ReasoningEffort = runtimeOverridesActive ? _localProviderReasoningEffort : null,
+            ReasoningSummary = runtimeOverridesActive ? _localProviderReasoningSummary : null,
+            TextVerbosity = runtimeOverridesActive ? _localProviderTextVerbosity : null,
+            Temperature = runtimeOverridesActive ? _localProviderTemperature : null,
             ImageGenerationEnabled = imageOverridesActive ? _localProviderImageGenerationEnabled : null,
             ImageGenerationQuality = imageOverridesActive ? _localProviderImageGenerationQuality : null,
             ImageGenerationSize = imageOverridesActive ? _localProviderImageGenerationSize : null,

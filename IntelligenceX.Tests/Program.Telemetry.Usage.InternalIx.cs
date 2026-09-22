@@ -140,7 +140,7 @@ internal static partial class Program {
             totalTokens: 275);
         var rootStore = new InMemorySourceRootStore();
         var eventStore = new InMemoryUsageEventStore();
-        using var client = CreateToolRunnerClient(turn, OpenAITransportKind.CopilotCli);
+        using var client = CreateToolRunnerClient(turn, OpenAITransportKind.CopilotNative);
         using var recorder = new InternalIxUsageRecorder(
             client,
             rootStore,

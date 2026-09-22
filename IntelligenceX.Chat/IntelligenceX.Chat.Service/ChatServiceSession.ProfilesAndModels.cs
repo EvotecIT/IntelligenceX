@@ -22,6 +22,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private static readonly SemaphoreSlim ProfileBootstrapGate = new(1, 1);
     private const string DefaultRuntimeModel = OpenAIModelCatalog.DefaultModel;
     private const string PluginLoadTimingWarningPrefix = "[plugin] load_timing ";
     private const string PluginLoadProgressWarningPrefix = "[plugin] load_progress ";
@@ -93,13 +94,11 @@ internal sealed partial class ChatServiceSession {
             opts.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = _options.OpenAIAllowInsecureHttpNonLoopback;
         }
 
-        if (opts.TransportKind == OpenAITransportKind.CopilotCli) {
-            opts.CopilotOptions.AutoInstallCli = true;
-            opts.CopilotOptions.AutoInstallMethod = CopilotCliInstallMethod.Auto;
-            var cliPath = Environment.GetEnvironmentVariable("COPILOT_CLI_PATH");
-            if (!string.IsNullOrWhiteSpace(cliPath)) {
-                opts.CopilotOptions.CliPath = cliPath;
-            }
+        if (opts.TransportKind == OpenAITransportKind.CopilotNative) {
+            opts.CopilotOptions.Streaming = _options.OpenAIStreaming;
+            // Credentials are resolved by the shared native owner; the host never launches a provider CLI.
+            var baseUrl = Environment.GetEnvironmentVariable("COPILOT_BASE_URL");
+            if (!string.IsNullOrWhiteSpace(baseUrl)) opts.CopilotOptions.BaseUrl = baseUrl;
         }
 
         return opts;
@@ -246,6 +245,28 @@ internal sealed partial class ChatServiceSession {
                     allowStoredProfiles: true,
                     (candidateName, ct) => store.GetAsync(candidateName, ct),
                     cancellationToken).ConfigureAwait(false);
+                if (!resolution.Success && request.BootstrapMissingProfile) {
+                    await ProfileBootstrapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    try {
+                        // Another session may have created the profile since our first read.
+                        resolution = await ServiceProfilePresets.TryResolveStoredOrBuiltInProfileAsync(
+                            requestedName,
+                            allowStoredProfiles: true,
+                            (candidateName, ct) => store.GetAsync(candidateName, ct),
+                            cancellationToken).ConfigureAwait(false);
+                        if (!resolution.Success) {
+                            await store.UpsertAsync(requestedName, new ServiceOptions().ToProfile(), cancellationToken)
+                                .ConfigureAwait(false);
+                            resolution = await ServiceProfilePresets.TryResolveStoredOrBuiltInProfileAsync(
+                                requestedName,
+                                allowStoredProfiles: true,
+                                (candidateName, ct) => store.GetAsync(candidateName, ct),
+                                cancellationToken).ConfigureAwait(false);
+                        }
+                    } finally {
+                        ProfileBootstrapGate.Release();
+                    }
+                }
                 if (!resolution.Success) {
                     await WriteAsync(writer, new ErrorMessage {
                         Kind = ChatServiceMessageKind.Response,
@@ -403,7 +424,7 @@ internal sealed partial class ChatServiceSession {
                     await WriteAsync(writer, new ErrorMessage {
                         Kind = ChatServiceMessageKind.Response,
                         RequestId = request.RequestId,
-                        Error = "openAITransport must be one of: native, appserver, compatible-http, copilot-cli.",
+                        Error = "openAITransport must be one of: native, appserver, compatible-http, copilot-native.",
                         Code = "invalid_argument"
                     }, cancellationToken).ConfigureAwait(false);
                     return new SetProfileResult(ReconnectClient: false, ModelChanged: false);

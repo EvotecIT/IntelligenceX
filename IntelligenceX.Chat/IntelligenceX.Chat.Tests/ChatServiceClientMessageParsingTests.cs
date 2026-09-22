@@ -94,6 +94,35 @@ public sealed class ChatServiceClientMessageParsingTests {
     }
 
     /// <summary>
+    /// Ensures generated image references survive the service/client protocol boundary.
+    /// </summary>
+    [Fact]
+    public void TryDeserializeMessageLine_PreservesGeneratedImageReferences() {
+        const string line = """
+            {
+              "type":"chat_result",
+              "kind":"response",
+              "requestId":"req_image",
+              "threadId":"thread_image",
+              "text":"Generated an image.",
+              "images":[
+                {
+                  "path":"C:\\artifacts\\generated.png",
+                  "mimeType":"image/png"
+                }
+              ]
+            }
+            """;
+
+        var parsed = ChatServiceClient.TryDeserializeMessageLine(line);
+
+        var result = Assert.IsType<ChatResultMessage>(parsed);
+        var image = Assert.Single(result.Images!);
+        Assert.Equal(@"C:\artifacts\generated.png", image.Path);
+        Assert.Equal("image/png", image.MimeType);
+    }
+
+    /// <summary>
     /// Ensures non-chat_result invalid payloads are rejected.
     /// </summary>
     [Fact]

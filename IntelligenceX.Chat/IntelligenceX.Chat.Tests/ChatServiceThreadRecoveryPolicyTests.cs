@@ -21,11 +21,11 @@ public sealed class ChatServiceThreadRecoveryPolicyTests {
     }
 
     /// <summary>
-    /// Ensures copilot-cli missing-thread failures trigger thread recovery.
+    /// Ensures copilot-native missing-thread failures trigger thread recovery.
     /// </summary>
     [Fact]
-    public void ShouldRecoverMissingTransportThread_ReturnsTrue_ForCopilotCliNotFoundMessage() {
-        var ex = new InvalidOperationException("Thread 'abc' was not found in Copilot CLI transport.");
+    public void ShouldRecoverMissingTransportThread_ReturnsTrue_ForCopilotNativeNotFoundMessage() {
+        var ex = new InvalidOperationException("Thread 'abc' was not found in native Copilot transport.");
 
         var shouldRecover = ChatServiceSession.ShouldRecoverMissingTransportThread(ex);
 

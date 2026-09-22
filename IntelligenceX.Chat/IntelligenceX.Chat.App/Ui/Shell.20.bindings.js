@@ -1102,11 +1102,14 @@
 
   function normalizeLocalTransportValue(value) {
     var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "copilot-cli") {
+      throw new Error("This profile uses retired copilot-cli. Select copilot-native and configure a GitHub credential.");
+    }
     if (normalized === "compatible-http" || normalized === "compatiblehttp" || normalized === "http" || normalized === "local" || normalized === "ollama" || normalized === "lmstudio" || normalized === "lm-studio") {
       return "compatible-http";
     }
-    if (normalized === "copilot-cli" || normalized === "copilot" || normalized === "github-copilot" || normalized === "githubcopilot") {
-      return "copilot-cli";
+    if (normalized === "copilot-native" || normalized === "copilot" || normalized === "github-copilot" || normalized === "githubcopilot") {
+      return "copilot-native";
     }
     return "native";
   }
@@ -1154,10 +1157,10 @@
 
   function resolveReasoningSupportForDraft(transport, baseUrl) {
     var normalizedTransport = normalizeLocalTransportValue(transport);
-    if (normalizedTransport === "copilot-cli") {
+    if (normalizedTransport === "copilot-native") {
       return {
-        supported: false,
-        reason: "GitHub Copilot subscription runtime currently does not expose reasoning controls."
+        supported: true,
+        reason: "Copilot forwards reasoning controls to the selected model. Support depends on the model."
       };
     }
 
@@ -1395,7 +1398,17 @@
 
   function markLocalProviderDraftChanged() {
     clearScheduledLocalProviderApply();
-    renderLocalModelOptions();
+    // Keep the edited controls intact until Apply captures them. Rendering the
+    // committed profile here would replace the user's provider/model draft.
+    var pending = hasPendingLocalProviderChanges();
+    var applyButton = byId("btnApplyLocalProvider");
+    if (applyButton) {
+      applyButton.textContent = pending ? "Apply Runtime (Pending)" : "Apply Runtime";
+    }
+    var hint = byId("optLocalSimpleHint");
+    if (hint && pending) {
+      hint.textContent = "Runtime edits are pending. Click Apply Runtime to commit provider/model changes.";
+    }
   }
 
   function markLocalProviderImageGenerationDraftChanged() {
@@ -1938,7 +1951,7 @@
     var transport = byId("optLocalTransport");
     var modelInput = byId("optLocalModelInput");
     if (transport) {
-      transport.value = "copilot-cli";
+      transport.value = "copilot-native";
       syncCustomSelect(transport);
       transport.dispatchEvent(new Event("change"));
     }

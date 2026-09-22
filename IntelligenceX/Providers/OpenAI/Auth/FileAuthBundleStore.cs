@@ -12,8 +12,9 @@ namespace IntelligenceX.OpenAI.Auth;
 /// <summary>
 /// File-based authentication bundle store with optional encryption.
 /// </summary>
-public sealed partial class FileAuthBundleStore : IAuthBundleStore {
+public sealed partial class FileAuthBundleStore : IRemovableAuthBundleStore {
     private readonly string _path;
+    internal string CoordinationPath => _path;
     private readonly byte[]? _encryptionKey;
 
     /// <summary>
@@ -110,6 +111,15 @@ public sealed partial class FileAuthBundleStore : IAuthBundleStore {
         await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Removes one account without deleting other stored accounts or providers.</summary>
+    public async Task RemoveAsync(string provider, string? accountId, CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(provider)) throw new ArgumentException("A provider is required.", nameof(provider));
+        using var transaction = await AcquireTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
+        if (file is not null && file.Bundles.Remove(BuildKey(provider, accountId)))
+            await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Deletes the auth store file if it exists.
     /// </summary>
@@ -149,9 +159,10 @@ public sealed partial class FileAuthBundleStore : IAuthBundleStore {
         if (!string.IsNullOrWhiteSpace(dir)) {
             Directory.CreateDirectory(dir);
         }
-        // Keep the existing file and its access restrictions. All cooperating store
-        // readers/writers hold the transaction lock; do not stage plaintext credentials
-        // in a new file with broader inherited/default permissions.
+        // All cooperating store readers/writers hold the transaction lock. Stage
+        // privately in the same directory so a failed or cancelled write leaves
+        // the previous multi-account store intact. Replacement also migrates old
+        // Unix files created with permissive umasks to a private mode.
         await WriteAllTextAsync(_path, content, cancellationToken).ConfigureAwait(false);
     }
 
@@ -191,14 +202,21 @@ public sealed partial class FileAuthBundleStore : IAuthBundleStore {
 #endif
     }
 
-    private static Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken) {
-#if NETSTANDARD2_0 || NET472
+    private static async Task WriteAllTextAsync(string path, string content, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-        File.WriteAllText(path, content);
-        return Task.CompletedTask;
-#else
-        return File.WriteAllTextAsync(path, content, cancellationToken);
-#endif
+        var stagedPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try {
+            using (var stream = PrivateAuthFile.Create(stagedPath)) {
+                byte[] bytes = Encoding.UTF8.GetBytes(content);
+                await stream.WriteAsync(bytes, 0, bytes.Length, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.Exists(path)) File.Replace(stagedPath, path, null);
+            else File.Move(stagedPath, path);
+        } finally {
+            if (File.Exists(stagedPath)) File.Delete(stagedPath);
+        }
     }
 
     private static string Encrypt(string plaintext, byte[] key) {

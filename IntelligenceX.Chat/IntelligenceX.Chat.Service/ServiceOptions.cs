@@ -331,7 +331,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                     return options;
                 }
                 if (!TryParseTransport(value!, out var kind)) {
-                    error = "--openai-transport must be one of: native, appserver, compatible-http, copilot-cli.";
+                    error = "--openai-transport must be one of: native, appserver, compatible-http, copilot-native.";
                     return options;
                 }
                 options.OpenAITransport = kind;
@@ -848,7 +848,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --image-generation-output-compression <0-100> | --clear-image-generation-output-compression");
         Console.WriteLine("  --image-generation-background <VALUE> | --clear-image-generation-background");
         Console.WriteLine("  --image-generation-output-directory <PATH> | --clear-image-generation-output-directory");
-        Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http|copilot-cli (default: native).");
+        Console.WriteLine("  --openai-transport <KIND>  Underlying provider transport: native|appserver|compatible-http|copilot-native (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-auth-mode <MODE>  Compatible-http auth mode: bearer|basic|none (default: bearer).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
@@ -944,10 +944,10 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 kind = OpenAITransportKind.CompatibleHttp;
                 return true;
             case "copilot":
-            case "copilot-cli":
+            case "copilot-native":
             case "github-copilot":
             case "githubcopilot":
-                kind = OpenAITransportKind.CopilotCli;
+                kind = OpenAITransportKind.CopilotNative;
                 return true;
             default:
                 return false;

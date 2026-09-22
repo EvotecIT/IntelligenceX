@@ -15,7 +15,7 @@ Goal: stop re-implementing AD/EventLog/System logic inside tool packs or the cha
 - AD PowerShell cmdlets (capability index): `C:\Support\GitHub\TestimoX\ADPlayground.PowerShell`
 - Computer/system engine: `C:\Support\GitHub\TestimoX\ComputerX`
 - ComputerX PowerShell cmdlets (capability index): `C:\Support\GitHub\TestimoX\ComputerX.PowerShell`
-- Event log engine: `C:\Support\GitHub\PSEventViewer\Sources\EventViewerX`
+- Event log engine: `C:\Support\GitHub\EventViewerX\Sources\EventViewerX`
 - Persistence engine (SQLite client): `C:\Support\GitHub\DbaClientX\DbaClientX.SQLite`
 
 If you are about to add a helper (DN parsing, typed SearchResult reads, SPN parsing, LDAP diagnostics, FILETIME conversions), search the engine first. Only add code in Tools when it is output-shaping or tool-argument policy.
@@ -60,7 +60,7 @@ Prefer structured queries over ad-hoc WMI/registry logic in Tools:
 
 Prefer typed report logic and stable extractors over custom event parsing in Tools:
 
-- Core engine: `C:\Support\GitHub\PSEventViewer\Sources\EventViewerX`
+- Core engine: `C:\Support\GitHub\EventViewerX\Sources\EventViewerX`
 - Tools should wrap existing EventViewerX reports where possible (Security 4624/4625/4740 etc.).
 
 ## “Thin Tool” Checklist (Before Adding A Tool Or Helper)

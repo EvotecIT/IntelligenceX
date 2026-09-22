@@ -100,7 +100,7 @@ public static class AuthBundleSerializer {
         var provider = obj.GetString("provider") ?? obj.GetString("Provider");
         var accessToken = obj.GetString("access_token") ?? obj.GetString("accessToken") ?? obj.GetString("access");
         var refreshToken = obj.GetString("refresh_token") ?? obj.GetString("refreshToken") ?? obj.GetString("refresh");
-        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(refreshToken)) {
+        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(accessToken)) {
             return null;
         }
         DateTimeOffset? expiresAt = null;
@@ -108,7 +108,7 @@ public static class AuthBundleSerializer {
         if (expiresAtValue.HasValue && expiresAtValue.Value > 0) {
             expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expiresAtValue.Value);
         }
-        var bundle = new AuthBundle(provider!, accessToken!, refreshToken!, expiresAt) {
+        var bundle = new AuthBundle(provider!, accessToken!, refreshToken ?? string.Empty, expiresAt) {
             TokenType = obj.GetString("token_type") ?? obj.GetString("tokenType"),
             Scope = obj.GetString("scope"),
             AccountId = obj.GetString("account_id") ?? obj.GetString("accountId"),

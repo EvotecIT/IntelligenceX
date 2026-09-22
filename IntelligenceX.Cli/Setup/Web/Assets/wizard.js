@@ -177,7 +177,7 @@ const PROVIDER_MODEL_CATALOG = {
 const PROVIDER_SETUP_SUMMARIES = {
   openai: 'OpenAI uses your ChatGPT/OpenAI auth bundle and can optionally rotate reviewer runs across OpenAI accounts.',
   claude: 'Claude uses an Anthropic API key and reviewer usage is tracked separately from local Claude session logs.',
-  copilot: 'Copilot setup relies on GitHub Copilot CLI instead of a managed provider secret in setup.'
+  copilot: 'Copilot uses native HTTP. Select a model available to your account and configure the COPILOT_GITHUB_TOKEN repository secret with a GitHub credential authorized for Copilot. Setup does not upload this credential.'
 };
 
 function getProviderModelCatalog(provider) {
@@ -244,7 +244,8 @@ function syncProviderModelSelection(previousProvider, nextProvider) {
     !modelLooksCompatibleWithProvider(currentValue, nextProvider)
   );
 
-  reviewModel.disabled = nextProvider === 'copilot';
+  reviewModel.disabled = false;
+  reviewModel.required = nextProvider === 'copilot';
   reviewModel.placeholder = nextDefault || 'provider-specific model';
 
   const hint = $('reviewModelHint');
@@ -253,15 +254,7 @@ function syncProviderModelSelection(previousProvider, nextProvider) {
       ? 'Set the review model for OpenAI runs. Use a named profile, quick pick, or custom model id. Default: gpt-5.5.'
       : nextProvider === 'claude'
         ? 'Set the review model for Claude runs. Use a named profile, quick pick, or custom model id. Default: claude-opus-4-1.'
-        : 'Copilot setup does not use the managed model field here.';
-  }
-
-  if (nextProvider === 'copilot') {
-    reviewModel.value = '';
-    renderModelProfiles(nextProvider);
-    renderModelQuickPicks(nextProvider);
-    syncSelectedModelProfile(nextProvider, reviewModel.value);
-    return;
+        : 'Enter a model ID from the native Copilot model catalog. Availability depends on your account.';
   }
 
   if (shouldReset || currentValue.length === 0) {
@@ -304,7 +297,9 @@ function syncSelectedModelProfile(provider, model) {
   if (hint) {
     hint.textContent = entry
       ? `${entry.profileLabel}: ${entry.description}${entry.isDefault ? ' Recommended default.' : ''}`
-      : 'Choose a named provider/model profile or switch to custom.';
+      : String(provider || '').trim().toLowerCase() === 'copilot'
+        ? 'Enter the model ID below.'
+        : 'Choose a named provider/model profile or switch to custom.';
   }
 }
 
@@ -316,7 +311,7 @@ function renderModelProfiles(provider) {
   if (String(provider || '').trim().toLowerCase() === 'copilot' || models.length === 0) {
     const option = document.createElement('option');
     option.value = '__custom__';
-    option.textContent = 'Custom / not used';
+    option.textContent = 'Custom model ID';
     reviewModelProfile.appendChild(option);
     reviewModelProfile.disabled = true;
     syncSelectedModelProfile(provider, '');
@@ -542,6 +537,13 @@ function shouldSkipSecrets() {
 }
 
 function validateStep(step) {
+  if (step === 2 && selectedOperation === 'setup' && selectedProvider === 'copilot' &&
+      !configJson.value.trim() && !configPath.value.trim() && !reviewModel.value.trim()) {
+    reviewModel.setCustomValidity('Select a model available to your Copilot account.');
+    reviewModel.reportValidity();
+    return false;
+  }
+  if (reviewModel) reviewModel.setCustomValidity('');
   if (step === 0) {
     if (!getToken()) {
       showSubFlowHint('Authenticate first to continue.');
@@ -716,7 +718,7 @@ function selectProvider(p) {
       ? 'Recommended. Uses your ChatGPT account for reviews.'
       : p === 'claude'
         ? 'Uses Anthropic Claude via API key and tracks Claude reviewer usage alongside local Claude telemetry.'
-        : 'Uses GitHub Copilot CLI. Requires Copilot subscription and CLI installed.';
+        : 'Uses native Copilot HTTP with your GitHub credential and an explicitly selected model.';
   }
   const secretHint = $('secretHint');
   if (secretHint) {
@@ -724,7 +726,7 @@ function selectProvider(p) {
       ? 'Sign in to ChatGPT or provide an auth bundle to enable code reviews.'
       : p === 'claude'
         ? 'Provide a Claude API key to enable reviewer runs and track Claude usage.'
-        : 'No managed secret is required for Copilot setup.';
+        : 'Configure COPILOT_GITHUB_TOKEN in repository secrets before running reviews. Setup does not upload the Copilot credential.';
   }
   const openaiSection = $('openaiAuthSection');
   const claudeSection = $('claudeAuthSection');

@@ -168,6 +168,10 @@ public sealed class ChatOptionsCloneTests {
             return ToolChoice.Custom("t1");
         }
 
+        if (t == typeof(ChatResponseFormat)) {
+            return new ChatResponseFormat("document", "{\"type\":\"object\"}");
+        }
+
         if (t == typeof(SandboxPolicy)) {
             return new SandboxPolicy("test-sandbox", networkAccess: true, writableRoots: new List<string> { "C:\\Temp" });
         }

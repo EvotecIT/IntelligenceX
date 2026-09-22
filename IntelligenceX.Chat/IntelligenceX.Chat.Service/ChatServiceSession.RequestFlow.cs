@@ -1729,7 +1729,7 @@ internal sealed partial class ChatServiceSession {
             OpenAITransportKind.Native => "native",
             OpenAITransportKind.AppServer => "appserver",
             OpenAITransportKind.CompatibleHttp => "compatible-http",
-            OpenAITransportKind.CopilotCli => "copilot-cli",
+            OpenAITransportKind.CopilotNative => "copilot-native",
             _ => "unknown"
         };
     }

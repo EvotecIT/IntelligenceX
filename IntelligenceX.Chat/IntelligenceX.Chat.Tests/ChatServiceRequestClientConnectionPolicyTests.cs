@@ -61,10 +61,10 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
     public void BuildClientConnectFailureMessage_ForListModels_IncludesContext() {
         var message = ChatServiceSession.BuildClientConnectFailureMessage(
             new ListModelsRequest { RequestId = "req_models" },
-            new InvalidOperationException("Copilot CLI not found on PATH."));
+            new InvalidOperationException("native Copilot not found on PATH."));
 
         Assert.Contains("listing models", message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Copilot CLI not found on PATH.", message, StringComparison.Ordinal);
+        Assert.Contains("native Copilot not found on PATH.", message, StringComparison.Ordinal);
     }
 
     [Fact]

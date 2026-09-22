@@ -8,7 +8,7 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.Reviewer;
 
-internal static class ReviewConfigLoader {
+internal static partial class ReviewConfigLoader {
     public static void Apply(ReviewSettings settings) {
         var path = ResolveConfigPath();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
@@ -119,7 +119,8 @@ internal static class ReviewConfigLoader {
         }
         settings.Persona = obj.GetString("persona") ?? settings.Persona;
         settings.Notes = obj.GetString("notes") ?? settings.Notes;
-        settings.Model = obj.GetString("model") ?? obj.GetString("openaiModel") ?? obj.GetString("openAiModel") ?? settings.Model;
+        var model = obj.GetString("model") ?? obj.GetString("openaiModel") ?? obj.GetString("openAiModel");
+        if (model is not null) settings.Model = model;
         var openAiTransport = obj.GetString("openaiTransport") ?? obj.GetString("openAiTransport") ?? obj.GetString("openai_transport");
         if (!string.IsNullOrWhiteSpace(openAiTransport)) {
             settings.OpenAITransport = ParseOpenAiTransport(openAiTransport, settings.OpenAITransport);
@@ -672,43 +673,6 @@ internal static class ReviewConfigLoader {
         settings.AnthropicMaxTokens = ReadInt(anthropic, "maxTokens", settings.AnthropicMaxTokens);
     }
 
-    private static void ApplyCopilot(JsonObject root, ReviewSettings settings) {
-        var copilot = root.GetObject("copilot");
-        if (copilot is null) {
-            return;
-        }
-        settings.CopilotCliPath = copilot.GetString("cliPath") ?? settings.CopilotCliPath;
-        settings.CopilotCliUrl = copilot.GetString("cliUrl") ?? settings.CopilotCliUrl;
-        settings.CopilotWorkingDirectory = copilot.GetString("workingDirectory") ?? settings.CopilotWorkingDirectory;
-        settings.CopilotModel = copilot.GetString("model") ?? settings.CopilotModel;
-        settings.CopilotLauncher = ReviewSettings.NormalizeCopilotLauncher(copilot.GetString("launcher"),
-            settings.CopilotLauncher);
-        settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);
-        settings.CopilotAutoInstallMethod = copilot.GetString("autoInstallMethod") ?? settings.CopilotAutoInstallMethod;
-        settings.CopilotAutoInstallPrerelease = ReadBool(copilot, "autoInstallPrerelease", settings.CopilotAutoInstallPrerelease);
-        var envAllowlist = ReadStringList(copilot, "envAllowlist");
-        if (envAllowlist is not null) {
-            settings.CopilotEnvAllowlist = envAllowlist;
-        }
-        settings.CopilotInheritEnvironment = ReadBool(copilot, "inheritEnvironment", settings.CopilotInheritEnvironment);
-        var env = ReadStringMap(copilot, "env");
-        if (env is not null) {
-            settings.CopilotEnv = env;
-        }
-        var transport = copilot.GetString("transport");
-        if (!string.IsNullOrWhiteSpace(transport)) {
-            settings.CopilotTransport = ParseCopilotTransport(transport, settings.CopilotTransport);
-        }
-        settings.CopilotDirectUrl = copilot.GetString("directUrl") ?? settings.CopilotDirectUrl;
-        settings.CopilotDirectToken = copilot.GetString("directToken") ?? settings.CopilotDirectToken;
-        settings.CopilotDirectTokenEnv = copilot.GetString("directTokenEnv") ?? settings.CopilotDirectTokenEnv;
-        settings.CopilotDirectTimeoutSeconds = ReadInt(copilot, "directTimeoutSeconds", settings.CopilotDirectTimeoutSeconds);
-        var directHeaders = ReadStringMap(copilot, "directHeaders");
-        if (directHeaders is not null) {
-            settings.CopilotDirectHeaders = directHeaders;
-        }
-    }
-
     private static void ApplyAzureDevOps(JsonObject obj, ReviewSettings settings) {
         var org = obj.GetString("azureOrg");
         if (!string.IsNullOrWhiteSpace(org)) {
@@ -799,37 +763,6 @@ internal static class ReviewConfigLoader {
         return profile;
     }
 
-    private static void ApplyAgentProfileCopilot(JsonObject obj, ReviewAgentProfileSettings profile) {
-        var transport = obj.GetString("copilotTransport") ?? obj.GetString("transport");
-        if (!string.IsNullOrWhiteSpace(transport)) {
-            profile.CopilotTransport = ParseCopilotTransportOrThrow(transport,
-                $"review.agentProfiles.{profile.Id}.copilotTransport");
-        }
-        profile.CopilotModel = obj.GetString("copilotModel") ?? profile.CopilotModel;
-        profile.CopilotLauncher = obj.GetString("copilotLauncher") ?? obj.GetString("launcher") ?? profile.CopilotLauncher;
-        profile.CopilotCliPath = obj.GetString("copilotCliPath") ?? obj.GetString("cliPath") ?? profile.CopilotCliPath;
-        profile.CopilotCliUrl = obj.GetString("copilotCliUrl") ?? obj.GetString("cliUrl") ?? profile.CopilotCliUrl;
-        profile.CopilotWorkingDirectory =
-            obj.GetString("copilotWorkingDirectory") ?? obj.GetString("workingDirectory") ?? profile.CopilotWorkingDirectory;
-        profile.CopilotAutoInstall = ReadNullableBool(obj, "copilotAutoInstall") ?? ReadNullableBool(obj, "autoInstall");
-        profile.CopilotAutoInstallMethod =
-            obj.GetString("copilotAutoInstallMethod") ?? obj.GetString("autoInstallMethod") ?? profile.CopilotAutoInstallMethod;
-        profile.CopilotAutoInstallPrerelease =
-            ReadNullableBool(obj, "copilotAutoInstallPrerelease") ?? ReadNullableBool(obj, "autoInstallPrerelease");
-        profile.CopilotInheritEnvironment =
-            ReadNullableBool(obj, "copilotInheritEnvironment") ?? ReadNullableBool(obj, "inheritEnvironment");
-        profile.CopilotEnvAllowlist =
-            ReadStringList(obj, "copilotEnvAllowlist") ?? ReadStringList(obj, "envAllowlist") ?? profile.CopilotEnvAllowlist;
-        profile.CopilotEnv = ReadStringMap(obj, "copilotEnv") ?? ReadStringMap(obj, "env") ?? profile.CopilotEnv;
-        profile.CopilotDirectUrl = obj.GetString("copilotDirectUrl") ?? obj.GetString("directUrl") ?? profile.CopilotDirectUrl;
-        profile.CopilotDirectTokenEnv =
-            obj.GetString("copilotDirectTokenEnv") ?? obj.GetString("directTokenEnv") ?? profile.CopilotDirectTokenEnv;
-        profile.CopilotDirectTimeoutSeconds =
-            ReadNullablePositiveInt(obj, "copilotDirectTimeoutSeconds") ?? ReadNullablePositiveInt(obj, "directTimeoutSeconds");
-        profile.CopilotDirectHeaders =
-            ReadStringMap(obj, "copilotDirectHeaders") ?? ReadStringMap(obj, "directHeaders") ?? profile.CopilotDirectHeaders;
-    }
-
     private static void ApplyAgentProfileOpenAiCompatible(JsonObject obj, ReviewAgentProfileSettings profile) {
         profile.OpenAICompatibleBaseUrl =
             obj.GetString("openaiCompatibleBaseUrl") ?? obj.GetString("baseUrl") ?? profile.OpenAICompatibleBaseUrl;
@@ -873,33 +806,6 @@ internal static class ReviewConfigLoader {
         }
         settings.Cleanup.Template = cleanup.GetString("template") ?? settings.Cleanup.Template;
         settings.Cleanup.TemplatePath = cleanup.GetString("templatePath") ?? settings.Cleanup.TemplatePath;
-    }
-
-
-    private static CopilotTransportKind ParseCopilotTransport(string value, CopilotTransportKind fallback) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return fallback;
-        }
-        var normalized = value.Trim().ToLowerInvariant();
-        return normalized switch {
-            "direct" or "api" or "http" => CopilotTransportKind.Direct,
-            "cli" => CopilotTransportKind.Cli,
-            _ => fallback
-        };
-    }
-
-    private static CopilotTransportKind ParseCopilotTransportOrThrow(string value, string source) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            throw new InvalidOperationException($"Missing Copilot transport from {source}.");
-        }
-
-        var normalized = value.Trim().ToLowerInvariant();
-        return normalized switch {
-            "direct" or "api" or "http" => CopilotTransportKind.Direct,
-            "cli" => CopilotTransportKind.Cli,
-            _ => throw new InvalidOperationException(
-                $"Unknown Copilot transport '{value.Trim()}' from {source}.")
-        };
     }
 
     private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {

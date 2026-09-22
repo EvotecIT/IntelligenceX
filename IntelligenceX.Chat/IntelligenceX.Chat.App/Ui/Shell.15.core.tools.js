@@ -745,11 +745,16 @@
           : pendingCatalogCount > 0
             ? ("Runtime is usable; " + String(pendingCatalogCount) + (pendingCatalogCount === 1 ? " tool definition is" : " tool definitions are") + " still arriving.")
             : "Runtime is usable; tool metadata is still arriving.";
-        toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>"
-          + escapeHtml(title)
-          + "</div><div class='options-item-sub'>"
-          + escapeHtml(detail)
-          + "</div></div>";
+        var loadingItem = document.createElement("div");
+        loadingItem.className = "options-item";
+        var loadingTitle = document.createElement("div");
+        loadingTitle.className = "options-item-title";
+        loadingTitle.textContent = title;
+        var loadingDetail = document.createElement("div");
+        loadingDetail.className = "options-item-sub";
+        loadingDetail.textContent = detail;
+        loadingItem.append(loadingTitle, loadingDetail);
+        toolsEl.replaceChildren(loadingItem);
         return;
       }
 
@@ -1110,11 +1115,14 @@
 
   function normalizeLocalTransport(value) {
     var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "copilot-cli") {
+      throw new Error("This profile uses retired copilot-cli. Select copilot-native and configure a GitHub credential.");
+    }
     if (normalized === "compatible-http" || normalized === "compatiblehttp" || normalized === "http" || normalized === "local" || normalized === "ollama" || normalized === "lmstudio" || normalized === "lm-studio") {
       return "compatible-http";
     }
-    if (normalized === "copilot-cli" || normalized === "copilot" || normalized === "github-copilot" || normalized === "githubcopilot") {
-      return "copilot-cli";
+    if (normalized === "copilot-native" || normalized === "copilot" || normalized === "github-copilot" || normalized === "githubcopilot") {
+      return "copilot-native";
     }
     return "native";
   }
@@ -1373,10 +1381,10 @@
 
   function resolveReasoningSupport(transport, compatiblePreset) {
     var normalizedTransport = normalizeLocalTransport(transport);
-    if (normalizedTransport === "copilot-cli") {
+    if (normalizedTransport === "copilot-native") {
       return {
-        supported: false,
-        reason: "GitHub Copilot subscription runtime currently does not expose reasoning controls."
+        supported: true,
+        reason: "Controls are passed to the selected Copilot model; supported values depend on the model."
       };
     }
     return {
@@ -1388,7 +1396,7 @@
   function resolveRuntimeProviderLabel(transport, compatiblePreset, copilotConnected) {
     var normalizedTransport = normalizeLocalTransport(transport);
     var preset = String(compatiblePreset || "manual").trim().toLowerCase();
-    if (normalizedTransport === "copilot-cli") {
+    if (normalizedTransport === "copilot-native") {
       return "GitHub Copilot subscription runtime";
     }
     if (normalizedTransport !== "compatible-http") {
@@ -1601,13 +1609,13 @@
         "supported",
         "ChatGPT sign-in",
         "Use native account slot switching to move between ChatGPT accounts quickly.");
-    } else if (data.isCopilotCli === true) {
+    } else if (data.isCopilotNative === true) {
       appendRuntimeCapabilityRow(
         listEl,
         "Authentication",
         "supported",
-        "GitHub Copilot sign-in",
-        "Copilot subscription runtime uses GitHub authentication and does not require an API key.");
+        "GitHub credential",
+        "Configure COPILOT_GITHUB_TOKEN in the service environment. ChatGPT sign-in does not authenticate Copilot.");
     } else {
       var compatiblePreset = String(data.compatiblePreset || "manual").trim().toLowerCase();
       var authStatus = openAIAuthMode === "none" ? "limited" : "supported";
@@ -1908,8 +1916,8 @@
     var turnBusy = state.sending === true || state.cancelRequested === true;
     var transport = normalizeLocalTransport(local.transport);
     var isCompatible = transport === "compatible-http";
-    var isCopilotCli = transport === "copilot-cli";
-    var supportsModelCatalog = isCompatible || isCopilotCli || transport === "native";
+    var isCopilotNative = transport === "copilot-native";
+    var supportsModelCatalog = isCompatible || isCopilotNative || transport === "native";
     if (typeof runtimeCapabilities.supportsModelCatalog === "boolean") {
       supportsModelCatalog = runtimeCapabilities.supportsModelCatalog;
     }
@@ -1996,8 +2004,8 @@
     var copilotConnected = isCompatible && isCopilotBaseUrl(baseUrl);
     var runtimeSummary = byId("optRuntimeSummary");
     if (runtimeSummary) {
-      if (isCopilotCli) {
-        runtimeSummary.textContent = "Current: GitHub Copilot subscription runtime (CLI transport). Tools: " + executionLocalityLabel + ".";
+      if (isCopilotNative) {
+        runtimeSummary.textContent = "Current: GitHub Copilot subscription runtime (native HTTPS). Tools: " + executionLocalityLabel + ".";
       } else if (isCompatible) {
         var endpoint = baseUrl ? baseUrl : "(base URL not set)";
         var providerLabel = runtimeProviderLabel
@@ -2011,8 +2019,8 @@
 
     var runtimeAuthHint = byId("optRuntimeAuthHint");
     if (runtimeAuthHint) {
-      if (isCopilotCli) {
-        runtimeAuthHint.textContent = "Copilot subscription runtime uses GitHub Copilot sign-in. API key is not used in this mode.";
+      if (isCopilotNative) {
+        runtimeAuthHint.textContent = "Native Copilot uses the service credential in COPILOT_GITHUB_TOKEN. ChatGPT sign-in and compatible endpoint API keys are separate.";
       } else if (copilotConnected) {
         runtimeAuthHint.textContent = "Copilot runtime uses a GitHub token in API key. ChatGPT sign-in remains separate.";
       } else if (isCompatible && isBridgePreset) {
@@ -2040,7 +2048,7 @@
     var runtimeBadge = byId("optLocalRuntimeBadge");
     if (runtimeBadge) {
       var runtimeName = "ChatGPT Native";
-      if (isCopilotCli) {
+      if (isCopilotNative) {
         runtimeName = "GitHub Copilot Subscription";
       } else if (lmStudioConnected) {
         runtimeName = "LM Studio";
@@ -2081,8 +2089,8 @@
         simpleHint.textContent = "Runtime edits are pending. Click Apply Runtime to commit provider/model changes.";
       } else if (transport === "native") {
         simpleHint.textContent = "ChatGPT runtime is active. Model list below shows ChatGPT catalog; switch to LM Studio runtime for local models.";
-      } else if (isCopilotCli) {
-        simpleHint.textContent = "Copilot subscription runtime is active. Use Sign In to authenticate your GitHub Copilot account.";
+      } else if (isCopilotNative) {
+        simpleHint.textContent = "Native Copilot is active. Configure COPILOT_GITHUB_TOKEN in the service environment, then refresh models.";
       } else if (isCompatible && isBridgePreset && bridgeSessionState === "auth-failed") {
         simpleHint.textContent = bridgeSessionDetail || "Bridge authentication failed. Update login/email + secret/token and click Apply Runtime again.";
       } else if (isCompatible && isBridgePreset && bridgeSessionState === "ready") {
@@ -2310,17 +2318,17 @@
 
     var useCopilotRuntimeButton = byId("btnUseCopilotRuntime");
     if (useCopilotRuntimeButton) {
-      useCopilotRuntimeButton.textContent = isCopilotCli ? "Copilot Subscription Active" : "Use Copilot Subscription";
-      useCopilotRuntimeButton.classList.toggle("options-btn-active", isCopilotCli);
-      useCopilotRuntimeButton.classList.toggle("options-btn-ghost", !isCopilotCli);
+      useCopilotRuntimeButton.textContent = isCopilotNative ? "Copilot Subscription Active" : "Use Copilot Subscription";
+      useCopilotRuntimeButton.classList.toggle("options-btn-active", isCopilotNative);
+      useCopilotRuntimeButton.classList.toggle("options-btn-ghost", !isCopilotNative);
       useCopilotRuntimeButton.disabled = turnBusy;
       useCopilotRuntimeButton.title = turnBusy
         ? "Wait for the current turn to finish before switching runtime."
-        : (isCopilotCli
+        : (isCopilotNative
         ? ""
         : (isApplying
           ? "Apply in progress. Click to queue switch to Copilot subscription runtime."
-          : "Uses GitHub Copilot subscription sign-in (no API key required)."));
+          : "Uses native HTTPS with a GitHub credential authorized for Copilot. Configure COPILOT_GITHUB_TOKEN for the service."));
     }
 
     var refreshModelsButton = byId("btnRefreshModels");
@@ -2796,7 +2804,7 @@
       openAIBasicUsername: openAIBasicUsername,
       copilotConnected: copilotConnected,
       isNativeTransport: isNativeTransport,
-      isCopilotCli: isCopilotCli,
+      isCopilotNative: isCopilotNative,
       supportsLiveApply: runtimeCapabilities.supportsLiveApply,
       requiresProcessRestart: runtimeCapabilities.requiresProcessRestart,
       nativeAccountSlots: runtimeCapabilities.nativeAccountSlots,
@@ -3017,7 +3025,7 @@
         if (models.length > 0) {
           parts.push(String(models.length) + " models returned by native catalog");
         }
-      } else if (isCopilotCli) {
+      } else if (isCopilotNative) {
         parts.push("GitHub Copilot subscription runtime active");
         if (models.length > 0) {
           parts.push(String(models.length) + " models returned");
@@ -3427,9 +3435,6 @@
     if (resumeButton) {
       resumeButton.disabled = !connected || !(scheduler && scheduler.manualPauseActive === true);
     }
-    if (clearMaintenanceButton) {
-      clearMaintenanceButton.disabled = !connected || maintenanceWindows.length === 0;
-    }
 
     if (schedulerKv) {
       schedulerKv.textContent = "";
@@ -3626,6 +3631,9 @@
     var maintenanceWindows = scheduler && Array.isArray(scheduler.maintenanceWindows)
       ? scheduler.maintenanceWindows
       : [];
+    if (clearMaintenanceButton) {
+      clearMaintenanceButton.disabled = !connected || maintenanceWindows.length === 0;
+    }
     var activeMaintenanceSpecs = scheduler && Array.isArray(scheduler.activeMaintenanceWindowSpecs)
       ? scheduler.activeMaintenanceWindowSpecs
       : [];

@@ -18,8 +18,8 @@ using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Chat;
-using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Shared;
+using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 

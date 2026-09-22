@@ -9,9 +9,9 @@ namespace IntelligenceX.Json;
 /// <summary>
 /// Lightweight JSON parsing and serialization helpers.
 /// </summary>
-public static class JsonLite {
+public static partial class JsonLite {
     /// <summary>
-    /// Parses a JSON string into a <see cref="JsonValue"/>.
+    /// Parses a JSON string into a <see cref="JsonValue"/>, rejecting nesting beyond 128 containers.
     /// </summary>
     /// <param name="json">JSON text to parse.</param>
     /// <returns>The parsed JSON value.</returns>
@@ -19,6 +19,7 @@ public static class JsonLite {
         if (json is null) {
             throw new ArgumentNullException(nameof(json));
         }
+        ValidateNesting(json);
         var parser = new Parser(json);
         var value = parser.ParseValue();
         parser.SkipWhitespace();

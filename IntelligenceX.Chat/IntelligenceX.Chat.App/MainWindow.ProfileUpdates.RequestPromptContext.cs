@@ -9,8 +9,8 @@ using IntelligenceX.Chat.App.Markdown;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
-    private string BuildRequestTextForService(string userText) {
-        var activeConversation = GetActiveConversation();
+    private string BuildRequestTextForService(string userText, ConversationRuntime conversation) {
+        var activeConversation = conversation;
         var effectivePersona = GetEffectiveAssistantPersona();
         var effectiveName = GetEffectiveUserName();
         var onboardingInProgress = !_appState.OnboardingCompleted;

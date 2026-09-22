@@ -21,19 +21,23 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.Native;
 
-internal sealed partial class OpenAINativeTransport : IOpenAITransport {
+internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalThreadLifetime {
     private readonly OpenAINativeOptions _options;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient;
     private readonly OpenAINativeAuthManager _auth;
     private readonly OpenAINativeThreadStore _threads = new();
 
-    public OpenAINativeTransport(OpenAINativeOptions options) {
+    public OpenAINativeTransport(OpenAINativeOptions options) : this(options, null) { }
+
+    internal OpenAINativeTransport(OpenAINativeOptions options, HttpClient? httpClient, OpenAINativeAuthManager? auth = null) {
         _options = options;
         _options.Validate();
-        _auth = new OpenAINativeAuthManager(_options);
+        _httpClient = httpClient ?? new HttpClient();
+        _auth = auth ?? new OpenAINativeAuthManager(_options);
     }
 
     public OpenAITransportKind Kind => OpenAITransportKind.Native;
+    public void ForgetThread(string threadId) => _threads.Forget(threadId);
     public AppServerClient? RawAppServerClient => null;
 
     public event EventHandler<string>? DeltaReceived;
@@ -75,16 +79,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         return AccountInfo.FromJson(raw);
     }
 
-    public async Task LogoutAsync(CancellationToken cancellationToken) {
-        if (_options.AuthStore is FileAuthBundleStore fileStore) {
-            try {
-                fileStore.Delete();
-            } catch {
-                // Best-effort logout.
-            }
-        }
-        await Task.CompletedTask;
-    }
+    public Task LogoutAsync(CancellationToken cancellationToken) => _auth.LogoutAsync(cancellationToken);
 
     public async Task<ModelListResult> ListModelsAsync(CancellationToken cancellationToken) {
         var bundle = await EnsureAuthAsync(cancellationToken).ConfigureAwait(false);
@@ -117,15 +112,15 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         var loginId = Guid.NewGuid().ToString("N");
         string? authUrl = null;
 
-        LoginStarted?.Invoke(this, new LoginEventArgs("chatgpt", loginId));
+        ObserverDispatcher.Raise(LoginStarted, this, new LoginEventArgs("chatgpt", loginId));
         var bundle = await _auth.LoginAsync(url => {
             authUrl = url;
             onUrl?.Invoke(url);
-            LoginStarted?.Invoke(this, new LoginEventArgs("chatgpt", loginId, url));
+            ObserverDispatcher.Raise(LoginStarted, this, new LoginEventArgs("chatgpt", loginId, url));
         }, onPrompt, useLocalListener, timeout, cancellationToken).ConfigureAwait(false);
 
         bundle.AccountId ??= JwtDecoder.TryGetAccountId(bundle.AccessToken);
-        LoginCompleted?.Invoke(this, new LoginEventArgs("chatgpt", loginId, authUrl));
+        ObserverDispatcher.Raise(LoginCompleted, this, new LoginEventArgs("chatgpt", loginId, authUrl));
 
         var raw = new JsonObject()
             .Add("loginId", loginId)
@@ -158,6 +153,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         var resolvedModel = NormalizeModelId(options.Model, state.Model);
         state.Touch(resolvedModel);
 
+        var authenticationOperation = _auth.CaptureOperation();
         var bundle = await EnsureAuthAsync(cancellationToken).ConfigureAwait(false);
         var accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
         if (string.IsNullOrWhiteSpace(accountId)) {
@@ -173,16 +169,28 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         var turnId = Guid.NewGuid().ToString("N");
 
         var rpcParameters = JsonValue.From(body);
-        RpcCallStarted?.Invoke(this, new RpcCallStartedEventArgs("responses.create", rpcParameters));
+        ObserverDispatcher.Raise(RpcCallStarted, this, new RpcCallStartedEventArgs("responses.create", rpcParameters));
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try {
-            var turn = await SendWithModelFallbackAsync(body, requestMessages, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
-                    resolvedModel, turnId, options, cancellationToken)
-                .ConfigureAwait(false);
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, true));
+            TurnInfo turn;
+            try {
+                turn = await SendWithModelFallbackAsync(body, requestMessages, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
+                        resolvedModel, turnId, options, cancellationToken)
+                    .ConfigureAwait(false);
+            } catch (OpenAIAuthenticationRequiredException) when (!string.IsNullOrWhiteSpace(bundle.RefreshToken)) {
+                bundle = await _auth.RefreshAsync(bundle, authenticationOperation, cancellationToken).ConfigureAwait(false);
+                accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
+                if (string.IsNullOrWhiteSpace(accountId)) {
+                    throw new InvalidOperationException("Failed to extract account id from refreshed access token.");
+                }
+                turn = await SendWithModelFallbackAsync(body, requestMessages, bundle.AccessToken, accountId!, state, inputItems, trackMessages,
+                        resolvedModel, turnId, options, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, true));
             return turn;
         } catch (Exception ex) {
-            RpcCallCompleted?.Invoke(this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, false, ex));
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("responses.create", sw.Elapsed, false, ex));
             throw;
         }
     }
@@ -211,7 +219,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
 
         TryDumpRequest(request, json);
 
-        return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+        return await TaskCancellation.WaitAsync(_httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose())
             .ConfigureAwait(false);
     }
 
@@ -252,29 +260,38 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
     private async Task<TurnInfo> ProcessResponseAsync(HttpResponseMessage response, string turnId, string model,
         NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, ChatOptions options,
         CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Authentication is determined by HTTP status. Its error payload must neither consume
+        // the generation budget nor delay the bounded refresh/replay path.
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new OpenAIAuthenticationRequiredException(OpenAIAuthenticationRequiredException.DefaultMessage);
         if (!response.IsSuccessStatusCode) {
-            var error = await ParseErrorResponseAsync(response, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
-                var message = string.IsNullOrWhiteSpace(error.Message)
-                    ? OpenAIAuthenticationRequiredException.DefaultMessage
-                    : error.Message;
-                throw new OpenAIAuthenticationRequiredException(message);
+            var error = await ParseErrorResponseAsync(response, cancellationToken, options.MaxResponseBytes).ConfigureAwait(false);
+            try { response.EnsureSuccessStatusCode(); }
+            catch (HttpRequestException httpFailure) {
+                throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode,
+                    _options.AllowSensitiveDiagnostics && OpenAINativeTrace.IsEnabled(), httpFailure);
             }
-            var httpFailure = new HttpRequestException($"ChatGPT request failed ({(int)response.StatusCode}).");
-            throw new OpenAINativeErrorResponseException(error.Message, error.RawText, error.Code, error.Param, response.StatusCode,
-                OpenAINativeTrace.IsEnabled(), httpFailure);
         }
 
         var delta = new StringBuilder();
         string? status = null;
         JsonObject? completedResponse = null;
         string? streamError = null;
+        var streamedOutputs = new List<JsonObject>();
 
-        using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-        await OpenAINativeSseParser.ParseAsync(stream, evt => {
-            HandleStreamEvent(evt, delta, ref status, ref completedResponse, ref streamError);
-            return Task.CompletedTask;
-        }, cancellationToken).ConfigureAwait(false);
+        using var stream = new ResponseBudgetStream(await TaskCancellation.WaitAsync(response.Content.ReadAsStreamAsync(),
+            cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false), options.MaxResponseBytes);
+        using var cancellationRegistration = cancellationToken.Register(stream.Dispose);
+        try {
+            await OpenAINativeSseParser.ParseAsync(stream, evt => {
+                HandleStreamEvent(evt, delta, streamedOutputs, ref status, ref completedResponse, ref streamError);
+                return Task.CompletedTask;
+            }, cancellationToken, _options.AllowSensitiveDiagnostics).ConfigureAwait(false);
+        } catch (Exception) when (cancellationToken.IsCancellationRequested) {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (!string.IsNullOrWhiteSpace(streamError)) {
             throw new InvalidOperationException(streamError);
@@ -283,6 +300,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         var outputs = completedResponse is not null
             ? ParseOutputsFromResponse(completedResponse, state.SessionId, options)
             : BuildOutputsFromDelta(delta.ToString());
+        AppendMissingStreamedImageOutputs(outputs, streamedOutputs, state.SessionId, options);
         if (outputs.Count == 0 && delta.Length > 0) {
             outputs.Add(new JsonObject().Add("type", "text").Add("text", delta.ToString()));
         }
@@ -352,7 +370,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             return await SendWithToolSchemaFallbackAsync(body, requestMessages, accessToken, accountId, state, inputItems, trackMessages,
                     model, turnId, options, cancellationToken)
                 .ConfigureAwait(false);
-        } catch (InvalidOperationException ex) when (IsModelNotSupportedForChatGpt(ex)) {
+        } catch (InvalidOperationException ex) when (_options.EnableModelFallback && IsModelNotSupportedForChatGpt(ex)) {
             var fallbackCandidates = await GetChatGptFallbackModelsAsync(model, accessToken, accountId, cancellationToken)
                 .ConfigureAwait(false);
             foreach (var fallback in fallbackCandidates) {
@@ -431,7 +449,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         throw new InvalidOperationException("Tool schema fallback exhausted without capturing an exception.");
     }
 
-    internal void HandleStreamEvent(JsonObject evt, StringBuilder delta, ref string? status, ref JsonObject? completedResponse,
+    internal void HandleStreamEvent(JsonObject evt, StringBuilder delta, List<JsonObject> streamedOutputs,
+        ref string? status, ref JsonObject? completedResponse,
         ref string? streamError) {
         var type = evt.GetString("type");
         if (string.IsNullOrWhiteSpace(type)) {
@@ -442,7 +461,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             var piece = evt.GetString("delta");
             if (StreamingTextDelta.HasContent(piece)) {
                 delta.Append(piece);
-                DeltaReceived?.Invoke(this, piece!);
+                ObserverDispatcher.Raise(DeltaReceived, this, piece!);
             }
             return;
         }
@@ -451,7 +470,15 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             var piece = evt.GetString("delta");
             if (StreamingTextDelta.HasContent(piece)) {
                 delta.Append(piece);
-                DeltaReceived?.Invoke(this, piece!);
+                ObserverDispatcher.Raise(DeltaReceived, this, piece!);
+            }
+            return;
+        }
+
+        if (string.Equals(type, "response.output_item.done", StringComparison.Ordinal)) {
+            var item = evt.GetObject("item");
+            if (item is not null) {
+                streamedOutputs.Add(item);
             }
             return;
         }

@@ -70,6 +70,14 @@ public sealed class TreatmentRequest {
     /// Optional structured output contract.
     /// </summary>
     public TreatmentOutputSchema? OutputSchema { get; set; }
+    /// <summary>Requests transport-level schema enforcement. False retains the existing prompted-contract behavior.</summary>
+    public bool EnforceOutputSchema { get; set; }
+    /// <summary>Maximum aggregate inline image bytes; local paths retain their own caller policy.</summary>
+    public int MaxInlineImageBytes { get; set; } = 10 * 1024 * 1024;
+    /// <summary>Optional maximum provider response wire bytes, including streaming protocol overhead.</summary>
+    public long? MaxResponseBytes { get; set; }
+    /// <summary>Executes without retaining local conversation state after the provider request settles.</summary>
+    public bool Ephemeral { get; set; }
     /// <summary>
     /// Optional image generation settings.
     /// </summary>
@@ -115,6 +123,8 @@ public sealed class TreatmentInputArtifact {
     /// Inline text content.
     /// </summary>
     public string? Text { get; set; }
+    /// <summary>Optional inline image payload. Mutually exclusive with Path and Uri; no filesystem access is granted.</summary>
+    public byte[]? ImageBytes { get; set; }
     /// <summary>
     /// Inline JSON content.
     /// </summary>

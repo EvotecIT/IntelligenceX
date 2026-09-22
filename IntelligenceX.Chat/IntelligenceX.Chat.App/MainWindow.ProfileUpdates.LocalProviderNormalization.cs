@@ -71,20 +71,12 @@ public sealed partial class MainWindow : Window {
 
     private static bool SupportsLocalProviderReasoningControls(string? transport, string? baseUrl) {
         var normalizedTransport = NormalizeLocalProviderTransport(transport);
-        if (string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-        return true;
+        return normalizedTransport is TransportNative or TransportCompatibleHttp or TransportCopilotNative;
     }
 
     private static string DescribeLocalProviderReasoningSupport(string? transport, string? baseUrl) {
         if (SupportsLocalProviderReasoningControls(transport, baseUrl)) {
-            return "enabled (pass-through; provider may clamp unsupported values)";
-        }
-
-        var normalizedTransport = NormalizeLocalProviderTransport(transport);
-        if (string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
-            return "not exposed by Copilot subscription runtime";
+            return "enabled (pass-through; supported values depend on the selected model)";
         }
 
         return "not exposed by current runtime profile";
@@ -97,7 +89,7 @@ public sealed partial class MainWindow : Window {
         }
 
         if (string.Equals(transport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(transport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase)) {
+            || string.Equals(transport, TransportCopilotNative, StringComparison.OrdinalIgnoreCase)) {
             return string.Empty;
         }
 

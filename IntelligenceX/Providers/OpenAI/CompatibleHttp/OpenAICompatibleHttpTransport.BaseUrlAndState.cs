@@ -7,10 +7,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.CompatibleHttp;
 
-internal sealed partial class OpenAICompatibleHttpTransport {
+internal partial class OpenAICompatibleHttpTransport {
     private static Uri NormalizeBaseUrl(string baseUrl) {
         if (!Uri.TryCreate(baseUrl.Trim(), UriKind.Absolute, out var uri) || uri is null) {
             throw new ArgumentException("BaseUrl must be an absolute URI.", nameof(baseUrl));
@@ -69,9 +70,9 @@ internal sealed partial class OpenAICompatibleHttpTransport {
     private static Task<Stream> ReadAsStreamAsync(HttpContent content, CancellationToken cancellationToken) {
 #if NETSTANDARD2_0 || NET472
         cancellationToken.ThrowIfCancellationRequested();
-        return content.ReadAsStreamAsync();
+        return TaskCancellation.WaitAsync(content.ReadAsStreamAsync(), cancellationToken, abandoned => abandoned.Dispose());
 #else
-        return content.ReadAsStreamAsync(cancellationToken);
+        return TaskCancellation.WaitAsync(content.ReadAsStreamAsync(cancellationToken), cancellationToken, abandoned => abandoned.Dispose());
 #endif
     }
 
@@ -85,6 +86,7 @@ internal sealed partial class OpenAICompatibleHttpTransport {
         }
 
         public string Model { get; set; }
+        public SemaphoreSlim TurnGate { get; } = new(1, 1);
         public List<JsonObject> Messages { get; } = new();
         public string? Instructions { get; private set; }
 

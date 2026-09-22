@@ -10,7 +10,7 @@ namespace IntelligenceX.Chat.App.Launch;
 internal static class ChatRequestModelResolver {
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
-    private const string TransportCopilotCli = "copilot-cli";
+    private const string TransportCopilotNative = "copilot-native";
 
     /// <summary>
     /// Resolves a configured model against the catalog exposed by the selected runtime.
@@ -27,7 +27,7 @@ internal static class ChatRequestModelResolver {
                                          CompatibleProviderEndpointPolicy.DetectPreset(baseUrl));
         var supportsCatalogFallback =
             string.Equals(normalizedTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(normalizedTransport, TransportCopilotCli, StringComparison.OrdinalIgnoreCase);
+            || string.Equals(normalizedTransport, TransportCopilotNative, StringComparison.OrdinalIgnoreCase);
         if (!supportsCatalogFallback) {
             return normalizedConfiguredModel.Length == 0 ? null : normalizedConfiguredModel;
         }

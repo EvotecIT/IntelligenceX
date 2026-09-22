@@ -77,4 +77,8 @@ public sealed class EasyChatOptions {
     /// Require workspace for file access when set.
     /// </summary>
     public bool? RequireWorkspaceForFileAccess { get; set; }
+    /// <summary>
+    /// Optional image-generation tool settings for this request.
+    /// </summary>
+    public ImageGenerationOptions? ImageGeneration { get; set; }
 }

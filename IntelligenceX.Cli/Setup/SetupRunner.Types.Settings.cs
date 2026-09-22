@@ -45,7 +45,7 @@ internal static partial class SetupRunner {
                 ReviewerReleaseAsset = options.ReviewerReleaseAsset,
                 ReviewerReleaseUrl = options.ReviewerReleaseUrl,
                 Provider = options.Provider ?? IntelligenceXDefaults.DefaultProvider,
-                Model = options.OpenAIModel ?? SetupProviderCatalog.GetDefaultModel(options.Provider),
+                Model = SetupProviderCatalog.ResolveModel(options.Provider, options.OpenAIModel),
                 OpenAITransport = options.OpenAITransport ?? "native",
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
@@ -128,7 +128,7 @@ internal static partial class SetupRunner {
             var settings = new ConfigSettings {
                 Provider = options.Provider ?? IntelligenceXDefaults.DefaultProvider,
                 OpenAITransport = options.OpenAITransport ?? "native",
-                OpenAIModel = options.OpenAIModel ?? SetupProviderCatalog.GetDefaultModel(options.Provider),
+                OpenAIModel = SetupProviderCatalog.ResolveModel(options.Provider, options.OpenAIModel),
                 OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId) ? null : options.OpenAIAccountId!.Trim(),
                 OpenAIAccountIdsSet = options.OpenAIAccountIdsSet,
                 OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),

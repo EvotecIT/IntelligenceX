@@ -551,6 +551,10 @@ public sealed record SetProfileRequest : ChatServiceRequest {
     /// When true, clears the active thread so history isn't mixed across profiles.
     /// </summary>
     public bool NewThread { get; init; } = true;
+    /// <summary>
+    /// Creates a missing profile from service defaults before selecting it. Existing profiles are never overwritten.
+    /// </summary>
+    public bool BootstrapMissingProfile { get; init; }
 }
 
 /// <summary>
@@ -562,7 +566,7 @@ public sealed record ApplyRuntimeSettingsRequest : ChatServiceRequest {
     /// </summary>
     public string? Model { get; init; }
     /// <summary>
-    /// Optional provider transport override (native|compatible-http|copilot-cli|appserver).
+    /// Optional provider transport override (native|compatible-http|copilot-native|appserver).
     /// </summary>
     public string? OpenAITransport { get; init; }
     /// <summary>

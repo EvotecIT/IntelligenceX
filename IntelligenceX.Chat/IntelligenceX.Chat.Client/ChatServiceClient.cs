@@ -752,13 +752,21 @@ public sealed class ChatServiceClient : IChatServiceClient, IAsyncDisposable {
     /// Switches the active service profile for this session.
     /// </summary>
     public Task<AckMessage> SetProfileAsync(string profileName, bool newThread = true, CancellationToken cancellationToken = default) {
+        return SetProfileAsync(profileName, newThread, bootstrapMissingProfile: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Selects a profile, optionally creating a missing one from service defaults without replacing existing data.
+    /// </summary>
+    public Task<AckMessage> SetProfileAsync(string profileName, bool newThread, bool bootstrapMissingProfile, CancellationToken cancellationToken = default) {
         if (string.IsNullOrWhiteSpace(profileName)) {
             throw new ArgumentException("Profile name cannot be empty.", nameof(profileName));
         }
         return RequestAsync<AckMessage>(new SetProfileRequest {
             RequestId = NewRequestId(),
             ProfileName = profileName.Trim(),
-            NewThread = newThread
+            NewThread = newThread,
+            BootstrapMissingProfile = bootstrapMissingProfile
         }, cancellationToken);
     }
 

@@ -19,7 +19,7 @@ public static partial class OfficeImoArtifactWriter {
     /// <param name="outputPath">Destination .xlsx file path.</param>
     public static void WriteXlsx(string title, IReadOnlyList<string[]> rows, string outputPath) {
         using var document = ExcelDocument.Create(outputPath);
-        var sheet = document.AddWorksheet(SanitizeSheetName(title), SheetNameValidationMode.Sanitize);
+        var sheet = document.AddWorksheet(SanitizeSheetName(title), ExcelSheetNameValidationMode.Sanitize);
 
         for (int r = 0; r < rows.Count; r++) {
             var values = rows[r];
@@ -30,7 +30,7 @@ public static partial class OfficeImoArtifactWriter {
 
         if (rows.Count > 1 && rows[0].Length > 0) {
             var range = "A1:" + BuildSpreadsheetColumnName(rows[0].Length) + rows.Count;
-            sheet.AddTable(range, hasHeader: true, name: SanitizeTableName(title), style: TableStyle.TableStyleMedium2);
+            sheet.AddTable(range, hasHeader: true, name: SanitizeTableName(title), style: ExcelTableStyle.TableStyleMedium2);
         }
 
         sheet.AutoFitColumns();

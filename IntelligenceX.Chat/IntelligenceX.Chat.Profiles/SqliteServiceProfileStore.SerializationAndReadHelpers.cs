@@ -20,7 +20,7 @@ internal sealed partial class SqliteServiceProfileStore {
             IntelligenceX.OpenAI.OpenAITransportKind.Native => "native",
             IntelligenceX.OpenAI.OpenAITransportKind.AppServer => "appserver",
             IntelligenceX.OpenAI.OpenAITransportKind.CompatibleHttp => "compatible-http",
-            IntelligenceX.OpenAI.OpenAITransportKind.CopilotCli => "copilot-cli",
+            IntelligenceX.OpenAI.OpenAITransportKind.CopilotNative => "copilot-native",
             _ => "native"
         };
     }
@@ -57,10 +57,10 @@ internal sealed partial class SqliteServiceProfileStore {
                 kind = IntelligenceX.OpenAI.OpenAITransportKind.CompatibleHttp;
                 return true;
             case "copilot":
-            case "copilot-cli":
+            case "copilot-native":
             case "github-copilot":
             case "githubcopilot":
-                kind = IntelligenceX.OpenAI.OpenAITransportKind.CopilotCli;
+                kind = IntelligenceX.OpenAI.OpenAITransportKind.CopilotNative;
                 return true;
             default:
                 return false;

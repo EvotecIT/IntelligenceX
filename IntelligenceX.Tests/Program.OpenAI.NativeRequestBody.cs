@@ -19,6 +19,7 @@ internal static partial class Program {
         string? status = null;
         JsonObject? completedResponse = null;
         string? streamError = null;
+        var streamedOutputs = new List<JsonObject>();
 
         transport.DeltaReceived += (_, piece) => observed.Append(piece);
 
@@ -39,6 +40,7 @@ internal static partial class Program {
                     .Add("type", "response.output_text.delta")
                     .Add("delta", piece),
                 accumulated,
+                streamedOutputs,
                 ref status,
                 ref completedResponse,
                 ref streamError);
@@ -53,6 +55,7 @@ internal static partial class Program {
                 .Add("type", "response.refusal.delta")
                 .Add("delta", "\n"),
             accumulated,
+            streamedOutputs,
             ref status,
             ref completedResponse,
             ref streamError);
@@ -309,6 +312,95 @@ internal static partial class Program {
             AssertEqual(true, File.Exists(firstFallbackPath!), "first fallback image file exists");
             AssertEqual(true, File.Exists(secondFallbackPath!), "second fallback image file exists");
             AssertEqual("text", fallbackOutputs[2].GetString("type") ?? string.Empty, "fallback image text output type");
+        } finally {
+            if (Directory.Exists(outputRoot)) {
+                Directory.Delete(outputRoot, recursive: true);
+            }
+        }
+    }
+
+    private static void TestNativeImageGenerationPreservesStreamedOutputItems() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+        var outputRoot = Path.Combine(Path.GetTempPath(), "ix-imagegen-stream-" + Guid.NewGuid().ToString("N"));
+        try {
+            var options = Activator.CreateInstance(optionsType);
+            AssertNotNull(options, "OpenAINativeOptions");
+            var transport = Activator.CreateInstance(transportType, options);
+            AssertNotNull(transport, "OpenAINativeTransport");
+
+            var appendMethod = transportType.GetMethod(
+                "AppendMissingStreamedImageOutputs",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            AssertNotNull(appendMethod, "AppendMissingStreamedImageOutputs method");
+
+            var outputs = new List<JsonObject> {
+                new JsonObject().Add("type", "text").Add("text", "Done.")
+            };
+            var streamedOutputs = new List<JsonObject> {
+                new JsonObject()
+                    .Add("type", "image_generation_call")
+                    .Add("id", "ig_stream")
+                    .Add("status", "completed")
+                    .Add("result", "Zm9v")
+            };
+
+            appendMethod!.Invoke(transport, new object?[] {
+                outputs,
+                streamedOutputs,
+                "session-stream",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            });
+
+            AssertEqual(3, outputs.Count, "streamed image merged output count");
+            AssertEqual("image", outputs[1].GetString("type"), "streamed image output type");
+            AssertEqual("Zm9v", outputs[1].GetString("base64"), "streamed image base64");
+            AssertEqual(true, File.Exists(outputs[1].GetString("path")!), "streamed image saved");
+            AssertEqual("text", outputs[2].GetString("type"), "streamed image fallback text");
+
+            var partialOutputs = new List<JsonObject> {
+                new JsonObject()
+                    .Add("type", "image")
+                    .Add("id", "ig_existing")
+                    .Add("base64", "Zm9v")
+            };
+            var partialStreamedOutputs = new List<JsonObject> {
+                new JsonObject()
+                    .Add("type", "image_generation_call")
+                    .Add("id", "ig_existing")
+                    .Add("status", "completed")
+                    .Add("result", "Zm9v"),
+                new JsonObject()
+                    .Add("type", "image_generation_call")
+                    .Add("id", "ig_stream_only")
+                    .Add("status", "completed")
+                    .Add("result", "YmFy")
+            };
+
+            appendMethod.Invoke(transport, new object?[] {
+                partialOutputs,
+                partialStreamedOutputs,
+                "session-partial-stream",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            });
+
+            AssertEqual(3, partialOutputs.Count, "partial streamed image output count");
+            AssertEqual("ig_existing", partialOutputs[0].GetString("id"), "existing streamed image retained once");
+            AssertEqual("ig_stream_only", partialOutputs[1].GetString("id"), "streamed-only image merged");
+            AssertEqual("text", partialOutputs[2].GetString("type"), "partial streamed image fallback text");
         } finally {
             if (Directory.Exists(outputRoot)) {
                 Directory.Delete(outputRoot, recursive: true);

@@ -44,7 +44,7 @@ $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..
 . (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
 
 $legacyScript = Join-Path $script:RepoRoot 'Build\Internal\Build-Installer.Legacy.ps1'
-$buildProjectScript = Join-Path $script:RepoRoot 'Build\Build-Project.ps1'
+$buildProductScript = Join-Path $script:RepoRoot 'Build\Build-Product.ps1'
 
 function Use-LegacyInstallerFlow {
     if ($Frontend.ToLowerInvariant() -ne 'app') {
@@ -162,7 +162,7 @@ Write-Step "Runtime: $Runtime"
 Write-Step "App framework: $AppFramework"
 Write-Step "Stage root: $stageRoot"
 
-Invoke-ScriptFile -ScriptPath $buildProjectScript -Parameters $parameters -FailureContext 'Unified installer build failed.' -FailureHint 'Use the legacy path only for custom payload, bundle-layout, or host-mode flows.'
+Invoke-ScriptFile -ScriptPath $buildProductScript -Parameters $parameters -FailureContext 'Unified installer build failed.' -FailureHint 'Use the legacy path only for custom payload, bundle-layout, or host-mode flows.'
 
 $resolvedOutDir = if ([string]::IsNullOrWhiteSpace($OutDir)) {
     Join-Path $script:RepoRoot ("Artifacts\Installer\IntelligenceX.Chat\{0}\Output" -f $Runtime)
