@@ -22,6 +22,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private static readonly SemaphoreSlim ProfileBootstrapGate = new(1, 1);
     private const string DefaultRuntimeModel = OpenAIModelCatalog.DefaultModel;
     private const string PluginLoadTimingWarningPrefix = "[plugin] load_timing ";
     private const string PluginLoadProgressWarningPrefix = "[plugin] load_progress ";
@@ -244,6 +245,28 @@ internal sealed partial class ChatServiceSession {
                     allowStoredProfiles: true,
                     (candidateName, ct) => store.GetAsync(candidateName, ct),
                     cancellationToken).ConfigureAwait(false);
+                if (!resolution.Success && request.BootstrapMissingProfile) {
+                    await ProfileBootstrapGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    try {
+                        // Another session may have created the profile since our first read.
+                        resolution = await ServiceProfilePresets.TryResolveStoredOrBuiltInProfileAsync(
+                            requestedName,
+                            allowStoredProfiles: true,
+                            (candidateName, ct) => store.GetAsync(candidateName, ct),
+                            cancellationToken).ConfigureAwait(false);
+                        if (!resolution.Success) {
+                            await store.UpsertAsync(requestedName, new ServiceOptions().ToProfile(), cancellationToken)
+                                .ConfigureAwait(false);
+                            resolution = await ServiceProfilePresets.TryResolveStoredOrBuiltInProfileAsync(
+                                requestedName,
+                                allowStoredProfiles: true,
+                                (candidateName, ct) => store.GetAsync(candidateName, ct),
+                                cancellationToken).ConfigureAwait(false);
+                        }
+                    } finally {
+                        ProfileBootstrapGate.Release();
+                    }
+                }
                 if (!resolution.Success) {
                     await WriteAsync(writer, new ErrorMessage {
                         Kind = ChatServiceMessageKind.Response,

@@ -357,6 +357,14 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
                         cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 EnsureAccepted(selected, "select the configured profile");
+            } else if (options.BootstrapMissingProfile) {
+                var bootstrapped = await client.SetProfileAsync(
+                        desiredProfile,
+                        newThread: false,
+                        bootstrapMissingProfile: true,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                EnsureAccepted(bootstrapped, "create the selected profile");
             } else if (!options.ApplyRuntimeOverrides) {
                 throw new InvalidOperationException(
                     $"The selected chat profile '{desiredProfile}' is not available in the connected service. Select an existing profile or save this profile before sending.");
