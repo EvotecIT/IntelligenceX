@@ -20,6 +20,7 @@ public sealed class NativeRuntimeAuthenticationEvidenceTests {
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var blockedHello = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseHello = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closeServer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var blockNextHello = false;
         var failHello = false;
         var model = "prior-model";
@@ -51,10 +52,18 @@ public sealed class NativeRuntimeAuthenticationEvidenceTests {
                         throw new InvalidOperationException("Unexpected fixture request: " + request.GetType().Name);
                     }
                     await writer.WriteLineAsync(JsonSerializer.Serialize(response, ChatServiceJsonContext.Default.ChatServiceMessage).AsMemory(), token);
+                    if (request is HelloRequest && model == "current-model") {
+                        await closeServer.Task.WaitAsync(token);
+                        return;
+                    }
                 }
             } catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            catch (IOException) when (!pipe.IsConnected) { }
+            catch (ObjectDisposedException) { }
         }, token);
         var runtime = new NativeChatServiceRuntime(pipeName);
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runtime.MetadataInvalidated += () => disconnected.TrySetResult();
         try {
             await runtime.RefreshSessionPolicyAsync(token);
             Assert.Equal("prior-model", runtime.SessionPolicy?.RuntimeIdentity?.Model);
@@ -82,8 +91,16 @@ public sealed class NativeRuntimeAuthenticationEvidenceTests {
             model = "current-model";
             await runtime.RefreshSessionPolicyAsync(token);
             Assert.Equal("current-model", runtime.SessionPolicy?.RuntimeIdentity?.Model);
+            closeServer.TrySetResult();
+            await server.WaitAsync(token);
+            pipe.Dispose();
+            await disconnected.Task.WaitAsync(token);
+            Assert.Null(runtime.SessionPolicy);
+            Assert.DoesNotContain("current-model", NativeRuntimeContextFormatter.Format(
+                runtime.SessionPolicy?.RuntimeIdentity, "default", login.AccountId, true));
         } finally {
             releaseHello.TrySetResult();
+            closeServer.TrySetResult();
             await runtime.DisposeAsync();
             timeout.Cancel();
             await server;

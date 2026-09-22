@@ -34,6 +34,21 @@ public sealed class CodexAuthTransactionTests : IDisposable {
         Assert.DoesNotContain("stale", await File.ReadAllTextAsync(path));
     }
 
+    [Fact]
+    public void ReplacingCodexCredentialsPreservesExistingFileAndPermissions() {
+        var path = CodexAuthStore.ResolveAuthPath(_directory);
+        CodexAuthStore.WriteAuthJson(Bundle("same", "original"), _directory);
+        var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, mode);
+        CodexAuthStore.UpdateMatchingAuthJson(Bundle("same", "rotated"), "same", "original", _directory);
+        Assert.Equal("rotated", CodexAuthStore.TryReadBundle(path)!.RefreshToken);
+        if (!OperatingSystem.IsWindows()) Assert.Equal(mode, File.GetUnixFileMode(path));
+        CodexAuthStore.WriteAuthJson(Bundle("new", "login"), _directory);
+        Assert.Equal("new", CodexAuthStore.TryReadProfile(path)!.AccountId);
+        if (!OperatingSystem.IsWindows()) Assert.Equal(mode, File.GetUnixFileMode(path));
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
     public void Dispose() {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
     }

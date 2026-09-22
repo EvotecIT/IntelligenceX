@@ -12,6 +12,46 @@ public sealed partial class FileAuthBundleStore {
     private Task<FileStream> AcquireTransactionAsync(CancellationToken cancellationToken) =>
         AuthFileTransaction.AcquireAsync(_path + ".lock", cancellationToken);
 
+    private Task<FileStream> AcquireRefreshLockAsync(string canonicalKey, CancellationToken cancellationToken) {
+        using var hash = SHA256.Create();
+        var suffix = BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(canonicalKey.ToUpperInvariant()))).Replace("-", "");
+        return AuthFileTransaction.AcquireAsync(_path + ".refresh-" + suffix + ".lock", cancellationToken);
+    }
+
+    /// <summary>Chooses the freshest saved generation for one confirmed OpenAI identity and migrates aliases atomically.</summary>
+    internal async Task<AuthBundle> SelectPreferredOpenAiAliasAsync(AuthBundle selected, CancellationToken cancellationToken) {
+        var accountId = selected.AccountId ?? JwtDecoder.TryGetAccountId(selected.AccessToken);
+        if (string.IsNullOrWhiteSpace(accountId)
+            || (!IsOpenAiAlias(selected.Provider)
+                && !string.Equals(selected.Provider, OpenAICodexDefaults.Provider, StringComparison.OrdinalIgnoreCase))) return selected;
+
+        var canonicalKey = BuildKey(OpenAICodexDefaults.Provider, accountId);
+        using var refreshLock = await AcquireRefreshLockAsync(canonicalKey, cancellationToken).ConfigureAwait(false);
+        using var transaction = await AcquireTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
+        var matches = file?.Bundles.Where(pair =>
+                (IsOpenAiAlias(pair.Value.Provider)
+                 || string.Equals(pair.Value.Provider, OpenAICodexDefaults.Provider, StringComparison.OrdinalIgnoreCase))
+                && SameAccountIdentity(pair.Value, selected))
+            .ToArray() ?? Array.Empty<System.Collections.Generic.KeyValuePair<string, AuthBundle>>();
+        if (matches.Length == 0) throw new InvalidOperationException("The saved account was removed. Recheck sign-in before refreshing.");
+        // A later access expiry does not imply that a token without refresh capability
+        // can replace the only renewable generation for this identity.
+        var winner = matches.OrderByDescending(pair => !string.IsNullOrWhiteSpace(pair.Value.RefreshToken))
+            .ThenByDescending(pair => pair.Value.ExpiresAt ?? DateTimeOffset.MinValue)
+            .ThenByDescending(pair => string.Equals(pair.Value.Provider, OpenAICodexDefaults.Provider, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase).First().Value;
+        if (matches.Length == 1 && string.Equals(matches[0].Key, canonicalKey, StringComparison.OrdinalIgnoreCase)) return winner;
+
+        var canonical = new AuthBundle(OpenAICodexDefaults.Provider, winner.AccessToken, winner.RefreshToken, winner.ExpiresAt) {
+            AccountId = accountId, IdToken = winner.IdToken, TokenType = winner.TokenType, Scope = winner.Scope
+        };
+        foreach (var match in matches) file!.Bundles.Remove(match.Key);
+        file!.Bundles[canonicalKey] = canonical;
+        await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
+        return canonical;
+    }
+
     /// <summary>Atomically removes every canonical or legacy key for one selected OpenAI identity.</summary>
     internal async Task RemoveOpenAiIdentityAsync(AuthBundle selected, CancellationToken cancellationToken) {
         using var transaction = await AcquireTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -35,13 +75,15 @@ public sealed partial class FileAuthBundleStore {
     /// </summary>
     internal async Task<AuthBundle> RefreshAsync(AuthBundle expected,
         Func<AuthBundle, CancellationToken, Task<AuthBundle>> refresh, CancellationToken cancellationToken) {
+        var initial = expected;
+        expected = await SelectPreferredOpenAiAliasAsync(expected, cancellationToken).ConfigureAwait(false);
+        if (!SameCredentials(expected, initial.AccessToken, initial.RefreshToken) && !expected.IsExpired())
+            return expected;
         var key = BuildKey(expected.Provider, expected.AccountId);
         var logicalAccountId = expected.AccountId ?? JwtDecoder.TryGetAccountId(expected.AccessToken);
         var canonicalProvider = IsOpenAiAlias(expected.Provider) ? OpenAICodexDefaults.Provider : expected.Provider;
         var canonicalKey = BuildKey(canonicalProvider, logicalAccountId);
-        using var hash = SHA256.Create();
-        var suffix = BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(canonicalKey.ToUpperInvariant()))).Replace("-", "");
-        using var refreshLock = await AuthFileTransaction.AcquireAsync(_path + ".refresh-" + suffix + ".lock", cancellationToken).ConfigureAwait(false);
+        using var refreshLock = await AcquireRefreshLockAsync(canonicalKey, cancellationToken).ConfigureAwait(false);
         AuthBundle current;
         using (var transaction = await AcquireTransactionAsync(cancellationToken).ConfigureAwait(false)) {
             var before = await ReadFileAsync(cancellationToken).ConfigureAwait(false);

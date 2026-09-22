@@ -266,4 +266,11 @@ internal sealed partial class NativeChatWindow {
         ToolTipService.SetToolTip(_runtimeContextText, _runtimeContextText.Text);
     }
 
+    private void OnRuntimeMetadataInvalidated() {
+        if (_lifetimeCts.IsCancellationRequested) return;
+        _ = DispatcherQueue.TryEnqueue(() => {
+            if (!_lifetimeCts.IsCancellationRequested) UpdateRuntimeContext();
+        });
+    }
+
 }

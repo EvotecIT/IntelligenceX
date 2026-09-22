@@ -36,6 +36,9 @@ public sealed class ChatServiceClient : IChatServiceClient, IAsyncDisposable {
     /// </summary>
     public event Action<ChatServiceClient>? Disconnected;
 
+    /// <summary>Whether this connection has already lost its read loop.</summary>
+    public bool IsDisconnected => Volatile.Read(ref _disconnectSignaled) != 0;
+
     /// <summary>
     /// Connects to the service pipe and starts a background read loop.
     /// </summary>

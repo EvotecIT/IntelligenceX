@@ -56,6 +56,8 @@ internal sealed class OpenAINativeAuthManager {
     /// </summary>
     internal async Task<AuthBundle> GetValidBundleAsync(AuthBundle bundle, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        if (_options.AuthStore is FileAuthBundleStore fileStore)
+            bundle = await fileStore.SelectPreferredOpenAiAliasAsync(bundle, cancellationToken).ConfigureAwait(false);
         if (IsExpiring(bundle)) {
             bundle = await RefreshSpecificBundleAsync(bundle, cancellationToken).ConfigureAwait(false);
         }
@@ -69,16 +71,6 @@ internal sealed class OpenAINativeAuthManager {
 
     private async Task<AuthBundle> RefreshSpecificBundleAsync(AuthBundle bundle, CancellationToken cancellationToken) {
         if (_options.AuthStore is FileAuthBundleStore fileStore) {
-            var accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
-            if (!string.IsNullOrWhiteSpace(accountId)
-                && !string.Equals(bundle.Provider, OpenAICodexDefaults.Provider, StringComparison.OrdinalIgnoreCase)) {
-                // The file transaction gives a canonical entry priority over an
-                // alias. Reconcile that entry directly, not the alias whose
-                // refresh would return early before invoking the import callback.
-                var canonical = await fileStore.GetAsync(OpenAICodexDefaults.Provider, accountId, cancellationToken)
-                    .ConfigureAwait(false);
-                if (canonical is not null && SameSelectedAccount(canonical, bundle)) bundle = canonical;
-            }
             bundle = await ReconcileAmbientCredentialAsync(fileStore, bundle, cancellationToken).ConfigureAwait(false);
             if (!IsExpiring(bundle)) return bundle;
             var fileRefreshToken = bundle.RefreshToken;
@@ -351,18 +343,26 @@ internal sealed class OpenAINativeAuthManager {
         string? accountId = SelectedAccountId;
         AuthBundle? storedBundle = null;
         foreach (var provider in new[] { OpenAICodexDefaults.Provider, "openai", "chatgpt" }) {
-            storedBundle = await _options.AuthStore.GetAsync(provider, accountId, cancellationToken).ConfigureAwait(false);
-            if (storedBundle is null && !string.IsNullOrWhiteSpace(accountId)) {
+            var candidate = await _options.AuthStore.GetAsync(provider, accountId, cancellationToken).ConfigureAwait(false);
+            if (candidate is null && !string.IsNullOrWhiteSpace(accountId)) {
                 // Older saves may have a provider-only key and JWT-derived identity.
-                foreach (var candidate in await _options.AuthStore.ListAsync(provider, cancellationToken).ConfigureAwait(false)) {
-                    if (string.IsNullOrWhiteSpace(candidate.AccountId)
-                        && string.Equals(JwtDecoder.TryGetAccountId(candidate.AccessToken), accountId, StringComparison.OrdinalIgnoreCase)) {
-                        storedBundle = candidate;
+                foreach (var legacy in await _options.AuthStore.ListAsync(provider, cancellationToken).ConfigureAwait(false)) {
+                    if (string.IsNullOrWhiteSpace(legacy.AccountId)
+                        && string.Equals(JwtDecoder.TryGetAccountId(legacy.AccessToken), accountId, StringComparison.OrdinalIgnoreCase)) {
+                        candidate = legacy;
                         break;
                     }
                 }
             }
-            if (storedBundle is not null) break;
+            if (candidate is not null && (storedBundle is null
+                || (SameSelectedAccount(candidate, storedBundle)
+                    && (candidate.ExpiresAt ?? DateTimeOffset.MinValue) > (storedBundle.ExpiresAt ?? DateTimeOffset.MinValue))))
+                storedBundle = candidate;
+            // Without a selected identity, only compare aliases of the first saved login.
+            if (storedBundle is not null && string.IsNullOrWhiteSpace(accountId)) {
+                accountId = storedBundle.AccountId ?? JwtDecoder.TryGetAccountId(storedBundle.AccessToken);
+                if (string.IsNullOrWhiteSpace(accountId)) break;
+            }
         }
         if (storedBundle is not null && string.IsNullOrWhiteSpace(storedBundle.AccountId)) {
             storedBundle = new AuthBundle(storedBundle.Provider, storedBundle.AccessToken, storedBundle.RefreshToken, storedBundle.ExpiresAt) {

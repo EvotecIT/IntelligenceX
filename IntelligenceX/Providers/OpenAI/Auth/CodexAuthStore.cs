@@ -173,13 +173,13 @@ public static class CodexAuthStore {
         }
         var content = BuildAuthJson(bundle, lastRefresh, openAiApiKey);
         using var transaction = AuthFileTransaction.AcquireAsync(path + ".lock", CancellationToken.None).GetAwaiter().GetResult();
-        File.WriteAllText(path, content);
+        PrivateAuthFile.WriteAtomically(path, content);
     }
 
     /// <summary>
     /// Keeps a shared, rotated login in sync without creating a Codex login, switching accounts,
-    /// or overwriting credentials changed since refresh started. Holds an exclusive handle
-    /// across comparison and update; IX login exports use the same sidecar transaction.
+    /// or overwriting credentials changed since refresh started. IX login exports use
+    /// the same sidecar transaction; the replacement is staged before the old file is replaced.
     /// Other applications need not honor this sidecar, so this is not a cross-application transaction.
     /// </summary>
     internal static void UpdateMatchingAuthJson(AuthBundle bundle, string? previousAccountId,
@@ -193,9 +193,11 @@ public static class CodexAuthStore {
         if (!File.Exists(path)) {
             return;
         }
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        using var reader = new StreamReader(stream, Encoding.UTF8, true, 4096, leaveOpen: true);
-        var root = JsonLite.Parse(reader.ReadToEnd()).AsObject();
+        JsonObject? root;
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        using (var reader = new StreamReader(stream, Encoding.UTF8, true)) {
+            root = JsonLite.Parse(reader.ReadToEnd()).AsObject();
+        }
         var tokens = root?.GetObject("tokens");
         var currentAccountId = NormalizeOptional(tokens?.GetString("account_id"))
                                ?? JwtDecoder.TryGetAccountId(tokens?.GetString("access_token") ?? string.Empty);
@@ -209,11 +211,7 @@ public static class CodexAuthStore {
             tokens.Add("id_token", bundle.IdToken);
         }
         root.Add("last_refresh", DateTimeOffset.UtcNow.ToString("O"));
-        var bytes = Encoding.UTF8.GetBytes(JsonLite.Serialize(JsonValue.From(root)));
-        stream.Position = 0;
-        stream.Write(bytes, 0, bytes.Length);
-        stream.SetLength(bytes.Length);
-        stream.Flush();
+        PrivateAuthFile.WriteAtomically(path, JsonLite.Serialize(JsonValue.From(root)));
     }
 
     private static string? NormalizeOptional(string? value) {

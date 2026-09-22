@@ -66,6 +66,7 @@ internal sealed partial class NativeChatWindow : Window {
         _runtime = new NativeChatServiceRuntime(
             Environment.GetEnvironmentVariable("IXCHAT_SERVICE_PIPE"),
             _conversationStore.CreateServiceLaunchProfileOptions);
+        _runtime.MetadataInvalidated += OnRuntimeMetadataInvalidated;
         _viewModel = new NativeChatViewModel(
             _runtime,
             DispatchToUiThread,
@@ -124,6 +125,7 @@ internal sealed partial class NativeChatWindow : Window {
 
         Closed += async (_, _) => {
             _lifetimeCts.Cancel();
+            _runtime.MetadataInvalidated -= OnRuntimeMetadataInvalidated;
             _viewModel.CancelActiveTurn();
             StopTranscriptScrollRecovery();
             _loginDialog?.Hide();

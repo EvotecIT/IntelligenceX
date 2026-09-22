@@ -28,6 +28,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private readonly Func<ChatServiceLaunchProfileOptions?>? _profileOptionsProvider;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
     private readonly SemaphoreSlim _metadataLock = new(1, 1);
+    private readonly object _connectionStateLock = new();
     private readonly ChatServiceProcessHost _processHost = new();
     private ChatServiceClient? _client;
     private ChatServiceTurnRunner? _turnRunner;
@@ -35,6 +36,9 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     private int _settingsOwnsPipe;
 
     private NativeRuntimeMetadata? _metadata;
+
+    /// <summary>Signals that previously displayed service metadata is no longer confirmed.</summary>
+    internal event Action? MetadataInvalidated;
 
     internal SessionPolicyDto? SessionPolicy => Volatile.Read(ref _metadata)?.Policy;
 
@@ -105,7 +109,11 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
                     new HelloRequest { RequestId = "native-hello-refresh-" + Guid.NewGuid().ToString("N") },
                     cancellationToken)
                 .ConfigureAwait(false);
-            Volatile.Write(ref _metadata, new NativeRuntimeMetadata(hello.Policy, toolList.Tools ?? Array.Empty<ToolDefinitionDto>()));
+            lock (_connectionStateLock) {
+                if (!ReferenceEquals(_client, client) || client.IsDisconnected)
+                    throw new IOException("The chat service disconnected during metadata refresh.");
+                Volatile.Write(ref _metadata, new NativeRuntimeMetadata(hello.Policy, toolList.Tools ?? Array.Empty<ToolDefinitionDto>()));
+            }
         } finally {
             _metadataLock.Release();
         }
@@ -273,9 +281,14 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
             await _connectLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try {
                 Volatile.Write(ref _settingsOwnsPipe, 1);
-                var client = Interlocked.Exchange(ref _client, null);
-                _turnRunner = null;
-                Volatile.Write(ref _metadata, null);
+                ChatServiceClient? client;
+                lock (_connectionStateLock) {
+                    client = _client;
+                    _client = null;
+                    _turnRunner = null;
+                    Volatile.Write(ref _metadata, null);
+                }
+                MetadataInvalidated?.Invoke();
                 if (client is not null) {
                     client.Disconnected -= OnClientDisconnected;
                     await client.DisposeAsync().ConfigureAwait(false);
@@ -325,6 +338,7 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
                 await RetryConnectAsync(client, status, cancellationToken).ConfigureAwait(false);
             }
 
+            client.Disconnected += OnClientDisconnected;
             try {
                 if (ShouldSynchronizeSelectedProfile(serviceLaunchedWithProfileOptions)) {
                     await SynchronizeSelectedProfileAsync(client, status, cancellationToken).ConfigureAwait(false);
@@ -335,14 +349,18 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
                         new HelloRequest { RequestId = "native-hello-" + Guid.NewGuid().ToString("N") },
                         cancellationToken)
                     .ConfigureAwait(false);
-                Volatile.Write(ref _metadata, new NativeRuntimeMetadata(hello.Policy, Tools: null));
+                lock (_connectionStateLock) {
+                    if (client.IsDisconnected)
+                        throw new IOException("The chat service disconnected during initialization.");
+                    _client = client;
+                    _turnRunner = new ChatServiceTurnRunner(client);
+                    Volatile.Write(ref _metadata, new NativeRuntimeMetadata(hello.Policy, Tools: null));
+                }
             } catch {
+                client.Disconnected -= OnClientDisconnected;
                 await client.DisposeAsync().ConfigureAwait(false);
                 throw;
             }
-            client.Disconnected += OnClientDisconnected;
-            _client = client;
-            _turnRunner = new ChatServiceTurnRunner(client);
             await status("Runtime connected.").ConfigureAwait(false);
             return new NativeChatServiceConnection(client, SelectedProfileSynchronized: true);
         } catch {
@@ -525,12 +543,14 @@ internal sealed class NativeChatServiceRuntime : INativeChatRuntime, IAsyncDispo
     }
 
     private void OnClientDisconnected(ChatServiceClient client) {
-        if (!ReferenceEquals(Interlocked.CompareExchange(ref _client, null, client), client)) {
-            return;
+        lock (_connectionStateLock) {
+            if (!ReferenceEquals(_client, client))
+                return;
+            _client = null;
+            _turnRunner = null;
+            Volatile.Write(ref _metadata, null);
         }
-
-        _turnRunner = null;
-        Volatile.Write(ref _metadata, null);
+        MetadataInvalidated?.Invoke();
         _ = DisposeDisconnectedClientAsync(client);
     }
 
