@@ -78,15 +78,21 @@ public sealed class CmdletConnectIntelligenceX : IntelligenceXCmdlet {
     [Parameter]
     public string? OpenAIAccountId { get; set; }
 
+    /// <summary><para type="description">Native Copilot credential, store, endpoint, and device sign-in settings.</para></summary>
+    [Parameter]
+    public IntelligenceX.Copilot.Native.CopilotNativeOptions? CopilotOptions { get; set; }
+
     /// <inheritdoc/>
     protected override async Task ProcessRecordAsync() {
         var options = new IntelligenceXClientOptions();
         if (!NoConfig.IsPresent && IntelligenceXConfig.TryLoad(out var config)) {
             config.OpenAI.ApplyTo(options);
+            config.Copilot.ApplyTo(options.CopilotOptions);
         }
         if (MyInvocation.BoundParameters.ContainsKey(nameof(Transport))) {
             options.TransportKind = Transport;
         }
+        if (CopilotOptions is not null) options.CopilotOptions = CopilotOptions;
         if (!string.IsNullOrWhiteSpace(ExecutablePath)) {
             options.AppServerOptions.ExecutablePath = ExecutablePath!;
         }

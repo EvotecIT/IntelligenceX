@@ -9,7 +9,7 @@ The reviewer runs in GitHub Actions (and Azure DevOps summary-only) and posts a 
 It can use:
 - OpenAI/ChatGPT (native transport) with a ChatGPT login bundle.
 - Claude (Anthropic Messages API) with an `ANTHROPIC_API_KEY`.
-- Copilot (via Copilot CLI) for teams already using GitHub Copilot.
+- Copilot (native HTTPS) for teams already using GitHub Copilot.
 - Copilot direct HTTP transport (experimental) for custom gateways.
 
 ## Recommended onboarding
@@ -58,7 +58,7 @@ flowchart LR
 
 **Engine Scope**
 - Review pipeline: resolve inputs, build context, assemble prompt, call provider, parse inline comments, post summary/inline output.
-- Providers and transports: OpenAI (native/appserver), Claude (Anthropic Messages API), OpenAI-compatible HTTP endpoints (Ollama/OpenRouter/etc.), and Copilot (CLI/direct).
+- Providers and transports: OpenAI (native/appserver), Claude (Anthropic Messages API), OpenAI-compatible HTTP endpoints (Ollama/OpenRouter/etc.), and Copilot (native HTTP).
 - Context builder: diff-range selection, file filtering, chunking, redaction, language hints, related PRs.
 - Formatter/output: summary templates, inline comment formatting, structured findings block.
 - Thread triage/auto-resolve: load threads, require evidence, summarize/append optional replies.

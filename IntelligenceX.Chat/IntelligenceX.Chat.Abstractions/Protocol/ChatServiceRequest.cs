@@ -562,7 +562,7 @@ public sealed record ApplyRuntimeSettingsRequest : ChatServiceRequest {
     /// </summary>
     public string? Model { get; init; }
     /// <summary>
-    /// Optional provider transport override (native|compatible-http|copilot-cli|appserver).
+    /// Optional provider transport override (native|compatible-http|copilot-native|appserver).
     /// </summary>
     public string? OpenAITransport { get; init; }
     /// <summary>

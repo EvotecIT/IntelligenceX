@@ -92,18 +92,24 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
-    /// Verifies the repo declares the OfficeIMO release-candidate package pins used by package-mode adoption.
+    /// Verifies package mode uses one public three-part OfficeIMO release across its direct dependencies.
     /// </summary>
     [Fact]
-    public void DirectoryBuildProps_PinsOfficeImoReleaseCandidatePackageVersions() {
+    public void DirectoryBuildProps_UsesOnePublicOfficeImoRelease() {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = LoadMsBuildProperties(propsPath);
 
-        Assert.Equal("2.0.2", props["OfficeImoMarkdownNuGetVersion"]);
-        Assert.Equal("2.0.2", props["OfficeImoMarkdownRendererNuGetVersion"]);
-        Assert.Equal("2.0.2", props["OfficeImoMarkdownRendererIntelligenceXNuGetVersion"]);
-        Assert.Equal("2.0.2", props["OfficeImoExcelNuGetVersion"]);
-        Assert.Equal("2.0.2", props["OfficeImoWordMarkdownNuGetVersion"]);
+        var versions = new[] {
+            props["OfficeImoMarkdownNuGetVersion"],
+            props["OfficeImoMarkdownRendererNuGetVersion"],
+            props["OfficeImoMarkdownRendererIntelligenceXNuGetVersion"],
+            props["OfficeImoExcelNuGetVersion"],
+            props["OfficeImoWordMarkdownNuGetVersion"]
+        };
+        foreach (var version in versions) {
+            Assert.Matches(@"^\d+\.\d+\.\d+$", version);
+            Assert.Equal(versions[0], version);
+        }
     }
 
     /// <summary>

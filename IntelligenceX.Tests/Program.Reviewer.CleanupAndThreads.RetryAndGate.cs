@@ -159,13 +159,12 @@ internal static partial class Program {
 
     private static void TestReviewFailureBodyUsesCopilotTransport() {
         var settings = new ReviewSettings {
-            Provider = ReviewProvider.Copilot,
-            CopilotTransport = CopilotTransportKind.Direct
+            Provider = ReviewProvider.Copilot
         };
         var body = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), settings, null, null);
         AssertContainsText(body, "- Provider: copilot", "copilot failure body provider");
-        AssertContainsText(body, "- Transport: direct", "copilot failure body transport");
-        AssertContainsText(body, "- Model: Copilot direct model required", "copilot failure body model");
+        AssertContainsText(body, "- Transport: native-http", "copilot failure body transport");
+        AssertContainsText(body, "- Model: Copilot model required", "copilot failure body model");
     }
 
     private static void TestReviewFailureBodyUsesProviderSpecificTransportLabels() {
@@ -189,17 +188,16 @@ internal static partial class Program {
 
     private static void TestReviewFailureBodyClassifiesCopilotUnauthorized() {
         var settings = new ReviewSettings {
-            Provider = ReviewProvider.Copilot,
-            CopilotTransport = CopilotTransportKind.Cli
+            Provider = ReviewProvider.Copilot
         };
-        var ex = new UnauthorizedAccessException("Copilot CLI is not authenticated for this non-interactive reviewer run. Sign in on the runner.");
+        var ex = new UnauthorizedAccessException("Copilot is not authenticated for this non-interactive reviewer run. Configure a GitHub credential.");
         var classification = ReviewDiagnostics.Classify(ex);
         AssertEqual(ReviewDiagnostics.ReviewErrorCategory.Auth, classification.Category, "copilot unauthorized category");
         AssertEqual("Copilot authentication failed", classification.Summary, "copilot unauthorized summary");
 
         var body = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
         AssertContainsText(body, "- Detail: Copilot authentication failed", "copilot auth failure detail");
-        AssertContainsText(body, "Copilot CLI authentication is missing", "copilot auth failure guidance");
+        AssertContainsText(body, "Copilot authentication is missing", "copilot auth failure guidance");
     }
 
     private static void TestReviewFailureBodyPrefersTimeoutOverInnerCancellation() {

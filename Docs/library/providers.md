@@ -59,72 +59,41 @@ Console.WriteLine(EasyChatResult.FromTurn(turn).Text);
 
 Notes:
 - `BaseUrl` may be either `http://host:port` or `http://host:port/v1`; it will be normalized to `/v1/`.
-- Image inputs are not supported for `CompatibleHttp` yet (text + tools only).
+- Inline image inputs are supported when the selected endpoint and model accept vision messages. Capability selection is explicit; an endpoint URL alone does not establish image or schema support.
 
 ## Copilot
 
-- Optional provider for users with GitHub Copilot subscription
-- Supported in `IntelligenceXClient` via `OpenAITransportKind.CopilotCli`
-- Uses Copilot sign-in flow (subscription auth), not `compatible-http` API key fields
-- Experimental direct HTTP client is available for custom endpoints (unsupported)
+Copilot uses direct HTTPS through `IntelligenceXClient`. The SDK requires no Copilot CLI, native runtime, or additional provider package. It discovers the selected model's advertised protocol and uses Responses or Chat Completions through the shared conversation engine.
 
 ```csharp
+using IntelligenceX.Copilot.Native;
 using IntelligenceX.OpenAI;
 
 var options = new IntelligenceXClientOptions {
-    TransportKind = OpenAITransportKind.CopilotCli,
-    DefaultModel = "gpt-5.3-codex"
+    TransportKind = OpenAITransportKind.CopilotNative,
+    DefaultModel = "gpt-5.4",
+    CopilotOptions = new CopilotNativeOptions {
+        GitHubToken = Environment.GetEnvironmentVariable("COPILOT_GITHUB_TOKEN")
+    }
 };
-
-await using var client = await IntelligenceXClient.ConnectAsync(options);
-var turn = await client.ChatAsync("Summarize the latest PR");
+using var client = await IntelligenceXClient.ConnectAsync(options);
+var models = await client.ListModelsAsync();
+var turn = await client.ChatAsync("Summarize the supplied text.");
 Console.WriteLine(EasyChatResult.FromTurn(turn).Text);
 ```
 
-```csharp
-using IntelligenceX.Copilot;
+Choose a model returned by `ListModelsAsync`; availability depends on the account. Streaming, tool calls, inline images, structured-output requests, local conversation history, and usage use the same client contracts as the other native providers. Image and schema support still depend on the selected model. No tools execute unless the host supplies and runs them.
 
-await using var client = await CopilotClient.StartAsync();
-var status = await client.GetStatusAsync();
-Console.WriteLine(status.Version);
-```
+For credentials, supply `GitHubToken`, an asynchronous `TokenProvider`, or an explicit `IAuthBundleStore`. With no explicit source, the SDK checks `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, then `GITHUB_TOKEN`. An explicit store or account selection never falls back to those environment variables. `AccountId` is the numeric GitHub user ID represented as a string; the SDK verifies a pinned identity before inference.
 
-```csharp
-using IntelligenceX.Copilot.Direct;
+For device sign-in, configure `GitHubClientId` for a registered GitHub app with device flow enabled, then call `LoginCopilotAsync(code => ShowCode(code.UserCode, code.VerificationUri))`. The host owns the UI. Supply an auth store to persist credentials; otherwise they remain in this client instance. Expiring stored credentials renew through the same registered app. Some app types also require `GitHubClientSecret`. GitHub app registration and account entitlement must permit Copilot access; completing sign-in alone does not establish inference entitlement.
 
-var options = new CopilotDirectOptions {
-    Url = "https://example.internal/copilot/chat",
-    Token = Environment.GetEnvironmentVariable("COPILOT_DIRECT_TOKEN")
-};
-using var direct = new CopilotDirectClient(options);
-var response = await direct.ChatAsync("Hello", "gpt-5.3-codex");
-Console.WriteLine(response);
-```
+For bounded document operations, wrap the connected client in `OpenAIChatTreatmentProvider`. `Ephemeral = true` removes local conversation state after the operation, and `MaxResponseBytes` bounds wire bytes including streaming frames. Native Copilot defaults to a ten-minute request deadline and a 16 MiB response limit. Hosted service retention remains a separate policy.
 
-```csharp
-using IntelligenceX.Copilot;
+This transport implements the Copilot client inference protocol, which is not a versioned public GitHub REST inference API. It does not use the GitHub Copilot management API or promise protocol stability. Unsupported models and requests fail explicitly; the SDK does not install or fall back to a CLI.
 
-var options = new CopilotChatClientOptions {
-    Transport = CopilotTransportKind.Cli,
-    DefaultModel = "gpt-5.3-codex"
-};
+### Migrating from the retired Copilot clients
 
-await using var chat = await CopilotChatClient.StartAsync(options);
-var answer = await chat.ChatAsync("Summarize the latest PR");
-Console.WriteLine(answer);
-```
+Replace `OpenAITransportKind.CopilotCli`, `CopilotClient`, `CopilotChatClient`, and the experimental `CopilotDirectClient` with `IntelligenceXClient` configured as above. Replace `CopilotTreatmentProvider` with `OpenAIChatTreatmentProvider` over that client. Remove CLI paths, launchers, installers, environment forwarding, and direct-wrapper configuration. Use `copilot-native` in saved configuration. Legacy `copilot-cli` selections are rejected rather than selecting another provider.
 
-```csharp
-using IntelligenceX.Copilot;
-
-var options = new CopilotChatClientOptions {
-    Transport = CopilotTransportKind.Direct,
-    DefaultModel = "gpt-5.3-codex"
-};
-options.Direct.Url = "https://example.internal/copilot/chat";
-options.Direct.Token = Environment.GetEnvironmentVariable("COPILOT_DIRECT_TOKEN");
-
-await using var chat = await CopilotChatClient.StartAsync(options);
-var answer = await chat.ChatAsync("Summarize the latest PR");
-Console.WriteLine(answer);
-```
+Existing custom `IAuthBundleStore` implementations remain supported for reading and saving credentials. Implement the optional `IRemovableAuthBundleStore` capability for persistent selective logout; otherwise logout reports `NotSupportedException` and the current client stops using the credential. A null account removes only the provider's accountless entry. Other providers and accounts must remain stored. The shared store accepts credentials without refresh tokens; renewal is attempted only for expiring credentials that need it.

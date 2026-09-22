@@ -1,3 +1,4 @@
+using IntelligenceX.Utils;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,12 +10,16 @@ namespace IntelligenceX.Rpc;
 
 internal sealed class HeaderDelimitedMessageTransport : IDisposable {
     private const int MaxHeaderBytes = 16 * 1024;
+    private readonly long _maximumReceivedBytes;
+    private long _receivedBytes;
     private readonly Stream _input;
     private readonly Stream _output;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private bool _disposed;
 
-    public HeaderDelimitedMessageTransport(Stream input, Stream output) {
+    public HeaderDelimitedMessageTransport(Stream input, Stream output, long maximumReceivedBytes = 134_217_728) {
+        if (maximumReceivedBytes < 1 || maximumReceivedBytes > 268_435_456) throw new ArgumentOutOfRangeException(nameof(maximumReceivedBytes));
+        _maximumReceivedBytes = maximumReceivedBytes;
         _input = input ?? throw new ArgumentNullException(nameof(input));
         _output = output ?? throw new ArgumentNullException(nameof(output));
     }
@@ -34,7 +39,7 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
             await _output.WriteAsync(header, 0, header.Length, cancellationToken).ConfigureAwait(false);
             await _output.WriteAsync(payload, 0, payload.Length, cancellationToken).ConfigureAwait(false);
             await _output.FlushAsync(cancellationToken).ConfigureAwait(false);
-            MessageSent?.Invoke(this, message);
+            ObserverDispatcher.Raise(MessageSent, this, message);
         } finally {
             _sendLock.Release();
         }
@@ -49,7 +54,7 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
             if (message is null) {
                 break;
             }
-            MessageReceived?.Invoke(this, message);
+            ObserverDispatcher.Raise(MessageReceived, this, message);
             onMessage(message);
         }
     }
@@ -64,6 +69,8 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
         if (length < 0) {
             throw new FormatException("Missing Content-Length header.");
         }
+        _receivedBytes = checked(_receivedBytes + headerBytes.Length + length);
+        if (_receivedBytes > _maximumReceivedBytes) throw new InvalidDataException("RPC receive budget exceeded.");
         var payload = await ReadExactAsync(length, cancellationToken).ConfigureAwait(false);
         return Encoding.UTF8.GetString(payload);
     }
@@ -130,6 +137,6 @@ internal sealed class HeaderDelimitedMessageTransport : IDisposable {
             return;
         }
         _disposed = true;
-        _sendLock.Dispose();
+        // In-flight sends release this managed gate after cancellation; do not dispose it underneath them.
     }
 }

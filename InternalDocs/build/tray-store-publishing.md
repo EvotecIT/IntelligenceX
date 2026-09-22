@@ -73,7 +73,7 @@ pwsh ./Build/Store/Prepare-TrayStoreSubmission.ps1 -SkipBuild -SubmissionMode Su
 The helper wraps these commands:
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -SkipWorkspaceBuild -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64,win-arm64 -Frameworks net10.0-windows10.0.19041.0 -Styles FrameworkDependent -ToolOutputs Store
+pwsh ./Build/Build-Product.ps1 -SkipWorkspaceBuild -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64,win-arm64 -Frameworks net10.0-windows10.0.19041.0 -Styles FrameworkDependent -ToolOutputs Store
 powerforge store submit --config ./Build/store.submit.tray.local.json --target IntelligenceX.Tray.Store --plan
 ```
 

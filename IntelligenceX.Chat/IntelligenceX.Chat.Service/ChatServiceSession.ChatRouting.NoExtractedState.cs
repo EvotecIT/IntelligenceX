@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.Tools;
@@ -57,7 +58,8 @@ internal sealed partial class ChatServiceSession {
             int proactiveSkipMutatingCount,
             int proactiveSkipReadOnlyCount,
             int proactiveSkipUnknownCount,
-            bool interimResultSent) {
+            bool interimResultSent,
+            List<ChatImageOutputDto> capturedImages) {
             Turn = turn;
             AssistantDraft = assistantDraft;
             AnswerPlan = answerPlan;
@@ -94,6 +96,8 @@ internal sealed partial class ChatServiceSession {
             ProactiveSkipReadOnlyCount = proactiveSkipReadOnlyCount;
             ProactiveSkipUnknownCount = proactiveSkipUnknownCount;
             InterimResultSent = interimResultSent;
+            CapturedImages = capturedImages;
+            CaptureChatImageOutputs(CapturedImages, turn);
         }
 
         public TurnInfo Turn { get; set; }
@@ -167,6 +171,8 @@ internal sealed partial class ChatServiceSession {
         public int ProactiveSkipUnknownCount { get; set; }
 
         public bool InterimResultSent { get; set; }
+
+        public List<ChatImageOutputDto> CapturedImages { get; }
     }
 
     private static void RestoreNoExtractedToolRoundState(

@@ -84,6 +84,44 @@ public static class CodexAuthStore {
     }
 
     /// <summary>
+    /// Reads a ChatGPT OAuth bundle from a Codex auth.json file.
+    /// </summary>
+    /// <remarks>
+    /// The returned bundle contains sensitive tokens and must not be logged or exposed to app clients.
+    /// </remarks>
+    public static AuthBundle? TryReadBundle(string authPath) {
+        if (string.IsNullOrWhiteSpace(authPath) || !File.Exists(authPath)) {
+            return null;
+        }
+
+        try {
+            var root = JsonLite.Parse(File.ReadAllText(authPath)).AsObject();
+            var tokens = root?.GetObject("tokens");
+            var accessToken = NormalizeOptional(tokens?.GetString("access_token"));
+            if (accessToken is null) {
+                return null;
+            }
+
+            var refreshToken = NormalizeOptional(tokens?.GetString("refresh_token")) ?? string.Empty;
+            var idToken = NormalizeOptional(tokens?.GetString("id_token"));
+            var accountId = NormalizeOptional(tokens?.GetString("account_id"))
+                            ?? JwtDecoder.TryGetAccountId(accessToken)
+                            ?? (idToken is null ? null : JwtDecoder.TryGetAccountId(idToken));
+            return new AuthBundle(
+                OpenAICodexDefaults.Provider,
+                accessToken,
+                refreshToken,
+                JwtDecoder.TryGetExpiry(accessToken)) {
+                AccountId = accountId,
+                IdToken = idToken,
+                TokenType = "Bearer"
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Builds Codex auth.json content from an auth bundle.
     /// </summary>
     /// <param name="bundle">Auth bundle.</param>

@@ -103,7 +103,7 @@ internal static partial class WizardRunner {
 
     private static string? ResolveSuggestedModelForProvider(string? previousProvider, string provider, string? currentModel) {
         if (string.Equals(provider, SetupProviderCatalog.CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
-            return null;
+            return string.Equals(previousProvider, provider, StringComparison.OrdinalIgnoreCase) ? currentModel?.Trim() : null;
         }
 
         var normalizedProvider = SetupProviderCatalog.GetCanonicalProviderId(provider);

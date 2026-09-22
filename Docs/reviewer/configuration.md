@@ -258,20 +258,18 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
       },
       "copilot-gpt54": {
         "provider": "copilot",
-        "authenticator": "copilot-cli",
+        "authenticator": "copilot",
         "model": "gpt-5.5",
         "copilot": {
-          "launcher": "auto",
-          "autoInstall": true,
-          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+          "tokenEnv": "COPILOT_GITHUB_TOKEN"
         }
       },
       "copilot-claude": {
         "provider": "copilot",
-        "authenticator": "copilot-cli",
+        "authenticator": "copilot",
         "model": "claude-sonnet-4-5",
         "copilot": {
-          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+          "tokenEnv": "COPILOT_GITHUB_TOKEN"
         }
       }
     }
@@ -837,74 +835,24 @@ Env: `REVIEW_SECRETS_AUDIT`
 GitHub Actions input/env aliases:
 - `narrative_mode` / `REVIEW_NARRATIVE_MODE`
 
-## Copilot CLI auth env pass-through
+## Native Copilot authentication
 
-Use this to forward selected environment variables into the Copilot CLI process without committing secrets.
-By default the CLI process **does** inherit the runner environment. Set `inheritEnvironment` to `false` and use
-`envAllowlist`/`env` to pass only what the CLI needs when you want a strict environment.
-Set `launcher` to `gh` to explicitly run Copilot through `gh copilot --`.
-Set `launcher` to `auto` to use the standalone `copilot` binary path. This is the safer default for reviewer CI runs:
-the reviewer validates status/auth through the CLI server protocol, then generates the review through the documented
-non-interactive prompt mode with built-in Model Context Protocol (MCP) servers disabled via
-`--disable-builtin-mcps` and with the Copilot tool surface disabled via `--available-tools=none` to avoid
-long-running server-session hangs, tool startup failures, and prompt-injection risk on hosted runners.
-Use `autoInstall` with the standalone path when the runner does not already have `copilot` installed.
-Set `model` only when you want to force a Copilot CLI model id. When `provider` is `copilot` and only the generic
-`review.model` is the default OpenAI value, the reviewer leaves Copilot model selection to the CLI default.
-
-For GitHub Actions runs, set a repository or organization Actions secret named `COPILOT_GITHUB_TOKEN` to a
-fine-grained GitHub token with the `Copilot Requests` permission. The built-in Actions `GITHUB_TOKEN` and GitHub App
-installation tokens are not sufficient for Copilot CLI model requests.
-
-GitHub Actions repo/org variable aliases:
-- `IX_REVIEW_PROVIDER`
-- `IX_REVIEW_MODEL`
-- `IX_REVIEW_COPILOT_MODEL`
-- `IX_REVIEW_AGENT_PROFILE`
-- `IX_REVIEW_COPILOT_LAUNCHER`
-- `IX_REVIEW_COPILOT_AUTO_INSTALL`
-- `IX_REVIEW_COPILOT_AUTO_INSTALL_METHOD`
-- `IX_REVIEW_COPILOT_AUTO_INSTALL_PRERELEASE`
+Set the repository secret `COPILOT_GITHUB_TOKEN` to a GitHub credential with Copilot access. The reusable workflow exposes that credential to the reviewer. The reviewer makes HTTPS requests directly and does not require a Copilot executable or saved CLI session.
 
 ```json
 {
-  "review": {
-    "provider": "copilot"
-  },
+  "review": { "provider": "copilot" },
   "copilot": {
-    "launcher": "gh",
-    "model": "claude-sonnet-4.6",
-    "inheritEnvironment": false,
-    "envAllowlist": ["GH_TOKEN", "GITHUB_TOKEN"]
+    "model": "gpt-5.4",
+    "tokenEnv": "COPILOT_GITHUB_TOKEN",
+    "timeoutSeconds": 600
   }
 }
 ```
 
-`copilot.env` can be used to set fixed, non-secret environment variables for the Copilot CLI.
+Select a model available to the account. Use `tokenEnv` for a custom credential environment variable; avoid storing tokens in configuration files. A supplied variable must be nonempty. `baseUrl` accepts an explicitly trusted HTTPS Copilot API root. Old CLI launcher, environment forwarding, and direct-wrapper keys are rejected with migration guidance.
 
-## Copilot direct (experimental)
-
-This path skips the Copilot CLI and posts directly to a compatible HTTP endpoint. It is not enabled by default.
-
-```json
-{
-  "review": {
-    "provider": "copilot"
-  },
-  "copilot": {
-    "transport": "direct",
-    "directUrl": "https://example.internal/copilot/chat",
-    "directTokenEnv": "COPILOT_DIRECT_TOKEN",
-    "directTimeoutSeconds": 60
-  }
-}
-```
-
-If `directTokenEnv` is set, the value is pulled from the environment at runtime.
-`directToken` or an `Authorization` header in `directHeaders` is required for most endpoints.
-Use `directHeaders` to attach custom headers required by your gateway.
-Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source control.
-
+For reusable workflow callers, remove `copilot_launcher`, `copilot_cli_path`, `copilot_cli_url`, `copilot_cli_workdir`, and the `copilot_auto_install*` inputs. Keep `copilot_model` and the `COPILOT_GITHUB_TOKEN` secret. The setup wizards ask for a model ID and include it in the generated reviewer configuration.
 ## Common knobs
 - `provider`: `openai`/`codex`/`chatgpt`/`openai-codex`, `claude`/`anthropic`, `openai-compatible` (aliases: `openai-api`, `ollama`, `openrouter`), or `copilot`
 - `providerFallback`: optional fallback provider (same value set as `provider`)
@@ -997,10 +945,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `azureBaseUrl`: override Azure DevOps base URL (defaults to `SYSTEM_COLLECTIONURI` or `https://dev.azure.com/{org}`)
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken/JWT) or `basic`/`pat`
-- `copilot.transport`: `cli` or `direct` (aliases: `api`, `http`)
-- `copilot.model`: optional Copilot-specific model override; when omitted, the CLI default is used unless `review.model` was set to a non-default value
-- `copilot.launcher`: `binary`, `gh`, or `auto`; `auto` uses the standalone binary path, while `gh` explicitly executes `gh copilot --` before the reviewer server flags
-- `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
+- `copilot.model`: explicit model from the native Copilot model catalog; overrides `review.model`
 
 **Path filter order of operations**
 1. `skipAuthors` is evaluated after PR metadata is loaded and before provider auth. Matching authors are skipped unless the PR has a `forceReviewLabels` label.

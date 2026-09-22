@@ -72,6 +72,73 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         return outputs;
     }
 
+    private void AppendMissingStreamedImageOutputs(
+        List<JsonObject> outputs,
+        IReadOnlyList<JsonObject> streamedOutputs,
+        string sessionId,
+        ChatOptions options) {
+        if (streamedOutputs.Count == 0) {
+            return;
+        }
+
+        var streamedArray = new JsonArray();
+        foreach (var item in streamedOutputs) {
+            if (string.Equals(item.GetString("type"), "image_generation_call", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(item.GetString("type"), "output_image", StringComparison.OrdinalIgnoreCase)) {
+                streamedArray.Add(item);
+            }
+        }
+        if (streamedArray.Count == 0) {
+            return;
+        }
+
+        var streamedResponse = new JsonObject().Add("output", streamedArray);
+        var parsed = ParseOutputsFromResponse(streamedResponse, sessionId, options);
+        var addedImage = false;
+        foreach (var output in parsed) {
+            if (!string.Equals(output.GetString("type"), "image", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            if (!ContainsEquivalentImageOutput(outputs, output)) {
+                outputs.Add(output);
+                addedImage = true;
+            }
+        }
+
+        if (!addedImage) {
+            return;
+        }
+        foreach (var output in parsed) {
+            if (!string.Equals(output.GetString("type"), "image", StringComparison.OrdinalIgnoreCase)) {
+                outputs.Add(output);
+            }
+        }
+    }
+
+    private static bool ContainsEquivalentImageOutput(IReadOnlyList<JsonObject> outputs, JsonObject candidate) {
+        foreach (var output in outputs) {
+            if (!string.Equals(output.GetString("type"), "image", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (HasMatchingImageIdentity(output, candidate, "id") ||
+                HasMatchingImageIdentity(output, candidate, "url") ||
+                HasMatchingImageIdentity(output, candidate, "path") ||
+                HasMatchingImageIdentity(output, candidate, "base64")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool HasMatchingImageIdentity(JsonObject left, JsonObject right, string propertyName) {
+        var leftValue = left.GetString(propertyName);
+        var rightValue = right.GetString(propertyName);
+        return !string.IsNullOrWhiteSpace(leftValue) &&
+               !string.IsNullOrWhiteSpace(rightValue) &&
+               string.Equals(leftValue, rightValue, StringComparison.Ordinal);
+    }
+
     private static void ParseContentParts(JsonArray content, List<JsonObject> outputs) {
         foreach (var partValue in content) {
             var part = partValue.AsObject();

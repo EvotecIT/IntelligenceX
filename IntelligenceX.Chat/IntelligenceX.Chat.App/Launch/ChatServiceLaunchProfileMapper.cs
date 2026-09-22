@@ -10,7 +10,7 @@ internal static class ChatServiceLaunchProfileMapper {
     private const string DefaultProfileName = "default";
     private const string NativeTransport = "native";
     private const string CompatibleHttpTransport = "compatible-http";
-    private const string CopilotCliTransport = "copilot-cli";
+    private const string CopilotNativeTransport = "copilot-native";
     public const string DefaultOllamaBaseUrl = "http://127.0.0.1:11434";
     public const string DefaultLmStudioBaseUrl = "http://127.0.0.1:1234/v1";
 
@@ -130,6 +130,9 @@ internal static class ChatServiceLaunchProfileMapper {
     /// Normalizes legacy transport aliases to the service protocol transport token.
     /// </summary>
     public static string NormalizeTransport(string? value) {
+        if (string.Equals(value?.Trim(), "copilot-cli", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("The saved profile uses the retired copilot-cli transport. Select copilot-native and configure a GitHub credential before using this profile.");
+        }
         _ = TryNormalizeTransport(value, out var transport);
         return transport;
     }
@@ -153,10 +156,10 @@ internal static class ChatServiceLaunchProfileMapper {
                 transport = CompatibleHttpTransport;
                 return true;
             case "copilot":
-            case "copilot-cli":
+            case "copilot-native":
             case "github-copilot":
             case "githubcopilot":
-                transport = CopilotCliTransport;
+                transport = CopilotNativeTransport;
                 return true;
             default:
                 transport = NativeTransport;

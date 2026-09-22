@@ -86,7 +86,7 @@ public sealed record ChatMetricsMessage : ChatServiceMessage {
     /// </summary>
     public string? RequestedModel { get; init; }
     /// <summary>
-    /// Runtime transport used for the turn (native/appserver/compatible-http/copilot-cli).
+    /// Runtime transport used for the turn (native/appserver/compatible-http/copilot-native).
     /// </summary>
     public string? Transport { get; init; }
     /// <summary>

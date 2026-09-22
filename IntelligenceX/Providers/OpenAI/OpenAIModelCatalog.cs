@@ -12,6 +12,16 @@ public static class OpenAIModelCatalog {
     /// </summary>
     public const string DefaultModel = "gpt-5.5";
 
+    /// <summary>
+    /// Default model for low-latency text, image, and audio Realtime sessions.
+    /// </summary>
+    public const string DefaultRealtimeModel = "gpt-realtime-2.1";
+
+    /// <summary>
+    /// Current default model used by OpenAI's image-generation capability.
+    /// </summary>
+    public const string DefaultImageModel = "gpt-image-2";
+
     private static readonly string[] BaselineFallbackModels = {
         DefaultModel,
         "gpt-5.4",

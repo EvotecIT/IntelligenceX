@@ -727,7 +727,7 @@ public sealed partial class ServiceOptionsProfileBootstrapTests {
     }
 
     [Theory]
-    [InlineData("copilot-cli")]
+    [InlineData("copilot-native")]
     [InlineData("copilot")]
     [InlineData("github-copilot")]
     [InlineData("githubcopilot")]
@@ -736,7 +736,7 @@ public sealed partial class ServiceOptionsProfileBootstrapTests {
 
         Assert.NotNull(options);
         Assert.True(string.IsNullOrWhiteSpace(error));
-        Assert.Equal(OpenAITransportKind.CopilotCli, options.OpenAITransport);
+        Assert.Equal(OpenAITransportKind.CopilotNative, options.OpenAITransport);
     }
 
     private static void WithTemporaryEnvironmentVariable(string name, string? value, Action action) {

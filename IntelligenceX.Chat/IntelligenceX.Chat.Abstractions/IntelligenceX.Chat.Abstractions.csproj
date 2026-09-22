@@ -5,10 +5,11 @@
     <TargetFrameworks Condition="'$(TargetFrameworks)' == ''">net8.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\IntelligenceX.Shared\IntelligenceX.Shared.csproj" />
+    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX.csproj" />
   </ItemGroup>
 
 </Project>

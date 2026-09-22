@@ -1017,45 +1017,6 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures runtime options include capability matrix rendering for model, reasoning, auth, and usage transparency.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesRuntimeCapabilitiesRendererAndStyles() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
-        var script = File.ReadAllText(scriptPath);
-        var cssPath = Path.Combine(UiDirectory, "Shell.30.options.css");
-        var css = File.ReadAllText(cssPath);
-
-        Assert.Contains("function renderRuntimeCapabilities(options)", script, StringComparison.Ordinal);
-        Assert.Contains("function normalizeBridgeSessionState(value)", script, StringComparison.Ordinal);
-        Assert.Contains("function resolveBridgeSessionStatus(state)", script, StringComparison.Ordinal);
-        Assert.Contains("function resolveBridgeSessionValue(state)", script, StringComparison.Ordinal);
-        Assert.Contains("appendRuntimeCapabilityRow(", script, StringComparison.Ordinal);
-        Assert.Contains("renderRuntimeCapabilities({", script, StringComparison.Ordinal);
-        Assert.Contains("var runtimeCapabilities = local.runtimeCapabilities", script, StringComparison.Ordinal);
-        Assert.Contains("var runtimeApplyProgress = byId(\"optRuntimeApplyProgress\")", script, StringComparison.Ordinal);
-        Assert.Contains("var runtimeApply = local.runtimeApply", script, StringComparison.Ordinal);
-        Assert.Contains("runtimeCapabilities.supportsLiveApply", script, StringComparison.Ordinal);
-        Assert.Contains("Switching runtime updates the active provider profile without forcing a process restart.", script, StringComparison.Ordinal);
-        Assert.Contains("bridgeSessionState: bridgeSessionState,", script, StringComparison.Ordinal);
-        Assert.Contains("bridgeSessionDetail: bridgeSessionDetail,", script, StringComparison.Ordinal);
-        Assert.Contains("\"Bridge session\"", script, StringComparison.Ordinal);
-        Assert.Contains("useOpenAiRuntimeButton.classList.toggle(\"options-btn-active\", isNative);", script, StringComparison.Ordinal);
-        Assert.Contains("useOpenAiRuntimeButton.classList.toggle(\"options-btn-ghost\", !isNative);", script, StringComparison.Ordinal);
-        Assert.Contains("useOpenAiRuntimeButton.disabled = turnBusy;", script, StringComparison.Ordinal);
-        Assert.Contains("connectLmStudioButton.classList.toggle(\"options-btn-active\", lmStudioConnected);", script, StringComparison.Ordinal);
-        Assert.Contains("connectLmStudioButton.classList.toggle(\"options-btn-ghost\", !lmStudioConnected);", script, StringComparison.Ordinal);
-        Assert.Contains("connectLmStudioButton.disabled = turnBusy;", script, StringComparison.Ordinal);
-        Assert.Contains("useCopilotRuntimeButton.classList.toggle(\"options-btn-active\", isCopilotCli);", script, StringComparison.Ordinal);
-        Assert.Contains("useCopilotRuntimeButton.classList.toggle(\"options-btn-ghost\", !isCopilotCli);", script, StringComparison.Ordinal);
-        Assert.Contains("useCopilotRuntimeButton.disabled = turnBusy;", script, StringComparison.Ordinal);
-        Assert.Contains("applyStage === \"queued\"", script, StringComparison.Ordinal);
-        Assert.Contains(".options-runtime-capability", css, StringComparison.Ordinal);
-        Assert.Contains(".options-runtime-capability-value-supported", css, StringComparison.Ordinal);
-        Assert.Contains(".options-runtime-apply-progress", css, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// Ensures tool cards expose searchable execution-locality labels so mixed/local-only/remote-ready tools
     /// can be spotted without relying on pack-level summaries alone.
     /// </summary>

@@ -66,6 +66,9 @@ internal static class SetupProviderCatalog {
         return provider.Trim().ToLowerInvariant() is "claude" or "anthropic";
     }
 
+    public static bool IsCopilotProvider(string? provider) =>
+        string.Equals(provider?.Trim(), CopilotProvider, StringComparison.OrdinalIgnoreCase);
+
     public static bool RequiresManagedSecret(string? provider) {
         return IsOpenAiProvider(provider) || IsClaudeProvider(provider);
     }
@@ -91,11 +94,19 @@ internal static class SetupProviderCatalog {
     }
 
     public static string GetDefaultModel(string? provider) {
+        if (IsCopilotProvider(provider)) return string.Empty;
         if (IsClaudeProvider(provider)) {
             return DefaultClaudeModel;
         }
 
         return OpenAIModelCatalog.DefaultModel;
+    }
+
+    internal static string ResolveModel(string? provider, string? model) {
+        if (!string.IsNullOrWhiteSpace(model)) return model!.Trim();
+        if (IsCopilotProvider(provider))
+            throw new ArgumentException("Copilot setup requires --model with a model available to your account.");
+        return GetDefaultModel(provider);
     }
 
     public static IReadOnlyList<string> GetRecommendedModels(string? provider) {
@@ -171,7 +182,7 @@ internal static class SetupProviderCatalog {
         }
 
         if (string.Equals(provider, CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
-            return "Copilot setup relies on GitHub Copilot CLI instead of a managed provider secret in setup.";
+            return "Copilot uses native HTTP. Configure the COPILOT_GITHUB_TOKEN repository secret with a GitHub credential authorized for Copilot; setup does not upload this credential.";
         }
 
         return null;

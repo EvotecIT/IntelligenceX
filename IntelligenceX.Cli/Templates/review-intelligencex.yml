@@ -29,10 +29,6 @@ on:
         description: 'Optional Copilot model override for manual runs'
         required: false
         default: ''
-      copilot_launcher:
-        description: 'Copilot launcher override for manual runs (binary, gh, auto)'
-        required: false
-        default: ''
       openai_account_id:
         description: 'Override OpenAI account id for this run'
         required: false
@@ -133,10 +129,6 @@ on:
         type: string
       copilot_model:
         description: 'Copilot model override for reusable callers'
-        required: false
-        type: string
-      copilot_launcher:
-        description: 'Copilot launcher override for reusable callers'
         required: false
         type: string
       openai_account_id:

@@ -17,7 +17,7 @@ Built with WinUI 3 and WebView2, it combines a native desktop experience with a 
 ## Key Features
 
 - **System Tray Integration** -- Always accessible from your Windows taskbar via [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon)
-- **Clear Runtime Modes** -- ChatGPT Native, Copilot Subscription (`copilot-cli`), and Compatible HTTP (LM Studio/Ollama/Azure/other)
+- **Clear Runtime Modes** -- ChatGPT Native, Copilot Subscription (`copilot-native`), and Compatible HTTP (LM Studio/Ollama/Azure/other)
 - **Tool Calling** -- AI assistants can execute registered tool packs during conversations
 - **Persistent Conversations** -- Threads are saved locally and survive app restarts
 - **Zero-Trust Architecture** -- Your credentials never leave your machine

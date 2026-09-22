@@ -83,6 +83,9 @@ internal static partial class SetupRunner {
                 }
             }
 
+            if (!options.Cleanup && !options.UpdateSecret)
+                SetupProviderCatalog.ResolveModel(options.Provider, options.OpenAIModel);
+
             var state = new SetupState(options);
             await ResolveGitHubAuthAsync(state).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(state.GitHub.Token)) {

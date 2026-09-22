@@ -288,10 +288,10 @@ internal sealed partial class ChatServiceSession {
                 kind = OpenAITransportKind.CompatibleHttp;
                 return true;
             case "copilot":
-            case "copilot-cli":
+            case "copilot-native":
             case "github-copilot":
             case "githubcopilot":
-                kind = OpenAITransportKind.CopilotCli;
+                kind = OpenAITransportKind.CopilotNative;
                 return true;
             default:
                 return false;

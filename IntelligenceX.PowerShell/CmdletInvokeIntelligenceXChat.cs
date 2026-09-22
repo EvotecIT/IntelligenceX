@@ -322,13 +322,14 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
 
         if (Raw.IsPresent) {
             var rawClient = client.RequireAppServer();
+            var writeDelta = CapturePipelineWriter();
             void Handler(object? sender, IntelligenceX.Rpc.JsonRpcNotificationEventArgs args) {
                 if (!Stream.IsPresent) {
                     return;
                 }
                 var text = args.Params?.AsObject()?.GetObject("delta")?.GetString("text");
                 if (!string.IsNullOrWhiteSpace(text)) {
-                    WriteObject(text);
+                    writeDelta(text);
                 }
             }
 
@@ -383,9 +384,10 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
 
         IDisposable? subscription = null;
         if (Stream.IsPresent) {
+            var writeDelta = CapturePipelineWriter();
             subscription = client.SubscribeDelta(text => {
                 if (!string.IsNullOrWhiteSpace(text)) {
-                    WriteObject(text);
+                    writeDelta(text);
                 }
             });
         }

@@ -59,7 +59,7 @@ public sealed partial class MainWindow : Window {
     private const string DefaultLocalModel = OpenAIModelCatalog.DefaultModel;
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
-    private const string TransportCopilotCli = "copilot-cli";
+    private const string TransportCopilotNative = "copilot-native";
     private const string DefaultOllamaBaseUrl = ChatServiceLaunchProfileMapper.DefaultOllamaBaseUrl;
     private const string DefaultLmStudioBaseUrl = ChatServiceLaunchProfileMapper.DefaultLmStudioBaseUrl;
     private static readonly TimeSpan StreamingTranscriptRenderCadence = TimeSpan.FromMilliseconds(80);

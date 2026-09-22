@@ -1,5 +1,5 @@
 using IntelligenceX.Configuration;
-using IntelligenceX.Copilot;
+using IntelligenceX.Copilot.Native;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.Native;
@@ -32,9 +32,9 @@ public sealed class IntelligenceXClientOptions {
     /// </summary>
     public OpenAICompatibleHttpOptions CompatibleHttpOptions { get; } = new();
     /// <summary>
-    /// Options for the Copilot CLI transport.
+    /// Options for native Copilot authentication and inference.
     /// </summary>
-    public CopilotClientOptions CopilotOptions { get; } = CreateDefaultCopilotOptions();
+    public CopilotNativeOptions CopilotOptions { get; set; } = new();
     /// <summary>
     /// Selected transport for API calls.
     /// </summary>
@@ -121,7 +121,7 @@ public sealed class IntelligenceXClientOptions {
             case OpenAITransportKind.CompatibleHttp:
                 CompatibleHttpOptions.Validate();
                 break;
-            case OpenAITransportKind.CopilotCli:
+            case OpenAITransportKind.CopilotNative:
                 CopilotOptions.Validate();
                 break;
             default:
@@ -145,10 +145,4 @@ public sealed class IntelligenceXClientOptions {
         return true;
     }
 
-    private static CopilotClientOptions CreateDefaultCopilotOptions() {
-        return new CopilotClientOptions {
-            AutoInstallCli = true,
-            AutoInstallMethod = CopilotCliInstallMethod.Auto
-        };
-    }
 }

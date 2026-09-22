@@ -149,10 +149,7 @@ internal static partial class Program {
                 runtimePolicyContext,
                 warning => CollectPackWarning(runtimePackWarnings, warning));
             var nextPacks = nextBootstrapResult.Packs;
-            var clientOptions = new IntelligenceXClientOptions {
-                TransportKind = options.OpenAITransport,
-                DefaultModel = options.Model
-            };
+            var clientOptions = BuildTransportClientOptions(options);
             if (options.ImageGenerationEnabledOverride.HasValue) {
                 clientOptions.NativeOptions.ImageGeneration.Enabled = options.ImageGenerationEnabledOverride.Value;
             }
@@ -168,14 +165,6 @@ internal static partial class Program {
             runtimeInstructions = string.IsNullOrWhiteSpace(shaped) ? null : shaped;
             if (clientOptions.TransportKind == OpenAITransportKind.Native && !string.IsNullOrWhiteSpace(runtimeInstructions)) {
                 clientOptions.NativeOptions.Instructions = runtimeInstructions!;
-            }
-
-            if (clientOptions.TransportKind == OpenAITransportKind.CompatibleHttp) {
-                clientOptions.CompatibleHttpOptions.BaseUrl = options.OpenAIBaseUrl;
-                clientOptions.CompatibleHttpOptions.ApiKey = options.OpenAIApiKey;
-                clientOptions.CompatibleHttpOptions.Streaming = options.OpenAIStreaming;
-                clientOptions.CompatibleHttpOptions.AllowInsecureHttp = options.OpenAIAllowInsecureHttp;
-                clientOptions.CompatibleHttpOptions.AllowInsecureHttpNonLoopback = options.OpenAIAllowInsecureHttpNonLoopback;
             }
 
             var authPath = ResolveAuthPath(options);
@@ -645,7 +634,7 @@ internal static partial class Program {
         Console.WriteLine("  --clear-image-generation-output-compression Clear the saved image compression override.");
         Console.WriteLine("  --image-generation-background <VALUE> Image background override (for example: auto|transparent).");
         Console.WriteLine("  --image-generation-output-directory <PATH> Directory for saved image outputs.");
-        Console.WriteLine("  --openai-transport <KIND>  Provider transport: native|appserver|compatible-http|copilot-cli (default: native).");
+        Console.WriteLine("  --openai-transport <KIND>  Provider transport: native|appserver|compatible-http|copilot-native (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");
         Console.WriteLine("  --openai-stream         Request streaming responses (default: on).");

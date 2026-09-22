@@ -48,7 +48,7 @@ internal static class DesktopRuntimeIdentityResolver {
             "native" => "native",
             "appserver" or "app-server" => "appserver",
             "compatible-http" or "compatiblehttp" or "http" => "compatible-http",
-            "copilot-cli" or "copilotcli" => "copilot-cli",
+            "copilot-native" or "copilot" or "github-copilot" => "copilot-native",
             _ => "unknown"
         };
     }

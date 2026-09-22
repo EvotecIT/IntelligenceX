@@ -92,7 +92,7 @@ public sealed class InternalIxUsageTelemetrySession : IDisposable {
                 return "chatgpt";
             case OpenAITransportKind.AppServer:
                 return "codex";
-            case OpenAITransportKind.CopilotCli:
+            case OpenAITransportKind.CopilotNative:
                 return "copilot";
             case OpenAITransportKind.CompatibleHttp:
                 return OpenAICompatibleHttpProviderDetector.InferTelemetryProviderId(options.CompatibleHttpOptions.BaseUrl)

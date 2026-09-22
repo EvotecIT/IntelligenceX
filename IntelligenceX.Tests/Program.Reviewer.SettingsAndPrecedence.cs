@@ -620,22 +620,18 @@ internal static partial class Program {
         try {
             File.WriteAllText(configPath, """
 {
-  "copilot": {
-    "autoInstall": true
-  },
   "review": {
     "provider": "openai",
     "model": "gpt-5.4",
     "agentProfile": "copilot-claude",
     "agentProfiles": {
       "copilot-claude": {
-        "authenticator": "copilot-cli",
+        "authenticator": "copilot",
         "model": "claude-sonnet-4-5",
-        "autoInstall": "false",
         "copilot": {
-          "launcher": "auto",
-          "autoInstallPrerelease": "false",
-          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+          "baseUrl": "https://copilot.example",
+          "tokenEnv": "COPILOT_PROFILE_TOKEN",
+          "timeoutSeconds": 90
         }
       },
       "chatgpt-codex": {
@@ -672,13 +668,9 @@ internal static partial class Program {
                 "review settings config agent profile model overrides env");
             AssertEqual("claude-sonnet-4-5", settings.CopilotModel ?? string.Empty,
                 "review settings agent profile copilot explicit model");
-            AssertEqual("auto", settings.CopilotLauncher, "review settings agent profile copilot launcher");
-            AssertEqual(true, settings.CopilotAutoInstall,
-                "review settings agent profile malformed nullable bool preserves existing auto install");
-            AssertEqual(false, settings.CopilotAutoInstallPrerelease,
-                "review settings agent profile malformed prerelease bool is ignored");
-            AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, settings.CopilotEnvAllowlist.ToArray(),
-                "review settings agent profile copilot env allowlist");
+            AssertEqual("https://copilot.example", settings.CopilotBaseUrl, "copilot profile endpoint");
+            AssertEqual("COPILOT_PROFILE_TOKEN", settings.CopilotTokenEnvironmentVariable, "copilot profile credential source");
+            AssertEqual(90, settings.CopilotRequestTimeoutSeconds, "copilot profile timeout");
 
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "chatgpt-codex");
             settings = ReviewSettings.Load();

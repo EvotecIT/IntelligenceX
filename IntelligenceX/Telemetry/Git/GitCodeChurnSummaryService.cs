@@ -112,11 +112,6 @@ internal sealed class GitCodeChurnSummaryService {
     private static IEnumerable<string> EnumerateDiscoveryCandidates() {
         yield return Directory.GetCurrentDirectory();
         yield return AppContext.BaseDirectory;
-
-        var entryAssemblyLocation = System.Reflection.Assembly.GetEntryAssembly()?.Location;
-        if (!string.IsNullOrWhiteSpace(entryAssemblyLocation)) {
-            yield return Path.GetDirectoryName(entryAssemblyLocation)!;
-        }
     }
 
     private static bool IsRepositoryRoot(string path) {

@@ -478,6 +478,11 @@ public sealed record ChatResultMessage : ChatServiceMessage {
     /// </summary>
     public ToolRunDto? Tools { get; init; }
     /// <summary>
+    /// Optional generated image outputs. Payload bytes remain in the provider/core layer; this contract
+    /// carries stable file or URL references suitable for app surfaces.
+    /// </summary>
+    public ChatImageOutputDto[]? Images { get; init; }
+    /// <summary>
     /// Optional structured timeline captured for this completed turn.
     /// </summary>
     public TurnTimelineEventDto[]? TurnTimelineEvents { get; init; }
@@ -485,4 +490,22 @@ public sealed record ChatResultMessage : ChatServiceMessage {
     /// Optional normalized autonomy telemetry summary for this turn.
     /// </summary>
     public AutonomyTelemetryDto? AutonomyTelemetry { get; init; }
+}
+
+/// <summary>
+/// Describes a generated image returned by a completed chat turn.
+/// </summary>
+public sealed record ChatImageOutputDto {
+    /// <summary>
+    /// Optional provider-hosted image URL.
+    /// </summary>
+    public string? Url { get; init; }
+    /// <summary>
+    /// Optional local path where the service saved the generated image.
+    /// </summary>
+    public string? Path { get; init; }
+    /// <summary>
+    /// Optional image MIME type.
+    /// </summary>
+    public string? MimeType { get; init; }
 }

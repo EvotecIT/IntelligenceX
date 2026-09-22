@@ -38,6 +38,10 @@ public sealed class OpenAICompatibleHttpOptions {
     /// Whether to request streaming responses when supported by the provider.
     /// </summary>
     public bool Streaming { get; set; } = true;
+    /// <summary>Whether HTTP redirects may move requests away from the configured endpoint.</summary>
+    public bool AllowAutoRedirect { get; set; } = true;
+    /// <summary>Whether system proxy settings may route requests through a proxy.</summary>
+    public bool UseProxy { get; set; } = true;
 
     /// <summary>
     /// When true, allows insecure <c>http://</c> URLs (loopback only).
