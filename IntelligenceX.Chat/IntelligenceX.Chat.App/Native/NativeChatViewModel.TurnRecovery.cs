@@ -10,7 +10,7 @@ internal sealed partial class NativeChatViewModel {
     private async Task TryRecordAccountUsageAsync(TokenUsageDto? usage) {
         if (usage is null || _conversationStore is not INativeAccountUsageStore accountUsageStore) return;
         try {
-            await accountUsageStore.RecordUsageAsync(_nativeUsageAccountId, usage, CancellationToken.None)
+            await accountUsageStore.RecordUsageAsync(AuthenticatedAccountId, usage, CancellationToken.None)
                 .ConfigureAwait(false);
         } catch (Exception ex) {
             StartupLog.Write("Native account usage could not be saved; the completed turn is retained: " + ex);

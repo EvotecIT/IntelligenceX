@@ -40,7 +40,6 @@ internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
     private bool _isConversationStateLoaded;
     private int _sendStarting;
     private string? _activeTurnRequestId;
-    private string? _nativeUsageAccountId;
     private CancellationTokenSource? _activeTurnCts;
 
     public NativeChatViewModel(
@@ -664,7 +663,6 @@ internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
             var queued = await QueueTurnAfterSignInAsync(text, conversation.Id).ConfigureAwait(false);
             await RunOnUiAsync(() => {
                 EnsureAssistantItemPresent();
-                _nativeUsageAccountId = null;
                 AuthenticationState = NativeAuthenticationState.Required;
                 SignInText = "Sign-in required";
                 assistantItem.Text = queued
@@ -872,7 +870,6 @@ internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
     private void ApplyLoginResult(NativeLoginResult result) {
         RunOnUi(() => {
             if (result.IsAuthenticated) {
-                _nativeUsageAccountId = result.AccountId;
                 SignInText = string.IsNullOrWhiteSpace(result.AccountId)
                     ? "Signed in"
                     : "Signed in: " + result.AccountId!.Trim();
@@ -883,7 +880,6 @@ internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
             }
 
             if (result.IsCanceled) {
-                _nativeUsageAccountId = null;
                 SignInText = "Sign-in required";
                 AuthenticationState = NativeAuthenticationState.Required;
                 StatusText = "Sign-in canceled";
@@ -893,7 +889,6 @@ internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
             SignInText = string.IsNullOrWhiteSpace(result.Error)
                 ? "Sign-in required"
                 : "Sign-in failed";
-            _nativeUsageAccountId = null;
             AuthenticationState = string.IsNullOrWhiteSpace(result.Error)
                 ? NativeAuthenticationState.Required
                 : NativeAuthenticationState.Failed;
