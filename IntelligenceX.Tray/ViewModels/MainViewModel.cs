@@ -70,7 +70,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly DispatcherTimer _usageDirtyRefreshTimer;
     private readonly UsageChangeWatcher _usageChangeWatcher;
     private readonly DateTimeOffset _startupQuietWindowEndsUtc = DateTimeOffset.UtcNow.AddSeconds(StartupWarmRefreshDelaySeconds);
-    private readonly HashSet<string> _activeLimitNotificationKeys = new(StringComparer.Ordinal);
+    private readonly LimitNotificationWindowTracker _limitNotificationWindows = new();
     private readonly HashSet<string> _favoriteProviderIds;
     private readonly Dictionary<string, ProviderLimitSnapshot> _latestLimitSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, List<SourceRootRecord>> _latestSourceRootsByProvider = new(StringComparer.OrdinalIgnoreCase);
@@ -116,7 +116,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private bool _notificationsEnabled;
     private bool _closeHidesToTray;
     private bool _startWithWindows;
-    private bool _hasCompletedInitialRefresh;
+    private bool _hasObservedInitialLimitWindows;
     private DateTimeOffset _lastGitHubWatchAutoSyncAttemptUtc;
     private DateTimeOffset _lastUsageSnapshotScannedAtUtc;
     private DateTimeOffset _lastUsageRootDiscoveryUtc;
@@ -950,7 +950,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 _ = RefreshProviderLimitsAsync(providerIds, refreshData.ScanInfo);
                 var ghLogin = GitHub.UsernameInput;
                 _ = RefreshGitHubAsync(ghLogin);
-                _hasCompletedInitialRefresh = true;
             }
         } catch (Exception ex) {
             StatusText = $"Error: {ex.Message}";
@@ -1115,7 +1114,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _preferences.NotificationsEnabled = enabled;
         SavePreferences();
         if (!enabled) {
-            _activeLimitNotificationKeys.Clear();
+            _limitNotificationWindows.Clear();
         }
 
         StatusText = enabled ? "Limit notifications enabled." : "Limit notifications paused.";
@@ -1892,6 +1891,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         var activeKeys = new HashSet<string>(StringComparer.Ordinal);
+        var observedKeys = new HashSet<string>(StringComparer.Ordinal);
+        var nowUtc = DateTimeOffset.UtcNow;
         foreach (var snapshot in limitSnapshots.Values) {
             if (snapshot.Accounts.Count == 0) {
                 EvaluateWindows(snapshot, snapshot.Windows, snapshot.AccountLabel ?? "selected", snapshot.AccountLabel);
@@ -1905,27 +1906,31 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             }
         }
 
-        _activeLimitNotificationKeys.RemoveWhere(key => !activeKeys.Contains(key));
+        _limitNotificationWindows.RetainObserved(activeKeys, observedKeys);
+        if (observedKeys.Count > 0) _hasObservedInitialLimitWindows = true;
 
         void EvaluateWindows(ProviderLimitSnapshot snapshot, IReadOnlyList<ProviderLimitWindow> windows,
             string accountIdentity, string? accountLabel) {
             foreach (var window in windows) {
+                // A present window without usage is not proof that utilization fell.
+                if (!window.UsedPercent.HasValue) continue;
+                var warningKey = BuildLimitNotificationKey(snapshot.ProviderId, accountIdentity, window, LimitNotificationLevel.Warning);
+                var exhaustedKey = BuildLimitNotificationKey(snapshot.ProviderId, accountIdentity, window, LimitNotificationLevel.Exhausted);
+                observedKeys.Add(warningKey);
+                observedKeys.Add(exhaustedKey);
                 var level = GetNotificationLevel(window.UsedPercent);
                 if (level is null) {
                     continue;
                 }
 
-                var key = BuildLimitNotificationKey(snapshot.ProviderId, accountIdentity, window, level.Value);
+                var key = level == LimitNotificationLevel.Warning ? warningKey : exhaustedKey;
+                if (level == LimitNotificationLevel.Exhausted) {
+                    // Crossing back down from exhausted must not replay the 90% warning.
+                    activeKeys.Add(warningKey);
+                    _limitNotificationWindows.Observe(warningKey, window.ResetsAt, nowUtc);
+                }
                 activeKeys.Add(key);
-
-                if (!_hasCompletedInitialRefresh) {
-                    _activeLimitNotificationKeys.Add(key);
-                    continue;
-                }
-
-                if (!_activeLimitNotificationKeys.Add(key)) {
-                    continue;
-                }
+                if (!_limitNotificationWindows.Observe(key, window.ResetsAt, nowUtc) || !_hasObservedInitialLimitWindows) continue;
 
                 NotificationRequested?.Invoke(this, new TrayNotificationRequestedEventArgs(
                     title: level == LimitNotificationLevel.Exhausted
@@ -2120,9 +2125,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private static string BuildLimitNotificationKey(string providerId, string accountIdentity,
         ProviderLimitWindow window, LimitNotificationLevel level) {
-        // Relative reset-after values are re-materialized against the read time. Their ticks
-        // change on every refresh even when usage has not changed, so dedupe by the active
-        // account/window/threshold until a below-threshold reading rearms the notification.
+        // Generation changes are handled by LimitNotificationWindowTracker rather
+        // than including drifting relative reset timestamps in this stable key.
         return string.Join("|", providerId, accountIdentity, window.Key, level);
     }
 

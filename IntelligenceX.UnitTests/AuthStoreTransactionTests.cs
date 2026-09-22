@@ -175,6 +175,32 @@ public sealed class AuthStoreTransactionTests : IDisposable {
     }
 
     [Fact]
+    public async Task NearExpiryAliasIsRefreshedInsteadOfReturnedAsReusable() {
+        var stale = new AuthBundle("openai-codex", "stale", "stale-refresh", DateTimeOffset.UtcNow.AddMinutes(-5)) {
+            AccountId = "account"
+        };
+        var alias = new AuthBundle("openai", "near-expiry", "alias-refresh", DateTimeOffset.UtcNow.AddSeconds(30)) {
+            AccountId = "account"
+        };
+        await Store().SaveAsync(stale);
+        await Store().SaveAsync(alias);
+        var refreshes = 0;
+
+        var result = await Store().RefreshAsync(stale, (current, _) => {
+            refreshes++;
+            Assert.Equal("alias-refresh", current.RefreshToken);
+            return Task.FromResult(new AuthBundle("openai-codex", "renewed", "rotated", DateTimeOffset.UtcNow.AddHours(1)) {
+                AccountId = "account"
+            });
+        }, CancellationToken.None, TimeSpan.FromMinutes(1));
+
+        Assert.Equal(1, refreshes);
+        Assert.Equal("renewed", result.AccessToken);
+        Assert.Equal("rotated", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+        Assert.Null(await Store().GetAsync("openai", "account"));
+    }
+
+    [Fact]
     public async Task NewerCanonicalWinsAndRemovesAnOlderAlias() {
         var canonical = Bundle("account", "fresh");
         var alias = new AuthBundle("openai", "stale", "stale", DateTimeOffset.UtcNow.AddMinutes(-5)) {
@@ -204,6 +230,45 @@ public sealed class AuthStoreTransactionTests : IDisposable {
         Assert.Equal("only-refresh", chosen.RefreshToken);
         Assert.Null(await Store().GetAsync("openai", "account"));
         Assert.Equal("only-refresh", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+    }
+
+    [Fact]
+    public async Task ForegroundRefreshUsesRenewableCanonicalInsteadOfLaterNonrenewableAlias() {
+        var canonical = new AuthBundle("openai-codex", "older", "only-refresh", DateTimeOffset.UtcNow.AddMinutes(-5)) {
+            AccountId = "account"
+        };
+        var alias = new AuthBundle("openai", "later-access", "", DateTimeOffset.UtcNow.AddSeconds(30)) {
+            AccountId = "account"
+        };
+        await Store().SaveAsync(canonical);
+        await Store().SaveAsync(alias);
+        var tokens = new List<string>();
+        var manager = new OpenAINativeAuthManager(new OpenAINativeOptions {
+            AuthStore = Store(), AuthAccountId = "account", LoadCodexAuthJson = false, PersistCodexAuthJson = false
+        }, (_, source, _) => {
+            tokens.Add(source.RefreshToken);
+            return Task.FromResult(new OAuthLoginResult(new AuthBundle("openai-codex", "renewed", "rotated",
+                DateTimeOffset.UtcNow.AddHours(1)) { AccountId = "account" }, new()));
+        });
+
+        var result = await manager.TryGetValidBundleAsync(CancellationToken.None);
+
+        Assert.Equal("renewed", result!.AccessToken);
+        Assert.Equal(new[] { "only-refresh" }, tokens);
+        Assert.Null(await Store().GetAsync("openai", "account"));
+    }
+
+    [Fact]
+    public async Task ValidAccessOnlyAliasDoesNotRefreshBecauseAnOlderCanonicalIsRenewable() {
+        await Store().SaveAsync(new AuthBundle("openai-codex", "older", "only-refresh",
+            DateTimeOffset.UtcNow.AddMinutes(-5)) { AccountId = "account" });
+        await Store().SaveAsync(new AuthBundle("openai", "valid-access", "",
+            DateTimeOffset.UtcNow.AddHours(1)) { AccountId = "account" });
+        var manager = new OpenAINativeAuthManager(new OpenAINativeOptions {
+            AuthStore = Store(), AuthAccountId = "account", LoadCodexAuthJson = false, PersistCodexAuthJson = false
+        }, (_, _, _) => throw new InvalidOperationException("A valid access token must not trigger refresh."));
+
+        Assert.Equal("valid-access", (await manager.TryGetValidBundleAsync(CancellationToken.None))!.AccessToken);
     }
 
     [Fact]

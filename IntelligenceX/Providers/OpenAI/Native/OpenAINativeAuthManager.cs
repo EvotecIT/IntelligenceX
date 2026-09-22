@@ -79,7 +79,7 @@ internal sealed class OpenAINativeAuthManager {
                 var result = await _refreshOAuthAsync(_options.OAuth, current, token).ConfigureAwait(false);
                 result.Bundle.AccountId ??= current.AccountId ?? JwtDecoder.TryGetAccountId(result.Bundle.AccessToken);
                 return result.Bundle;
-            }, cancellationToken).ConfigureAwait(false);
+            }, cancellationToken, ExpirySkew).ConfigureAwait(false);
             ExportCodexBundle(refreshed, fileAccountId, fileRefreshToken, refresh: true);
             return refreshed;
         }
@@ -180,6 +180,10 @@ internal sealed class OpenAINativeAuthManager {
                 var refreshCandidate = current;
                 if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
                     var storedBundle = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
+                    if (storedBundle is not null && SameSelectedAccount(storedBundle, refreshCandidate)
+                        && _options.AuthStore is FileAuthBundleStore selectedFileStore)
+                        storedBundle = await selectedFileStore.SelectPreferredOpenAiAliasAsync(storedBundle, cancellationToken)
+                            .ConfigureAwait(false);
                     refreshCandidate = SelectRefreshCandidate(refreshCandidate, storedBundle);
                 }
                 if (string.IsNullOrWhiteSpace(refreshCandidate.RefreshToken)) {
@@ -214,7 +218,7 @@ internal sealed class OpenAINativeAuthManager {
                         var result = await _refreshOAuthAsync(_options.OAuth, source, token).ConfigureAwait(false);
                         result.Bundle.AccountId ??= candidate.AccountId ?? JwtDecoder.TryGetAccountId(result.Bundle.AccessToken);
                         return result.Bundle;
-                    }, cancellationToken).ConfigureAwait(false);
+                    }, cancellationToken, ExpirySkew).ConfigureAwait(false);
                     EnsureCurrentOperation(operation, synchronized.AccountId, cancellationToken);
                     ExportCodexBundle(synchronized, fileAccountId, fileRefreshToken, refresh: true);
                     return synchronized;
@@ -282,7 +286,7 @@ internal sealed class OpenAINativeAuthManager {
         return await fileStore.RefreshAsync(stored, (latest, _) => Task.FromResult(
             SameSelectedAccount(latest, ambient)
             && (ambient.ExpiresAt ?? DateTimeOffset.MinValue) > (latest.ExpiresAt ?? DateTimeOffset.MinValue)
-                ? ambient : latest), cancellationToken).ConfigureAwait(false);
+                ? ambient : latest), cancellationToken, ExpirySkew).ConfigureAwait(false);
     }
 
     private AuthBundle? TryGetCodexBundle() {

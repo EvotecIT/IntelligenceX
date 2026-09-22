@@ -74,10 +74,12 @@ public sealed partial class FileAuthBundleStore {
     /// A deleted account is never silently restored by a background refresh.
     /// </summary>
     internal async Task<AuthBundle> RefreshAsync(AuthBundle expected,
-        Func<AuthBundle, CancellationToken, Task<AuthBundle>> refresh, CancellationToken cancellationToken) {
+        Func<AuthBundle, CancellationToken, Task<AuthBundle>> refresh, CancellationToken cancellationToken,
+        TimeSpan minimumRemainingLifetime = default) {
         var initial = expected;
         expected = await SelectPreferredOpenAiAliasAsync(expected, cancellationToken).ConfigureAwait(false);
-        if (!SameCredentials(expected, initial.AccessToken, initial.RefreshToken) && !expected.IsExpired())
+        if (!SameCredentials(expected, initial.AccessToken, initial.RefreshToken)
+            && !expected.IsExpired(DateTimeOffset.UtcNow.Add(minimumRemainingLifetime)))
             return expected;
         var key = BuildKey(expected.Provider, expected.AccountId);
         var logicalAccountId = expected.AccountId ?? JwtDecoder.TryGetAccountId(expected.AccessToken);
@@ -89,8 +91,11 @@ public sealed partial class FileAuthBundleStore {
             var before = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
             if (!string.Equals(key, canonicalKey, StringComparison.OrdinalIgnoreCase)
                 && before is not null && before.Bundles.TryGetValue(canonicalKey, out var canonical)
-                && SameAccountIdentity(canonical, expected))
-                return canonical;
+                && SameAccountIdentity(canonical, expected)) {
+                if (!canonical.IsExpired(DateTimeOffset.UtcNow.Add(minimumRemainingLifetime))) return canonical;
+                key = canonicalKey;
+                expected = canonical;
+            }
             // Older saves used a provider-only key even when the JWT contains an
             // account identity. The selected account's inferred identity may be
             // used to find it, but never to select a different legacy login.
@@ -104,7 +109,8 @@ public sealed partial class FileAuthBundleStore {
             current = RequireAccount(before, key);
         }
         if (!SameCredentials(current, expected.AccessToken, expected.RefreshToken)) {
-            return current;
+            if (!current.IsExpired(DateTimeOffset.UtcNow.Add(minimumRemainingLifetime))) return current;
+            expected = current;
         }
         // OAuth implementations may mutate the supplied bundle in place.
         var accessToken = current.AccessToken;
