@@ -98,6 +98,32 @@ public sealed class DesktopChatConversationStateMergerTests {
         Assert.Equal("Complete", message.Status);
     }
 
+    /// <summary>Legacy settings saves must retain native terminal message states.</summary>
+    [Fact]
+    public void CarryMessageStatuses_PreservesDistinctTerminalRowsAndConcurrentUpdates() {
+        var time = new DateTime(2026, 9, 22, 12, 0, 0, DateTimeKind.Utc);
+        var baseline = BuildConversation(time, "failed", "canceled");
+        baseline.Messages[0].Status = "Error";
+        baseline.Messages[1].Status = "Canceled";
+        var projected = baseline.Messages.Select(DesktopChatConversationStateMerger.CloneMessage).ToList();
+        projected[0].Status = null;
+        projected[0].Text = "normalized failure text";
+        projected[1].Status = null;
+
+        DesktopChatConversationStateMerger.CarryMessageStatuses(baseline.Messages, projected);
+        var concurrent = DesktopChatConversationStateMerger.CloneConversation(baseline);
+        concurrent.Messages[1].Status = "Complete with warning";
+        concurrent.UpdatedUtc = time.AddMinutes(1);
+        var local = DesktopChatConversationStateMerger.CloneConversation(baseline);
+        local.Messages = projected;
+        var merged = DesktopChatConversationStateMerger.MergeConversation(local, baseline, concurrent);
+
+        Assert.Equal("Error", projected[0].Status);
+        Assert.Equal("Canceled", projected[1].Status);
+        Assert.Equal("Error", merged!.Messages[0].Status);
+        Assert.Equal("Complete with warning", merged.Messages[1].Status);
+    }
+
     /// <summary>Ensures consuming one action does not discard a concurrently-created action.</summary>
     [Fact]
     public void MergeConversation_ConsumesBaselineActionAndKeepsConcurrentAddition() {

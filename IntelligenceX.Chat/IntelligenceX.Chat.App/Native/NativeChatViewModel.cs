@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -15,7 +16,7 @@ namespace IntelligenceX.Chat.App.Native;
 /// <summary>
 /// Native chat view model with no WebView or HTML dependency.
 /// </summary>
-internal sealed class NativeChatViewModel : INotifyPropertyChanged {
+internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
     private static readonly TimeSpan SignInCheckTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan InteractiveSignInTimeout = TimeSpan.FromSeconds(190);
 
@@ -39,6 +40,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     private bool _isConversationStateLoaded;
     private int _sendStarting;
     private string? _activeTurnRequestId;
+    private string? _nativeUsageAccountId;
     private CancellationTokenSource? _activeTurnCts;
 
     public NativeChatViewModel(
@@ -548,19 +550,44 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                 assistantItem.SetModel(requestOptions?.Model);
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
-            var result = await _runtime.RunTurnAsync(
-                    new ChatRequest {
-                        RequestId = requestId,
-                        ThreadId = conversation.ThreadId,
-                        Text = requestText,
-                        Options = requestOptions
-                    },
-                    (update, _) => ApplyTurnUpdateAsync(update, assistantItem, accumulator),
-                    cts.Token)
-                .ConfigureAwait(false);
+            var request = new ChatRequest {
+                RequestId = requestId,
+                ThreadId = conversation.ThreadId,
+                Text = requestText,
+                Options = requestOptions
+            };
+            ChatTurnRunResult result;
+            try {
+                result = await _runtime.RunTurnAsync(request,
+                    (update, _) => ApplyTurnUpdateAsync(update, assistantItem, accumulator), cts.Token)
+                    .ConfigureAwait(false);
+            } catch (Exception ex) when (!cts.IsCancellationRequested
+                                         && !string.IsNullOrWhiteSpace(conversation.ThreadId)
+                                         && ChatThreadRecoveryHeuristics.IsMissingTransportThreadError(ex)) {
+                conversation.ThreadId = null;
+                accumulator.Reset();
+                await RunOnUiAsync(() => {
+                    assistantItem.Text = string.Empty;
+                    assistantItem.Status = "Recovering stale thread...";
+                    StatusText = "Recovering stale runtime thread...";
+                    conversation.UpdatedUtc = DateTime.UtcNow;
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
+                await TryPersistConversationsAsync().ConfigureAwait(false);
+                result = await _runtime.RunTurnAsync(request with { ThreadId = null },
+                    (update, _) => ApplyTurnUpdateAsync(update, assistantItem, accumulator), cts.Token)
+                    .ConfigureAwait(false);
+            }
 
             DesktopAssistantTurnProtocolResult? normalizedTurn = null;
             string? normalizationWarning = null;
+            IReadOnlyList<string> artifacts;
+            try {
+                artifacts = NativeTurnArtifactFormatter.Format(result.Response);
+            } catch (Exception ex) {
+                StartupLog.Write("Native turn artifacts could not be projected; preserving completed response: " + ex);
+                artifacts = Array.Empty<string>();
+            }
             if (_assistantTurnNormalizer is not null) {
                 try {
                     normalizedTurn = await _assistantTurnNormalizer(conversation, result.Response.Text, cts.Token)
@@ -601,6 +628,11 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                     ? requestOptions?.Model
                     : result.Metrics!.Model);
                 assistantItem.Status = normalizationWarning is null ? "Complete" : "Complete with warning";
+                foreach (var artifact in artifacts) {
+                    var artifactItem = new NativeChatTranscriptItem("assistant", artifact, DateTimeOffset.Now, "Complete");
+                    conversation.Messages.Add(artifactItem);
+                    Transcript.Add(artifactItem);
+                }
                 conversation.ThreadId = string.IsNullOrWhiteSpace(result.Response.ThreadId)
                     ? conversation.ThreadId
                     : result.Response.ThreadId;
@@ -609,6 +641,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
             await TryPersistConversationsAsync().ConfigureAwait(false);
+            await TryRecordAccountUsageAsync(result.Metrics?.Usage).ConfigureAwait(false);
             return true;
         } catch (OperationCanceledException) {
             await RunOnUiAsync(() => {
@@ -619,6 +652,24 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
                 }
 
                 StatusText = "Canceled";
+                conversation.UpdatedUtc = DateTime.UtcNow;
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+            await TryPersistConversationsAsync().ConfigureAwait(false);
+            return false;
+        } catch (ChatServiceRequestException ex) when (string.Equals(ex.Code, "not_authenticated", StringComparison.OrdinalIgnoreCase)) {
+            var queued = await QueueTurnAfterSignInAsync(text, conversation.Id).ConfigureAwait(false);
+            await RunOnUiAsync(() => {
+                EnsureAssistantItemPresent();
+                _nativeUsageAccountId = null;
+                AuthenticationState = NativeAuthenticationState.Required;
+                SignInText = "Sign-in required";
+                assistantItem.Text = queued
+                    ? "Sign in, then run the queued turn."
+                    : "Sign in and send this message again.";
+                assistantItem.Status = "Sign-in required";
+                if (!queued) Draft = text;
+                StatusText = queued ? "Sign-in required · prompt queued" : "Sign-in required";
                 conversation.UpdatedUtc = DateTime.UtcNow;
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
@@ -818,6 +869,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
     private void ApplyLoginResult(NativeLoginResult result) {
         RunOnUi(() => {
             if (result.IsAuthenticated) {
+                _nativeUsageAccountId = result.AccountId;
                 SignInText = string.IsNullOrWhiteSpace(result.AccountId)
                     ? "Signed in"
                     : "Signed in: " + result.AccountId!.Trim();
@@ -827,6 +879,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             }
 
             if (result.IsCanceled) {
+                _nativeUsageAccountId = null;
                 SignInText = "Sign-in required";
                 AuthenticationState = NativeAuthenticationState.Required;
                 StatusText = "Sign-in canceled";
@@ -836,6 +889,7 @@ internal sealed class NativeChatViewModel : INotifyPropertyChanged {
             SignInText = string.IsNullOrWhiteSpace(result.Error)
                 ? "Sign-in required"
                 : "Sign-in failed";
+            _nativeUsageAccountId = null;
             AuthenticationState = string.IsNullOrWhiteSpace(result.Error)
                 ? NativeAuthenticationState.Required
                 : NativeAuthenticationState.Failed;
