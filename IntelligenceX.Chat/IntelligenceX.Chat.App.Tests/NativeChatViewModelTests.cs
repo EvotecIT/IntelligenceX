@@ -95,6 +95,37 @@ public sealed class NativeChatViewModelTests {
         Assert.Contains(model.Transcript, item => item.IsAssistant && item.Text == "Healthy");
     }
 
+    /// <summary>A normal send cannot consume the slot while a queued turn is being claimed.</summary>
+    [Fact]
+    public async Task RunNextQueuedTurnAsync_ReservesSendBeforeAwaitingClaim() {
+        var conversation = new NativeConversation("chat-queued", "Queued");
+        var queued = new NativeQueuedTurn("Keep queued prompt", conversation.Id, DateTime.UtcNow,
+            SkipUserBubbleOnDispatch: false, NativeQueuedTurnSource.Pending);
+        var store = new FakeConversationStore(new NativeConversationWorkspace(
+            [conversation], conversation.Id, queuedTurns: [queued])) {
+            ClaimStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+            ReleaseClaim = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
+        };
+        var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("Done", "thread-queued")));
+        var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await model.InitializeConversationsAsync();
+        await AuthenticateAsync(model);
+
+        var pending = model.RunNextQueuedTurnAsync();
+        await store.ClaimStarted!.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try {
+            Assert.False(model.CanSend);
+            Assert.False(await model.SendAsync("Competing prompt"));
+            Assert.Empty(runtime.Requests);
+        } finally {
+            store.ReleaseClaim!.TrySetResult();
+        }
+
+        Assert.True(await pending);
+        Assert.Equal("Keep queued prompt", Assert.Single(runtime.Requests).Text);
+        Assert.Empty(model.QueuedTurns);
+    }
+
     /// <summary>Ensures a stale native window cannot dispatch a queued turn already claimed elsewhere.</summary>
     [Fact]
     public async Task RunNextQueuedTurnAsync_DoesNotDispatchWhenAtomicClaimLoses() {
@@ -1113,6 +1144,10 @@ public sealed class NativeChatViewModelTests {
 
         public bool QueuedTurnClaimResult { get; init; } = true;
 
+        public TaskCompletionSource? ClaimStarted { get; init; }
+
+        public TaskCompletionSource? ReleaseClaim { get; init; }
+
         public Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(_workspace);
@@ -1126,10 +1161,12 @@ public sealed class NativeChatViewModelTests {
             return Task.CompletedTask;
         }
 
-        public Task<bool> CompleteQueuedTurnAsync(NativeQueuedTurn turn, CancellationToken cancellationToken) {
+        public async Task<bool> CompleteQueuedTurnAsync(NativeQueuedTurn turn, CancellationToken cancellationToken) {
             cancellationToken.ThrowIfCancellationRequested();
             CompletedQueuedTurn = turn;
-            return Task.FromResult(QueuedTurnClaimResult);
+            ClaimStarted?.TrySetResult();
+            if (ReleaseClaim is not null) await ReleaseClaim.Task.WaitAsync(cancellationToken);
+            return QueuedTurnClaimResult;
         }
 
         public Task<bool> EnqueueAfterLoginAsync(NativeQueuedTurn turn, CancellationToken cancellationToken) {

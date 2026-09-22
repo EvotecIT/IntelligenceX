@@ -315,6 +315,19 @@ internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
             return false;
         }
 
+        // Reserve the send slot before awaiting the persisted claim. Otherwise a normal
+        // Send can start during disk I/O and the claimed queued prompt is then lost.
+        if (Interlocked.CompareExchange(ref _sendStarting, 1, 0) != 0) return false;
+        RunOnUi(NotifyTurnBusyChanged);
+        try {
+            return await RunClaimedQueuedTurnAsync().ConfigureAwait(false);
+        } finally {
+            Volatile.Write(ref _sendStarting, 0);
+            RunOnUi(NotifyTurnBusyChanged);
+        }
+    }
+
+    private async Task<bool> RunClaimedQueuedTurnAsync() {
         var queuedTurn = QueuedTurns[0];
         if (_conversationStore is INativeQueuedTurnStore queuedTurnStore) {
             try {
@@ -347,8 +360,7 @@ internal sealed partial class NativeChatViewModel : INotifyPropertyChanged {
             QueuedTurns.Remove(queuedTurn);
             return Task.CompletedTask;
         }).ConfigureAwait(false);
-        return await SendAsync(queuedTurn.Text, clearDraftOnStart: false, queuedTurn.SkipUserBubbleOnDispatch)
-            .ConfigureAwait(false);
+        return await SendCoreAsync(queuedTurn.Text, queuedTurn.SkipUserBubbleOnDispatch).ConfigureAwait(false);
     }
 
     public async Task<bool> ClearQueuedTurnsAsync() {
