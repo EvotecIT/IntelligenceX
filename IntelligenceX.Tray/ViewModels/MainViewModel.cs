@@ -1980,12 +1980,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                         && !ProviderLimitSnapshotService.MatchesCurrentCodexAccount(pair.Value, latestCodexAccountId)));
                 if (accountSwitched) InvalidateSwitchedCodexLimitSnapshot(latestCodexAccountId);
                 foreach (var (providerId, snapshot) in limitSnapshots) {
-                    if (accountSwitched && IsCodexLimitProvider(providerId)) continue;
-                    _latestLimitSnapshots[providerId] = snapshot;
+                    _latestLimitSnapshots[providerId] = accountSwitched && IsCodexLimitProvider(providerId)
+                        ? ProviderLimitSnapshotService.WithoutCurrentCodexAccount(snapshot)
+                        : snapshot;
                 }
 
                 if (includesCodex && !accountSwitched) _lastCodexLimitAccountId = currentCodexAccountId;
-                _lastLimitRefreshUtc = DateTimeOffset.UtcNow;
+                _lastLimitRefreshUtc = accountSwitched ? default : DateTimeOffset.UtcNow;
                 ApplyLatestLimitSnapshotsToProviders();
                 EvaluateLimitNotifications(accountSwitched
                     ? limitSnapshots.Where(pair => !IsCodexLimitProvider(pair.Key))
@@ -2030,9 +2031,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             if (!_latestLimitSnapshots.ContainsKey(providerId)) {
                 return false;
             }
-            if (IsCodexLimitProvider(providerId)
-                && !string.Equals(_lastCodexLimitAccountId, ReadCurrentCodexAccountId(), StringComparison.OrdinalIgnoreCase)) {
-                return false;
+            if (IsCodexLimitProvider(providerId)) {
+                var currentAccountId = ReadCurrentCodexAccountId();
+                if (!string.Equals(_lastCodexLimitAccountId, currentAccountId, StringComparison.OrdinalIgnoreCase)
+                    || !ProviderLimitSnapshotService.MatchesCurrentCodexAccount(
+                        _latestLimitSnapshots[providerId], currentAccountId)) return false;
             }
         }
 
@@ -2041,12 +2044,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private bool InvalidateSwitchedCodexLimitSnapshot(string? accountId) {
         if (string.Equals(_lastCodexLimitAccountId, accountId, StringComparison.OrdinalIgnoreCase)) return false;
-        var removed = false;
+        var changed = false;
         foreach (var providerId in _latestLimitSnapshots.Keys.Where(IsCodexLimitProvider).ToArray()) {
-            removed |= _latestLimitSnapshots.Remove(providerId);
+            var snapshot = _latestLimitSnapshots[providerId];
+            if (snapshot.Accounts.Count > 0) {
+                _latestLimitSnapshots[providerId] = ProviderLimitSnapshotService.WithoutCurrentCodexAccount(snapshot);
+                changed = true;
+            } else {
+                changed |= _latestLimitSnapshots.Remove(providerId);
+            }
         }
         _lastCodexLimitAccountId = accountId;
-        return removed;
+        _lastLimitRefreshUtc = default;
+        return changed;
     }
 
     private static bool IsCodexLimitProvider(string providerId) {

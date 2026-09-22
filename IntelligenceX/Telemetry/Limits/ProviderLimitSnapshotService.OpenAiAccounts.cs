@@ -143,13 +143,26 @@ public sealed partial class ProviderLimitSnapshotService {
     internal static bool MatchesCurrentCodexAccount(ProviderLimitSnapshot snapshot, string? accountId) {
         var selected = snapshot.Accounts.FirstOrDefault(static account => account.IsSelected);
         if (selected is not null) {
-            return string.Equals(selected.AccountId, accountId, StringComparison.OrdinalIgnoreCase);
+            return accountId is not null
+                && string.Equals(selected.AccountId, accountId, StringComparison.OrdinalIgnoreCase);
         }
 
         // An unselected inventory is safe only when it cannot contain the current
         // account and the top-level reading has not borrowed a different login.
         return snapshot.AccountLabel is null && snapshot.Windows.Count == 0
-            && !snapshot.Accounts.Any(account => string.Equals(account.AccountId, accountId, StringComparison.OrdinalIgnoreCase));
+            && (accountId is null || !snapshot.Accounts.Any(account =>
+                string.Equals(account.AccountId, accountId, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>Keeps account-scoped readings when the active login changes, without claiming any row is current.</summary>
+    internal static ProviderLimitSnapshot WithoutCurrentCodexAccount(ProviderLimitSnapshot snapshot) {
+        var accounts = snapshot.Accounts.Select(account => new ProviderLimitAccountSnapshot(
+            account.AccountId, account.AccountLabel, account.PlanLabel, account.Windows,
+            account.Summary, account.DetailMessage, account.RetrievedAtUtc)).ToArray();
+        return new ProviderLimitSnapshot(snapshot.ProviderId, snapshot.DisplayName, snapshot.SourceLabel,
+            null, null, Array.Empty<ProviderLimitWindow>(), null,
+            "The current Codex account changed while limits were read. Saved-account readings are shown; refresh to confirm the current account.",
+            snapshot.RetrievedAtUtc, accounts);
     }
 
     internal static IReadOnlyList<ProviderLimitAccountSnapshot> CoalesceResolvedAccounts(

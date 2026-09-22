@@ -36,6 +36,52 @@ public sealed class AccountLimitReviewTests {
         Assert.Equal("other", rows[1].AccountId);
     }
 
+    [Fact]
+    public void UnknownCurrentIdentityKeepsOnlyAnUnselectedInventory() {
+        var time = DateTimeOffset.UtcNow;
+        var unknown = new ProviderLimitAccountSnapshot(null, "Saved login", "Pro",
+            new[] { new ProviderLimitWindow("weekly", "Weekly", 25, time.AddDays(1)) },
+            null, null, time);
+        var inventory = new ProviderLimitSnapshot("codex", "Codex", "OpenAI usage API",
+            null, null, Array.Empty<ProviderLimitWindow>(), null, null, time, new[] { unknown });
+        Assert.True(ProviderLimitSnapshotService.MatchesCurrentCodexAccount(inventory, null));
+
+        var borrowed = new ProviderLimitSnapshot("codex", "Codex", "OpenAI usage API",
+            "Pro", "Saved login", unknown.Windows, null, null, time, new[] { unknown });
+        Assert.False(ProviderLimitSnapshotService.MatchesCurrentCodexAccount(borrowed, null));
+
+        var selectedUnknown = new ProviderLimitAccountSnapshot(null, "Saved login", "Pro",
+            unknown.Windows, null, null, time, isSelected: true);
+        var incorrectlySelected = new ProviderLimitSnapshot("codex", "Codex", "OpenAI usage API",
+            null, null, Array.Empty<ProviderLimitWindow>(), null, null, time, new[] { selectedUnknown });
+        Assert.False(ProviderLimitSnapshotService.MatchesCurrentCodexAccount(incorrectlySelected, null));
+    }
+
+    [Fact]
+    public void AccountSwitchPreservesSavedReadingsButRemovesOldCurrentProjection() {
+        var time = DateTimeOffset.UtcNow;
+        var a = new ProviderLimitAccountSnapshot("a", "Account A", "Pro",
+            new[] { new ProviderLimitWindow("weekly", "Weekly", 90, time.AddDays(1)) },
+            "A remaining", null, time, isSelected: true);
+        var b = new ProviderLimitAccountSnapshot("b", "Account B", "Plus",
+            new[] { new ProviderLimitWindow("weekly", "Weekly", 25, time.AddDays(2)) },
+            "B remaining", null, time);
+        var original = new ProviderLimitSnapshot("codex", "Codex", "OpenAI usage API",
+            a.PlanLabel, a.AccountLabel, a.Windows, a.Summary, null, time, new[] { a, b });
+
+        var retained = ProviderLimitSnapshotService.WithoutCurrentCodexAccount(original);
+
+        Assert.Equal(2, retained.Accounts.Count);
+        Assert.Equal(90, retained.Accounts[0].Windows[0].UsedPercent);
+        Assert.Equal(25, retained.Accounts[1].Windows[0].UsedPercent);
+        Assert.All(retained.Accounts, account => Assert.False(account.IsSelected));
+        Assert.Null(retained.AccountLabel);
+        Assert.Null(retained.PlanLabel);
+        Assert.Null(retained.Summary);
+        Assert.Empty(retained.Windows);
+        Assert.False(ProviderLimitSnapshotService.MatchesCurrentCodexAccount(retained, "b"));
+    }
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
