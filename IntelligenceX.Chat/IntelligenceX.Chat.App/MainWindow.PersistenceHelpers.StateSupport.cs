@@ -113,9 +113,26 @@ public sealed partial class MainWindow {
                || string.Equals(v, "on", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string ResolveAppProfileName(string? value) {
-        var name = (value ?? string.Empty).Trim();
-        return string.IsNullOrWhiteSpace(name) ? "default" : name;
+    private void CaptureLocalProviderSettingsIntoAppState() {
+        _appState.LocalProviderTransport = _localProviderTransport;
+        _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
+        _appState.LocalProviderModel = _localProviderModel;
+        _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
+        _appState.LocalProviderOpenAIBasicUsername = _localProviderOpenAIBasicUsername;
+        _appState.LocalProviderOpenAIAccountId = _localProviderOpenAIAccountId;
+        SyncNativeAccountSlotsToAppState();
+        _appState.LocalProviderReasoningEffort = _localProviderReasoningEffort;
+        _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
+        _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
+        _appState.LocalProviderTemperature = _localProviderTemperature;
+        _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+        _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
+        _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
+        _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
+        _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
+        _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
+        _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
+        _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
     }
 
     private void CaptureAutonomyOverridesIntoAppState() {

@@ -2,18 +2,18 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Color Palette -->
-    <Color x:Key="BackgroundColor">#1e1e2e</Color>
-    <Color x:Key="CardColor">#282840</Color>
-    <Color x:Key="CardHoverColor">#313150</Color>
-    <Color x:Key="SurfaceColor">#2a2a45</Color>
-    <Color x:Key="BorderColor">#3a3a5c</Color>
-    <Color x:Key="PrimaryTextColor">#e0e0f0</Color>
-    <Color x:Key="SecondaryTextColor">#9090b8</Color>
-    <Color x:Key="TertiaryTextColor">#606088</Color>
-    <Color x:Key="AccentColor">#7c6ff5</Color>
-    <Color x:Key="AccentDimColor">#5a50d0</Color>
-    <Color x:Key="GreenColor">#50d880</Color>
-    <Color x:Key="WarningColor">#f0c040</Color>
+    <Color x:Key="BackgroundColor">#101923</Color>
+    <Color x:Key="CardColor">#192635</Color>
+    <Color x:Key="CardHoverColor">#223447</Color>
+    <Color x:Key="SurfaceColor">#243446</Color>
+    <Color x:Key="BorderColor">#34465b</Color>
+    <Color x:Key="PrimaryTextColor">#edf3fa</Color>
+    <Color x:Key="SecondaryTextColor">#a6b7cc</Color>
+    <Color x:Key="TertiaryTextColor">#8598b0</Color>
+    <Color x:Key="AccentColor">#6bb0ff</Color>
+    <Color x:Key="AccentDimColor">#3988e5</Color>
+    <Color x:Key="GreenColor">#35c6a0</Color>
+    <Color x:Key="WarningColor">#f5bf62</Color>
     <Color x:Key="BrandStartColor">#7c6ff5</Color>
     <Color x:Key="BrandEndColor">#50d880</Color>
     <Color x:Key="PopupShadowColor">#000000</Color>
@@ -39,7 +39,7 @@
     <SolidColorBrush x:Key="PulseCachedBrush" Color="#5da2ff" />
     <SolidColorBrush x:Key="PulseOutputBrush" Color="#8a6dff" />
     <SolidColorBrush x:Key="PulseReasoningBrush" Color="#ff8a18" />
-    <SolidColorBrush x:Key="PulseHeroBrush" Color="#26101d2a" />
+    <SolidColorBrush x:Key="PulseHeroBrush" Color="#192f46" />
     <SolidColorBrush x:Key="PulseGlassBrush" Color="#1f7fb8ff" />
     <SolidColorBrush x:Key="PulseGlowBrush" Color="#335da2ff" />
     <SolidColorBrush x:Key="PulseSuccessPanelBrush" Color="#2458d77b" />
@@ -461,6 +461,7 @@
                 <ControlTemplate TargetType="ComboBox">
                     <Grid>
                         <ToggleButton x:Name="DropDownToggle"
+                                      Foreground="{TemplateBinding Foreground}"
                                       Background="Transparent"
                                       BorderThickness="0"
                                       Focusable="False"

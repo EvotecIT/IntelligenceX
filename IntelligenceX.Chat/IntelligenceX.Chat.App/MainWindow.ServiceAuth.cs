@@ -252,6 +252,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private bool IsNativeRuntimeTransport() {
+        if (!_appState.LocalProviderRuntimeOverrideActive) {
+            var identity = _sessionPolicy?.RuntimeIdentity;
+            return string.Equals(identity?.ProfileName, _appProfileName, StringComparison.OrdinalIgnoreCase)
+                   && string.Equals(identity?.Transport, TransportNative, StringComparison.OrdinalIgnoreCase);
+        }
         return string.Equals(_localProviderTransport, TransportNative, StringComparison.OrdinalIgnoreCase);
     }
 

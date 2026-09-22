@@ -1,12 +1,12 @@
 # IntelligenceX.Chat
 
-Windows tray chat application for IntelligenceX.
+Native Windows chat application for IntelligenceX.
 
-App name (planned): **IntelligenceX Chat**.
+App name: **IntelligenceX Chat**.
 
-Primary goal: a **premium Windows systray** chat UI that can run local tools (files, Event Log, Active Directory, etc.), display rich outputs (tables, code blocks), and iterate with an LLM safely.
+The app provides a native WinUI 3 chat surface for local tools such as files, Event Log, and Active Directory. It keeps execution policy visible and renders structured output such as tables, images, code, and ChartForgeX visuals.
 
-Status: active migration in mono-repo (Host + Service + WinUI App in progress).
+Status: the native WinUI 3 shell is the default application path. The legacy WebView shell remains available through `IXCHAT_LEGACY_WEBVIEW=1` while remaining settings and compatibility work moves to native controls.
 
 ## Runtime Entry Points
 
@@ -394,13 +394,13 @@ This repo is the UI app. It intentionally stays separate from tool packs and pro
 - `EvotecIT/IntelligenceX.Tools` (tool packs)
   - optional tool implementations + dependencies (Mailozaurr, etc.)
 - `EvotecIT/IntelligenceX.Chat` (this repo)
-  - Windows tray app + UX
+  - native Windows chat app and UX
   - loads tool packs optionally
 
-## Architecture (Proposed)
+## Architecture
 
 Split UI from execution:
-- UI process: WinUI 3 app (Windows App SDK), tray icon integration, rendering (markdown/tables), settings UI.
+- UI process: native WinUI 3 app (Windows App SDK), conversation shell, OfficeIMO Markdown projection, ChartForgeX artifact hosting, and app settings.
 - Host process: local “agent host” that:
   - runs the provider client
   - owns the tool registry
@@ -408,11 +408,12 @@ Split UI from execution:
 
 Reason: makes tool execution reusable outside the UI and keeps the UI thin.
 
-## Tech Stack (Proposed)
+## Tech Stack
 
 - WinUI 3 (Windows App SDK)
-- Tray: `H.NotifyIcon`
-- Rich rendering: WebView2 for Markdown tables + code blocks
+- OfficeIMO for Markdown projection and Office document export
+- ChartForgeX for reusable table and visual artifacts
+- WebView2 only in the explicitly selected legacy compatibility shell
 
 ## Docs
 

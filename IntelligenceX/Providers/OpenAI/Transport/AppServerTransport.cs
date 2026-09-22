@@ -87,7 +87,7 @@ internal sealed class AppServerTransport : IOpenAITransport {
 
     private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs args) {
         var delta = TryExtractDelta(args.Params);
-        if (!string.IsNullOrWhiteSpace(delta)) {
+        if (StreamingTextDelta.HasContent(delta)) {
             DeltaReceived?.Invoke(this, delta!);
         }
     }

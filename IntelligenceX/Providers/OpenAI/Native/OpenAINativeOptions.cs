@@ -112,6 +112,12 @@ public sealed class OpenAINativeOptions {
     /// Whether to persist codex auth JSON to disk.
     /// </summary>
     public bool PersistCodexAuthJson { get; set; } = true;
+
+    /// <summary>
+    /// Restricts background token renewal to updating an existing matching Codex credential
+    /// generation; it must not export another account or replace a newer login.
+    /// </summary>
+    internal bool PreserveCodexLoginOnRefresh { get; set; }
     /// <summary>
     /// Whether to use the current Codex auth.json session as a fallback when the configured auth store
     /// has no credential, or as a fresher credential for the same ChatGPT account.

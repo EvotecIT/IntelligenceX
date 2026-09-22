@@ -79,6 +79,19 @@ public sealed class ChatGptUsageService : IDisposable {
 
     private async Task<ChatGptUsageSnapshot> GetUsageSnapshotInternalAsync(CancellationToken cancellationToken) {
         var bundle = await EnsureAuthAsync(cancellationToken).ConfigureAwait(false);
+        return await ReadUsageSnapshotAsync(bundle, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads usage for an explicitly discovered account, using the same refresh and persistence
+    /// path as the selected account. Does not fall back to another saved login.
+    /// </summary>
+    internal async Task<ChatGptUsageSnapshot> GetUsageSnapshotAsync(AuthBundle bundle, CancellationToken cancellationToken) {
+        var validBundle = await _auth.GetValidBundleAsync(bundle, cancellationToken).ConfigureAwait(false);
+        return await ReadUsageSnapshotAsync(validBundle, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ChatGptUsageSnapshot> ReadUsageSnapshotAsync(AuthBundle bundle, CancellationToken cancellationToken) {
         var accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
         return await _client.GetUsageAsync(_options.ChatGptApiBaseUrl, bundle.AccessToken, accountId, _options.UserAgent, cancellationToken)
             .ConfigureAwait(false);

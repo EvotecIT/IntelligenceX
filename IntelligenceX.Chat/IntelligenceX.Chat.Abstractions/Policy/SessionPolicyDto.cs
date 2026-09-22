@@ -83,6 +83,11 @@ public sealed record SessionPolicyDto {
     public SessionRuntimePolicyDto? RuntimePolicy { get; init; }
 
     /// <summary>
+    /// Provider runtime identity active inside the service process.
+    /// </summary>
+    public SessionRuntimeIdentityDto? RuntimeIdentity { get; init; }
+
+    /// <summary>
     /// Structured routing catalog diagnostics for the active registry.
     /// </summary>
     public SessionRoutingCatalogDiagnosticsDto? RoutingCatalog { get; init; }

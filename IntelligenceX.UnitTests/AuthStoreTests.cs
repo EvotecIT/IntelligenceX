@@ -38,6 +38,9 @@ public sealed class AuthStoreTests {
                 if (File.Exists(path)) {
                     File.Delete(path);
                 }
+                if (File.Exists(path + ".lock")) {
+                    File.Delete(path + ".lock");
+                }
             } catch {
                 // best-effort cleanup
             }

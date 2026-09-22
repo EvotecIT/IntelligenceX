@@ -9,6 +9,28 @@ namespace IntelligenceX.OpenAI.Auth;
 
 /// <summary>Creates credential files with private Unix permissions before any secret bytes are written.</summary>
 internal static class PrivateAuthFile {
+    /// <summary>Stages a complete credential payload privately and replaces the old file in one filesystem operation.</summary>
+    internal static void WriteAtomically(string path, string content) {
+        var stagedPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try {
+            using (var stream = Create(stagedPath)) {
+                var bytes = Encoding.UTF8.GetBytes(content);
+                stream.Write(bytes, 0, bytes.Length);
+                stream.Flush(flushToDisk: true);
+            }
+            if (File.Exists(path)) {
+#if NET8_0_OR_GREATER
+                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(stagedPath, File.GetUnixFileMode(path));
+#endif
+                File.Replace(stagedPath, path, null);
+            } else {
+                File.Move(stagedPath, path);
+            }
+        } finally {
+            if (File.Exists(stagedPath)) File.Delete(stagedPath);
+        }
+    }
+
     internal static FileStream Create(string path) {
 #if NET8_0_OR_GREATER
         var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write,

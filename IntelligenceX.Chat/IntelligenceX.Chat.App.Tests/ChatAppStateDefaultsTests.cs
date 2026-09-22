@@ -1,4 +1,5 @@
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.App.Launch;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -26,27 +27,41 @@ public sealed class ChatAppStateDefaultsTests {
     /// Ensures old persisted disabled image-generation state keeps emitting an explicit disable override.
     /// </summary>
     [Fact]
-    public void ResolveLocalProviderImageGenerationOverrideActive_MigratesLegacyPersistedDisable() {
+    public void ResolveImageGenerationOverrideActive_MigratesLegacyPersistedDisable() {
         var state = new ChatAppState {
             LocalProviderImageGenerationEnabled = false,
             LocalProviderImageGenerationOverrideActive = false,
             LocalProviderImageGenerationOverrideActiveWasPresent = false
         };
 
-        Assert.True(MainWindow.ResolveLocalProviderImageGenerationOverrideActive(state, isLoadedProfile: true));
+        Assert.True(ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(state, isLoadedProfile: true));
+    }
+
+    /// <summary>
+    /// Ensures old persisted enabled image-generation state also remains an explicit override.
+    /// </summary>
+    [Fact]
+    public void ResolveImageGenerationOverrideActive_MigratesLegacyPersistedEnable() {
+        var state = new ChatAppState {
+            LocalProviderImageGenerationEnabled = true,
+            LocalProviderImageGenerationOverrideActive = false,
+            LocalProviderImageGenerationOverrideActiveWasPresent = false
+        };
+
+        Assert.True(ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(state, isLoadedProfile: true));
     }
 
     /// <summary>
     /// Ensures new persisted state can intentionally keep image-generation override unset.
     /// </summary>
     [Fact]
-    public void ResolveLocalProviderImageGenerationOverrideActive_PreservesNewPersistedUnsetDisable() {
+    public void ResolveImageGenerationOverrideActive_PreservesNewPersistedUnsetDisable() {
         var state = new ChatAppState {
             LocalProviderImageGenerationEnabled = false,
             LocalProviderImageGenerationOverrideActive = false,
             LocalProviderImageGenerationOverrideActiveWasPresent = true
         };
 
-        Assert.False(MainWindow.ResolveLocalProviderImageGenerationOverrideActive(state, isLoadedProfile: true));
+        Assert.False(ChatServiceLaunchProfileMapper.ResolveImageGenerationOverrideActive(state, isLoadedProfile: true));
     }
 }

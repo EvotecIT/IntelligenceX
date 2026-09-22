@@ -109,4 +109,64 @@ public sealed class MainWindowToolExposureOptionsTests {
         Assert.Empty(result.DisabledTools);
         Assert.Equal(new[] { "active_directory", "system" }, result.DisabledPackIds);
     }
+
+    /// <summary>
+    /// Preserves explicit write-tool enables during cold-start saves until the live catalog can classify them.
+    /// </summary>
+    [Fact]
+    public void BuildEnabledWriteToolsList_PreservesPersistedNamesUntilCatalogHydrates() {
+        var result = MainWindow.BuildEnabledWriteToolsList(
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            ["approved_write_tool"]);
+
+        Assert.Equal(["approved_write_tool"], result);
+    }
+
+    /// <summary>
+    /// Replaces cold-start persistence with the hydrated write-tool state once metadata is known.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void BuildEnabledWriteToolsList_UsesHydratedCatalogState(bool isEnabled, bool expectedPersisted) {
+        var result = MainWindow.BuildEnabledWriteToolsList(
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+                ["approved_write_tool"] = isEnabled
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+                ["approved_write_tool"] = true
+            },
+            ["approved_write_tool"]);
+
+        Assert.Equal(expectedPersisted, result.Contains("approved_write_tool", StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Keeps the selected profile's opposite write policy during a repair save on a warm profile switch.
+    /// </summary>
+    [Fact]
+    public void CaptureToolExposureStateForPersistence_RepairSaveDoesNotCopyPreviousProfilePolicy() {
+        var targetProfile = new ChatAppState {
+            DisabledTools = ["previous_profile_write"],
+            EnabledWriteTools = ["target_profile_write"]
+        };
+        var previousProfileRuntimeState = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["previous_profile_write"] = true,
+            ["target_profile_write"] = false
+        };
+        var previousProfileCapabilities = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["previous_profile_write"] = true,
+            ["target_profile_write"] = true
+        };
+
+        MainWindow.CaptureToolExposureStateForPersistence(
+            targetProfile,
+            previousProfileRuntimeState,
+            previousProfileCapabilities,
+            preserveLoadedToolExposure: true);
+
+        Assert.Equal(["previous_profile_write"], targetProfile.DisabledTools);
+        Assert.Equal(["target_profile_write"], targetProfile.EnabledWriteTools);
+    }
 }

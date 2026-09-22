@@ -1,4 +1,5 @@
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.App.Launch;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -45,15 +46,10 @@ public sealed class MainWindowLocalProviderTransportTests {
     /// </summary>
     [Fact]
     public void HasImageGenerationLaunchOverrides_PreservesExplicitDisableOnlyOverride() {
-        var hasOverrides = MainWindow.HasImageGenerationLaunchOverrides(
-            imageGenerationOverrideActive: true,
-            imageGenerationEnabled: false,
-            imageQuality: string.Empty,
-            imageSize: string.Empty,
-            imageOutputFormat: string.Empty,
-            imageOutputCompression: null,
-            imageBackground: string.Empty,
-            imageOutputDirectory: string.Empty);
+        var hasOverrides = ChatServiceLaunchProfileMapper.HasImageGenerationLaunchOverrides(
+            new ChatAppState {
+                LocalProviderImageGenerationOverrideActive = true
+            });
 
         Assert.True(hasOverrides);
     }
@@ -63,15 +59,7 @@ public sealed class MainWindowLocalProviderTransportTests {
     /// </summary>
     [Fact]
     public void HasImageGenerationLaunchOverrides_OmitsUnsetDefaultDisable() {
-        var hasOverrides = MainWindow.HasImageGenerationLaunchOverrides(
-            imageGenerationOverrideActive: false,
-            imageGenerationEnabled: false,
-            imageQuality: string.Empty,
-            imageSize: string.Empty,
-            imageOutputFormat: string.Empty,
-            imageOutputCompression: null,
-            imageBackground: string.Empty,
-            imageOutputDirectory: string.Empty);
+        var hasOverrides = ChatServiceLaunchProfileMapper.HasImageGenerationLaunchOverrides(new ChatAppState());
 
         Assert.False(hasOverrides);
     }

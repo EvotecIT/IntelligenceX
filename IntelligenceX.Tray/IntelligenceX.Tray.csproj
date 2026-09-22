@@ -20,6 +20,7 @@
     </ItemGroup>
     <ItemGroup>
         <Resource Include="Resources\tray-icon.ico" />
+        <AssemblyMetadata Include="IntelligenceXPreviewLabel" Value="$(IntelligenceXPreviewLabel)" Condition="'$(IntelligenceXPreviewLabel)' != ''" />
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\IntelligenceX\IntelligenceX.csproj" />

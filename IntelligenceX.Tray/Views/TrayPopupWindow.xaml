@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:IntelligenceX.Tray.ViewModels"
         xmlns:conv="clr-namespace:IntelligenceX.Tray.Converters"
-        Title="IntelligenceX Usage"
+        xmlns:views="clr-namespace:IntelligenceX.Tray.Views"
+        Title="IX Tray"
         Width="720" Height="760"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -113,10 +114,10 @@
                                            VerticalAlignment="Center" />
                             </Border>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock FontFamily="{StaticResource AppFont}"
+                                <TextBlock x:Name="AppTitleText" FontFamily="{StaticResource AppFont}"
                                            FontSize="19" FontWeight="SemiBold"
                                            Foreground="{StaticResource PrimaryTextBrush}"
-                                           Text="Usage Pulse"
+                                           Text="IX Tray"
                                            TextTrimming="CharacterEllipsis" />
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                     <TextBlock FontFamily="{StaticResource AppFont}"
@@ -133,6 +134,9 @@
                         </Grid>
                     </Border>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Chat" Style="{StaticResource RefreshButtonStyle}"
+                                Click="OnOpenChat" ToolTip="Open IX Chat without changing accounts"
+                                AutomationProperties.Name="Open IX Chat" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding ToggleSelectedProviderFavoriteCommand}"
                                 IsEnabled="{Binding CanToggleFavoriteSelectedProvider}"
@@ -248,7 +252,7 @@
                                                  IsChecked="{Binding IsSelected, Mode=OneWay}"
                                                  Click="OnProviderTabClick"
                                                  Tag="{Binding}">
-                                        <Grid Width="106" Height="60">
+                                        <Grid Width="106" Height="42">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="*" />
@@ -279,9 +283,9 @@
                                             <StackPanel Grid.Row="1"
                                                         Orientation="Horizontal"
                                                         VerticalAlignment="Bottom"
-                                                        Margin="0,6,0,0">
+                                                        Margin="0,3,0,0">
                                                 <TextBlock Text="{Binding PulseProviderMetricText}"
-                                                           FontSize="18"
+                                                           FontSize="13"
                                                            FontWeight="SemiBold"
                                                            Foreground="{StaticResource PrimaryTextBrush}"
                                                            TextTrimming="CharacterEllipsis"
@@ -390,6 +394,9 @@
                     <StackPanel x:Name="ProviderContentPanel"
                                 DataContext="{Binding SelectedProvider}"
                                 Margin="16,12,16,8">
+
+                        <views:AccountLimitsSummaryControl
+                            Visibility="{Binding ShowProviderPulseHeader, Converter={StaticResource BoolToVis}}" />
 
                         <Border Style="{StaticResource CardStyle}"
                                 Padding="16"

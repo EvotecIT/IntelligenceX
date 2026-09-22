@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using IntelligenceX.OpenAI.Usage;
+using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.Codex;
 using IntelligenceX.Telemetry.Git;
 using IntelligenceX.Telemetry.GitHub;
@@ -39,7 +40,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int UsageRootSafetySweepSeconds = 21600;
     private const int UsageChangeDebounceSeconds = 15;
     private const int RefreshHistoryDepth = 4;
-    private const int FreshLimitSnapshotWindowSeconds = 900;
     private const int GitHubWatchAutoSyncMinimumIntervalSeconds = 1800;
     private const int GitHubWatchSnapshotFreshnessSeconds = 21600;
     private const int GitHubWatchForkFreshnessSeconds = 86400;
@@ -70,7 +70,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly DispatcherTimer _usageDirtyRefreshTimer;
     private readonly UsageChangeWatcher _usageChangeWatcher;
     private readonly DateTimeOffset _startupQuietWindowEndsUtc = DateTimeOffset.UtcNow.AddSeconds(StartupWarmRefreshDelaySeconds);
-    private readonly HashSet<string> _activeLimitNotificationKeys = new(StringComparer.Ordinal);
+    private readonly LimitNotificationWindowTracker _limitNotificationWindows = new();
     private readonly HashSet<string> _favoriteProviderIds;
     private readonly Dictionary<string, ProviderLimitSnapshot> _latestLimitSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, List<SourceRootRecord>> _latestSourceRootsByProvider = new(StringComparer.OrdinalIgnoreCase);
@@ -86,6 +86,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private GitHubRepositoryClusterSummaryData _latestGitHubRepositoryClusterSummary = GitHubRepositoryClusterSummaryData.Empty;
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
+    private bool _isInitializing = true;
     private bool _isCodexDiagnosticsLoading;
     private bool _isCodexPathRepairRunning;
     private bool _isCodexCleanupRunning;
@@ -102,6 +103,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private DateTimeOffset _loadingProgressUpdatedAtUtc;
     private DateTimeOffset _lastRefreshed;
     private DateTimeOffset _lastLimitRefreshUtc;
+    private string? _lastCodexLimitAccountId;
     private int _gitHubRefreshVersion;
     private CancellationTokenSource? _gitHubRefreshCts;
     private string? _lastAutoLoadedGitHubKey;
@@ -114,7 +116,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private bool _notificationsEnabled;
     private bool _closeHidesToTray;
     private bool _startWithWindows;
-    private bool _hasCompletedInitialRefresh;
+    private bool _hasObservedInitialLimitWindows;
     private DateTimeOffset _lastGitHubWatchAutoSyncAttemptUtc;
     private DateTimeOffset _lastUsageSnapshotScannedAtUtc;
     private DateTimeOffset _lastUsageRootDiscoveryUtc;
@@ -240,7 +242,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public bool ShowCombinedGitHubPulse => ShowUsageContent
                                            && SelectedProvider is { ProviderId: "__all__" }
                                            && GitHub.HasObservabilitySummary;
-    public bool ShowLoadingOverlay => IsLoading && ShowUsageContent && !HasUsageProviders;
+    public bool ShowLoadingOverlay => (_isInitializing || IsLoading) && !HasUsageProviders && !ShowGitHubContent;
 
     public string HeaderTitle {
         get {
@@ -607,21 +609,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public RelayCommand ToggleSelectedProviderFavoriteCommand { get; }
 
     public async Task InitializeAsync() {
-        _ = RefreshCodexDiagnosticsAsync();
-        var cachedUsageSnapshot = await LoadBestCachedUsageSnapshotAsync().ConfigureAwait(true);
-        var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot(cachedUsageSnapshot);
-        ConfigureRefreshTimer();
-        RefreshGitHubProfileIfReady();
+        try {
+            _ = RefreshCodexDiagnosticsAsync();
+            var cachedUsageSnapshot = await LoadBestCachedUsageSnapshotAsync().ConfigureAwait(true);
+            var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot(cachedUsageSnapshot);
+            ConfigureRefreshTimer();
+            RefreshGitHubProfileIfReady();
 
-        if (loadedCachedUsageSnapshot) {
-            if (ShouldRunStartupWarmRefreshAfterCache(cachedUsageSnapshot)) {
-                _ = RefreshStartupUsageAfterCacheAsync();
+            if (loadedCachedUsageSnapshot) {
+                if (ShouldRunStartupWarmRefreshAfterCache(cachedUsageSnapshot)) {
+                    _ = RefreshStartupUsageAfterCacheAsync();
+                }
+                return;
             }
-
-            return;
+            await RefreshStartupUsageWithoutCacheAsync().ConfigureAwait(true);
+        } finally {
+            _isInitializing = false;
+            OnPropertyChanged(nameof(ShowLoadingOverlay));
         }
-
-        _ = RefreshStartupUsageWithoutCacheAsync();
     }
 
     private async Task RefreshStartupUsageAfterCacheAsync() {
@@ -938,11 +943,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
             _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(currentProviderSnapshots, StringComparer.OrdinalIgnoreCase);
             if (!startupWarmup) {
+                if (InvalidateSwitchedCodexLimitSnapshot(ReadCurrentCodexAccountId())) {
+                    ApplyLatestLimitSnapshotsToProviders();
+                }
                 EvaluateLimitNotifications(_latestLimitSnapshots);
                 _ = RefreshProviderLimitsAsync(providerIds, refreshData.ScanInfo);
                 var ghLogin = GitHub.UsernameInput;
                 _ = RefreshGitHubAsync(ghLogin);
-                _hasCompletedInitialRefresh = true;
             }
         } catch (Exception ex) {
             StatusText = $"Error: {ex.Message}";
@@ -1107,7 +1114,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _preferences.NotificationsEnabled = enabled;
         SavePreferences();
         if (!enabled) {
-            _activeLimitNotificationKeys.Clear();
+            _limitNotificationWindows.Clear();
         }
 
         StatusText = enabled ? "Limit notifications enabled." : "Limit notifications paused.";
@@ -1884,36 +1891,56 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         var activeKeys = new HashSet<string>(StringComparer.Ordinal);
+        var observedKeys = new HashSet<string>(StringComparer.Ordinal);
+        var nowUtc = DateTimeOffset.UtcNow;
         foreach (var snapshot in limitSnapshots.Values) {
-            foreach (var window in snapshot.Windows) {
+            if (snapshot.Accounts.Count == 0) {
+                EvaluateWindows(snapshot, snapshot.Windows, snapshot.AccountLabel ?? "selected", snapshot.AccountLabel);
+                continue;
+            }
+
+            for (var accountIndex = 0; accountIndex < snapshot.Accounts.Count; accountIndex++) {
+                var account = snapshot.Accounts[accountIndex];
+                var identity = account.AccountId ?? account.AccountLabel ?? "account-" + accountIndex.ToString(CultureInfo.InvariantCulture);
+                EvaluateWindows(snapshot, account.Windows, identity, account.AccountLabel ?? account.AccountId ?? identity);
+            }
+        }
+
+        _limitNotificationWindows.RetainObserved(activeKeys, observedKeys);
+        if (observedKeys.Count > 0) _hasObservedInitialLimitWindows = true;
+
+        void EvaluateWindows(ProviderLimitSnapshot snapshot, IReadOnlyList<ProviderLimitWindow> windows,
+            string accountIdentity, string? accountLabel) {
+            foreach (var window in windows) {
+                // A present window without usage is not proof that utilization fell.
+                if (!window.UsedPercent.HasValue) continue;
+                var warningKey = BuildLimitNotificationKey(snapshot.ProviderId, accountIdentity, window, LimitNotificationLevel.Warning);
+                var exhaustedKey = BuildLimitNotificationKey(snapshot.ProviderId, accountIdentity, window, LimitNotificationLevel.Exhausted);
+                observedKeys.Add(warningKey);
+                observedKeys.Add(exhaustedKey);
                 var level = GetNotificationLevel(window.UsedPercent);
                 if (level is null) {
                     continue;
                 }
 
-                var key = BuildLimitNotificationKey(snapshot.ProviderId, window, level.Value);
+                var key = level == LimitNotificationLevel.Warning ? warningKey : exhaustedKey;
+                if (level == LimitNotificationLevel.Exhausted) {
+                    // Crossing back down from exhausted must not replay the 90% warning.
+                    activeKeys.Add(warningKey);
+                    _limitNotificationWindows.Observe(warningKey, window.ResetsAt, nowUtc);
+                }
                 activeKeys.Add(key);
-
-                if (!_hasCompletedInitialRefresh) {
-                    _activeLimitNotificationKeys.Add(key);
-                    continue;
-                }
-
-                if (!_activeLimitNotificationKeys.Add(key)) {
-                    continue;
-                }
+                if (!_limitNotificationWindows.Observe(key, window.ResetsAt, nowUtc) || !_hasObservedInitialLimitWindows) continue;
 
                 NotificationRequested?.Invoke(this, new TrayNotificationRequestedEventArgs(
                     title: level == LimitNotificationLevel.Exhausted
                         ? snapshot.DisplayName + " limit exhausted"
                         : snapshot.DisplayName + " limit warning",
-                    message: BuildLimitNotificationMessage(snapshot, window),
+                    message: BuildLimitNotificationMessage(window, accountLabel),
                     isCritical: level == LimitNotificationLevel.Exhausted,
                     providerId: snapshot.ProviderId));
             }
         }
-
-        _activeLimitNotificationKeys.RemoveWhere(key => !activeKeys.Contains(key));
     }
 
     private async Task RefreshProviderLimitsAsync(IReadOnlyCollection<string> providerIds, string usageScanInfo) {
@@ -1921,12 +1948,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             return;
         }
 
+        var dispatcher = Application.Current.Dispatcher;
+        var includesCodex = providerIds.Any(IsCodexLimitProvider);
+        var currentCodexAccountId = includesCodex ? ReadCurrentCodexAccountId() : null;
+        if (includesCodex) {
+            await dispatcher.InvokeAsync(() => {
+                if (InvalidateSwitchedCodexLimitSnapshot(currentCodexAccountId)) {
+                    ApplyLatestLimitSnapshotsToProviders();
+                }
+            });
+        }
+
         if (HasFreshLimitSnapshotsFor(providerIds)) {
-            ApplyLatestLimitSnapshotsToProviders();
+            await dispatcher.InvokeAsync(ApplyLatestLimitSnapshotsToProviders);
             return;
         }
 
-        var dispatcher = Application.Current.Dispatcher;
         var currentVersion = Interlocked.Increment(ref _limitRefreshVersion);
         using var refreshCts = new CancellationTokenSource();
         var previousCts = Interlocked.Exchange(ref _limitRefreshCts, refreshCts);
@@ -1941,15 +1978,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     return;
                 }
 
+                var latestCodexAccountId = includesCodex ? ReadCurrentCodexAccountId() : null;
+                var accountSwitched = includesCodex && (!string.Equals(
+                    currentCodexAccountId, latestCodexAccountId, StringComparison.OrdinalIgnoreCase)
+                    || limitSnapshots.Any(pair => IsCodexLimitProvider(pair.Key)
+                        && !ProviderLimitSnapshotService.MatchesCurrentCodexAccount(pair.Value, latestCodexAccountId)));
+                if (accountSwitched) InvalidateSwitchedCodexLimitSnapshot(latestCodexAccountId);
                 foreach (var (providerId, snapshot) in limitSnapshots) {
-                    _latestLimitSnapshots[providerId] = snapshot;
+                    _latestLimitSnapshots[providerId] = accountSwitched && IsCodexLimitProvider(providerId)
+                        ? ProviderLimitSnapshotService.WithoutCurrentCodexAccount(snapshot)
+                        : snapshot;
                 }
 
-                _lastLimitRefreshUtc = DateTimeOffset.UtcNow;
+                if (includesCodex && !accountSwitched) _lastCodexLimitAccountId = currentCodexAccountId;
+                _lastLimitRefreshUtc = accountSwitched ? default : DateTimeOffset.UtcNow;
                 ApplyLatestLimitSnapshotsToProviders();
-                EvaluateLimitNotifications(limitSnapshots);
+                EvaluateLimitNotifications(accountSwitched
+                    ? limitSnapshots.Where(pair => !IsCodexLimitProvider(pair.Key))
+                        .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+                    : limitSnapshots);
                 if (!IsLoading) {
-                    StatusText = usageScanInfo + " • Live limits updated.";
+                    StatusText = usageScanInfo + (accountSwitched
+                        ? " • Codex account changed or could not be confirmed; refresh live limits again."
+                        : " • Live limits updated.");
                 }
             });
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
@@ -1977,7 +2028,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         var age = DateTimeOffset.UtcNow - _lastLimitRefreshUtc;
-        if (age.TotalSeconds > FreshLimitSnapshotWindowSeconds) {
+        if (age > ProviderLimitSnapshotService.MaximumRecommendedReadingAge) {
             return false;
         }
 
@@ -1985,9 +2036,43 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             if (!_latestLimitSnapshots.ContainsKey(providerId)) {
                 return false;
             }
+            if (IsCodexLimitProvider(providerId)) {
+                var currentAccountId = ReadCurrentCodexAccountId();
+                if (!string.Equals(_lastCodexLimitAccountId, currentAccountId, StringComparison.OrdinalIgnoreCase)
+                    || !ProviderLimitSnapshotService.MatchesCurrentCodexAccount(
+                        _latestLimitSnapshots[providerId], currentAccountId)) return false;
+            }
         }
 
         return true;
+    }
+
+    private bool InvalidateSwitchedCodexLimitSnapshot(string? accountId) {
+        if (string.Equals(_lastCodexLimitAccountId, accountId, StringComparison.OrdinalIgnoreCase)) return false;
+        var changed = false;
+        foreach (var providerId in _latestLimitSnapshots.Keys.Where(IsCodexLimitProvider).ToArray()) {
+            var snapshot = _latestLimitSnapshots[providerId];
+            if (snapshot.Accounts.Count > 0) {
+                _latestLimitSnapshots[providerId] = ProviderLimitSnapshotService.WithoutCurrentCodexAccount(snapshot);
+                changed = true;
+            } else {
+                changed |= _latestLimitSnapshots.Remove(providerId);
+            }
+        }
+        _lastCodexLimitAccountId = accountId;
+        _lastLimitRefreshUtc = default;
+        return changed;
+    }
+
+    private static bool IsCodexLimitProvider(string providerId) {
+        var canonical = UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(providerId) ?? providerId;
+        return string.Equals(canonical, "codex", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(canonical, "chatgpt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ReadCurrentCodexAccountId() {
+        var accountId = CodexAuthStore.TryReadProfile(CodexAuthStore.ResolveAuthPath())?.AccountId?.Trim();
+        return string.IsNullOrWhiteSpace(accountId) ? null : accountId;
     }
 
     private void ApplyLatestLimitSnapshotsToProviders() {
@@ -2038,18 +2123,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return null;
     }
 
-    private static string BuildLimitNotificationKey(string providerId, ProviderLimitWindow window, LimitNotificationLevel level) {
-        var resetToken = window.ResetsAt?.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture) ?? "no-reset";
-        return string.Join("|", providerId, window.Key, resetToken, level);
+    private static string BuildLimitNotificationKey(string providerId, string accountIdentity,
+        ProviderLimitWindow window, LimitNotificationLevel level) {
+        // Generation changes are handled by LimitNotificationWindowTracker rather
+        // than including drifting relative reset timestamps in this stable key.
+        return string.Join("|", providerId, accountIdentity, window.Key, level);
     }
 
-    private static string BuildLimitNotificationMessage(ProviderLimitSnapshot snapshot, ProviderLimitWindow window) {
+    private static string BuildLimitNotificationMessage(ProviderLimitWindow window, string? accountLabel) {
         var parts = new List<string> {
             window.Label + " is at " + (window.UsedPercent ?? 0d).ToString("0.#", CultureInfo.InvariantCulture) + "%"
         };
 
-        if (!string.IsNullOrWhiteSpace(snapshot.AccountLabel)) {
-            parts.Add(snapshot.AccountLabel);
+        if (!string.IsNullOrWhiteSpace(accountLabel)) {
+            parts.Add(accountLabel);
         }
 
         parts.Add(FormatResetText(window.ResetsAt));

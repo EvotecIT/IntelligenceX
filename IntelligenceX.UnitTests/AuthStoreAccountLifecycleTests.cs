@@ -5,6 +5,29 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class AuthStoreAccountLifecycleTests {
+    [Fact]
+    public async Task ChatGptLogoutRemovesSelectedLegacyAliasesForNewProcess() {
+        var path = Path.Combine(Path.GetTempPath(), "ix-alias-logout-" + Guid.NewGuid().ToString("N") + ".json");
+        try {
+            var store = new FileAuthBundleStore(path);
+            foreach (var provider in new[] { "openai-codex", "openai", "chatgpt" })
+                await store.SaveAsync(new(provider, "first-token", "first-refresh", null) { AccountId = "first" });
+            await store.SaveAsync(new("openai", "other-token", "other-refresh", null) { AccountId = "second" });
+            var options = new OpenAINativeOptions { AuthStore = store, AuthAccountId = "first",
+                LoadCodexAuthJson = false, PersistCodexAuthJson = false };
+            var manager = new OpenAINativeAuthManager(options);
+            Assert.NotNull(await manager.TryGetValidBundleAsync(default));
+
+            await manager.LogoutAsync(default);
+
+            Assert.Null(await new OpenAINativeAuthManager(options).TryGetValidBundleAsync(default));
+            Assert.Null(await store.GetAsync("openai-codex", "first"));
+            Assert.Null(await store.GetAsync("openai", "first"));
+            Assert.Null(await store.GetAsync("chatgpt", "first"));
+            Assert.Equal("other-token", (await store.GetAsync("openai", "second"))!.AccessToken);
+        } finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -74,7 +97,7 @@ public sealed class AuthStoreAccountLifecycleTests {
         } finally {
             if (File.Exists(path)) File.Delete(path);
             if (File.Exists(ambient)) File.Delete(ambient);
-            Directory.Delete(directory);
+            Directory.Delete(directory, recursive: true);
         }
     }
 
@@ -97,7 +120,7 @@ public sealed class AuthStoreAccountLifecycleTests {
         } finally {
             if (File.Exists(path)) File.Delete(path);
             if (File.Exists(ambient)) File.Delete(ambient);
-            Directory.Delete(directory);
+            Directory.Delete(directory, recursive: true);
         }
     }
 
@@ -111,6 +134,11 @@ public sealed class AuthStoreAccountLifecycleTests {
             Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
             await store.SaveAsync(new("copilot", "second", "", null));
             Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+            await store.SaveAsync(new("copilot", "migrated", "", null));
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+            Assert.Equal("migrated", (await store.GetAsync("copilot"))!.AccessToken);
         } finally { if (File.Exists(path)) File.Delete(path); }
     }
 
@@ -158,7 +186,7 @@ public sealed class AuthStoreAccountLifecycleTests {
         } finally {
             if (File.Exists(path)) File.Delete(path);
             if (File.Exists(ambient)) File.Delete(ambient);
-            Directory.Delete(directory);
+            Directory.Delete(directory, recursive: true);
         }
     }
 }

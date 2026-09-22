@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using IntelligenceX.Telemetry.Limits;
 
 namespace IntelligenceX.Tray.ViewModels;
 
@@ -10,12 +11,18 @@ public sealed class ProviderLimitAccountViewModel : ViewModelBase {
     }
 
     public string Label { get; set; } = string.Empty;
+    public string ProviderId { get; set; } = string.Empty;
+    public ProviderLimitAccountSnapshot? Snapshot { get; set; }
+    public bool CanManageResets => !string.IsNullOrWhiteSpace(Snapshot?.AccountId);
+    public string ReadingText => Snapshot is null ? "Reading time unavailable"
+        : (StatusLabel ?? "Unknown") + " · checked " + Snapshot.RetrievedAtUtc.ToLocalTime().ToString("g");
     public string? PlanLabel { get; set; }
     public string? StatusLabel { get; set; }
     public string Summary { get; set; } = string.Empty;
     public string? DetailText { get; set; }
     public string? BadgeText { get; set; }
     public string? WindowSummaryText { get; set; }
+    public bool IsRecommended { get; set; }
     public ObservableCollection<ProviderLimitWindowViewModel> Windows { get; } = [];
 
     public bool IsExpanded {

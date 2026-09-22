@@ -268,6 +268,7 @@ public sealed partial class MainWindow {
                 using var setProfileCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
                 _ = await client.SetProfileAsync(plan.ProfileName ?? string.Empty, newThread: false, setProfileCts.Token).ConfigureAwait(false);
                 _serviceActiveProfileName = plan.ProfileName;
+                await RefreshRuntimeMetadataAfterMutationAsync(client, appendWarnings: true).ConfigureAwait(false);
             }
 
             if (plan.RefreshSchedulerThread) {

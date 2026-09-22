@@ -120,7 +120,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             }
 
             if (!found) {
-                throw new Xunit.Sdk.XunitException($"Expected status subsequence item '{expected}' was not found in order.");
+                throw new Xunit.Sdk.XunitException(
+                    $"Expected status subsequence item '{expected}' was not found in order. "
+                    + $"Observed statuses: [{string.Join(", ", statuses)}].");
             }
         }
     }

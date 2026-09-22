@@ -63,7 +63,45 @@ public sealed class ChatServiceRuntimeHostingTests {
     }
 
     /// <summary>
-    /// Ensures workspace output probing is used only when no explicit packaged probe paths exist.
+    /// Ensures a service payload containing only shared tool contracts does not suppress repo-local pack discovery.
+    /// </summary>
+    [Fact]
+    public void ResolveBuiltInToolProbePaths_ServiceWithoutPackAssemblies_ReturnsNoProbeRoots() {
+        var root = CreateTemporaryDirectory();
+        try {
+            File.WriteAllText(Path.Combine(root, "IntelligenceX.Tools.dll"), string.Empty);
+            File.WriteAllText(Path.Combine(root, "IntelligenceX.Tools.Common.dll"), string.Empty);
+
+            var paths = ChatServiceRuntimeLocator.ResolveBuiltInToolProbePaths(root);
+
+            Assert.Empty(paths);
+            Assert.True(ChatServiceRuntimeLocator.ShouldEnableWorkspaceBuiltInToolOutputProbing(paths));
+        } finally {
+            TryDeleteDirectory(root);
+        }
+    }
+
+    /// <summary>
+    /// Ensures an actual bundled pack root is passed to the service and avoids unnecessary workspace probing.
+    /// </summary>
+    [Fact]
+    public void ResolveBuiltInToolProbePaths_BundledPackAssembly_ReturnsPackRoot() {
+        var root = CreateTemporaryDirectory();
+        try {
+            var tools = Directory.CreateDirectory(Path.Combine(root, "tools")).FullName;
+            File.WriteAllText(Path.Combine(tools, "IntelligenceX.Tools.ADPlayground.dll"), string.Empty);
+
+            var paths = ChatServiceRuntimeLocator.ResolveBuiltInToolProbePaths(root);
+
+            Assert.Equal(new[] { tools }, paths);
+            Assert.False(ChatServiceRuntimeLocator.ShouldEnableWorkspaceBuiltInToolOutputProbing(paths));
+        } finally {
+            TryDeleteDirectory(root);
+        }
+    }
+
+    /// <summary>
+    /// Ensures workspace output probing is used only when no usable packaged probe paths exist.
     /// </summary>
     [Fact]
     public void ShouldEnableWorkspaceBuiltInToolOutputProbing_DependsOnExplicitProbePaths() {

@@ -10,6 +10,9 @@ namespace IntelligenceX.Chat.App.Launch;
 internal static class ChatServiceRuntimeLocator {
     private const string ServiceExecutableName = "IntelligenceX.Chat.Service.exe";
     private const string ServiceAssemblyName = "IntelligenceX.Chat.Service.dll";
+    private const string ToolAssemblySearchPattern = "IntelligenceX.Tools.*.dll";
+    private const string ToolContractAssemblyName = "IntelligenceX.Tools";
+    private const string ToolCommonAssemblyName = "IntelligenceX.Tools.Common";
 
     /// <summary>
     /// Selects the newest valid packaged service directory near the desktop application.
@@ -55,10 +58,10 @@ internal static class ChatServiceRuntimeLocator {
         var paths = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        TryAddExistingDirectory(paths, seen, serviceSourceDirectory);
+        TryAddBuiltInToolDirectory(paths, seen, serviceSourceDirectory);
         if (!string.IsNullOrWhiteSpace(serviceSourceDirectory)) {
             try {
-                TryAddExistingDirectory(paths, seen, Path.Combine(Path.GetFullPath(serviceSourceDirectory), "tools"));
+                TryAddBuiltInToolDirectory(paths, seen, Path.Combine(Path.GetFullPath(serviceSourceDirectory), "tools"));
             } catch {
                 // Ignore malformed source paths and keep any valid source root.
             }
@@ -128,5 +131,40 @@ internal static class ChatServiceRuntimeLocator {
         if (Directory.Exists(fullPath) && seen.Add(fullPath)) {
             paths.Add(fullPath);
         }
+    }
+
+    private static void TryAddBuiltInToolDirectory(List<string> paths, HashSet<string> seen, string? candidate) {
+        if (string.IsNullOrWhiteSpace(candidate)) {
+            return;
+        }
+
+        string fullPath;
+        try {
+            fullPath = Path.GetFullPath(candidate);
+        } catch {
+            return;
+        }
+
+        if (!Directory.Exists(fullPath) || !ContainsBuiltInToolPackAssembly(fullPath) || !seen.Add(fullPath)) {
+            return;
+        }
+
+        paths.Add(fullPath);
+    }
+
+    private static bool ContainsBuiltInToolPackAssembly(string directory) {
+        try {
+            foreach (var candidate in Directory.EnumerateFiles(directory, ToolAssemblySearchPattern, SearchOption.TopDirectoryOnly)) {
+                var assemblyName = Path.GetFileNameWithoutExtension(candidate);
+                if (!string.Equals(assemblyName, ToolContractAssemblyName, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(assemblyName, ToolCommonAssemblyName, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        } catch {
+            // Treat inaccessible or unstable payload roots as unavailable.
+        }
+
+        return false;
     }
 }

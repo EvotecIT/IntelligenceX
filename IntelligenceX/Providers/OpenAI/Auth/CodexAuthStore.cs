@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Text;
+using System.Threading;
 using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Auth;
@@ -170,7 +172,46 @@ public static class CodexAuthStore {
             Directory.CreateDirectory(dir);
         }
         var content = BuildAuthJson(bundle, lastRefresh, openAiApiKey);
-        File.WriteAllText(path, content);
+        using var transaction = AuthFileTransaction.AcquireAsync(path + ".lock", CancellationToken.None).GetAwaiter().GetResult();
+        PrivateAuthFile.WriteAtomically(path, content);
+    }
+
+    /// <summary>
+    /// Keeps a shared, rotated login in sync without creating a Codex login, switching accounts,
+    /// or overwriting credentials changed since refresh started. IX login exports use
+    /// the same sidecar transaction; the replacement is staged before the old file is replaced.
+    /// Other applications need not honor this sidecar, so this is not a cross-application transaction.
+    /// </summary>
+    internal static void UpdateMatchingAuthJson(AuthBundle bundle, string? previousAccountId,
+        string? previousRefreshToken, string? codexHome) {
+        if (string.IsNullOrWhiteSpace(previousAccountId) || string.IsNullOrWhiteSpace(previousRefreshToken)
+            || !string.Equals(previousAccountId, bundle.AccountId, StringComparison.OrdinalIgnoreCase)) {
+            return;
+        }
+        var path = ResolveAuthPath(codexHome);
+        using var transaction = AuthFileTransaction.AcquireAsync(path + ".lock", CancellationToken.None).GetAwaiter().GetResult();
+        if (!File.Exists(path)) {
+            return;
+        }
+        JsonObject? root;
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        using (var reader = new StreamReader(stream, Encoding.UTF8, true)) {
+            root = JsonLite.Parse(reader.ReadToEnd()).AsObject();
+        }
+        var tokens = root?.GetObject("tokens");
+        var currentAccountId = NormalizeOptional(tokens?.GetString("account_id"))
+                               ?? JwtDecoder.TryGetAccountId(tokens?.GetString("access_token") ?? string.Empty);
+        if (tokens is null || root is null
+            || !string.Equals(currentAccountId, previousAccountId, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(tokens.GetString("refresh_token"), previousRefreshToken, StringComparison.Ordinal)) {
+            return;
+        }
+        tokens.Add("access_token", bundle.AccessToken).Add("refresh_token", bundle.RefreshToken);
+        if (!string.IsNullOrWhiteSpace(bundle.IdToken)) {
+            tokens.Add("id_token", bundle.IdToken);
+        }
+        root.Add("last_refresh", DateTimeOffset.UtcNow.ToString("O"));
+        PrivateAuthFile.WriteAtomically(path, JsonLite.Serialize(JsonValue.From(root)));
     }
 
     private static string? NormalizeOptional(string? value) {

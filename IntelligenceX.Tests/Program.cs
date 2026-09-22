@@ -3,6 +3,7 @@ namespace IntelligenceX.Tests;
 internal static partial class Program {
     private static int Main() {
         var failed = 0;
+        failed += Run("Desktop companion resolves only paired bundle", TestDesktopCompanionResolvesOnlyPairedBundle);
         failed += Run("Parse basic object", TestParseBasicObject);
         failed += Run("Serialize roundtrip", TestSerializeRoundtrip);
         failed += Run("Escape handling", TestEscapeHandling);
@@ -15,6 +16,14 @@ internal static partial class Program {
         failed += Run("Header transport message", TestHeaderTransportMessage);
         failed += Run("Header transport truncated", TestHeaderTransportTruncated);
         failed += Run("Config load invalid JSON", TestConfigLoadInvalidJsonThrows);
+        failed += Run("Provider limit windows use reported durations", TestProviderLimitWindowsUseReportedDurations);
+#if INTELLIGENCEX_REVIEWER
+        failed += Run("Provider limits refresh accounts independently", TestProviderLimitsRefreshAccountsIndependently);
+        failed += Run("Provider limits keep distinct unresolved credentials", TestProviderLimitsKeepDistinctUnresolvedCredentials);
+        failed += Run("Provider limits synchronize only matching Codex credentials", TestProviderLimitsSynchronizeOnlyMatchingCodexCredentials);
+        failed += Run("Provider limits account refresh cancellation and empty store", TestProviderLimitsAccountRefreshCancellationAndEmptyStore);
+        failed += Run("Provider limits large inventory scan budget", TestProviderLimitsLargeInventoryReturnsWithinScanBudget);
+#endif
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage parse ignores legacy code review rate limit",
             TestChatGptUsageParseIgnoresLegacyCodeReviewRateLimit);
@@ -151,6 +160,14 @@ internal static partial class Program {
             TestProviderLimitForecastingDescribesAccountRunway);
         failed += Run("Provider limit forecasting keeps unavailable accounts visible",
             TestProviderLimitForecastingKeepsUnavailableAccountsVisible);
+        failed += Run("Provider limit advisory requires capacity evidence",
+            TestProviderLimitAdvisoryRequiresCapacityEvidence);
+        failed += Run("Banked reset planner preserves evidence and account scope",
+            TestBankedResetPlannerPreservesEvidenceAndAccountScope);
+        failed += Run("Banked reset planner does not infer window activation",
+            TestBankedResetPlannerDoesNotInferWindowActivation);
+        failed += Run("Banked reset inventory round trips and preserves invalid data",
+            TestBankedResetInventoryRoundTripAndCorruptionSafety);
         failed += Run("Provider limit forecasting uses watch closely for pace risk",
             TestProviderLimitForecastingUsesWatchCloselyForPaceRisk);
         failed += Run("Provider limit forecasting keeps early weekly pace as tight",
@@ -454,6 +471,8 @@ internal static partial class Program {
         failed += Run("Auth store encrypted roundtrip", TestAuthStoreEncryptedRoundtrip);
         failed += Run("Auth store decrypt with explicit key override", TestAuthStoreDecryptWithExplicitKeyOverride);
         failed += Run("Auth store list filters provider and orders accounts", TestAuthStoreListAsyncFiltersProviderAndOrdersAccounts);
+        failed += Run("Auth store refresh migrates legacy alias", TestAuthStoreRefreshMigratesLegacyAlias);
+        failed += Run("Foreground refresh shares file transaction", TestForegroundRefreshSharesFileTransaction);
         failed += Run("Path safety blocks symlink traversal", TestPathSafetyBlocksSymlinkTraversal);
 #endif
         failed += Run("Native tool schema fallback detects tools[n]", TestNativeToolSchemaFallbackDetectsIndex);
@@ -468,6 +487,7 @@ internal static partial class Program {
         failed += Run("Native request body omits previous_response_id", TestNativeRequestBodyOmitsPreviousResponseId);
         failed += Run("Native request body normalizes tools/tool_choice", TestNativeRequestBodyNormalizesToolsAndToolChoice);
         failed += Run("Native request body includes image generation tool", TestNativeRequestBodyIncludesImageGenerationTool);
+        failed += Run("Native streaming preserves whitespace text deltas", TestNativeStreamingPreservesWhitespaceTextDeltas);
         failed += Run("Native image generation output saves base64 payload", TestNativeImageGenerationOutputSavesBase64Payload);
         failed += Run("Native image generation preserves streamed output items", TestNativeImageGenerationPreservesStreamedOutputItems);
         failed += Run("Realtime client secret uses ChatGPT OAuth", TestRealtimeClientSecretUsesChatGptOAuth);

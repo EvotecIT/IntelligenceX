@@ -137,6 +137,7 @@ internal sealed partial class ChatServiceSession {
 
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private int _assistantDeltaSuppressionDepth;
     private string? _instructions;
     private readonly object _startupToolingBootstrapLock = new();
     private Task? _startupToolingBootstrapTask;

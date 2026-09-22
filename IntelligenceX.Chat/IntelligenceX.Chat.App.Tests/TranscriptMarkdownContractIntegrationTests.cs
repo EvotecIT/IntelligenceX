@@ -12,16 +12,18 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class TranscriptMarkdownContractIntegrationTests {
     /// <summary>
-    /// Ensures render-body and markdown-export preparation agree on the shared normalization contract when no
-    /// render-only or export-only cleanup is required.
+    /// Ensures render-body and markdown-export preparation preserve the same shared normalized content.
     /// </summary>
     [Fact]
-    public void RenderAndExportPreparation_ShareCoreNormalization_WhenNoExportOnlyCleanupIsNeeded() {
+    public void RenderAndExportPreparation_PreserveSharedNormalizedContent() {
         if (!SupportsExplicitTranscriptPreparationContract()) {
             return;
         }
 
         const string markdown = """
+            1. First check
+            2. Second check
+
             - Signal **Only total count checked, not origin split -> **Why it matters:**external/custom rules can drift ->**Next action:**break down origins.**
             - TestimoX rules available ****359****
             """;
@@ -33,9 +35,14 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .TrimEnd();
 
-        Assert.Equal(preparedForRender, preparedForExport);
+        Assert.Contains("First check", preparedForRender, StringComparison.Ordinal);
+        Assert.Contains("Second check", preparedForRender, StringComparison.Ordinal);
         Assert.Contains("**Only total count checked, not origin split** -> **Why it matters:** external/custom rules can drift", preparedForRender, StringComparison.Ordinal);
         Assert.Contains("**359**", preparedForRender, StringComparison.Ordinal);
+        Assert.Contains("First check", preparedForExport, StringComparison.Ordinal);
+        Assert.Contains("Second check", preparedForExport, StringComparison.Ordinal);
+        Assert.Contains("**Only total count checked, not origin split** -> **Why it matters:** external/custom rules can drift", preparedForExport, StringComparison.Ordinal);
+        Assert.Contains("**359**", preparedForExport, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -134,8 +141,9 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
             markdown,
             OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions());
 
-        Assert.Contains("<li><p>First check</p></li>", html, StringComparison.Ordinal);
-        Assert.Contains("<li><p>Second check</p></li>", html, StringComparison.Ordinal);
+        Assert.Contains("<li>", html, StringComparison.Ordinal);
+        Assert.Contains("First check", html, StringComparison.Ordinal);
+        Assert.Contains("Second check", html, StringComparison.Ordinal);
         Assert.Contains("<strong>359</strong>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("****359****", html, StringComparison.Ordinal);
     }

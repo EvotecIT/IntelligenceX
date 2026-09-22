@@ -7,6 +7,7 @@ using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.OpenAI;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -67,6 +68,9 @@ public sealed class SessionRuntimePolicyHelloContractTests {
 
         var policy = ChatServiceSession.BuildSessionPolicy(
             new ServiceOptions {
+                ProfileName = "service-profile",
+                Model = "service-model",
+                OpenAITransport = OpenAITransportKind.CompatibleHttp,
                 ParallelTools = true,
                 AllowMutatingParallelToolCalls = true
             },
@@ -94,6 +98,11 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         var serializedPolicy = doc.RootElement.GetProperty("policy");
         Assert.True(serializedPolicy.GetProperty("parallelTools").GetBoolean());
         Assert.True(serializedPolicy.GetProperty("allowMutatingParallelToolCalls").GetBoolean());
+
+        var runtimeIdentity = serializedPolicy.GetProperty("runtimeIdentity");
+        Assert.Equal("service-profile", runtimeIdentity.GetProperty("profileName").GetString());
+        Assert.Equal("compatible-http", runtimeIdentity.GetProperty("transport").GetString());
+        Assert.Equal("service-model", runtimeIdentity.GetProperty("model").GetString());
 
         var runtime = serializedPolicy.GetProperty("runtimePolicy");
 
@@ -177,6 +186,40 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             });
 
         Assert.Equal(ChatRequestOptionLimits.MinToolRounds, policy.MaxToolRounds);
+    }
+
+    [Fact]
+    public void BuildSessionPolicy_DoesNotClaimAutoResolvedLocalModelBeforeTurnResolution() {
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions {
+                ProfileName = "local-profile",
+                Model = OpenAIModelCatalog.DefaultModel,
+                OpenAITransport = OpenAITransportKind.CompatibleHttp,
+                OpenAIBaseUrl = "http://127.0.0.1:1234/v1"
+            },
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            Array.Empty<ToolPluginAvailabilityInfo>(),
+            Array.Empty<string>(),
+            null,
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = false,
+                WriteGovernanceRuntimeConfigured = false,
+                RequireWriteAuditSinkForWriteOperations = false,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
+                WriteAuditSinkConfigured = false,
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireExplicitRoutingMetadata = false,
+                RequireAuthenticationRuntime = false,
+                AuthenticationRuntimeConfigured = false,
+                RequireSuccessfulSmtpProbeForSend = false,
+                SmtpProbeMaxAgeSeconds = 0
+            });
+
+        Assert.NotNull(policy.RuntimeIdentity);
+        Assert.Equal("compatible-http", policy.RuntimeIdentity!.Transport);
+        Assert.Null(policy.RuntimeIdentity.Model);
     }
 
     [Fact]

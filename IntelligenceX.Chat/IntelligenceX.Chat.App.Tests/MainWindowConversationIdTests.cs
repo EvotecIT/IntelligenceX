@@ -1,5 +1,7 @@
 using System;
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Native;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -50,5 +52,21 @@ public sealed class MainWindowConversationIdTests {
     [InlineData("default")]
     public void IsReservedConversationCreationId_ReturnsTrue_ForReservedAliases(string requestedConversationId) {
         Assert.True(MainWindow.IsReservedConversationCreationId(requestedConversationId));
+    }
+
+    /// <summary>
+    /// Ensures native and legacy surfaces use one deterministic conversation-title policy.
+    /// </summary>
+    [Fact]
+    public void ConversationTitlePolicy_IsSharedByDesktopShells() {
+        var message = new string('x', 60) + "\r\nignored";
+        var expected = ChatConversationIdentity.BuildTitleFromText(message);
+        var native = NativeConversation.CreateNew();
+        native.Messages.Add(new NativeChatTranscriptItem("user", message, DateTimeOffset.UtcNow));
+
+        native.UpdateTitleFromFirstUserMessage();
+
+        Assert.Equal(new string('x', 56) + "...", expected);
+        Assert.Equal(expected, native.Title);
     }
 }

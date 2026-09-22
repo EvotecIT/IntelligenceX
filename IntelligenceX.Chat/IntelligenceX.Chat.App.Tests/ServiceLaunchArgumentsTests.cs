@@ -10,6 +10,26 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Tests for typed service launch argument construction.
 /// </summary>
 public sealed class ServiceLaunchArgumentsTests {
+    /// <summary>Ensures a fresh app can create the service profile without applying runtime overrides.</summary>
+    [Fact]
+    public void Build_BootstrapsMissingLoadOnlyProfile() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ChatServiceLaunchProfileOptions {
+                LoadProfileName = "default",
+                SaveProfileName = "default",
+                ApplyRuntimeOverrides = false,
+                BootstrapMissingProfile = true,
+                Model = "must-not-be-applied"
+            });
+
+        Assert.Equal(
+            ["--pipe", "intelligencex.chat", "--profile", "default", "--save-profile", "default"],
+            args);
+    }
+
     /// <summary>
     /// Ensures pipe and parent-lifecycle flags are included in attached mode.
     /// </summary>

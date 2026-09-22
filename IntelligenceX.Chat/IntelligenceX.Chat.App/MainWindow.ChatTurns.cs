@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI.Xaml;
@@ -18,7 +19,6 @@ public sealed partial class MainWindow : Window {
         string ConversationId,
         string RequestId,
         string UserText,
-        string RequestText,
         string? AssistantModelLabel,
         long? AuthProbeMs);
 
@@ -76,32 +76,25 @@ public sealed partial class MainWindow : Window {
                                && baseUrl.Contains("api.githubcopilot.com", StringComparison.OrdinalIgnoreCase);
         conversation.RuntimeLabel = ResolveRuntimeProviderLabelForState(transport, preset, copilotConnected, baseUrl);
         var configuredModel = string.IsNullOrWhiteSpace(conversation.ModelOverride)
-            ? _localProviderModel
+            ? (_appState.LocalProviderRuntimeOverrideActive ? _localProviderModel : _sessionPolicy?.RuntimeIdentity?.Model)
             : conversation.ModelOverride!;
-        var resolvedModel = ResolveChatRequestModelOverride(
-            _localProviderTransport,
-            _localProviderBaseUrl,
-            configuredModel,
-            _availableModels);
+        var resolvedModel = _appState.LocalProviderRuntimeOverrideActive && string.IsNullOrWhiteSpace(conversation.ModelOverride)
+            ? ResolveChatRequestModelOverride(
+                _localProviderTransport,
+                _localProviderBaseUrl,
+                configuredModel,
+                _availableModels)
+            : configuredModel;
         var assistantModelLabel = string.IsNullOrWhiteSpace(resolvedModel) ? "(auto)" : resolvedModel.Trim();
         conversation.ModelLabel = assistantModelLabel;
 
         // Keep the turn startup path responsive; state durability is still preserved via debounced persistence.
         QueuePersistAppState();
-        try {
-            await ApplyUserProfileIntentAsync(text).ConfigureAwait(false);
-        } catch (Exception ex) {
-            if (VerboseServiceLogs || _debugMode) {
-                AppendSystem("Profile intent update skipped for this turn: " + ex.Message);
-            }
-        }
-
         return new ChatTurnContext(
             conversation,
             conversationId,
             NextId(),
             text,
-            BuildRequestTextForService(text),
             assistantModelLabel,
             authProbeMs);
     }
@@ -270,11 +263,17 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task ExecuteChatTurnAsync(ChatServiceClient client, ChatTurnContext turn, CancellationToken cancellationToken) {
+        await EnsureSelectedServiceProfileForTurnAsync(client, cancellationToken).ConfigureAwait(false);
+        var options = BuildChatRequestOptions(turn.Conversation);
+        var modelLabel = options?.Model ?? _sessionPolicy?.RuntimeIdentity?.Model;
+        var resolvedModelLabel = string.IsNullOrWhiteSpace(modelLabel) ? "(auto)" : modelLabel.Trim();
+        turn.Conversation.ModelLabel = resolvedModelLabel;
+        turn = turn with { AssistantModelLabel = resolvedModelLabel };
         var req = new ChatRequest {
             RequestId = turn.RequestId,
             ThreadId = turn.Conversation.ThreadId,
-            Text = turn.RequestText,
-            Options = BuildChatRequestOptions(turn.Conversation)
+            Text = BuildRequestTextForService(turn.UserText, turn.Conversation),
+            Options = options
         };
 
         var runner = ResolveTurnRunner(client);
@@ -282,6 +281,46 @@ public sealed partial class MainWindow : Window {
             .RunAsync(req, ApplyChatTurnUpdateAsync, cancellationToken)
             .ConfigureAwait(false);
         await ApplyChatResultAsync(turn, result.Response).ConfigureAwait(false);
+    }
+
+    private async Task EnsureSelectedServiceProfileForTurnAsync(ChatServiceClient client, CancellationToken cancellationToken) {
+        if (_appState.LocalProviderRuntimeOverrideActive) {
+            return;
+        }
+
+        var desiredProfile = ChatServiceLaunchProfileMapper.NormalizeProfileName(_appProfileName);
+        var profiles = await client.ListProfilesAsync(cancellationToken).ConfigureAwait(false);
+        var profileChanged = !string.Equals(profiles.ActiveProfile, desiredProfile, StringComparison.OrdinalIgnoreCase);
+        if (profileChanged) {
+            if (!ContainsProfileName(profiles.Profiles ?? Array.Empty<string>(), desiredProfile)) {
+                throw new InvalidOperationException(
+                    $"The selected chat profile '{desiredProfile}' is not available in the connected service. Select an existing profile or save this profile before sending.");
+            }
+
+            var selected = await client.SetProfileAsync(desiredProfile, newThread: false, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            if (!selected.Ok) {
+                throw new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(selected.Message)
+                        ? $"The chat service could not select profile '{desiredProfile}'."
+                        : selected.Message);
+            }
+            _serviceActiveProfileName = desiredProfile;
+        }
+
+        if (profileChanged || _sessionPolicy is null
+            || !string.Equals(_sessionPolicy.RuntimeIdentity?.ProfileName, desiredProfile, StringComparison.OrdinalIgnoreCase)) {
+            var hello = await client.RequestAsync<HelloMessage>(
+                    new HelloRequest { RequestId = NextId() }, cancellationToken)
+                .ConfigureAwait(false);
+            var tools = await client.RequestAsync<ToolListMessage>(
+                    new ListToolsRequest { RequestId = NextId() }, cancellationToken)
+                .ConfigureAwait(false);
+            _sessionPolicy = hello.Policy;
+            UpdateToolCatalog(tools.Tools, tools.RoutingCatalog, tools.Packs, tools.Plugins, tools.CapabilitySnapshot);
+            SeedBackgroundSchedulerSnapshot(tools.CapabilitySnapshot?.BackgroundScheduler);
+            RecordStartupBootstrapCacheMode(_sessionPolicy);
+        }
     }
 
     private ChatServiceTurnRunner ResolveTurnRunner(ChatServiceClient client) {

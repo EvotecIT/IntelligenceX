@@ -57,6 +57,10 @@ public sealed class ActionModelProtocolTests {
         Assert.Single(actions);
         Assert.Equal("act_repl_now", actions[0].Id);
         Assert.Equal(string.Empty, cleaned);
+
+        var visible = ActionModelProtocol.MergeVisibleTextWithPendingActions(cleaned, actions);
+        Assert.Contains("Run fresh AD replication summary now", visible, StringComparison.Ordinal);
+        Assert.Contains("/act act_repl_now", visible, StringComparison.Ordinal);
     }
 
     /// <summary>

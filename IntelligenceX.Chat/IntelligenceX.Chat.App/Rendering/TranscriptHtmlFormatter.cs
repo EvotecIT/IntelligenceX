@@ -17,12 +17,8 @@ internal static class TranscriptHtmlFormatter {
     private const int MaxAssistantTurnTraceEntries = 8;
     private const string AssistantDraftBadgeText = "Draft/Thinking";
     private const string AssistantToolBadgeText = "Tool Activity";
-    private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
-    private static readonly Regex AssistantOutcomePrefixRegex = new(
-        @"^\[(?<kind>[a-zA-Z0-9 _-]+)\](?:[ \t]+(?<headline>[^\r\n]*))?",
-        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PendingActionLineRegex = new(
         @"^\s*(?<index>\d+)\.\s+(?<label>.+?)\s+\((?:`)?(?<command>/act\s+(?<id>[^\s)`]+))(?:`)?\)\s*$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -310,38 +306,14 @@ internal static class TranscriptHtmlFormatter {
         MarkdownRendererOptions markdownOptions,
         out string html) {
         html = string.Empty;
-        if (!IsOutcomeRole(role)) {
+        if (!TranscriptOutcomePresentationParser.TryParse(role, text, out var presentation)) {
             return false;
         }
 
-        var raw = (text ?? string.Empty).Trim();
-        if (raw.Length == 0) {
-            return false;
-        }
-
-        var match = AssistantOutcomePrefixRegex.Match(raw);
-        if (!match.Success) {
-            return false;
-        }
-
-        var kindRaw = match.Groups["kind"].Value.Trim();
-        var normalizedKind = NormalizeOutcomeKind(kindRaw);
-        var headlineRaw = match.Groups["headline"].Value.Trim();
-        if (!IsAssistantOutcomeKind(normalizedKind)) {
-            return false;
-        }
-
-        var headline = headlineRaw.Length == 0
-            ? GetOutcomeDefaultTitle(normalizedKind, role)
-            : headlineRaw;
-        var detail = normalizedKind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)
-            ? PrepareExecutionBlockedOutcomeDetail(raw[match.Length..])
-            : TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(raw[match.Length..]);
-        var toneClass = GetAssistantOutcomeToneClass(normalizedKind);
-        var badge = GetAssistantOutcomeBadge(normalizedKind);
-        var iconSvg = GetAssistantOutcomeIconSvg(normalizedKind);
+        var toneClass = GetAssistantOutcomeToneClass(presentation.Tone);
+        var iconSvg = GetAssistantOutcomeIconSvg(presentation.Kind);
         var encoder = HtmlEncoder.Default;
-        var kindCssClass = "outcome-kind-" + normalizedKind.Replace('_', '-');
+        var kindCssClass = "outcome-kind-" + presentation.Kind.Replace('_', '-');
         var roleCssClass = string.Equals(role, "System", StringComparison.OrdinalIgnoreCase)
             ? "outcome-role-system"
             : "outcome-role-assistant";
@@ -351,14 +323,14 @@ internal static class TranscriptHtmlFormatter {
             .Append("<div class='outcome-head'>")
             .Append("<div class='outcome-main'>")
             .Append("<span class='outcome-icon' aria-hidden='true'>").Append(iconSvg).Append("</span>")
-            .Append("<span class='outcome-title'>").Append(encoder.Encode(headline)).Append("</span>")
+            .Append("<span class='outcome-title'>").Append(encoder.Encode(presentation.Headline)).Append("</span>")
             .Append("</div>")
-            .Append("<span class='outcome-badge'>").Append(encoder.Encode(badge)).Append("</span>")
+            .Append("<span class='outcome-badge'>").Append(encoder.Encode(presentation.Badge)).Append("</span>")
             .Append("</div>");
 
-        if (detail.Length > 0) {
+        if (presentation.DetailMarkdown.Length > 0) {
             sb.Append("<div class='outcome-body'>")
-                .Append(RenderBodyHtml(detail, markdownOptions))
+                .Append(RenderBodyHtml(presentation.DetailMarkdown, markdownOptions))
                 .Append("</div>");
         }
 
@@ -367,94 +339,11 @@ internal static class TranscriptHtmlFormatter {
         return true;
     }
 
-    private static string NormalizeOutcomeKind(string kind) {
-        return (kind ?? string.Empty)
-            .Trim()
-            .Replace("-", "_", StringComparison.Ordinal)
-            .Replace(" ", "_", StringComparison.Ordinal)
-            .ToLowerInvariant();
-    }
-
-    private static bool IsAssistantOutcomeKind(string kind) {
-        return kind.Equals("error", StringComparison.OrdinalIgnoreCase)
-               || kind.Equals("canceled", StringComparison.OrdinalIgnoreCase)
-               || kind.Equals("limit", StringComparison.OrdinalIgnoreCase)
-               || kind.Equals("warning", StringComparison.OrdinalIgnoreCase)
-               || kind.Equals("startup", StringComparison.OrdinalIgnoreCase)
-               || kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)
-               || kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsOutcomeRole(string role) {
-        return string.Equals(role, "Assistant", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(role, "System", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string GetOutcomeDefaultTitle(string kind, string role) {
-        var isSystemRole = string.Equals(role, "System", StringComparison.OrdinalIgnoreCase);
-        if (kind.Equals("canceled", StringComparison.OrdinalIgnoreCase)) {
-            return isSystemRole ? "System canceled" : "Turn canceled";
-        }
-        if (kind.Equals("limit", StringComparison.OrdinalIgnoreCase)) {
-            return isSystemRole ? "System limit reached" : "Limit reached";
-        }
-        if (kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
-            return isSystemRole ? "System warning" : "Warning";
-        }
-        if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)) {
-            return isSystemRole ? "Startup diagnostics" : "Startup";
-        }
-        if (kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)) {
-            return isSystemRole ? "System action blocked" : "Execution blocked";
-        }
-        if (kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
-            return "Cached evidence fallback";
-        }
-
-        return isSystemRole ? "System error" : "Request failed";
-    }
-
-    private static string GetAssistantOutcomeBadge(string kind) {
-        if (kind.Equals("canceled", StringComparison.OrdinalIgnoreCase)) {
-            return "Canceled";
-        }
-        if (kind.Equals("limit", StringComparison.OrdinalIgnoreCase)) {
-            return "Limit";
-        }
-        if (kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
-            return "Warning";
-        }
-        if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)) {
-            return "Startup";
-        }
-        if (kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)) {
-            return "Blocked";
-        }
-        if (kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
-            return "Cached";
-        }
-
-        return "Error";
-    }
-
-    private static string GetAssistantOutcomeToneClass(string kind) {
-        if (kind.Equals("canceled", StringComparison.OrdinalIgnoreCase)) {
-            return "outcome-neutral";
-        }
-        if (kind.Equals("limit", StringComparison.OrdinalIgnoreCase)
-            || kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
-            return "outcome-warn";
-        }
-        if (kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)) {
-            return "outcome-neutral";
-        }
-        if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)
-            || kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
-            return "outcome-neutral";
-        }
-
-        return "outcome-error";
-    }
+    private static string GetAssistantOutcomeToneClass(TranscriptOutcomeTone tone) => tone switch {
+        TranscriptOutcomeTone.Warning => "outcome-warn",
+        TranscriptOutcomeTone.Error => "outcome-error",
+        _ => "outcome-neutral"
+    };
 
     private static string GetAssistantOutcomeIconSvg(string kind) {
         if (kind.Equals("canceled", StringComparison.OrdinalIgnoreCase)) {
@@ -473,206 +362,6 @@ internal static class TranscriptHtmlFormatter {
         }
 
         return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6'/></svg>";
-    }
-
-    private static string PrepareExecutionBlockedOutcomeDetail(string rawDetail) {
-        var lines = (rawDetail ?? string.Empty)
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n')
-            .Split('\n');
-
-        string summary = string.Empty;
-        string selectedAction = string.Empty;
-        string actionCommand = string.Empty;
-        string reasonCode = string.Empty;
-        var consumedLines = new bool[lines.Length];
-
-        for (var i = 0; i < lines.Length; i++) {
-            var line = SanitizeExecutionBlockedDetailLine(lines[i]).Trim();
-            if (line.Length == 0) {
-                continue;
-            }
-
-            if (summary.Length == 0) {
-                summary = line;
-                consumedLines[i] = true;
-                continue;
-            }
-
-            if (line.StartsWith("Selected action request:", StringComparison.OrdinalIgnoreCase)) {
-                selectedAction = line["Selected action request:".Length..].Trim();
-                consumedLines[i] = true;
-                continue;
-            }
-
-            if (line.StartsWith("Action:", StringComparison.OrdinalIgnoreCase)) {
-                actionCommand = line["Action:".Length..].Trim();
-                consumedLines[i] = true;
-                continue;
-            }
-
-            if (line.StartsWith("Reason code:", StringComparison.OrdinalIgnoreCase)) {
-                consumedLines[i] = true;
-                reasonCode = line["Reason code:".Length..].Trim();
-                if (reasonCode.Length == 0) {
-                    for (var j = i + 1; j < lines.Length; j++) {
-                        var next = SanitizeExecutionBlockedDetailLine(lines[j]).Trim();
-                        if (next.Length == 0) {
-                            consumedLines[j] = true;
-                            continue;
-                        }
-
-                        reasonCode = next;
-                        consumedLines[j] = true;
-                        i = j;
-                        break;
-                    }
-                }
-                continue;
-            }
-        }
-
-        var trailingNotes = BuildExecutionBlockedTrailingNotes(lines, consumedLines);
-
-        var detail = new StringBuilder();
-        if (summary.Length > 0) {
-            detail.Append(summary);
-        }
-
-        var hasMetadata = selectedAction.Length > 0 || actionCommand.Length > 0 || reasonCode.Length > 0;
-        if (hasMetadata) {
-            if (detail.Length > 0) {
-                detail.AppendLine().AppendLine();
-            }
-
-            if (selectedAction.Length > 0) {
-                AppendExecutionBlockedMetadataLine(detail, "Selected action", selectedAction);
-            }
-            if (actionCommand.Length > 0) {
-                AppendExecutionBlockedMetadataLine(detail, "Action command", actionCommand);
-            }
-            if (reasonCode.Length > 0) {
-                AppendExecutionBlockedMetadataLine(detail, "Reason code", reasonCode);
-            }
-        }
-
-        if (trailingNotes.Length > 0) {
-            if (detail.Length > 0) {
-                detail.AppendLine().AppendLine();
-            }
-
-            detail.Append(trailingNotes);
-        }
-
-        return TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(detail.ToString());
-    }
-
-    private static string BuildExecutionBlockedTrailingNotes(IReadOnlyList<string> lines, IReadOnlyList<bool> consumedLines) {
-        var trailingLines = new List<string>(lines.Count);
-        for (var i = 0; i < lines.Count; i++) {
-            if (consumedLines[i]) {
-                continue;
-            }
-
-            trailingLines.Add(SanitizeExecutionBlockedDetailLine(lines[i]));
-        }
-
-        var start = 0;
-        while (start < trailingLines.Count && string.IsNullOrWhiteSpace(trailingLines[start])) {
-            start++;
-        }
-
-        var end = trailingLines.Count - 1;
-        while (end >= start && string.IsNullOrWhiteSpace(trailingLines[end])) {
-            end--;
-        }
-
-        if (end < start) {
-            return string.Empty;
-        }
-
-        return string.Join('\n', trailingLines.GetRange(start, end - start + 1));
-    }
-
-    private static string SanitizeExecutionBlockedDetailLine(string? line) {
-        var value = line ?? string.Empty;
-        if (value.IndexOf(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
-            return value;
-        }
-
-        return value.Replace(ExecutionContractMarker, string.Empty, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void AppendExecutionBlockedMetadataLine(StringBuilder detail, string label, string value) {
-        var normalizedValue = NormalizeExecutionBlockedMetadataValue(value);
-        if (normalizedValue.Length == 0) {
-            return;
-        }
-
-        detail.Append("- ")
-            .Append(label)
-            .Append(": ")
-            .Append(BuildExecutionBlockedMetadataCodeSpan(normalizedValue))
-            .AppendLine();
-    }
-
-    private static string NormalizeExecutionBlockedMetadataValue(string? value) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return string.Empty;
-        }
-
-        var sb = new StringBuilder(value.Length);
-        var pendingWhitespace = false;
-        for (var i = 0; i < value.Length; i++) {
-            var ch = value[i];
-            if (char.IsControl(ch)) {
-                pendingWhitespace = sb.Length > 0;
-                continue;
-            }
-
-            if (char.IsWhiteSpace(ch)) {
-                pendingWhitespace = sb.Length > 0;
-                continue;
-            }
-
-            if (pendingWhitespace) {
-                sb.Append(' ');
-                pendingWhitespace = false;
-            }
-
-            sb.Append(ch);
-        }
-
-        return sb.ToString().Trim();
-    }
-
-    private static string BuildExecutionBlockedMetadataCodeSpan(string value) {
-        if (string.IsNullOrEmpty(value)) {
-            return "``";
-        }
-
-        var longestBacktickRun = 0;
-        var currentRun = 0;
-        for (var i = 0; i < value.Length; i++) {
-            if (value[i] == '`') {
-                currentRun++;
-                if (currentRun > longestBacktickRun) {
-                    longestBacktickRun = currentRun;
-                }
-            } else {
-                currentRun = 0;
-            }
-        }
-
-        var fence = new string('`', Math.Max(1, longestBacktickRun + 1));
-        var requiresPadding = value.Length > 0
-                              && (char.IsWhiteSpace(value[0])
-                                  || char.IsWhiteSpace(value[^1])
-                                  || value[0] == '`'
-                                  || value[^1] == '`');
-        return requiresPadding
-            ? fence + " " + value + " " + fence
-            : fence + value + fence;
     }
 
     private static string RenderBodyHtml(string text, MarkdownRendererOptions markdownOptions) {

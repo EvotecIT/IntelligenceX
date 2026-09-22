@@ -1,6 +1,6 @@
 # IntelligenceX.Chat Roadmap / TODO
 
-This is an end-to-end checklist for getting from today’s REPL into a usable Windows tray app with strong AD + Event Log tooling.
+This is an end-to-end checklist for the chat runtime and its native Windows application.
 
 Conventions:
 - `[x]` done
@@ -96,15 +96,20 @@ Suggested tool ids:
 - [ ] `office_word_write` (dangerous)
 - [ ] `office_powerpoint_write` (dangerous)
 
-## Milestone G: Real App (WinUI 3 Tray) MVP
-Definition of done: you can install/run the tray app, chat, see tool traces, and export tables.
+## Milestone G: Native WinUI 3 App
+Definition of done: you can install the native app, manage scoped conversations, chat, inspect tool activity, work with artifacts, and export results.
 
-- [ ] WinUI 3 tray app skeleton (process model: UI + service)
-- [ ] Service lifecycle management (start/stop/restart, health, logs)
-- [ ] Chat timeline UI (streaming deltas)
-- [ ] Tool trace UI (tool name, args, duration, result preview, errors)
-- [ ] Table rendering (WebView2 or native grid) with copy/export
-- [ ] Session profiles (allowed roots, packs enabled, AD DC/base DN defaults)
+- [x] Native WinUI 3 shell as the default app path, with the legacy WebView shell behind `IXCHAT_LEGACY_WEBVIEW=1`
+- [x] Shared service lifecycle, authentication, readiness, and cancellation
+- [x] Native chat timeline with streaming deltas and persisted conversations
+- [x] Native tool/result status and structured artifact cards
+- [x] Native table preview/workspace with search, filter, sort, selection, copy, and export routing
+- [x] Session profiles (allowed roots, packs enabled, provider/model/runtime defaults)
+- [ ] Native model and reasoning controls backed by the live runtime catalog
+- [ ] Native Runtime, Tools, Export, Evidence, and Advanced settings/inspector pages
+- [ ] Project/workspace management with grouped conversations and explicit allowed roots
+- [ ] Conversation rename, archive, and pin actions
+- [ ] Artifact command parity: collapse, expand, pop out, copy, save, and supported exports
 - [ ] Logs and diagnostics panel (copyable)
 
 ## Milestone H: Extensibility (Plugins, Meta-Tools, Policies)
@@ -127,4 +132,4 @@ Definition of done: you can install/run the tray app, chat, see tool traces, and
 ## Next 2-3 Steps (Recommended)
 - [ ] Update Host prompt to prefer `ad_users_expired` and `ad_group_members_resolved` (verify behavior with a few interactive prompts)
 - [x] Add a Domain Admins summary tool (resolved, users-only option) to reduce friction further
-- [ ] Start the WinUI tray MVP with tool trace UI (so “I can start chatting” is the normal path, not REPL) (wait for WinUI to stabilize if needed)
+- [ ] Complete native model/reasoning settings and project management using the shared state/runtime owners

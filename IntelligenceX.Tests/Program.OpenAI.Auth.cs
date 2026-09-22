@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
+using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
@@ -156,6 +157,84 @@ internal static partial class Program {
             } catch {
                 // best-effort cleanup
             }
+        }
+    }
+
+    private static void TestAuthStoreRefreshMigratesLegacyAlias() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-auth-alias-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            var store = new FileAuthBundleStore(Path.Combine(directory, "auth.json"));
+            var legacy = new AuthBundle("chatgpt", "old-access", "old-refresh", DateTimeOffset.UtcNow.AddMinutes(-1)) {
+                AccountId = "legacy-account"
+            };
+            store.SaveAsync(legacy).GetAwaiter().GetResult();
+            var rotated = store.RefreshAsync(legacy, (_, _) => Task.FromResult(new AuthBundle(
+                OpenAICodexDefaults.Provider, "new-access", "new-refresh", DateTimeOffset.UtcNow.AddHours(1)) {
+                AccountId = "legacy-account"
+            }), CancellationToken.None).GetAwaiter().GetResult();
+            AssertEqual("new-refresh", rotated.RefreshToken, "alias refresh persists the rotated token");
+            AssertEqual("new-access", store.GetAsync(OpenAICodexDefaults.Provider, "legacy-account").GetAwaiter().GetResult()?.AccessToken,
+                "alias refresh migrates to the canonical provider");
+            AssertEqual(null, store.GetAsync("chatgpt", "legacy-account").GetAwaiter().GetResult(),
+                "alias refresh removes the obsolete entry");
+
+            var aliasOnly = new AuthBundle("openai", "alias-access", "alias-refresh", DateTimeOffset.UtcNow.AddMinutes(-1)) {
+                AccountId = "alias-only"
+            };
+            store.SaveAsync(aliasOnly).GetAwaiter().GetResult();
+            var manager = new OpenAINativeAuthManager(new OpenAINativeOptions {
+                AuthStore = store, AuthAccountId = "alias-only", LoadCodexAuthJson = false, PersistCodexAuthJson = false
+            }, (_, candidate, _) => Task.FromResult(new OAuthLoginResult(new AuthBundle(
+                OpenAICodexDefaults.Provider, "alias-renewed", "alias-rotated", DateTimeOffset.UtcNow.AddHours(1)) {
+                AccountId = candidate.AccountId
+            }, new System.Collections.Generic.Dictionary<string, string>())));
+            var selected = manager.TryGetValidBundleAsync(CancellationToken.None).GetAwaiter().GetResult();
+            AssertEqual("alias-renewed", selected?.AccessToken, "alias-only account remains usable in foreground chat");
+            AssertEqual("alias-rotated", store.GetAsync(OpenAICodexDefaults.Provider, "alias-only")
+                .GetAwaiter().GetResult()?.RefreshToken, "foreground refresh migrates alias-only account");
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void TestForegroundRefreshSharesFileTransaction() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-auth-foreground-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            var path = Path.Combine(directory, "auth.json");
+            var foregroundStore = new FileAuthBundleStore(path);
+            var backgroundStore = new FileAuthBundleStore(path);
+            var original = new AuthBundle(OpenAICodexDefaults.Provider, "old-access", "old-refresh",
+                DateTimeOffset.UtcNow.AddMinutes(-1)) { AccountId = "shared-account" };
+            foregroundStore.SaveAsync(original).GetAwaiter().GetResult();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var enteredRefresh = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseRefresh = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var manager = new OpenAINativeAuthManager(new OpenAINativeOptions {
+                AuthStore = foregroundStore, LoadCodexAuthJson = false, PersistCodexAuthJson = false
+            }, async (_, candidate, token) => {
+                enteredRefresh.TrySetResult(true);
+                await releaseRefresh.Task.WaitAsync(token).ConfigureAwait(false);
+                return new OAuthLoginResult(new AuthBundle(OpenAICodexDefaults.Provider, "new-access", "new-refresh",
+                    DateTimeOffset.UtcNow.AddHours(1)) { AccountId = candidate.AccountId },
+                    new System.Collections.Generic.Dictionary<string, string>());
+            });
+            var foreground = manager.RefreshAsync(original, timeout.Token);
+            enteredRefresh.Task.WaitAsync(timeout.Token).GetAwaiter().GetResult();
+            var backgroundRefreshes = 0;
+            var background = backgroundStore.RefreshAsync(original, (candidate, _) => {
+                Interlocked.Increment(ref backgroundRefreshes);
+                return Task.FromResult(candidate);
+            }, timeout.Token);
+            releaseRefresh.TrySetResult(true);
+            Task.WhenAll(foreground, background).GetAwaiter().GetResult();
+            AssertEqual(0, backgroundRefreshes, "background reuses the foreground token generation");
+            AssertEqual("new-refresh", background.Result.RefreshToken, "background sees the rotated token");
+            AssertEqual("new-refresh", backgroundStore.GetAsync(OpenAICodexDefaults.Provider, "shared-account")
+                .GetAwaiter().GetResult()?.RefreshToken, "rotated token remains persisted");
+        } finally {
+            Directory.Delete(directory, recursive: true);
         }
     }
 #endif

@@ -99,6 +99,9 @@ public static class ProviderLimitForecasting {
     public static ProviderLimitWindowForecast? BuildForecast(ProviderLimitWindow? window, DateTimeOffset nowUtc) {
         if (window is null
             || !window.UsedPercent.HasValue
+            || double.IsNaN(window.UsedPercent.Value)
+            || double.IsInfinity(window.UsedPercent.Value)
+            || window.UsedPercent.Value < 0d
             || !window.ResetsAt.HasValue
             || !window.WindowDuration.HasValue
             || window.WindowDuration.Value <= TimeSpan.Zero) {
@@ -143,12 +146,20 @@ public static class ProviderLimitForecasting {
 
     public static IReadOnlyList<ProviderLimitAccountAdvisory> BuildAccountAdvisories(
         ProviderLimitSnapshot? snapshot,
-        DateTimeOffset? nowUtc = null) {
+        DateTimeOffset? nowUtc = null) => BuildAccountAdvisories(snapshot, nowUtc, TimeSpan.FromMinutes(10));
+
+    /// <summary>Builds account advice using an explicit freshness policy, without treating cached capacity as current.</summary>
+    public static IReadOnlyList<ProviderLimitAccountAdvisory> BuildAccountAdvisories(
+        ProviderLimitSnapshot? snapshot,
+        DateTimeOffset? nowUtc,
+        TimeSpan maximumReadingAge) {
         if (snapshot is null) {
             return Array.Empty<ProviderLimitAccountAdvisory>();
         }
 
-        var effectiveNow = nowUtc ?? snapshot.RetrievedAtUtc;
+        var effectiveNow = nowUtc ?? DateTimeOffset.UtcNow;
+        var readingAge = maximumReadingAge;
+        if (readingAge <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maximumReadingAge));
         var accounts = snapshot.Accounts.Count > 0
             ? snapshot.Accounts
             : new[] {
@@ -164,7 +175,7 @@ public static class ProviderLimitForecasting {
             };
 
         var advisories = accounts
-            .Select(account => BuildAccountAdvisory(account, effectiveNow))
+            .Select(account => BuildAccountAdvisory(account, effectiveNow, readingAge))
             .Where(static advisory => advisory is not null)
             .Cast<ProviderLimitAccountAdvisory>()
             .OrderBy(static advisory => advisory.RiskScore)
@@ -176,7 +187,10 @@ public static class ProviderLimitForecasting {
 
         var recommendedIndex = SelectRecommendedIndex(advisories);
         if (recommendedIndex < 0) {
-            recommendedIndex = 0;
+            return advisories
+                .OrderBy(static advisory => GetDisplayPriority(advisory))
+                .ThenBy(static advisory => advisory.DisplayLabel, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         var recommended = advisories[recommendedIndex];
@@ -199,7 +213,8 @@ public static class ProviderLimitForecasting {
 
     private static ProviderLimitAccountAdvisory? BuildAccountAdvisory(
         ProviderLimitAccountSnapshot account,
-        DateTimeOffset nowUtc) {
+        DateTimeOffset nowUtc,
+        TimeSpan maximumReadingAge) {
         if (account is null) {
             return null;
         }
@@ -221,11 +236,34 @@ public static class ProviderLimitForecasting {
         }
 
         ProviderLimitWindow? hottestWindow = null;
+        if (account.RetrievedAtUtc > nowUtc || nowUtc - account.RetrievedAtUtc > maximumReadingAge) {
+            return new ProviderLimitAccountAdvisory(
+                account.AccountId, displayLabel, account.PlanLabel, null,
+                "Stale", "Refresh account limits before choosing an account; this reading is not current.",
+                double.MaxValue, isRecommended: false, account.IsSelected);
+        }
         ProviderLimitWindowForecast? hottestForecast = null;
         var riskScore = double.MaxValue;
         var advisoryWindows = GetAdvisoryWindows(account.Windows);
 
         foreach (var window in advisoryWindows) {
+            // A past reset timestamp is not proof that the next window has started.
+            // Keep the account visible, but do not recommend it using the old capacity.
+            if (window.ResetsAt <= nowUtc) {
+                return new ProviderLimitAccountAdvisory(
+                    account.AccountId, displayLabel, account.PlanLabel, window.Label,
+                    "Refresh needed", "A reported reset time has passed. Refresh limits to confirm the current window.",
+                    double.MaxValue, isRecommended: false, account.IsSelected);
+            }
+            if (!window.UsedPercent.HasValue
+                || double.IsNaN(window.UsedPercent.Value)
+                || double.IsInfinity(window.UsedPercent.Value)
+                || window.UsedPercent.Value < 0d) {
+                return new ProviderLimitAccountAdvisory(
+                    account.AccountId, displayLabel, account.PlanLabel, window.Label,
+                    "Unknown", "Usage is not reported for every limit window. Refresh limits before choosing this account.",
+                    double.MaxValue, isRecommended: false, account.IsSelected);
+            }
             var forecast = BuildForecast(window, nowUtc);
             var windowRisk = forecast?.ProjectedUsedPercentAtReset
                              ?? window.UsedPercent
@@ -396,7 +434,7 @@ public static class ProviderLimitForecasting {
     private static int SelectRecommendedIndex(IReadOnlyList<ProviderLimitAccountAdvisory> advisories) {
         var bestIndex = advisories
             .Select((advisory, index) => new { advisory, index })
-            .Where(static item => item.advisory.RiskScore < double.MaxValue)
+            .Where(static item => item.advisory.RiskScore < double.MaxValue && !IsHardAvoid(item.advisory.StatusLabel))
             .OrderBy(static item => item.advisory.RiskScore)
             .ThenBy(static item => item.advisory.DisplayLabel, StringComparer.OrdinalIgnoreCase)
             .Select(static item => item.index)

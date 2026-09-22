@@ -7,7 +7,17 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <ItemGroup>
+  <PropertyGroup>
+    <LocalOfficeImoExportProjectsAvailable Condition="'$(UseLocalOfficeImoProjects)' == 'true' AND Exists('$(OfficeImoMarkdownProject)') AND Exists('$(OfficeImoExcelProject)') AND Exists('$(OfficeImoWordMarkdownProject)')">true</LocalOfficeImoExportProjectsAvailable>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(LocalOfficeImoExportProjectsAvailable)' == 'true'">
+    <ProjectReference Include="$(OfficeImoMarkdownProject)" />
+    <ProjectReference Include="$(OfficeImoExcelProject)" />
+    <ProjectReference Include="$(OfficeImoWordMarkdownProject)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(LocalOfficeImoExportProjectsAvailable)' != 'true'">
     <PackageReference Include="OfficeIMO.Markdown" Version="$(OfficeImoMarkdownNuGetVersion)" />
     <PackageReference Include="OfficeIMO.Excel" Version="$(OfficeImoExcelNuGetVersion)" />
     <PackageReference Include="OfficeIMO.Word.Markdown" Version="$(OfficeImoWordMarkdownNuGetVersion)" />

@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.Client;
@@ -191,28 +192,15 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string BuildConversationId() {
-        return "chat-" + Guid.NewGuid().ToString("N");
+        return ChatConversationIdentity.CreateId();
     }
 
     internal static bool IsReservedConversationCreationId(string? conversationId) {
-        var normalized = (conversationId ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return true;
-        }
-
-        return string.Equals(normalized, SystemConversationId, StringComparison.OrdinalIgnoreCase)
-               || string.Equals(normalized, "system", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(normalized, "chat-default", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(normalized, "default", StringComparison.OrdinalIgnoreCase);
+        return ChatConversationIdentity.IsReservedCreationId(conversationId);
     }
 
     internal static string ResolveConversationCreationId(string? conversationId) {
-        var normalized = (conversationId ?? string.Empty).Trim();
-        if (IsReservedConversationCreationId(normalized)) {
-            return BuildConversationId();
-        }
-
-        return normalized;
+        return ChatConversationIdentity.ResolveCreationId(conversationId);
     }
 
     internal static DateTime ResolveConversationDisplayUpdatedUtc(DateTime updatedUtc, DateTime? lastMessageTimeLocal) {
@@ -653,17 +641,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string BuildConversationTitleFromText(string? text) {
-        var normalized = (text ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return DefaultConversationTitle;
-        }
-
-        normalized = normalized.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        if (normalized.Length > 56) {
-            normalized = normalized[..56].TrimEnd() + "...";
-        }
-
-        return normalized;
+        return ChatConversationIdentity.BuildTitleFromText(text);
     }
 
     private static string? NormalizeConversationModelOverride(string? value) {
@@ -672,7 +650,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task SwitchProfileAsync(string profileName) {
-        var normalized = ResolveAppProfileName(profileName);
+        var normalized = ChatServiceLaunchProfileMapper.NormalizeProfileName(profileName);
         if (string.Equals(normalized, _appProfileName, StringComparison.OrdinalIgnoreCase)) {
             await PublishOptionsStateAsync().ConfigureAwait(false);
             return;
@@ -706,7 +684,7 @@ public sealed partial class MainWindow : Window {
                             clearOpenAIBasicAuth: false,
                             clearOpenAIApiKey: false,
                             openAIStreaming: true,
-                            openAIAllowInsecureHttp: ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
+                            openAIAllowInsecureHttp: ChatServiceLaunchProfileMapper.ShouldAllowInsecureHttp(_localProviderTransport, _localProviderBaseUrl),
                             reasoningEffort: _localProviderReasoningEffort,
                             reasoningSummary: _localProviderReasoningSummary,
                             textVerbosity: _localProviderTextVerbosity,

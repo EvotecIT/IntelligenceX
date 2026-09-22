@@ -14,6 +14,68 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed class ChatServiceProfilePresetTests {
     [Fact]
+    public async Task HandleSetProfileAsync_BootstrapsMissingProfileFromDefaultsWithoutCopyingActiveProfile() {
+        var dbPath = CreateTempProfileDbPath();
+        try {
+            var options = new ServiceOptions {
+                StateDbPath = dbPath,
+                Model = "previous-service-model"
+            };
+            using var buffer = new MemoryStream();
+            using var writer = new StreamWriter(buffer, new UTF8Encoding(false), 1024, leaveOpen: true);
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            await InvokeHandleSetProfileAsync(session, writer, new SetProfileRequest {
+                RequestId = "req_bootstrap_profile",
+                ProfileName = "fresh-native-profile",
+                BootstrapMissingProfile = true,
+                NewThread = false
+            });
+            writer.Flush();
+            buffer.Position = 0;
+
+            using var document = await JsonDocument.ParseAsync(buffer);
+            var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
+            Assert.True(Assert.IsType<AckMessage>(response).Ok);
+            Assert.Equal("fresh-native-profile", options.ProfileName);
+            Assert.Equal(new ServiceOptions().Model, options.Model);
+            using var store = new SqliteServiceProfileStore(dbPath);
+            Assert.Equal(new ServiceOptions().Model, (await store.GetAsync("fresh-native-profile", CancellationToken.None))?.Model);
+        } finally {
+            TempPathTestHelper.TryDeleteFile(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task HandleSetProfileAsync_BootstrapDoesNotOverwriteExistingProfile() {
+        var dbPath = CreateTempProfileDbPath();
+        try {
+            SeedProfile(dbPath, "saved-profile", "saved-model", enableBuiltInPackLoading: true, enableDefaultPluginPaths: false);
+            var options = new ServiceOptions { StateDbPath = dbPath };
+            using var buffer = new MemoryStream();
+            using var writer = new StreamWriter(buffer, new UTF8Encoding(false), 1024, leaveOpen: true);
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            await InvokeHandleSetProfileAsync(session, writer, new SetProfileRequest {
+                RequestId = "req_existing_profile",
+                ProfileName = "saved-profile",
+                BootstrapMissingProfile = true
+            });
+            writer.Flush();
+            buffer.Position = 0;
+
+            using var document = await JsonDocument.ParseAsync(buffer);
+            var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
+            Assert.True(Assert.IsType<AckMessage>(response).Ok);
+            Assert.Equal("saved-model", options.Model);
+            using var store = new SqliteServiceProfileStore(dbPath);
+            Assert.Equal("saved-model", (await store.GetAsync("saved-profile", CancellationToken.None))?.Model);
+        } finally {
+            TempPathTestHelper.TryDeleteFile(dbPath);
+        }
+    }
+
+    [Fact]
     public async Task HandleListProfilesAsync_IncludesBuiltInPluginOnlyPreset() {
         var dbPath = CreateTempProfileDbPath();
         try {

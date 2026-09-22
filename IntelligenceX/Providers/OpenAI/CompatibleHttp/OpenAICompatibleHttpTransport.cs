@@ -532,7 +532,7 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalT
             }
 
             var deltaContent = ExtractDeltaContentText(delta);
-            if (!string.IsNullOrEmpty(deltaContent)) {
+            if (StreamingTextDelta.HasContent(deltaContent)) {
                 content.Append(deltaContent);
                 ObserverDispatcher.Raise(DeltaReceived, this, deltaContent!);
             }

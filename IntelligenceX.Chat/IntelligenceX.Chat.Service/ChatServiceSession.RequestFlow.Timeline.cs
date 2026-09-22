@@ -34,17 +34,6 @@ internal sealed partial class ChatServiceSession {
         } catch {
             // Best-effort streaming; ignore pipe failures.
         }
-
-        try {
-            await WriteAsync(writer, new ChatAssistantProvisionalMessage {
-                Kind = ChatServiceMessageKind.Event,
-                RequestId = requestId,
-                ThreadId = threadId,
-                Text = delta
-            }, CancellationToken.None).ConfigureAwait(false);
-        } catch {
-            // Best-effort streaming; ignore pipe failures.
-        }
     }
 
     private async Task TryWriteInterimResultAsync(
