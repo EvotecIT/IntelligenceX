@@ -2058,8 +2058,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private static string BuildLimitNotificationKey(string providerId, string accountIdentity,
         ProviderLimitWindow window, LimitNotificationLevel level) {
-        var resetToken = window.ResetsAt?.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture) ?? "no-reset";
-        return string.Join("|", providerId, accountIdentity, window.Key, resetToken, level);
+        // Relative reset-after values are re-materialized against the read time. Their ticks
+        // change on every refresh even when usage has not changed, so dedupe by the active
+        // account/window/threshold until a below-threshold reading rearms the notification.
+        return string.Join("|", providerId, accountIdentity, window.Key, level);
     }
 
     private static string BuildLimitNotificationMessage(ProviderLimitWindow window, string? accountLabel) {

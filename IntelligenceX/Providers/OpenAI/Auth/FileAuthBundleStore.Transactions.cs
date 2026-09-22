@@ -51,6 +51,14 @@ public sealed partial class FileAuthBundleStore {
         var refreshToken = current.RefreshToken;
         var currentAccountId = current.AccountId ?? JwtDecoder.TryGetAccountId(current.AccessToken);
         var updated = await refresh(current, cancellationToken).ConfigureAwait(false);
+        if (IsOpenAiAlias(updated.Provider)) {
+            updated = new AuthBundle(canonicalProvider, updated.AccessToken, updated.RefreshToken, updated.ExpiresAt) {
+                AccountId = updated.AccountId ?? currentAccountId,
+                IdToken = updated.IdToken,
+                TokenType = updated.TokenType,
+                Scope = updated.Scope
+            };
+        }
         // Once credentials rotate, do not discard them because of late cancellation.
         using var commit = await AcquireTransactionAsync(CancellationToken.None).ConfigureAwait(false);
         var file = await ReadFileAsync(CancellationToken.None).ConfigureAwait(false);

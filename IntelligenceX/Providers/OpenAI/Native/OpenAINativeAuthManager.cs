@@ -132,12 +132,13 @@ internal sealed class OpenAINativeAuthManager {
             cancellationToken.ThrowIfCancellationRequested();
             _storeEpoch.Invalidate(selected?.AccountId ?? SelectedAccountId);
             if (selected is not null) {
-                await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, selected.AccountId, cancellationToken).ConfigureAwait(false);
-                // Older bundles may still live under the provider-only key, including a copy
-                // left by renewal into an account-keyed entry. Remove only this identity's copy.
-                foreach (var stored in await _options.AuthStore.ListAsync(OpenAICodexDefaults.Provider, cancellationToken).ConfigureAwait(false)) {
-                    if (string.IsNullOrWhiteSpace(stored.AccountId) && SameSelectedAccount(stored, selected))
-                        await _options.AuthStore.RemoveAsync(OpenAICodexDefaults.Provider, stored.AccountId, cancellationToken).ConfigureAwait(false);
+                // A legacy provider alias can outlive a canonical login. Remove only copies
+                // of the selected identity so another account remains signed in.
+                foreach (var provider in new[] { OpenAICodexDefaults.Provider, "openai", "chatgpt" }) {
+                    foreach (var stored in await _options.AuthStore.ListAsync(provider, cancellationToken).ConfigureAwait(false)) {
+                        if (SameSelectedAccount(stored, selected))
+                            await _options.AuthStore.RemoveAsync(provider, stored.AccountId, cancellationToken).ConfigureAwait(false);
+                    }
                 }
             }
         } finally { _storeGate.Release(); }

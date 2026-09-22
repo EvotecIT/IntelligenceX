@@ -125,6 +125,25 @@ public sealed class AuthStoreTransactionTests : IDisposable {
         Assert.Equal("identified", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
     }
 
+    [Theory]
+    [InlineData("openai")]
+    [InlineData("chatgpt")]
+    public async Task RefreshMigratesLegacyAliasToCanonicalProvider(string provider) {
+        var legacy = new AuthBundle(provider, "old", "old-refresh", DateTimeOffset.UtcNow.AddMinutes(-1)) {
+            AccountId = "account"
+        };
+        await Store().SaveAsync(legacy);
+
+        var updated = await Store().RefreshAsync(legacy, (_, _) => Task.FromResult(
+            new AuthBundle(provider, "new", "new-refresh", DateTimeOffset.UtcNow.AddHours(1)) {
+                AccountId = "account"
+            }), CancellationToken.None);
+
+        Assert.Equal("openai-codex", updated.Provider);
+        Assert.Null(await Store().GetAsync(provider, "account"));
+        Assert.Equal("new-refresh", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+    }
+
     [Fact]
     public async Task RefreshCannotReplaceAnotherAccountIdentity() {
         var original = Bundle("account");
