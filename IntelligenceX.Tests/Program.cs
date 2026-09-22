@@ -469,6 +469,8 @@ internal static partial class Program {
         failed += Run("Auth store encrypted roundtrip", TestAuthStoreEncryptedRoundtrip);
         failed += Run("Auth store decrypt with explicit key override", TestAuthStoreDecryptWithExplicitKeyOverride);
         failed += Run("Auth store list filters provider and orders accounts", TestAuthStoreListAsyncFiltersProviderAndOrdersAccounts);
+        failed += Run("Auth store refresh migrates legacy alias", TestAuthStoreRefreshMigratesLegacyAlias);
+        failed += Run("Foreground refresh shares file transaction", TestForegroundRefreshSharesFileTransaction);
         failed += Run("Path safety blocks symlink traversal", TestPathSafetyBlocksSymlinkTraversal);
 #endif
         failed += Run("Native tool schema fallback detects tools[n]", TestNativeToolSchemaFallbackDetectsIndex);

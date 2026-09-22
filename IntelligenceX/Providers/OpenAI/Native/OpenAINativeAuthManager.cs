@@ -76,7 +76,7 @@ internal sealed class OpenAINativeAuthManager {
                 result.Bundle.AccountId ??= current.AccountId ?? JwtDecoder.TryGetAccountId(result.Bundle.AccessToken);
                 return result.Bundle;
             }, cancellationToken).ConfigureAwait(false);
-            ExportCodexBundle(refreshed, previousAccountId, previousRefreshToken);
+            ExportCodexBundle(refreshed, previousAccountId, previousRefreshToken, refresh: true);
             return refreshed;
         }
 
@@ -85,7 +85,7 @@ internal sealed class OpenAINativeAuthManager {
         if (!string.Equals(result.Bundle.AccountId, previousAccountId, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Token refresh returned a different account identity.");
         await _options.AuthStore.SaveAsync(result.Bundle, cancellationToken).ConfigureAwait(false);
-        ExportCodexBundle(result.Bundle, previousAccountId, previousRefreshToken);
+        ExportCodexBundle(result.Bundle, previousAccountId, previousRefreshToken, refresh: true);
         return result.Bundle;
     }
 
@@ -175,6 +175,35 @@ internal sealed class OpenAINativeAuthManager {
                     throw new InvalidOperationException("Refresh token is missing. Re-run the ChatGPT login.");
                 }
 
+                if (_options.AuthStore is FileAuthBundleStore fileStore) {
+                    // Foreground chat and Tray must use the same per-account transaction.
+                    // An ambient Codex login can precede the IX store; seed it only if
+                    // another process has not already stored that account.
+                    var stored = await GetStoredBundleAsync(cancellationToken).ConfigureAwait(false);
+                    var fileCandidate = stored ?? await fileStore.SeedIfMissingAsync(refreshCandidate, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (!SameSelectedAccount(fileCandidate, refreshCandidate))
+                        throw new OpenAIAuthenticationRequiredException("The selected ChatGPT credential was replaced. Sign in before retrying.");
+                    if (!IsExpiring(fileCandidate) && !string.Equals(fileCandidate.AccessToken, current.AccessToken, StringComparison.Ordinal)) {
+                        EnsureCurrentOperation(operation, fileCandidate.AccountId, cancellationToken);
+                        return fileCandidate;
+                    }
+
+                    var fileAccountId = fileCandidate.AccountId ?? JwtDecoder.TryGetAccountId(fileCandidate.AccessToken);
+                    var fileRefreshToken = string.IsNullOrWhiteSpace(fileCandidate.RefreshToken)
+                        ? refreshCandidate.RefreshToken : fileCandidate.RefreshToken;
+                    var synchronized = await fileStore.RefreshAsync(fileCandidate, async (candidate, token) => {
+                        var source = string.IsNullOrWhiteSpace(candidate.RefreshToken)
+                            ? SelectRefreshCandidate(candidate, refreshCandidate) : candidate;
+                        var result = await _refreshOAuthAsync(_options.OAuth, source, token).ConfigureAwait(false);
+                        result.Bundle.AccountId ??= candidate.AccountId ?? JwtDecoder.TryGetAccountId(result.Bundle.AccessToken);
+                        return result.Bundle;
+                    }, cancellationToken).ConfigureAwait(false);
+                    EnsureCurrentOperation(operation, synchronized.AccountId, cancellationToken);
+                    ExportCodexBundle(synchronized, fileAccountId, fileRefreshToken, refresh: true);
+                    return synchronized;
+                }
+
                 // OAuth refresh can mutate the candidate in place; retain the pre-rotation
                 // identity for compare-and-swap export to Codex auth.json.
                 var previousAccountId = refreshCandidate.AccountId;
@@ -199,14 +228,14 @@ internal sealed class OpenAINativeAuthManager {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_stateLock) {
             EnsureCurrentOperation(operation, bundle.AccountId, cancellationToken);
-            ExportCodexBundle(bundle, previousAccountId, previousRefreshToken);
+            ExportCodexBundle(bundle, previousAccountId, previousRefreshToken, refresh: previousRefreshToken is not null);
         }
     }
 
-    private void ExportCodexBundle(AuthBundle bundle, string? previousAccountId, string? previousRefreshToken) {
+    private void ExportCodexBundle(AuthBundle bundle, string? previousAccountId, string? previousRefreshToken, bool refresh = false) {
         if (!_options.PersistCodexAuthJson || string.IsNullOrWhiteSpace(bundle.IdToken)) return;
         try {
-            if (_options.PreserveCodexLoginOnRefresh)
+            if (refresh || _options.PreserveCodexLoginOnRefresh)
                 CodexAuthStore.UpdateMatchingAuthJson(bundle, previousAccountId, previousRefreshToken, _options.CodexHome);
             else
                 CodexAuthStore.WriteAuthJson(bundle, _options.CodexHome);
@@ -279,19 +308,20 @@ internal sealed class OpenAINativeAuthManager {
 
     private async Task<AuthBundle?> GetStoredBundleAsync(CancellationToken cancellationToken) {
         string? accountId = SelectedAccountId;
-        var storedBundle = await _options.AuthStore
-            .GetAsync(OpenAICodexDefaults.Provider, accountId, cancellationToken)
-            .ConfigureAwait(false);
-        if (storedBundle is null && !string.IsNullOrWhiteSpace(accountId)) {
-            // Logical identity can be inferred from a JWT even when an older bundle was saved
-            // without AccountId. Recover that storage shape without selecting a different account.
-            foreach (var candidate in await _options.AuthStore.ListAsync(OpenAICodexDefaults.Provider, cancellationToken).ConfigureAwait(false)) {
-                if (string.IsNullOrWhiteSpace(candidate.AccountId)
-                    && string.Equals(JwtDecoder.TryGetAccountId(candidate.AccessToken), accountId, StringComparison.OrdinalIgnoreCase)) {
-                    storedBundle = candidate;
-                    break;
+        AuthBundle? storedBundle = null;
+        foreach (var provider in new[] { OpenAICodexDefaults.Provider, "openai", "chatgpt" }) {
+            storedBundle = await _options.AuthStore.GetAsync(provider, accountId, cancellationToken).ConfigureAwait(false);
+            if (storedBundle is null && !string.IsNullOrWhiteSpace(accountId)) {
+                // Older saves may have a provider-only key and JWT-derived identity.
+                foreach (var candidate in await _options.AuthStore.ListAsync(provider, cancellationToken).ConfigureAwait(false)) {
+                    if (string.IsNullOrWhiteSpace(candidate.AccountId)
+                        && string.Equals(JwtDecoder.TryGetAccountId(candidate.AccessToken), accountId, StringComparison.OrdinalIgnoreCase)) {
+                        storedBundle = candidate;
+                        break;
+                    }
                 }
             }
+            if (storedBundle is not null) break;
         }
         if (storedBundle is not null && string.IsNullOrWhiteSpace(storedBundle.AccountId)) {
             storedBundle = new AuthBundle(storedBundle.Provider, storedBundle.AccessToken, storedBundle.RefreshToken, storedBundle.ExpiresAt) {

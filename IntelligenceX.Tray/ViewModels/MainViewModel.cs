@@ -1889,13 +1889,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
         var activeKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var snapshot in limitSnapshots.Values) {
-            foreach (var window in snapshot.Windows) {
+            if (snapshot.Accounts.Count == 0) {
+                EvaluateWindows(snapshot, snapshot.Windows, snapshot.AccountLabel ?? "selected", snapshot.AccountLabel);
+                continue;
+            }
+
+            for (var accountIndex = 0; accountIndex < snapshot.Accounts.Count; accountIndex++) {
+                var account = snapshot.Accounts[accountIndex];
+                var identity = account.AccountId ?? account.AccountLabel ?? "account-" + accountIndex.ToString(CultureInfo.InvariantCulture);
+                EvaluateWindows(snapshot, account.Windows, identity, account.AccountLabel ?? account.AccountId ?? identity);
+            }
+        }
+
+        _activeLimitNotificationKeys.RemoveWhere(key => !activeKeys.Contains(key));
+
+        void EvaluateWindows(ProviderLimitSnapshot snapshot, IReadOnlyList<ProviderLimitWindow> windows,
+            string accountIdentity, string? accountLabel) {
+            foreach (var window in windows) {
                 var level = GetNotificationLevel(window.UsedPercent);
                 if (level is null) {
                     continue;
                 }
 
-                var key = BuildLimitNotificationKey(snapshot.ProviderId, window, level.Value);
+                var key = BuildLimitNotificationKey(snapshot.ProviderId, accountIdentity, window, level.Value);
                 activeKeys.Add(key);
 
                 if (!_hasCompletedInitialRefresh) {
@@ -1911,13 +1927,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     title: level == LimitNotificationLevel.Exhausted
                         ? snapshot.DisplayName + " limit exhausted"
                         : snapshot.DisplayName + " limit warning",
-                    message: BuildLimitNotificationMessage(snapshot, window),
+                    message: BuildLimitNotificationMessage(window, accountLabel),
                     isCritical: level == LimitNotificationLevel.Exhausted,
                     providerId: snapshot.ProviderId));
             }
         }
-
-        _activeLimitNotificationKeys.RemoveWhere(key => !activeKeys.Contains(key));
     }
 
     private async Task RefreshProviderLimitsAsync(IReadOnlyCollection<string> providerIds, string usageScanInfo) {
@@ -2042,18 +2056,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return null;
     }
 
-    private static string BuildLimitNotificationKey(string providerId, ProviderLimitWindow window, LimitNotificationLevel level) {
+    private static string BuildLimitNotificationKey(string providerId, string accountIdentity,
+        ProviderLimitWindow window, LimitNotificationLevel level) {
         var resetToken = window.ResetsAt?.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture) ?? "no-reset";
-        return string.Join("|", providerId, window.Key, resetToken, level);
+        return string.Join("|", providerId, accountIdentity, window.Key, resetToken, level);
     }
 
-    private static string BuildLimitNotificationMessage(ProviderLimitSnapshot snapshot, ProviderLimitWindow window) {
+    private static string BuildLimitNotificationMessage(ProviderLimitWindow window, string? accountLabel) {
         var parts = new List<string> {
             window.Label + " is at " + (window.UsedPercent ?? 0d).ToString("0.#", CultureInfo.InvariantCulture) + "%"
         };
 
-        if (!string.IsNullOrWhiteSpace(snapshot.AccountLabel)) {
-            parts.Add(snapshot.AccountLabel);
+        if (!string.IsNullOrWhiteSpace(accountLabel)) {
+            parts.Add(accountLabel);
         }
 
         parts.Add(FormatResetText(window.ResetsAt));
