@@ -25,7 +25,15 @@ public sealed partial class ProviderLimitSnapshotService {
         CancellationToken cancellationToken,
         TimeSpan? scanTimeout = null) {
         options.PreserveCodexLoginOnRefresh = true;
-        var bundles = await ListOpenAiBundlesAsync(options.AuthStore, cancellationToken).ConfigureAwait(false);
+        using var scanCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        scanCancellation.CancelAfter(scanTimeout ?? AccountScanTimeout);
+        IReadOnlyList<AuthBundle> bundles;
+        try {
+            bundles = await ListOpenAiBundlesAsync(options.AuthStore, scanCancellation.Token).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && scanCancellation.IsCancellationRequested) {
+            return BuildUnavailableSnapshot(requestedProviderId,
+                "Saved-account discovery reached its time limit. Retry to check live limits.", "OpenAI usage API");
+        }
         if (bundles.Count == 0) {
             return BuildUnavailableSnapshot(requestedProviderId,
                 "No saved IX accounts found. Sign in through IX Chat to add an account for live limits.",
@@ -37,6 +45,10 @@ public sealed partial class ProviderLimitSnapshotService {
         // Prefer the newest saved credential when provider aliases overlap.
         foreach (var bundle in bundles.OrderByDescending(static value => value.ExpiresAt ?? DateTimeOffset.MinValue)) {
             cancellationToken.ThrowIfCancellationRequested();
+            if (scanCancellation.IsCancellationRequested) {
+                return BuildUnavailableSnapshot(requestedProviderId,
+                    "Saved-account discovery reached its time limit. Retry to check live limits.", "OpenAI usage API");
+            }
             var accountId = NormalizeOptional(bundle.AccountId) ?? NormalizeOptional(JwtDecoder.TryGetAccountId(bundle.AccessToken));
             var email = (bundle.IdToken is null ? null : NormalizeOptional(JwtDecoder.TryGetEmail(bundle.IdToken)))
                         ?? NormalizeOptional(JwtDecoder.TryGetEmail(bundle.AccessToken));
@@ -48,8 +60,6 @@ public sealed partial class ProviderLimitSnapshotService {
 
         // Bound the whole inventory, including requests queued behind the semaphore.
         // Tray starts another automatic refresh after two minutes.
-        using var scanCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        scanCancellation.CancelAfter(scanTimeout ?? AccountScanTimeout);
         using var concurrency = new SemaphoreSlim(3, 3);
         using var usageService = new ChatGptUsageService(options);
         var accounts = await Task.WhenAll(uniqueBundles.Select(async item => {

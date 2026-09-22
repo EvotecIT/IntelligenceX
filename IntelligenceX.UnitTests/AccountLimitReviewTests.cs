@@ -8,6 +8,15 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class AccountLimitReviewTests {
     [Fact]
+    public async Task OverallAccountDeadlineIncludesSavedAccountDiscovery() {
+        var options = new OpenAINativeOptions { AuthStore = new SlowDiscoveryStore(), LoadCodexAuthJson = false };
+        var snapshot = await ProviderLimitSnapshotService.FetchCodexAsync("codex", options,
+            CancellationToken.None, TimeSpan.FromMilliseconds(100)).WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(snapshot.IsAvailable);
+        Assert.Contains("discovery reached its time limit", snapshot.DetailMessage);
+    }
+
+    [Fact]
     public void ProviderResolvedAliasesUseOneBestAccountReadingAndRetainSelection() {
         var time = DateTimeOffset.UtcNow;
         var failed = new ProviderLimitAccountSnapshot("same", "old alias", null,
@@ -73,5 +82,15 @@ public sealed class AccountLimitReviewTests {
         } finally {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    private sealed class SlowDiscoveryStore : IAuthBundleStore {
+        public Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<AuthBundle?>(null);
+        public async Task<IReadOnlyList<AuthBundle>> ListAsync(string provider, CancellationToken cancellationToken = default) {
+            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+            return Array.Empty<AuthBundle>();
+        }
+        public Task SaveAsync(AuthBundle bundle, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
