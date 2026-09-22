@@ -132,12 +132,16 @@ internal sealed class OpenAINativeAuthManager {
             cancellationToken.ThrowIfCancellationRequested();
             _storeEpoch.Invalidate(selected?.AccountId ?? SelectedAccountId);
             if (selected is not null) {
-                // A legacy provider alias can outlive a canonical login. Remove only copies
-                // of the selected identity so another account remains signed in.
-                foreach (var provider in new[] { OpenAICodexDefaults.Provider, "openai", "chatgpt" }) {
-                    foreach (var stored in await _options.AuthStore.ListAsync(provider, cancellationToken).ConfigureAwait(false)) {
-                        if (SameSelectedAccount(stored, selected))
-                            await _options.AuthStore.RemoveAsync(provider, stored.AccountId, cancellationToken).ConfigureAwait(false);
+                if (_options.AuthStore is FileAuthBundleStore fileStore) {
+                    // Refresh migration and logout share the file transaction, so a legacy
+                    // alias cannot turn into a canonical credential between removals.
+                    await fileStore.RemoveOpenAiIdentityAsync(selected, cancellationToken).ConfigureAwait(false);
+                } else {
+                    foreach (var provider in new[] { OpenAICodexDefaults.Provider, "openai", "chatgpt" }) {
+                        foreach (var stored in await _options.AuthStore.ListAsync(provider, cancellationToken).ConfigureAwait(false)) {
+                            if (SameSelectedAccount(stored, selected))
+                                await _options.AuthStore.RemoveAsync(provider, stored.AccountId, cancellationToken).ConfigureAwait(false);
+                        }
                     }
                 }
             }

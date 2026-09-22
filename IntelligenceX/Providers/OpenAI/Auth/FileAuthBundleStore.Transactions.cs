@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -10,6 +11,22 @@ namespace IntelligenceX.OpenAI.Auth;
 public sealed partial class FileAuthBundleStore {
     private Task<FileStream> AcquireTransactionAsync(CancellationToken cancellationToken) =>
         AuthFileTransaction.AcquireAsync(_path + ".lock", cancellationToken);
+
+    /// <summary>Atomically removes every canonical or legacy key for one selected OpenAI identity.</summary>
+    internal async Task RemoveOpenAiIdentityAsync(AuthBundle selected, CancellationToken cancellationToken) {
+        using var transaction = await AcquireTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
+        if (file is null) return;
+
+        var keys = file.Bundles.Where(pair =>
+                (string.Equals(pair.Value.Provider, OpenAICodexDefaults.Provider, StringComparison.OrdinalIgnoreCase)
+                 || IsOpenAiAlias(pair.Value.Provider))
+                && SameAccountIdentity(pair.Value, selected))
+            .Select(static pair => pair.Key).ToArray();
+        if (keys.Length == 0) return;
+        foreach (var key in keys) file.Bundles.Remove(key);
+        await WriteFileAsync(file, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Serializes refreshers for one account across processes, without holding the store lock during network I/O.
@@ -51,7 +68,8 @@ public sealed partial class FileAuthBundleStore {
         var refreshToken = current.RefreshToken;
         var currentAccountId = current.AccountId ?? JwtDecoder.TryGetAccountId(current.AccessToken);
         var updated = await refresh(current, cancellationToken).ConfigureAwait(false);
-        if (IsOpenAiAlias(updated.Provider)) {
+        if (string.Equals(canonicalProvider, OpenAICodexDefaults.Provider, StringComparison.OrdinalIgnoreCase)
+            && IsOpenAiAlias(updated.Provider)) {
             updated = new AuthBundle(canonicalProvider, updated.AccessToken, updated.RefreshToken, updated.ExpiresAt) {
                 AccountId = updated.AccountId ?? currentAccountId,
                 IdToken = updated.IdToken,
@@ -100,6 +118,14 @@ public sealed partial class FileAuthBundleStore {
     private static bool IsOpenAiAlias(string provider) =>
         string.Equals(provider, "openai", StringComparison.OrdinalIgnoreCase)
         || string.Equals(provider, "chatgpt", StringComparison.OrdinalIgnoreCase);
+
+    private static bool SameAccountIdentity(AuthBundle candidate, AuthBundle selected) {
+        var candidateId = candidate.AccountId ?? JwtDecoder.TryGetAccountId(candidate.AccessToken);
+        var selectedId = selected.AccountId ?? JwtDecoder.TryGetAccountId(selected.AccessToken);
+        return !string.IsNullOrWhiteSpace(candidateId) && !string.IsNullOrWhiteSpace(selectedId)
+            ? string.Equals(candidateId, selectedId, StringComparison.OrdinalIgnoreCase)
+            : string.Equals(candidate.AccessToken, selected.AccessToken, StringComparison.Ordinal);
+    }
 
     private static AuthBundle RequireAccount(AuthBundleFile? file, string key) =>
         file is not null && file.Bundles.TryGetValue(key, out var account) ? account

@@ -1,4 +1,5 @@
 using IntelligenceX.OpenAI.Auth;
+using IntelligenceX.OpenAI.Native;
 using Xunit;
 
 namespace IntelligenceX.UnitTests;
@@ -142,6 +143,51 @@ public sealed class AuthStoreTransactionTests : IDisposable {
         Assert.Equal("openai-codex", updated.Provider);
         Assert.Null(await Store().GetAsync(provider, "account"));
         Assert.Equal("new-refresh", (await Store().GetAsync("openai-codex", "account"))!.RefreshToken);
+    }
+
+    [Fact]
+    public async Task LogoutCannotLeaveCanonicalCredentialFromInflightAliasRefresh() {
+        var legacy = new AuthBundle("openai", "old", "old-refresh", DateTimeOffset.UtcNow.AddHours(1)) {
+            AccountId = "account"
+        };
+        await Store().SaveAsync(legacy);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refresh = Store().RefreshAsync(legacy, async (_, _) => {
+            entered.SetResult();
+            await release.Task;
+            return new AuthBundle("openai", "new", "new-refresh", DateTimeOffset.UtcNow.AddHours(1)) {
+                AccountId = "account"
+            };
+        }, CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try {
+            var manager = new OpenAINativeAuthManager(new OpenAINativeOptions {
+                AuthStore = Store(), AuthAccountId = "account", LoadCodexAuthJson = false, PersistCodexAuthJson = false
+            });
+            Assert.NotNull(await manager.TryGetValidBundleAsync(default));
+            await manager.LogoutAsync(default);
+        } finally {
+            release.TrySetResult();
+        }
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => refresh);
+        Assert.Null(await Store().GetAsync("openai", "account"));
+        Assert.Null(await Store().GetAsync("openai-codex", "account"));
+    }
+
+    [Fact]
+    public async Task RefreshDoesNotNormalizeAnOpenAiAliasForAnotherProvider() {
+        var original = new AuthBundle("copilot", "old", "old-refresh", null) { AccountId = "account" };
+        await Store().SaveAsync(original);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Store().RefreshAsync(original,
+            (_, _) => Task.FromResult(new AuthBundle("openai", "new", "new-refresh", null) {
+                AccountId = "account"
+            }), CancellationToken.None));
+
+        Assert.Equal("old-refresh", (await Store().GetAsync("copilot", "account"))!.RefreshToken);
+        Assert.Null(await Store().GetAsync("openai", "account"));
     }
 
     [Fact]
