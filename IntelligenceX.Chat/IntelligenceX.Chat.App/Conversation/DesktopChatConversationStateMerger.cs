@@ -153,6 +153,22 @@ internal static class DesktopChatConversationStateMerger {
             Status = value.Status
         };
 
+    /// <summary>
+    /// The legacy settings shell does not edit native message status. Carry it
+    /// across its role/time projection so a settings save cannot turn an error
+    /// or cancellation into a completed assistant message.
+    /// </summary>
+    internal static void CarryMessageStatuses(
+        IReadOnlyList<ChatMessageState>? previous,
+        IReadOnlyList<ChatMessageState> projected) {
+        if (previous is null || previous.Count == 0 || projected.Count == 0) return;
+        var priorByIdentity = IndexMessages(previous);
+        foreach (var (identity, message) in IndexMessages(projected)) {
+            if (priorByIdentity.TryGetValue(identity, out var prior))
+                message.Status = prior.Status;
+        }
+    }
+
     private static ChatConversationState MergeConcurrentConversations(
         ChatConversationState local,
         ChatConversationState? baseline,

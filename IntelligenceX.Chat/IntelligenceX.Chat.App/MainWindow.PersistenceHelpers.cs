@@ -67,7 +67,7 @@ public sealed partial class MainWindow : Window {
                 _toolStates,
                 _toolWriteCapabilities,
                 preserveLoadedToolExposure);
-            _appState.Messages = BuildMessageStateSnapshot(activeConversation.Messages);
+            _appState.Messages = BuildMessageStateSnapshot(activeConversation.Messages, _appState.Messages);
             _appState.Conversations = BuildConversationStateSnapshot();
             _appState.PendingTurns = BuildPendingTurnStateSnapshot();
             _appState.QueuedTurnsAfterLogin = BuildQueuedAfterLoginStateSnapshot();
@@ -305,7 +305,9 @@ public sealed partial class MainWindow : Window {
         return list;
     }
 
-    private static List<ChatMessageState> BuildMessageStateSnapshot(List<(string Role, string Text, DateTime Time, string? Model)> messages) {
+    private static List<ChatMessageState> BuildMessageStateSnapshot(
+        List<(string Role, string Text, DateTime Time, string? Model)> messages,
+        IReadOnlyList<ChatMessageState>? previous = null) {
         var result = new List<ChatMessageState>(Math.Min(messages.Count, MaxMessagesPerConversation));
         var start = Math.Max(0, messages.Count - MaxMessagesPerConversation);
         for (var i = start; i < messages.Count; i++) {
@@ -322,6 +324,7 @@ public sealed partial class MainWindow : Window {
             });
         }
 
+        DesktopChatConversationStateMerger.CarryMessageStatuses(previous, result);
         return result;
     }
 
@@ -402,7 +405,8 @@ public sealed partial class MainWindow : Window {
                 ModelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim(),
                 ModelOverride = string.IsNullOrWhiteSpace(conversation.ModelOverride) ? null : conversation.ModelOverride.Trim(),
                 PendingAssistantQuestionHint = string.IsNullOrWhiteSpace(conversation.PendingAssistantQuestionHint) ? null : conversation.PendingAssistantQuestionHint.Trim(),
-                Messages = BuildMessageStateSnapshot(conversation.Messages),
+                Messages = BuildMessageStateSnapshot(conversation.Messages,
+                    _appState?.Conversations?.FirstOrDefault(item => string.Equals(item.Id, conversation.Id, StringComparison.OrdinalIgnoreCase))?.Messages),
                 PendingActions = BuildPendingActionStateSnapshot(conversation.PendingActions),
                 UpdatedUtc = updatedUtc
             });

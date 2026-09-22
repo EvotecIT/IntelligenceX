@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using DBAClientX;
 using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Native;
 using Xunit;
 
@@ -16,6 +17,37 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Guards native conversation persistence through the shared desktop state owner.
 /// </summary>
 public sealed class NativeConversationStateStoreTests {
+    /// <summary>Completed native turns contribute to the shared per-account Settings usage state.</summary>
+    [Fact]
+    public async Task RecordUsageAsync_PersistsAndAccumulatesWithoutDroppingConversations() {
+        var directory = CreateTemporaryDirectory();
+        try {
+            var path = Path.Combine(directory, "app-state.db");
+            await using var nativeStore = new NativeConversationStateStore(path);
+            var workspace = await nativeStore.LoadAsync(CancellationToken.None);
+            await nativeStore.RecordUsageAsync("Account-A", new TokenUsageDto {
+                PromptTokens = 12, CompletionTokens = 3, CachedPromptTokens = 10
+            }, CancellationToken.None);
+            await nativeStore.RecordUsageAsync("Account-A", new TokenUsageDto {
+                PromptTokens = 7, CompletionTokens = 2, TotalTokens = 9
+            }, CancellationToken.None);
+            await nativeStore.SaveAsync(workspace, CancellationToken.None);
+
+            using var verifier = new ChatAppStateStore(path);
+            var state = Assert.IsType<ChatAppState>(await verifier.GetAsync("default", CancellationToken.None));
+            var usage = Assert.Single(state.AccountUsage);
+            Assert.Equal("native:account-a", usage.Key);
+            Assert.Equal(19, usage.PromptTokens);
+            Assert.Equal(5, usage.CompletionTokens);
+            Assert.Equal(24, usage.TotalTokens);
+            Assert.Equal(10, usage.CachedPromptTokens);
+            Assert.Equal(2, usage.Turns);
+            Assert.NotEmpty(state.Conversations);
+        } finally {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
     /// <summary>Ensures restored assistant messages use the same display sanitizer as live turns.</summary>
     [Fact]
     public async Task LoadAsync_SanitizesPersistedAssistantProtocolArtifacts() {

@@ -16,6 +16,37 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Tests the native chat view model without constructing WinUI controls.
 /// </summary>
 public sealed class NativeChatViewModelTests {
+    /// <summary>Completed native turns retain tool receipts and image references for history and export.</summary>
+    [Fact]
+    public async Task SendAsync_RetainsCompletedTurnArtifacts() {
+        var response = new ChatResultMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "artifact-turn",
+            ThreadId = "thread-artifact",
+            Text = "Here is the result.",
+            Tools = new ToolRunDto {
+                Calls = [new ToolCallDto { CallId = "call-1", Name = "directory_check" }],
+                Outputs = [new ToolOutputDto { CallId = "call-1", Output = "ok", SummaryMarkdown = "One healthy domain controller." }]
+            },
+            Images = [new ChatImageOutputDto { Url = "https://example.test/artifact.png" }]
+        };
+        var conversation = NativeConversation.CreateNew();
+        var store = new FakeConversationStore(new NativeConversationWorkspace([conversation], conversation.Id));
+        var model = new NativeChatViewModel(new ScriptedRuntime(_ =>
+            Task.FromResult(new ChatTurnRunResult(response, null))), conversationStore: store);
+        await model.InitializeConversationsAsync();
+        await AuthenticateAsync(model);
+
+        Assert.True(await model.SendAsync("Check and illustrate"));
+
+        var markdown = NativeTranscriptMarkdownFormatter.Format(model.Transcript);
+        Assert.Contains("One healthy domain controller.", markdown, StringComparison.Ordinal);
+        Assert.Contains("https://example.test/artifact.png", markdown, StringComparison.Ordinal);
+        Assert.Contains(model.Transcript, item => item.Content.Any(content =>
+            content.Kind == NativeTranscriptContentKind.Image));
+        Assert.Equal(model.Transcript.Count, store.LastSaved!.Conversations[0].Messages.Count);
+    }
+
     /// <summary>Ensures native history management deletes the persisted conversation and keeps a usable draft.</summary>
     [Fact]
     public async Task DeleteConversationAsync_RemovesConversationAndPersistsDiscardIntent() {
@@ -776,6 +807,66 @@ public sealed class NativeChatViewModelTests {
         Assert.Equal(first.Id, store.LastSaved?.ActiveConversationId);
     }
 
+    /// <summary>Retries once without a stale provider thread and persists the recovered id.</summary>
+    [Fact]
+    public async Task SendAsync_RecoversMissingTransportThread() {
+        var conversation = new NativeConversation("stale-chat", "Existing", "deleted-thread");
+        var store = new FakeConversationStore(new NativeConversationWorkspace(new[] { conversation }, conversation.Id));
+        var calls = 0;
+        var runtime = new ScriptedRuntime(_ => {
+            calls++;
+            if (calls == 1)
+                throw new InvalidOperationException("transport thread not found");
+            return Task.FromResult(CreateTurnResult("Recovered answer", "new-thread"));
+        });
+        var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await model.InitializeConversationsAsync();
+        await AuthenticateAsync(model);
+
+        var sent = await model.SendAsync("Continue");
+
+        Assert.True(sent);
+        Assert.Equal(2, runtime.Requests.Count);
+        Assert.Equal("deleted-thread", runtime.Requests[0].ThreadId);
+        Assert.Null(runtime.Requests[1].ThreadId);
+        Assert.Equal("new-thread", conversation.ThreadId);
+        Assert.Contains(store.SavedThreadIds, static id => id is null);
+        Assert.Equal("Recovered answer", model.Transcript[^1].Text);
+    }
+
+    /// <summary>Expired login disables Send and preserves the failed prompt for an explicit retry.</summary>
+    [Fact]
+    public async Task SendAsync_QueuesTurnAfterTerminalAuthenticationError() {
+        var conversation = new NativeConversation("auth-chat", "Existing");
+        var store = new FakeConversationStore(new NativeConversationWorkspace(new[] { conversation }, conversation.Id));
+        var calls = 0;
+        var runtime = new ScriptedRuntime(_ => {
+            calls++;
+            if (calls == 1)
+                throw new ChatServiceRequestException("Session expired", "not_authenticated");
+            return Task.FromResult(CreateTurnResult("After sign-in", "thread-new"));
+        });
+        var model = new NativeChatViewModel(runtime, conversationStore: store);
+        await model.InitializeConversationsAsync();
+        await AuthenticateAsync(model);
+
+        var sent = await model.SendAsync("Keep this prompt");
+
+        Assert.False(sent);
+        Assert.Equal(NativeAuthenticationState.Required, model.AuthenticationState);
+        Assert.False(model.CanSend);
+        Assert.True(model.CanStartSignIn);
+        Assert.Equal("Keep this prompt", Assert.Single(model.QueuedTurns).Text);
+        Assert.True(store.EnqueuedAfterLogin?.SkipUserBubbleOnDispatch);
+        Assert.Equal("Sign-in required", model.Transcript[^1].Status);
+
+        await AuthenticateAsync(model);
+        Assert.True(await model.RunNextQueuedTurnAsync());
+        Assert.Equal(2, calls);
+        Assert.Single(model.Transcript, static item => item.IsUser);
+        Assert.Empty(model.QueuedTurns);
+    }
+
     /// <summary>
     /// Ensures a new chat is a real empty persisted conversation rather than a canned workspace.
     /// </summary>
@@ -1014,7 +1105,11 @@ public sealed class NativeChatViewModelTests {
 
         public NativeConversationWorkspace? LastSaved { get; private set; }
 
+        public List<string?> SavedThreadIds { get; } = new();
+
         public NativeQueuedTurn? CompletedQueuedTurn { get; private set; }
+
+        public NativeQueuedTurn? EnqueuedAfterLogin { get; private set; }
 
         public bool QueuedTurnClaimResult { get; init; } = true;
 
@@ -1027,6 +1122,7 @@ public sealed class NativeChatViewModelTests {
             cancellationToken.ThrowIfCancellationRequested();
             SaveCount++;
             LastSaved = workspace;
+            SavedThreadIds.Add(workspace.Conversations.FirstOrDefault()?.ThreadId);
             return Task.CompletedTask;
         }
 
@@ -1034,6 +1130,12 @@ public sealed class NativeChatViewModelTests {
             cancellationToken.ThrowIfCancellationRequested();
             CompletedQueuedTurn = turn;
             return Task.FromResult(QueuedTurnClaimResult);
+        }
+
+        public Task<bool> EnqueueAfterLoginAsync(NativeQueuedTurn turn, CancellationToken cancellationToken) {
+            cancellationToken.ThrowIfCancellationRequested();
+            EnqueuedAfterLogin = turn;
+            return Task.FromResult(true);
         }
 
         public Task ClearQueuedTurnsAsync(CancellationToken cancellationToken) {

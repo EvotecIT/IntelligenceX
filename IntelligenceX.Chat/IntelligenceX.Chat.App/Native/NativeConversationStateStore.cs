@@ -19,15 +19,21 @@ internal interface INativeConversationStore : IAsyncDisposable {
 }
 
 internal interface INativeQueuedTurnStore {
+    Task<bool> EnqueueAfterLoginAsync(NativeQueuedTurn turn, CancellationToken cancellationToken);
+
     Task<bool> CompleteQueuedTurnAsync(NativeQueuedTurn turn, CancellationToken cancellationToken);
 
     Task ClearQueuedTurnsAsync(CancellationToken cancellationToken);
 }
 
+internal interface INativeAccountUsageStore {
+    Task RecordUsageAsync(string? accountId, TokenUsageDto? usage, CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// Native conversation adapter over the shared desktop application state store.
 /// </summary>
-internal sealed partial class NativeConversationStateStore : INativeConversationStore, INativeQueuedTurnStore {
+internal sealed partial class NativeConversationStateStore : INativeConversationStore, INativeQueuedTurnStore, INativeAccountUsageStore {
     private readonly ChatAppStateStore _stateStore;
     private string _profileName;
     private string? _pendingProfileName;
@@ -276,6 +282,29 @@ internal sealed partial class NativeConversationStateStore : INativeConversation
         }
 
         return claimed;
+    }
+
+    public async Task<bool> EnqueueAfterLoginAsync(NativeQueuedTurn turn, CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(turn);
+        var queued = false;
+        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try {
+            _state = await _stateStore.UpdateAsync(_profileName, latestState => {
+                var state = latestState ?? _state ?? new ChatAppState { ProfileName = _profileName };
+                state.QueuedTurnsAfterLogin ??= new List<ChatQueuedTurnState>();
+                if (state.QueuedTurnsAfterLogin.Count < ChatQueueContract.MaxTurns) {
+                    state.QueuedTurnsAfterLogin.Add(new ChatQueuedTurnState {
+                        Text = turn.Text,
+                        ConversationId = turn.ConversationId,
+                        EnqueuedUtc = turn.EnqueuedUtc,
+                        SkipUserBubbleOnDispatch = turn.SkipUserBubbleOnDispatch
+                    });
+                    queued = true;
+                }
+                return state;
+            }, cancellationToken).ConfigureAwait(false);
+        } finally { _saveGate.Release(); }
+        return queued;
     }
 
     public async Task ClearQueuedTurnsAsync(CancellationToken cancellationToken) {
