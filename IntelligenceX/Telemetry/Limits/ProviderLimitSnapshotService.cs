@@ -219,9 +219,8 @@ public sealed partial class ProviderLimitSnapshotService {
         return NormalizeOptional(CodexAuthStore.TryReadProfile(authPath)?.AccountId);
     }
 
-    private static string BuildOpenAiAccountKey(string? accountId, string? email, string? accessToken) {
+    private static string BuildOpenAiAccountKey(string? accountId, string? accessToken) {
         return NormalizeOptional(accountId)
-               ?? NormalizeOptional(email)
                ?? ("token:" + UsageTelemetryIdentity.ComputeStableHash(NormalizeOptional(accessToken) ?? "unknown", 12));
     }
 

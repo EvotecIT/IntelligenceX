@@ -434,7 +434,7 @@ public static class ProviderLimitForecasting {
     private static int SelectRecommendedIndex(IReadOnlyList<ProviderLimitAccountAdvisory> advisories) {
         var bestIndex = advisories
             .Select((advisory, index) => new { advisory, index })
-            .Where(static item => item.advisory.RiskScore < double.MaxValue)
+            .Where(static item => item.advisory.RiskScore < double.MaxValue && !IsHardAvoid(item.advisory.StatusLabel))
             .OrderBy(static item => item.advisory.RiskScore)
             .ThenBy(static item => item.advisory.DisplayLabel, StringComparer.OrdinalIgnoreCase)
             .Select(static item => item.index)

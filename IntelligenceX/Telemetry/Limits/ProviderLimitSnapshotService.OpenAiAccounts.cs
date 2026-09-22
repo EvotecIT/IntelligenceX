@@ -52,7 +52,7 @@ public sealed partial class ProviderLimitSnapshotService {
             var accountId = NormalizeOptional(bundle.AccountId) ?? NormalizeOptional(JwtDecoder.TryGetAccountId(bundle.AccessToken));
             var email = (bundle.IdToken is null ? null : NormalizeOptional(JwtDecoder.TryGetEmail(bundle.IdToken)))
                         ?? NormalizeOptional(JwtDecoder.TryGetEmail(bundle.AccessToken));
-            if (!seenKeys.Add(BuildOpenAiAccountKey(accountId, email, bundle.AccessToken))) {
+            if (!seenKeys.Add(BuildOpenAiAccountKey(accountId, bundle.AccessToken))) {
                 continue;
             }
             uniqueBundles.Add((bundle, accountId, email));
@@ -115,23 +115,42 @@ public sealed partial class ProviderLimitSnapshotService {
         var distinctAccounts = CoalesceResolvedAccounts(accounts, options.AuthAccountId);
         // Top-level windows remain those of the current account when it is known; do not
         // silently present a healthy alternative as the user's current login.
-        var primary = distinctAccounts.FirstOrDefault(static account => account.IsSelected)
-                      ?? distinctAccounts.FirstOrDefault(static account => account.IsAvailable)
-                      ?? distinctAccounts[0];
+        var selected = distinctAccounts.FirstOrDefault(static account => account.IsSelected);
+        var currentAccountMissing = selected is null;
+        var primary = selected;
         var availableCount = distinctAccounts.Count(static account => account.IsAvailable);
-        var detailMessage = availableCount == distinctAccounts.Count
+        var availabilityMessage = availableCount == distinctAccounts.Count
             ? null
             : "Live limit windows available for " + availableCount.ToString(CultureInfo.InvariantCulture)
               + " of " + distinctAccounts.Count.ToString(CultureInfo.InvariantCulture)
               + " saved accounts. See each account below for details.";
+        var detailMessage = currentAccountMissing
+            ? (options.AuthAccountId is null
+                ? "The current Codex account could not be confirmed. Other saved accounts are listed below."
+                : "The current Codex account is not saved in IX. Other saved accounts are listed below.")
+              + (availabilityMessage is null ? "" : " " + availabilityMessage)
+            : availabilityMessage;
         return new ProviderLimitSnapshot(requestedProviderId, UsageTelemetryProviderCatalog.ResolveDisplayTitle("codex"),
-            "OpenAI usage API", primary.PlanLabel, primary.AccountLabel, primary.Windows, primary.Summary,
+            "OpenAI usage API", primary?.PlanLabel, primary?.AccountLabel,
+            primary?.Windows ?? Array.Empty<ProviderLimitWindow>(), primary?.Summary,
             detailMessage, DateTimeOffset.UtcNow, distinctAccounts);
     }
 
     private static ProviderLimitAccountSnapshot UnavailableAccount(string? accountId, string? email, string detail) =>
         new(accountId, email ?? accountId, null, Array.Empty<ProviderLimitWindow>(),
             "Saved account · live limits unavailable", detail, DateTimeOffset.UtcNow);
+
+    internal static bool MatchesCurrentCodexAccount(ProviderLimitSnapshot snapshot, string? accountId) {
+        var selected = snapshot.Accounts.FirstOrDefault(static account => account.IsSelected);
+        if (selected is not null) {
+            return string.Equals(selected.AccountId, accountId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // An unselected inventory is safe only when it cannot contain the current
+        // account and the top-level reading has not borrowed a different login.
+        return snapshot.AccountLabel is null && snapshot.Windows.Count == 0
+            && !snapshot.Accounts.Any(account => string.Equals(account.AccountId, accountId, StringComparison.OrdinalIgnoreCase));
+    }
 
     internal static IReadOnlyList<ProviderLimitAccountSnapshot> CoalesceResolvedAccounts(
         IEnumerable<ProviderLimitAccountSnapshot> accounts, string? selectedAccountId) {
@@ -154,6 +173,31 @@ public sealed partial class ProviderLimitSnapshotService {
                 || string.Equals(id, selectedAccountId, StringComparison.OrdinalIgnoreCase);
             result.Add(new ProviderLimitAccountSnapshot(id, preferred.AccountLabel, preferred.PlanLabel,
                 preferred.Windows, preferred.Summary, preferred.DetailMessage, preferred.RetrievedAtUtc, selected));
+        }
+        // Unresolved credentials cannot be coalesced by their display label. Give
+        // otherwise identical labels a stable per-scan suffix for advisory/card matching.
+        var originalLabels = new HashSet<string>(result.Select(static row => NormalizeOptional(row.AccountLabel) ?? "Unknown account"),
+            StringComparer.OrdinalIgnoreCase);
+        var usedLabels = new HashSet<string>(result.Where(static row => row.AccountId is not null)
+            .Select(static row => NormalizeOptional(row.AccountLabel) ?? "Unknown account"), StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < result.Count; i++) {
+            var row = result[i];
+            if (row.AccountId is not null) continue;
+
+            var label = NormalizeOptional(row.AccountLabel) ?? "Unknown account";
+            if (!usedLabels.Add(label)) {
+                var suffix = 2;
+                string candidate;
+                do {
+                    candidate = label + " · saved login " + suffix.ToString(CultureInfo.InvariantCulture);
+                    suffix++;
+                } while (originalLabels.Contains(candidate) || !usedLabels.Add(candidate));
+                result[i] = new ProviderLimitAccountSnapshot(row.AccountId, candidate, row.PlanLabel,
+                    row.Windows, row.Summary, row.DetailMessage, row.RetrievedAtUtc, row.IsSelected);
+            } else if (row.AccountLabel is null) {
+                result[i] = new ProviderLimitAccountSnapshot(row.AccountId, label, row.PlanLabel,
+                    row.Windows, row.Summary, row.DetailMessage, row.RetrievedAtUtc, row.IsSelected);
+            }
         }
         return result;
     }

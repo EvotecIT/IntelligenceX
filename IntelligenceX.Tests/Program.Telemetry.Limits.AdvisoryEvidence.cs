@@ -38,5 +38,16 @@ internal static partial class Program {
         var staleAdvice = ProviderLimitForecasting.BuildAccountAdvisories(staleSnapshot, now).Single();
         AssertEqual("Stale", staleAdvice.StatusLabel, "per-account freshness overrides provider refresh time");
         AssertEqual(false, staleAdvice.IsRecommended, "stale capacity is not recommended");
+
+        var exhausted = new[] { "one", "two" }.Select((id, index) =>
+            new ProviderLimitAccountSnapshot(id, "Account " + id, "Pro",
+                new[] { new ProviderLimitWindow("weekly", "Weekly", 100d + index, now.AddDays(1)) },
+                null, null, now, isSelected: index == 0)).ToArray();
+        var exhaustedSnapshot = new ProviderLimitSnapshot("codex", "Codex", "API", null, null,
+            exhausted[0].Windows, null, null, now, exhausted);
+        var exhaustedAdvice = ProviderLimitForecasting.BuildAccountAdvisories(exhaustedSnapshot, now);
+        AssertEqual(0, exhaustedAdvice.Count(advisory => advisory.IsRecommended), "no exhausted account is recommended");
+        AssertEqual(true, exhaustedAdvice.Single(advisory => advisory.AccountId == "one").IsSelected,
+            "current exhausted account remains identified without a recommendation");
     }
 }

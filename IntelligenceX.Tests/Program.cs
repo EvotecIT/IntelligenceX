@@ -19,6 +19,7 @@ internal static partial class Program {
         failed += Run("Provider limit windows use reported durations", TestProviderLimitWindowsUseReportedDurations);
 #if INTELLIGENCEX_REVIEWER
         failed += Run("Provider limits refresh accounts independently", TestProviderLimitsRefreshAccountsIndependently);
+        failed += Run("Provider limits keep distinct unresolved credentials", TestProviderLimitsKeepDistinctUnresolvedCredentials);
         failed += Run("Provider limits synchronize only matching Codex credentials", TestProviderLimitsSynchronizeOnlyMatchingCodexCredentials);
         failed += Run("Provider limits account refresh cancellation and empty store", TestProviderLimitsAccountRefreshCancellationAndEmptyStore);
         failed += Run("Provider limits large inventory scan budget", TestProviderLimitsLargeInventoryReturnsWithinScanBudget);

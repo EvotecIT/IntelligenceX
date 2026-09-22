@@ -1539,8 +1539,8 @@ public sealed partial class ProviderViewModel : ViewModelBase {
 
     private static string BuildLimitAccountKey(string? accountId, string? accountLabel) {
         return string.IsNullOrWhiteSpace(accountId)
-            ? accountLabel?.Trim() ?? string.Empty
-            : accountId.Trim();
+            ? "label:" + (accountLabel?.Trim() ?? string.Empty)
+            : "id:" + accountId.Trim();
     }
 
     private static string FormatTokens(long tokens) {

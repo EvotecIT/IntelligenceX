@@ -128,6 +128,71 @@ internal static partial class Program {
             AssertEqual(6, coalesced.Accounts.Count, "provider-resolved aliases yield one row per account");
             AssertEqual(1, coalesced.Accounts.Count(account => account.AccountId == "legacy" && account.IsSelected),
                 "resolved duplicate retains current-account selection");
+            options.AuthAccountId = "known-but-not-saved";
+            var missingCurrent = ProviderLimitSnapshotService.FetchCodexAsync("codex", options, CancellationToken.None).GetAwaiter().GetResult();
+            AssertEqual(0, missingCurrent.Windows.Count, "another saved account cannot stand in for the active Codex login");
+            AssertEqual(null, missingCurrent.AccountLabel, "the primary label does not borrow another account");
+            AssertEqual(null, missingCurrent.PlanLabel, "the primary plan does not borrow another account");
+            AssertEqual(0, missingCurrent.Accounts.Count(account => account.IsSelected), "no saved account is falsely current");
+            AssertEqual(true, missingCurrent.Accounts.Any(account => account.IsAvailable), "other account readings remain available below");
+            AssertEqual(false, ProviderLimitSnapshotService.MatchesCurrentCodexAccount(identified, "weekly"),
+                "a returned current-account B snapshot cannot be cached under A after an A-B-A switch");
+            AssertEqual(true, ProviderLimitSnapshotService.MatchesCurrentCodexAccount(identified, "legacy"),
+                "a matching current-account snapshot remains cacheable");
+            AssertEqual(false, ProviderLimitSnapshotService.MatchesCurrentCodexAccount(missingCurrent, "weekly"),
+                "an unselected inventory containing the current ID is not safe to cache");
+            AssertEqual(true, ProviderLimitSnapshotService.MatchesCurrentCodexAccount(missingCurrent, "known-but-not-saved"),
+                "another account's rows may be retained without claiming it is current");
+            options.AuthAccountId = null;
+            var unknownCurrent = ProviderLimitSnapshotService.FetchCodexAsync("codex", options, CancellationToken.None).GetAwaiter().GetResult();
+            AssertEqual(null, unknownCurrent.AccountLabel, "unknown current identity cannot borrow another account label");
+            AssertEqual(null, unknownCurrent.PlanLabel, "unknown current identity cannot borrow another plan");
+            AssertEqual(0, unknownCurrent.Windows.Count, "unknown current identity cannot borrow another account's windows");
+            AssertEqual(0, unknownCurrent.Accounts.Count(account => account.IsSelected), "unknown current identity has no selected account");
+            AssertEqual(true, ProviderLimitSnapshotService.MatchesCurrentCodexAccount(unknownCurrent, null),
+                "unknown current identity can cache only an unselected inventory");
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void TestProviderLimitsKeepDistinctUnresolvedCredentials() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-limit-unresolved-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            var requests = 0;
+            using var server = new LocalHttpServer(request => {
+                Interlocked.Increment(ref requests);
+                var account = request.Headers["Authorization"].EndsWith("access-one", StringComparison.Ordinal) ? "one" : "two";
+                return new HttpResponse("{\"account_id\":\"" + account + "\",\"rate_limit\":{\"primary_window\":{\"used_percent\":20}}}");
+            });
+            var store = new FileAuthBundleStore(Path.Combine(directory, "ix-auth.json"));
+            // A shared label is presentation metadata, not an identity key.
+            var idToken = "e30." + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("{\"email\":\"same@example.com\"}"))
+                .TrimEnd('=').Replace('+', '-').Replace('/', '_') + ".sig";
+            foreach (var (provider, token) in new[] { ("openai-codex", "access-one"), ("openai", "access-two") }) {
+                store.SaveAsync(new AuthBundle(provider, token, "refresh-" + token, DateTimeOffset.UtcNow.AddHours(1)) {
+                    IdToken = idToken
+                }).GetAwaiter().GetResult();
+            }
+            var options = new OpenAINativeOptions { AuthStore = store, AuthAccountId = "one", CodexHome = directory,
+                ChatGptApiBaseUrl = server.BaseUri.ToString() };
+            var result = ProviderLimitSnapshotService.FetchCodexAsync("codex", options, CancellationToken.None).GetAwaiter().GetResult();
+            AssertEqual(2, requests, "same-email credentials each reach the usage API");
+            AssertEqual(2, result.Accounts.Count, "distinct provider-confirmed accounts remain separate");
+            AssertEqual("one", result.Accounts.Single(account => account.IsSelected).AccountId, "current identity survives deduplication");
+
+            var now = DateTimeOffset.UtcNow;
+            var unresolved = ProviderLimitSnapshotService.CoalesceResolvedAccounts(new[] {
+                new ProviderLimitAccountSnapshot(null, null, null,
+                    new[] { new ProviderLimitWindow("weekly", "Weekly", 15, now.AddDays(1)) }, null, null, now),
+                new ProviderLimitAccountSnapshot(null, null, null,
+                    new[] { new ProviderLimitWindow("weekly", "Weekly", 75, now.AddDays(1)) }, null, null, now)
+            }, null);
+            AssertEqual(2, unresolved.Count, "unresolved credentials remain distinct");
+            AssertEqual(true, unresolved.Select(account => account.AccountLabel).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 2,
+                "unresolved account cards get distinct labels for advisory matching");
+            AssertEqual(75d, unresolved[1].Windows[0].UsedPercent, "distinct labels preserve each account's own reading");
         } finally {
             Directory.Delete(directory, recursive: true);
         }

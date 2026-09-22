@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using IntelligenceX.OpenAI.Usage;
+using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.Codex;
 using IntelligenceX.Telemetry.Git;
 using IntelligenceX.Telemetry.GitHub;
@@ -102,6 +103,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private DateTimeOffset _loadingProgressUpdatedAtUtc;
     private DateTimeOffset _lastRefreshed;
     private DateTimeOffset _lastLimitRefreshUtc;
+    private string? _lastCodexLimitAccountId;
     private int _gitHubRefreshVersion;
     private CancellationTokenSource? _gitHubRefreshCts;
     private string? _lastAutoLoadedGitHubKey;
@@ -941,6 +943,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
             _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(currentProviderSnapshots, StringComparer.OrdinalIgnoreCase);
             if (!startupWarmup) {
+                if (InvalidateSwitchedCodexLimitSnapshot(ReadCurrentCodexAccountId())) {
+                    ApplyLatestLimitSnapshotsToProviders();
+                }
                 EvaluateLimitNotifications(_latestLimitSnapshots);
                 _ = RefreshProviderLimitsAsync(providerIds, refreshData.ScanInfo);
                 var ghLogin = GitHub.UsernameInput;
@@ -1938,12 +1943,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             return;
         }
 
+        var dispatcher = Application.Current.Dispatcher;
+        var includesCodex = providerIds.Any(IsCodexLimitProvider);
+        var currentCodexAccountId = includesCodex ? ReadCurrentCodexAccountId() : null;
+        if (includesCodex) {
+            await dispatcher.InvokeAsync(() => {
+                if (InvalidateSwitchedCodexLimitSnapshot(currentCodexAccountId)) {
+                    ApplyLatestLimitSnapshotsToProviders();
+                }
+            });
+        }
+
         if (HasFreshLimitSnapshotsFor(providerIds)) {
-            ApplyLatestLimitSnapshotsToProviders();
+            await dispatcher.InvokeAsync(ApplyLatestLimitSnapshotsToProviders);
             return;
         }
 
-        var dispatcher = Application.Current.Dispatcher;
         var currentVersion = Interlocked.Increment(ref _limitRefreshVersion);
         using var refreshCts = new CancellationTokenSource();
         var previousCts = Interlocked.Exchange(ref _limitRefreshCts, refreshCts);
@@ -1958,15 +1973,28 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     return;
                 }
 
+                var latestCodexAccountId = includesCodex ? ReadCurrentCodexAccountId() : null;
+                var accountSwitched = includesCodex && (!string.Equals(
+                    currentCodexAccountId, latestCodexAccountId, StringComparison.OrdinalIgnoreCase)
+                    || limitSnapshots.Any(pair => IsCodexLimitProvider(pair.Key)
+                        && !ProviderLimitSnapshotService.MatchesCurrentCodexAccount(pair.Value, latestCodexAccountId)));
+                if (accountSwitched) InvalidateSwitchedCodexLimitSnapshot(latestCodexAccountId);
                 foreach (var (providerId, snapshot) in limitSnapshots) {
+                    if (accountSwitched && IsCodexLimitProvider(providerId)) continue;
                     _latestLimitSnapshots[providerId] = snapshot;
                 }
 
+                if (includesCodex && !accountSwitched) _lastCodexLimitAccountId = currentCodexAccountId;
                 _lastLimitRefreshUtc = DateTimeOffset.UtcNow;
                 ApplyLatestLimitSnapshotsToProviders();
-                EvaluateLimitNotifications(limitSnapshots);
+                EvaluateLimitNotifications(accountSwitched
+                    ? limitSnapshots.Where(pair => !IsCodexLimitProvider(pair.Key))
+                        .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+                    : limitSnapshots);
                 if (!IsLoading) {
-                    StatusText = usageScanInfo + " • Live limits updated.";
+                    StatusText = usageScanInfo + (accountSwitched
+                        ? " • Codex account changed or could not be confirmed; refresh live limits again."
+                        : " • Live limits updated.");
                 }
             });
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
@@ -2002,9 +2030,34 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             if (!_latestLimitSnapshots.ContainsKey(providerId)) {
                 return false;
             }
+            if (IsCodexLimitProvider(providerId)
+                && !string.Equals(_lastCodexLimitAccountId, ReadCurrentCodexAccountId(), StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
         }
 
         return true;
+    }
+
+    private bool InvalidateSwitchedCodexLimitSnapshot(string? accountId) {
+        if (string.Equals(_lastCodexLimitAccountId, accountId, StringComparison.OrdinalIgnoreCase)) return false;
+        var removed = false;
+        foreach (var providerId in _latestLimitSnapshots.Keys.Where(IsCodexLimitProvider).ToArray()) {
+            removed |= _latestLimitSnapshots.Remove(providerId);
+        }
+        _lastCodexLimitAccountId = accountId;
+        return removed;
+    }
+
+    private static bool IsCodexLimitProvider(string providerId) {
+        var canonical = UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(providerId) ?? providerId;
+        return string.Equals(canonical, "codex", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(canonical, "chatgpt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ReadCurrentCodexAccountId() {
+        var accountId = CodexAuthStore.TryReadProfile(CodexAuthStore.ResolveAuthPath())?.AccountId?.Trim();
+        return string.IsNullOrWhiteSpace(accountId) ? null : accountId;
     }
 
     private void ApplyLatestLimitSnapshotsToProviders() {
