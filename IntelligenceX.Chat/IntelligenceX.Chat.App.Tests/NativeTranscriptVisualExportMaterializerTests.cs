@@ -31,6 +31,8 @@ public sealed class NativeTranscriptVisualExportMaterializerTests {
             directory = Assert.Single(result.AllowedImageDirectories);
             Assert.DoesNotContain("```mermaid", result.Markdown, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("![", result.Markdown, StringComparison.Ordinal);
+            Assert.Contains("](<", result.Markdown, StringComparison.Ordinal);
+            Assert.Contains(".png>)", result.Markdown, StringComparison.Ordinal);
             Assert.Contains("Before.", result.Markdown, StringComparison.Ordinal);
             Assert.Contains("After.", result.Markdown, StringComparison.Ordinal);
             Assert.Single(Directory.GetFiles(directory, "*.png"));

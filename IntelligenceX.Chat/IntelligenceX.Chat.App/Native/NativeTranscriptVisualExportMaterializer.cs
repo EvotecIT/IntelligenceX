@@ -61,7 +61,7 @@ internal static class NativeTranscriptVisualExportMaterializer {
                 var title = string.IsNullOrWhiteSpace(artifact.Title) ? "Visual" : artifact.Title.Trim();
                 var markdownImagePath = imagePath.Replace('\\', '/');
                 lines.RemoveRange(startIndex, endIndex - startIndex + 1);
-                lines.Insert(startIndex, "![" + EscapeImageAlt(title) + "](" + markdownImagePath + ")");
+                lines.Insert(startIndex, "![" + EscapeImageAlt(title) + "](<" + markdownImagePath + ">)");
             }
 
             if (imageCount == 0) {

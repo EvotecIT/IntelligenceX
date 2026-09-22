@@ -248,6 +248,39 @@ public sealed class NativeRenderingProjectionTests {
         Assert.Contains(content, item => item.Kind == NativeTranscriptContentKind.Paragraph && item.Text.Contains("now", StringComparison.Ordinal));
     }
 
+    /// <summary>List-item images keep a native preview without flattening adjacent text.</summary>
+    [Fact]
+    public void Project_PromotesListItemImageToNativePreview() {
+        var content = NativeMarkdownProjection.Project("- Before ![Evidence](https://example.test/evidence.png) after");
+
+        var list = Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.List).List;
+        Assert.NotNull(list);
+        var item = Assert.Single(list.Items);
+        Assert.Contains("Before", item.Text, StringComparison.Ordinal);
+        var image = Assert.Single(item.Children, child => child.Kind == NativeTranscriptContentKind.Image).Image;
+        Assert.NotNull(image);
+        Assert.Equal("https://example.test/evidence.png", image.Source);
+        Assert.Contains(item.Children, child => child.Kind == NativeTranscriptContentKind.Paragraph
+            && child.Text.Contains("after", StringComparison.Ordinal));
+    }
+
+    /// <summary>Formatting containers do not hide embedded image previews in prose or list items.</summary>
+    [Theory]
+    [InlineData("**Before ![Evidence](https://example.test/evidence.png) after**", false)]
+    [InlineData("- **Before ![Evidence](https://example.test/evidence.png) after**", true)]
+    public void Project_PromotesFormattedImageToNativePreview(string markdown, bool isList) {
+        var content = NativeMarkdownProjection.Project(markdown);
+        var projected = isList
+            ? Assert.Single(Assert.Single(content, item => item.Kind == NativeTranscriptContentKind.List).List!.Items).Children
+            : content;
+
+        var image = Assert.Single(projected, item => item.Kind == NativeTranscriptContentKind.Image).Image;
+        Assert.NotNull(image);
+        Assert.Equal("https://example.test/evidence.png", image.Source);
+        Assert.Contains(projected, item => item.Kind == NativeTranscriptContentKind.Paragraph
+            && item.Text.Contains("after", StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// Ensures transcript rendering never fetches model-provided remote images without an explicit operator action.
     /// </summary>

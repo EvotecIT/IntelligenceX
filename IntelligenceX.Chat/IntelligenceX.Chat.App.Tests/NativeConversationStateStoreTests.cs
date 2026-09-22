@@ -643,6 +643,7 @@ public sealed class NativeConversationStateStoreTests {
                 await sharedStore.UpsertAsync(
                     "operations",
                     new ChatAppState {
+                        ThemePreset = "graphite",
                         LocalProviderRuntimeOverrideActive = true,
                         LocalProviderModel = "operations-model",
                         Conversations = [new ChatConversationState { Id = "chat-operations", Title = "Operations" }]
@@ -653,6 +654,10 @@ public sealed class NativeConversationStateStoreTests {
             await using var nativeStore = new NativeConversationStateStore(path);
             var initial = await nativeStore.LoadAsync(CancellationToken.None);
             Assert.Equal("default-model", nativeStore.CreateChatRequestOptions(Assert.Single(initial.Conversations)).Model);
+            await nativeStore.NormalizeAssistantTurnAsync(Assert.Single(initial.Conversations),
+                "```ix_profile\n{\"userName\":\"Old Operator\",\"assistantPersona\":\"old persona\",\"themePreset\":\"cobalt\",\"scope\":\"session\"}\n```",
+                CancellationToken.None);
+            Assert.Equal("cobalt", nativeStore.EffectiveThemePreset);
 
             Assert.True(nativeStore.SelectProfile("operations"));
             Assert.False(nativeStore.SelectProfile("operations"));
@@ -663,6 +668,8 @@ public sealed class NativeConversationStateStoreTests {
             Assert.Equal("operations", nativeStore.ActiveProfileName);
             Assert.Equal("chat-operations", conversation.Id);
             Assert.Equal("operations-model", nativeStore.CreateChatRequestOptions(conversation).Model);
+            Assert.Equal("graphite", nativeStore.EffectiveThemePreset);
+            Assert.DoesNotContain("Old Operator", nativeStore.BuildRequestText(conversation, "status"), StringComparison.Ordinal);
             Assert.Equal("operations", nativeStore.CreateServiceLaunchProfileOptions().LoadProfileName);
         } finally {
             DeleteTemporaryDirectory(directory);

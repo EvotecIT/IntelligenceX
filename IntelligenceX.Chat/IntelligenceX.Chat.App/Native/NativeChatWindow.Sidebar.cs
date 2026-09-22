@@ -153,7 +153,8 @@ internal sealed partial class NativeChatWindow {
             Padding = new Thickness(10, 4, 10, 4)
         };
         addButton.Click += async (_, _) => {
-            _ = await _viewModel.CreateConversationAsync().ConfigureAwait(true);
+            _ = await TrackPersistenceTaskAsync(_viewModel.CreateConversationAsync()).ConfigureAwait(true);
+            if (_lifetimeCts.IsCancellationRequested) return;
             RefreshConversationChrome();
             _composer.Focus(FocusState.Programmatic);
         };
@@ -259,7 +260,8 @@ internal sealed partial class NativeChatWindow {
             IsEnabled = !_viewModel.IsSending
         };
         button.Click += async (_, _) => {
-            _ = await _viewModel.SelectConversationAsync(conversation.Id).ConfigureAwait(true);
+            _ = await TrackPersistenceTaskAsync(_viewModel.SelectConversationAsync(conversation.Id)).ConfigureAwait(true);
+            if (_lifetimeCts.IsCancellationRequested) return;
             RefreshConversationChrome();
             _composer.Focus(FocusState.Programmatic);
         };
