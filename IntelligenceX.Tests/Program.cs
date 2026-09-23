@@ -25,6 +25,7 @@ internal static partial class Program {
         failed += Run("Provider limits large inventory scan budget", TestProviderLimitsLargeInventoryReturnsWithinScanBudget);
 #endif
         failed += Run("OpenAI model catalog prefers runnable slug", TestOpenAiModelCatalogPrefersRunnableSlug);
+        failed += Run("Native Codex model catalog excludes hidden entries", TestNativeCodexModelCatalogExcludesHiddenEntries);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
         failed += Run("ChatGPT usage parse ignores legacy code review rate limit",
             TestChatGptUsageParseIgnoresLegacyCodeReviewRateLimit);

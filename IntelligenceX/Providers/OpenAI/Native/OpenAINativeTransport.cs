@@ -245,7 +245,18 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
             }
             obj = new JsonObject().Add("models", array);
         }
-        return ModelListResult.FromJson(obj);
+        return KeepListableModels(ModelListResult.FromJson(obj));
+    }
+
+    private static ModelListResult KeepListableModels(ModelListResult result) {
+        var models = new List<ModelInfo>(result.Models.Count);
+        foreach (var model in result.Models) {
+            var visibility = model.Raw.GetString("visibility");
+            if (visibility is null || string.Equals(visibility, "list", StringComparison.Ordinal)) {
+                models.Add(model);
+            }
+        }
+        return new ModelListResult(models, result.NextCursor, result.Raw, result.Additional);
     }
 
     private string AddClientVersion(string url) {

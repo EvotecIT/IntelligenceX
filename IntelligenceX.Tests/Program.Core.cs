@@ -64,6 +64,26 @@ internal static partial class Program {
         AssertEqual("id-only", idOnly.Model, "catalog falls back to id when no request name exists");
     }
 
+    private static void TestNativeCodexModelCatalogExcludesHiddenEntries() {
+        var transportType = typeof(IntelligenceXClient).Assembly.GetType(
+            "IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true);
+        var method = transportType!.GetMethod("KeepListableModels", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "native catalog visibility filter");
+
+        var raw = new JsonObject().Add("models", new JsonArray()
+            .Add(new JsonObject().Add("id", "visible-internal").Add("slug", "gpt-6-sol").Add("visibility", "list"))
+            .Add(new JsonObject().Add("id", "hidden-internal").Add("slug", "hidden-preview").Add("visibility", "hide"))
+            .Add(new JsonObject().Add("id", "legacy-model")));
+        var parsed = ModelListResult.FromJson(raw);
+        var filtered = method!.Invoke(null, new object[] { parsed }) as ModelListResult;
+
+        AssertNotNull(filtered, "filtered native catalog");
+        AssertEqual(2, filtered!.Models.Count, "native catalog keeps listed and legacy entries");
+        AssertEqual("gpt-6-sol", filtered.Models[0].Model, "native catalog keeps runnable listed slug");
+        AssertEqual("legacy-model", filtered.Models[1].Model, "native catalog keeps entries without visibility");
+        AssertEqual(true, ReferenceEquals(raw, filtered.Raw), "native catalog retains raw response");
+    }
+
     private static void TestToolCallParsing() {
         var output = new JsonObject()
             .Add("type", "custom_tool_call")
