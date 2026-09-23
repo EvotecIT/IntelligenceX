@@ -772,6 +772,21 @@ internal static partial class Program {
         AssertEqual(true, baselineModels.Contains("gpt-5-nano", StringComparer.OrdinalIgnoreCase),
             "baseline fallback models include gpt-5-nano");
     }
+
+    private static void TestOpenAiModelCatalogRanksGpt6FallbackAheadOfGpt5() {
+        var method = typeof(OpenAIModelCatalog).GetMethod("CompareChatGptFallbackPriority",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "fallback priority comparator");
+
+        var candidates = new List<string> { "gpt-5.5", "gpt-5.4-codex", "gpt-6-sol", "gpt-6-luna" };
+        candidates.Sort((left, right) => (int)method!.Invoke(null,
+            new object[] { "gpt-6-astra", left, right })!);
+
+        AssertEqual(true, candidates.IndexOf("gpt-6-sol") < candidates.IndexOf("gpt-5.5"),
+            "GPT-6 Sol ranks before GPT-5 baseline");
+        AssertEqual(true, candidates.IndexOf("gpt-6-luna") < candidates.IndexOf("gpt-5.5"),
+            "GPT-6 Luna ranks before GPT-5 baseline");
+    }
 #endif
 
     private static void TestEscapeHandling() {

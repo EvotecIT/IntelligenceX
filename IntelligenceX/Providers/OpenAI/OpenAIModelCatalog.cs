@@ -135,9 +135,9 @@ public static class OpenAIModelCatalog {
         var normalized = NormalizeModelId(candidate, DefaultModel).ToLowerInvariant();
 
         var score = 0;
-        var minor = TryGetGpt5MinorVersion(normalized);
-        if (minor.HasValue) {
-            score += 100 + (minor.Value * 10);
+        var versionScore = TryGetGptVersionScore(normalized);
+        if (versionScore.HasValue) {
+            score += versionScore.Value;
         }
 
         if (normalized.IndexOf("codex", StringComparison.Ordinal) >= 0) {
@@ -181,30 +181,38 @@ public static class OpenAIModelCatalog {
         return value.IndexOf("fast", StringComparison.Ordinal) >= 0;
     }
 
-    private static int? TryGetGpt5MinorVersion(string value) {
-        var index = value.IndexOf("gpt-5", StringComparison.Ordinal);
+    private static int? TryGetGptVersionScore(string value) {
+        var index = value.IndexOf("gpt-", StringComparison.Ordinal);
         if (index < 0) {
             return null;
         }
 
-        index += "gpt-5".Length;
-        if (index >= value.Length || value[index] != '.') {
-            return 0;
-        }
-
-        index++;
-        var start = index;
+        index += "gpt-".Length;
+        var majorStart = index;
         while (index < value.Length && char.IsDigit(value[index])) {
             index++;
         }
-
-        if (index == start) {
-            return 0;
+        if (index == majorStart ||
+            !int.TryParse(value.Substring(majorStart, index - majorStart), out var major) ||
+            major > 1000) {
+            return null;
         }
 
-        return int.TryParse(value.Substring(start, index - start), out var minor)
-            ? minor
-            : null;
+        var minor = 0;
+        if (index < value.Length && value[index] == '.') {
+            index++;
+            var minorStart = index;
+            while (index < value.Length && char.IsDigit(value[index])) {
+                index++;
+            }
+            if (index == minorStart ||
+                !int.TryParse(value.Substring(minorStart, index - minorStart), out minor) ||
+                minor > 999) {
+                return null;
+            }
+        }
+
+        return major * 100_000 + minor * 10;
     }
 
     private static bool IsModeToken(string value) {

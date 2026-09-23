@@ -433,6 +433,7 @@ internal static partial class Program {
         failed += Run("OpenAI model catalog normalizes fast mode suffix", TestOpenAiModelCatalogNormalizesFastModeSuffix);
         failed += Run("OpenAI model catalog normalizes mini and nano model ids", TestOpenAiModelCatalogNormalizesMiniAndNanoModelIds);
         failed += Run("OpenAI model catalog baseline fallback includes mini and nano", TestOpenAiModelCatalogBaselineFallbackIncludesMiniAndNano);
+        failed += Run("OpenAI model catalog ranks GPT-6 fallback ahead of GPT-5", TestOpenAiModelCatalogRanksGpt6FallbackAheadOfGpt5);
         failed += Run("CLI auth sync-codex help options", TestCliAuthSyncCodexHelpSupportsOptions);
         failed += Run("CLI auth sync-codex missing provider value shows help", TestCliAuthSyncCodexMissingProviderValueShowsHelp);
         failed += Run("CLI models help routes", TestCliModelsHelpRoutes);
