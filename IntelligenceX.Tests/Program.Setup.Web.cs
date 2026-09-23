@@ -33,10 +33,12 @@ internal static partial class Program {
         AssertEqual(true, script != null && script.Length > 0, "web setup static assets app.js available for quick picks");
         var scriptText = System.Text.Encoding.UTF8.GetString(script!);
         AssertContainsText(scriptText, "const PROVIDER_MODEL_CATALOG =", "web setup script provider model catalog");
-        AssertContainsText(scriptText, "profileId: 'openai-sol-review', profileLabel: 'GPT-6 Sol review', id: 'gpt-6-sol'",
-            "web setup script includes GPT-6 Sol profile");
+        AssertContainsText(scriptText, "profileId: 'openai-default-review', profileLabel: 'OpenAI default review', id: 'gpt-6-sol'",
+            "web setup script defaults to GPT-6 Sol");
         AssertContainsText(scriptText, "profileId: 'openai-luna-review', profileLabel: 'GPT-6 Luna review', id: 'gpt-6-luna'",
             "web setup script includes GPT-6 Luna profile");
+        AssertContainsText(scriptText, "profileId: 'openai-legacy-review', profileLabel: 'GPT-5.5 review', id: 'gpt-5.5'",
+            "web setup script retains previous default profile");
         AssertContainsText(scriptText, "function renderModelQuickPicks(provider)", "web setup script quick pick render function");
         AssertContainsText(scriptText, "function getProviderSetupSummary(provider)", "web setup script provider summary helper");
         AssertContainsText(scriptText, "function getProviderModelProfile(provider, model)", "web setup script model summary helper");

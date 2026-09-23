@@ -294,6 +294,50 @@ public actor IXCodexClient {
         recoveredBundle: IXCodexAuthSession.RequestAuthorization? = nil
     ) async throws -> [IXJSONValue] {
         let authorization = try await requestBundle(recoveredBundle)
+        let requestedModel = model ?? configuration.defaultModel
+        do {
+            return try await sendCompaction(
+                input: input,
+                sessionID: sessionID,
+                instructions: instructions,
+                model: requestedModel,
+                retryUnauthorized: retryUnauthorized,
+                authorization: authorization
+            )
+        } catch let error as IXCodexError where
+            model == nil && isUnsupportedModel(error) {
+            for fallback in try await fallbackModels(
+                excluding: requestedModel,
+                authorization: authorization
+            ) {
+                do {
+                    return try await sendCompaction(
+                        input: input,
+                        sessionID: sessionID,
+                        instructions: instructions,
+                        model: fallback,
+                        retryUnauthorized: retryUnauthorized,
+                        authorization: authorization
+                    )
+                } catch let retryError as IXCodexError where
+                    isUnsupportedModel(retryError) {
+                    continue
+                }
+            }
+            throw error
+        }
+    }
+
+    private func sendCompaction(
+        input: [IXJSONValue],
+        sessionID: String,
+        instructions: String,
+        model: String,
+        retryUnauthorized: Bool,
+        authorization: IXCodexAuthSession.RequestAuthorization
+    ) async throws -> [IXJSONValue] {
+        try await authSession.validateRequestGeneration(authorization)
+        try Task.checkCancellation()
         let bundle = authorization.bundle
         guard let accountID = bundle.accountID else {
             throw IXCodexError.invalidResponse(
@@ -310,7 +354,7 @@ public actor IXCodexClient {
             sessionID: sessionID
         )
         request.httpBody = try IXJSONValue.object([
-            "model": .string(model ?? configuration.defaultModel),
+            "model": .string(model),
             "store": .bool(false),
             "stream": .bool(true),
             "instructions": .string(instructions),
@@ -320,13 +364,13 @@ public actor IXCodexClient {
         try await authSession.validateRequestGeneration(authorization)
         if response.statusCode == 401 && retryUnauthorized {
             let recovered = try await authSession.recoverRejectedBundle(authorization)
-            return try await compact(
+            return try await sendCompaction(
                 input: input,
                 sessionID: sessionID,
                 instructions: instructions,
                 model: model,
                 retryUnauthorized: false,
-                recoveredBundle: recovered
+                authorization: recovered
             )
         }
         try await validateRejectedRetry(response, authorization: authorization)

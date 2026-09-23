@@ -62,7 +62,7 @@ GitHub Actions input/env aliases:
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.5",
+    "model": "gpt-6-sol",
     "mode": "inline",
     "length": "long",
     "outputStyle": "compact",

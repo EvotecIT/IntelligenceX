@@ -1418,8 +1418,10 @@ final class IXCodexConversationTests: XCTestCase {
 
         XCTAssertEqual(result.turn.text, "Fallback worked")
         let requests = await state.requests
+        let initialBody = try IXJSONValue.decode(try XCTUnwrap(requests.first?.httpBody))
+        XCTAssertEqual(initialBody["model"]?.stringValue, "gpt-6-sol")
         let retryBody = try IXJSONValue.decode(try XCTUnwrap(requests.last?.httpBody))
-        XCTAssertEqual(retryBody["model"]?.stringValue, "gpt-5.5")
+        XCTAssertEqual(retryBody["model"]?.stringValue, "gpt-5.6-sol")
         let firstInput = retryBody["input"]?.arrayValue?.first
         let firstContent = firstInput?["content"]?.arrayValue?.first
         XCTAssertEqual(firstContent?["text"]?.stringValue, "Hello")
@@ -2007,6 +2009,74 @@ final class IXCodexConversationTests: XCTestCase {
             responseBody["input"]?.arrayValue?.last?["type"]?.stringValue,
             "message"
         )
+    }
+
+    func testUnsupportedDefaultModelFallsBackForConversationCompaction() async throws {
+        let state = ResponseQueue(responses: [
+            .json(400, ["error": [
+                "message": "The model is not supported for this ChatGPT account"
+            ]]),
+            .json(200, ["models": []]),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "compaction-fallback",
+                "status": "completed",
+                "output": [[
+                    "type": "compaction",
+                    "id": "compact-fallback",
+                    "encrypted_content": "opaque-checkpoint",
+                ]],
+            ])),
+            .json(400, ["error": [
+                "message": "The model is not supported for this ChatGPT account"
+            ]]),
+            .json(200, ["models": []]),
+            IXHTTPResponse(statusCode: 200, body: sse(response: [
+                "id": "response-fallback",
+                "status": "completed",
+                "output": [[
+                    "type": "message",
+                    "content": [["type": "output_text", "text": "Continued"]],
+                ]],
+            ])),
+        ])
+        let conversation = IXCodexConversation(
+            client: makeClient(state),
+            maximumHistoryItemsBeforeCompaction: 8
+        )
+        await conversation.restoreTranscript((0..<8).map { index in
+            IXCodexTranscriptMessage(
+                role: index.isMultiple(of: 2) ? .user : .assistant,
+                text: "Message \(index)"
+            )
+        })
+
+        let result = try await conversation.run(
+            input: [.text("Continue")],
+            instructions: "Help."
+        )
+
+        XCTAssertEqual(result.turn.text, "Continued")
+        let requests = await state.requests
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/backend-api/codex/responses/compact",
+            "/backend-api/codex/models",
+            "/backend-api/codex/responses/compact",
+            "/backend-api/codex/responses",
+            "/backend-api/codex/models",
+            "/backend-api/codex/responses",
+        ])
+        let initialCompaction = try IXJSONValue.decode(
+            try XCTUnwrap(requests[0].httpBody)
+        )
+        let fallbackCompaction = try IXJSONValue.decode(
+            try XCTUnwrap(requests[2].httpBody)
+        )
+        let fallbackResponse = try IXJSONValue.decode(
+            try XCTUnwrap(requests[5].httpBody)
+        )
+        XCTAssertEqual(initialCompaction["model"]?.stringValue, "gpt-6-sol")
+        XCTAssertEqual(fallbackCompaction["model"]?.stringValue, "gpt-5.6-sol")
+        XCTAssertEqual(fallbackResponse["model"]?.stringValue, "gpt-5.6-sol")
     }
 
     func testResetDuringRemoteCompactionDoesNotSendAStaleFollowUp() async throws {

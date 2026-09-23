@@ -783,6 +783,11 @@ internal static partial class Program {
         var models = method!.Invoke(null, Array.Empty<object>()) as IReadOnlyList<string>;
         AssertNotNull(models, "baseline fallback models");
         var baselineModels = models!;
+        AssertEqual("gpt-6-sol", baselineModels[0], "baseline fallback starts with new default");
+        AssertEqual(true, baselineModels.Contains("gpt-6-luna", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-6-luna");
+        AssertEqual(true, baselineModels.Contains("gpt-5.6-sol", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models keep prior Sol default");
         AssertEqual(true, baselineModels.Contains("gpt-5.5", StringComparer.OrdinalIgnoreCase),
             "baseline fallback models include gpt-5.5");
         AssertEqual(true, baselineModels.Contains("gpt-5.4", StringComparer.OrdinalIgnoreCase),
@@ -802,6 +807,8 @@ internal static partial class Program {
         candidates.Sort((left, right) => (int)method!.Invoke(null,
             new object[] { "gpt-6-astra", left, right })!);
 
+        AssertEqual(true, candidates.IndexOf("gpt-6-sol") < candidates.IndexOf("gpt-6-luna"),
+            "GPT-6 Sol ranks before GPT-6 Luna when Astra is unavailable");
         AssertEqual(true, candidates.IndexOf("gpt-6-sol") < candidates.IndexOf("gpt-5.5"),
             "GPT-6 Sol ranks before GPT-5 baseline");
         AssertEqual(true, candidates.IndexOf("gpt-6-luna") < candidates.IndexOf("gpt-5.5"),
