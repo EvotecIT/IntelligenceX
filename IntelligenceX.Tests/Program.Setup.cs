@@ -237,6 +237,10 @@ internal static partial class Program {
         AssertEqual("gpt-5.5", models[0], "setup provider catalog openai default first");
         AssertEqual(true, models.Contains("gpt-5.5/fast", StringComparer.OrdinalIgnoreCase),
             "setup provider catalog openai fast present");
+        AssertEqual(true, models.Contains("gpt-6-sol", StringComparer.OrdinalIgnoreCase),
+            "setup provider catalog gpt-6 sol present");
+        AssertEqual(true, models.Contains("gpt-6-luna", StringComparer.OrdinalIgnoreCase),
+            "setup provider catalog gpt-6 luna present");
         AssertEqual(true, models.Contains("gpt-5-mini", StringComparer.OrdinalIgnoreCase),
             "setup provider catalog openai mini present");
     }

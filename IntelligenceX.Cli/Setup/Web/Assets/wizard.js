@@ -163,6 +163,8 @@ const PROVIDER_MODEL_CATALOG = {
   openai: [
     { profileId: 'openai-default-review', profileLabel: 'OpenAI default review', id: 'gpt-5.5', label: 'gpt-5.5', description: 'Best default quality for reviewer runs.', isDefault: true },
     { profileId: 'openai-fast-review', profileLabel: 'OpenAI fast review', id: 'gpt-5.5/fast', label: 'gpt-5.5/fast', description: 'Lower-latency default when you want faster PR turnaround.' },
+    { profileId: 'openai-sol-review', profileLabel: 'GPT-6 Sol review', id: 'gpt-6-sol', label: 'gpt-6-sol', description: 'Strong reasoning for coding and everyday review work.' },
+    { profileId: 'openai-luna-review', profileLabel: 'GPT-6 Luna review', id: 'gpt-6-luna', label: 'gpt-6-luna', description: 'Efficient model for focused, high-volume reviews.' },
     { profileId: 'openai-budget-review', profileLabel: 'OpenAI budget review', id: 'gpt-5-mini', label: 'gpt-5-mini', description: 'Cheaper review pass with solid quality for routine repos.' },
     { profileId: 'openai-nano-check', profileLabel: 'OpenAI nano check', id: 'gpt-5-nano', label: 'gpt-5-nano', description: 'Smallest budget option for lightweight checks or experimentation.' }
   ],

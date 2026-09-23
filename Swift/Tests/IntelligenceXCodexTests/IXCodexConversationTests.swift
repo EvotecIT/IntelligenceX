@@ -1561,7 +1561,7 @@ final class IXCodexConversationTests: XCTestCase {
         ))
         XCTAssertEqual(
             components.queryItems?.first(where: { $0.name == "client_version" })?.value,
-            "0.146.0-alpha.3.1"
+            "0.156.1"
         )
     }
 

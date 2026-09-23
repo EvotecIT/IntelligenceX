@@ -52,7 +52,7 @@ public sealed class OpenAINativeOptions {
     /// Client version string reported to the API.
     /// </summary>
     public string ClientVersion { get; set; } =
-        Environment.GetEnvironmentVariable("INTELLIGENCEX_CLIENT_VERSION") ?? "0.0.0";
+        Environment.GetEnvironmentVariable("INTELLIGENCEX_CLIENT_VERSION") ?? "0.156.1";
     /// <summary>
     /// Default system instructions.
     /// </summary>

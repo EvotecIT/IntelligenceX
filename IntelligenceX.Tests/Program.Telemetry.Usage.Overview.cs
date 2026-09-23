@@ -45,6 +45,28 @@ internal static partial class Program {
     }
 
     private static void TestUsageTelemetryApiPricingCoversOpenAiModeSuffixes() {
+        foreach (var (model, expected) in new[] {
+            ("gpt-6-astra", 9m + 0.1m + 5m),
+            ("gpt-6-sol", 1.8m + 0.02m + 1m),
+            ("gpt-6-luna", 0.09m + 0.001m + 0.05m)
+        }) {
+            var estimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+                "evt-" + model,
+                "openai",
+                "codex.logs",
+                "src-1",
+                new DateTimeOffset(2026, 09, 23, 11, 0, 0, TimeSpan.Zero)) {
+                Model = model,
+                InputTokens = 1_000_000,
+                CachedInputTokens = 100_000,
+                OutputTokens = 100_000,
+                TotalTokens = 1_100_000,
+                TruthLevel = UsageTruthLevel.Exact
+            });
+            AssertEqual(true, estimate.HasKnownPricing, "api pricing recognizes " + model);
+            AssertEqual(expected, estimate.EstimatedCostUsd, "api pricing estimates " + model);
+        }
+
         var evt = new UsageEventRecord("evt-fast", "openai", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 11, 0, 0, TimeSpan.Zero)) {
             Model = "openai/gpt-5.5/fast/spark",
             InputTokens = 1_000_000,

@@ -35,7 +35,7 @@ public struct IXCodexConfiguration: Sendable, Equatable {
         modelURLs: [URL] = [
             URL(string: "https://chatgpt.com/backend-api/codex/models")!,
         ],
-        modelCatalogClientVersion: String = "0.146.0-alpha.3.1",
+        modelCatalogClientVersion: String = "0.156.1",
         defaultModel: String = "gpt-5.6-sol",
         defaultReasoningEffort: IXCodexReasoningEffort = .low,
         fallbackModels: [String] = ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex"],
