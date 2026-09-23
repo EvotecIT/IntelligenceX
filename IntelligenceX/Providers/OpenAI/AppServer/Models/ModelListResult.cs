@@ -100,7 +100,7 @@ public sealed class ModelInfo {
     /// </summary>
     public string Id { get; }
     /// <summary>
-    /// Gets the model name.
+    /// Gets the request-ready model name. Catalogs may expose a separate internal id.
     /// </summary>
     public string Model { get; }
     /// <summary>
@@ -185,7 +185,7 @@ public sealed class ModelInfo {
                  ?? GetString(obj, "name")
                  ?? displayName
                  ?? string.Empty;
-        var model = GetString(obj, "model") ?? id;
+        var model = GetString(obj, "model") ?? GetString(obj, "slug") ?? id;
         displayName ??= model;
         var description = GetString(obj, "description") ?? string.Empty;
 
@@ -214,7 +214,7 @@ public sealed class ModelInfo {
         var loadedContextLength = obj.GetInt64("loadedContextLength") ?? obj.GetInt64("loaded_context_length");
         var capabilities = ParseStringArray(obj.GetArray("capabilities"));
         var additional = obj.ExtractAdditional(
-            "id", "model", "displayName", "display_name", "description",
+            "id", "model", "slug", "displayName", "display_name", "description",
             "supportedReasoningEfforts", "supported_reasoning_efforts",
             "defaultReasoningEffort", "default_reasoning_effort", "isDefault",
             "ownedBy", "owned_by", "publisher", "arch", "architecture",

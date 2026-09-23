@@ -42,6 +42,28 @@ internal static partial class Program {
     }
 #endif
 
+    private static void TestOpenAiModelCatalogPrefersRunnableSlug() {
+        var entry = new JsonObject()
+            .Add("id", "internal-gpt-6-sol")
+            .Add("slug", "gpt-6-sol")
+            .Add("display_name", "GPT-6 Sol");
+        var model = ModelInfo.FromJson(entry);
+
+        AssertEqual("internal-gpt-6-sol", model.Id, "catalog preserves internal id");
+        AssertEqual("gpt-6-sol", model.Model, "catalog selects runnable slug");
+        AssertEqual("GPT-6 Sol", model.DisplayName, "catalog preserves display name");
+        AssertEqual(null, model.Additional?.GetString("slug"), "catalog recognizes slug field");
+
+        var explicitModel = ModelInfo.FromJson(new JsonObject()
+            .Add("id", "internal-model")
+            .Add("model", "explicit-model")
+            .Add("slug", "alternate-slug"));
+        AssertEqual("explicit-model", explicitModel.Model, "explicit model takes precedence over slug");
+
+        var idOnly = ModelInfo.FromJson(new JsonObject().Add("id", "id-only"));
+        AssertEqual("id-only", idOnly.Model, "catalog falls back to id when no request name exists");
+    }
+
     private static void TestToolCallParsing() {
         var output = new JsonObject()
             .Add("type", "custom_tool_call")

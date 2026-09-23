@@ -579,11 +579,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
             try {
                 var result = await FetchModelsAsync(AddClientVersion(url), accessToken, accountId, cancellationToken).ConfigureAwait(false);
                 foreach (var model in result.Models) {
-                    if (!string.IsNullOrWhiteSpace(model.Model) && seen.Add(model.Model)) {
-                        discovered.Add(model.Model);
-                    }
-                    if (!string.IsNullOrWhiteSpace(model.Id) && seen.Add(model.Id)) {
-                        discovered.Add(model.Id);
+                    var requestName = string.IsNullOrWhiteSpace(model.Model) ? model.Id : model.Model;
+                    if (!string.IsNullOrWhiteSpace(requestName) && seen.Add(requestName)) {
+                        discovered.Add(requestName);
                     }
                 }
             } catch {
