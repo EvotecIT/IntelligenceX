@@ -22,8 +22,10 @@ internal static class SetupProviderCatalog {
     public const string CustomProfileId = "__custom__";
 
     private static readonly IReadOnlyList<SetupProviderModelProfile> OpenAiRecommendedModelProfiles = new[] {
-        new SetupProviderModelProfile("openai-default-review", "OpenAI default review", OpenAIModelCatalog.DefaultModel, OpenAIModelCatalog.DefaultModel, "Best default quality for reviewer runs.", true),
-        new SetupProviderModelProfile("openai-fast-review", "OpenAI fast review", $"{OpenAIModelCatalog.DefaultModel}/fast", $"{OpenAIModelCatalog.DefaultModel}/fast", "Lower-latency default when you want faster PR turnaround."),
+        new SetupProviderModelProfile("openai-default-review", "OpenAI default review", OpenAIModelCatalog.DefaultModel, OpenAIModelCatalog.DefaultModel, "Balanced default for coding and everyday review work.", true),
+        new SetupProviderModelProfile("openai-fast-review", "OpenAI fast review", "gpt-5.5/fast", "gpt-5.5/fast", "Fast-mode GPT-5.5 for accounts that support it."),
+        new SetupProviderModelProfile("openai-legacy-review", "GPT-5.5 review", "gpt-5.5", "gpt-5.5", "Previous default for established reviewer configurations."),
+        new SetupProviderModelProfile("openai-luna-review", "GPT-6 Luna review", "gpt-6-luna", "gpt-6-luna", "Efficient model for focused, high-volume reviews."),
         new SetupProviderModelProfile("openai-budget-review", "OpenAI budget review", "gpt-5-mini", "gpt-5-mini", "Cheaper review pass with solid quality for routine repos."),
         new SetupProviderModelProfile("openai-nano-check", "OpenAI nano check", "gpt-5-nano", "gpt-5-nano", "Smallest budget option for lightweight checks or experimentation.")
     };

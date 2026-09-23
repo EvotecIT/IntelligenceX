@@ -245,7 +245,18 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
             }
             obj = new JsonObject().Add("models", array);
         }
-        return ModelListResult.FromJson(obj);
+        return KeepListableModels(ModelListResult.FromJson(obj));
+    }
+
+    private static ModelListResult KeepListableModels(ModelListResult result) {
+        var models = new List<ModelInfo>(result.Models.Count);
+        foreach (var model in result.Models) {
+            var visibility = model.Raw.GetString("visibility");
+            if (visibility is null || string.Equals(visibility, "list", StringComparison.Ordinal)) {
+                models.Add(model);
+            }
+        }
+        return new ModelListResult(models, result.NextCursor, result.Raw, result.Additional);
     }
 
     private string AddClientVersion(string url) {
@@ -579,11 +590,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
             try {
                 var result = await FetchModelsAsync(AddClientVersion(url), accessToken, accountId, cancellationToken).ConfigureAwait(false);
                 foreach (var model in result.Models) {
-                    if (!string.IsNullOrWhiteSpace(model.Model) && seen.Add(model.Model)) {
-                        discovered.Add(model.Model);
-                    }
-                    if (!string.IsNullOrWhiteSpace(model.Id) && seen.Add(model.Id)) {
-                        discovered.Add(model.Id);
+                    var requestName = string.IsNullOrWhiteSpace(model.Model) ? model.Id : model.Model;
+                    if (!string.IsNullOrWhiteSpace(requestName) && seen.Add(requestName)) {
+                        discovered.Add(requestName);
                     }
                 }
             } catch {

@@ -42,6 +42,48 @@ internal static partial class Program {
     }
 #endif
 
+    private static void TestOpenAiModelCatalogPrefersRunnableSlug() {
+        var entry = new JsonObject()
+            .Add("id", "internal-gpt-6-sol")
+            .Add("slug", "gpt-6-sol")
+            .Add("display_name", "GPT-6 Sol");
+        var model = ModelInfo.FromJson(entry);
+
+        AssertEqual("internal-gpt-6-sol", model.Id, "catalog preserves internal id");
+        AssertEqual("gpt-6-sol", model.Model, "catalog selects runnable slug");
+        AssertEqual("GPT-6 Sol", model.DisplayName, "catalog preserves display name");
+        AssertEqual(null, model.Additional?.GetString("slug"), "catalog recognizes slug field");
+
+        var explicitModel = ModelInfo.FromJson(new JsonObject()
+            .Add("id", "internal-model")
+            .Add("model", "explicit-model")
+            .Add("slug", "alternate-slug"));
+        AssertEqual("explicit-model", explicitModel.Model, "explicit model takes precedence over slug");
+
+        var idOnly = ModelInfo.FromJson(new JsonObject().Add("id", "id-only"));
+        AssertEqual("id-only", idOnly.Model, "catalog falls back to id when no request name exists");
+    }
+
+    private static void TestNativeCodexModelCatalogExcludesHiddenEntries() {
+        var transportType = typeof(IntelligenceXClient).Assembly.GetType(
+            "IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true);
+        var method = transportType!.GetMethod("KeepListableModels", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "native catalog visibility filter");
+
+        var raw = new JsonObject().Add("models", new JsonArray()
+            .Add(new JsonObject().Add("id", "visible-internal").Add("slug", "gpt-6-sol").Add("visibility", "list"))
+            .Add(new JsonObject().Add("id", "hidden-internal").Add("slug", "hidden-preview").Add("visibility", "hide"))
+            .Add(new JsonObject().Add("id", "legacy-model")));
+        var parsed = ModelListResult.FromJson(raw);
+        var filtered = method!.Invoke(null, new object[] { parsed }) as ModelListResult;
+
+        AssertNotNull(filtered, "filtered native catalog");
+        AssertEqual(2, filtered!.Models.Count, "native catalog keeps listed and legacy entries");
+        AssertEqual("gpt-6-sol", filtered.Models[0].Model, "native catalog keeps runnable listed slug");
+        AssertEqual("legacy-model", filtered.Models[1].Model, "native catalog keeps entries without visibility");
+        AssertEqual(true, ReferenceEquals(raw, filtered.Raw), "native catalog retains raw response");
+    }
+
     private static void TestToolCallParsing() {
         var output = new JsonObject()
             .Add("type", "custom_tool_call")
@@ -741,6 +783,11 @@ internal static partial class Program {
         var models = method!.Invoke(null, Array.Empty<object>()) as IReadOnlyList<string>;
         AssertNotNull(models, "baseline fallback models");
         var baselineModels = models!;
+        AssertEqual("gpt-6-sol", baselineModels[0], "baseline fallback starts with new default");
+        AssertEqual(true, baselineModels.Contains("gpt-6-luna", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-6-luna");
+        AssertEqual(true, baselineModels.Contains("gpt-5.6-sol", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models keep prior Sol default");
         AssertEqual(true, baselineModels.Contains("gpt-5.5", StringComparer.OrdinalIgnoreCase),
             "baseline fallback models include gpt-5.5");
         AssertEqual(true, baselineModels.Contains("gpt-5.4", StringComparer.OrdinalIgnoreCase),
@@ -749,6 +796,23 @@ internal static partial class Program {
             "baseline fallback models include gpt-5-mini");
         AssertEqual(true, baselineModels.Contains("gpt-5-nano", StringComparer.OrdinalIgnoreCase),
             "baseline fallback models include gpt-5-nano");
+    }
+
+    private static void TestOpenAiModelCatalogRanksGpt6FallbackAheadOfGpt5() {
+        var method = typeof(OpenAIModelCatalog).GetMethod("CompareChatGptFallbackPriority",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "fallback priority comparator");
+
+        var candidates = new List<string> { "gpt-5.5", "gpt-5.4-codex", "gpt-6-sol", "gpt-6-luna" };
+        candidates.Sort((left, right) => (int)method!.Invoke(null,
+            new object[] { "gpt-6-astra", left, right })!);
+
+        AssertEqual(true, candidates.IndexOf("gpt-6-sol") < candidates.IndexOf("gpt-6-luna"),
+            "GPT-6 Sol ranks before GPT-6 Luna when Astra is unavailable");
+        AssertEqual(true, candidates.IndexOf("gpt-6-sol") < candidates.IndexOf("gpt-5.5"),
+            "GPT-6 Sol ranks before GPT-5 baseline");
+        AssertEqual(true, candidates.IndexOf("gpt-6-luna") < candidates.IndexOf("gpt-5.5"),
+            "GPT-6 Luna ranks before GPT-5 baseline");
     }
 #endif
 

@@ -191,6 +191,32 @@ private actor AuthorizationRequestCounter {
     #expect(await requests.count == 1)
 }
 
+@Test func unsupportedCompactionFallbackCannotReplayConversationAfterAccountSwitch() async throws {
+    let store = IXMemoryCodexCredentialStore(bundle: .init(accessToken: "old", refreshToken: "r", accountID: "old-account"))
+    let catalog = SuspendedHTTPResponse(response: .json(200, ["models": [["id": "fallback"]]]))
+    let requests = AuthorizationRequestCounter()
+    var configuration = IXCodexConfiguration()
+    configuration.modelURLs = [URL(string: "https://example.test/models")!]
+    configuration.fallbackModels = ["fallback"]
+    let http = IXClosureHTTPClient { request in
+        if request.url?.path == "/models" { return try await catalog.send(request) }
+        await requests.record()
+        return .json(400, ["message": "model is not supported for this ChatGPT account"])
+    }
+    let auth = IXCodexAuthSession(configuration: configuration, credentialStore: store, httpClient: http)
+    let client = IXCodexClient(configuration: configuration, authSession: auth, httpClient: http)
+    let compaction = Task {
+        try await client.compact(input: [.string("private old conversation")], sessionID: "old-session",
+            instructions: "Private instructions", model: nil)
+    }
+    await catalog.waitUntilRequested()
+    try await auth.signOut()
+    await store.save(.init(accessToken: "new", refreshToken: "new-r", accountID: "new-account"))
+    await catalog.release()
+    await #expect(throws: CancellationError.self) { try await compaction.value }
+    #expect(await requests.count == 1)
+}
+
 @Test func revokedWriteCannotFinalizeAndRetainsItsRollback() async throws {
     let original = IXCodexAuthBundle(accessToken: "original", refreshToken: "r")
     let fresh = IXCodexAuthBundle(accessToken: "fresh", refreshToken: "r")
