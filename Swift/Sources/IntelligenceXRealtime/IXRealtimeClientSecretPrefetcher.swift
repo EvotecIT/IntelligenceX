@@ -207,7 +207,12 @@ public actor IXRealtimeClientSecretPrefetcher {
     /// still minting, and otherwise minting on demand.
     ///
     /// A secret is handed out at most once; every Realtime connection needs
-    /// its own.
+    /// its own. Waiting for a joined prefetch is bounded by the minting
+    /// client's request deadline.
+    ///
+    /// - Throws: The on-demand mint's error, or `CancellationError` when the
+    ///   calling task is cancelled or `invalidate()` runs while this call
+    ///   mints on demand.
     public func takeSecret(
         for request: IXRealtimeClientSecretRequest
     ) async throws -> IXRealtimePrefetchedClientSecret {
@@ -228,7 +233,13 @@ public actor IXRealtimeClientSecretPrefetcher {
                 self.running = nil
             }
         }
+        let mintGeneration = generation
         let secret = try await mint(request)
+        // A secret minted across an invalidation may belong to the previous
+        // authority; the start that asked for it must begin again.
+        guard mintGeneration == generation else {
+            throw CancellationError()
+        }
         return .init(secret: secret, source: .minted)
     }
 

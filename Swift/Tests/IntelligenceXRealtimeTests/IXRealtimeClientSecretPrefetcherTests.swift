@@ -159,6 +159,24 @@ final class IXRealtimeClientSecretPrefetcherTests: XCTestCase {
         XCTAssertEqual(result.secret.value, "secret-2")
     }
 
+    func testInvalidateDuringOnDemandMintDiscardsTheSecret() async throws {
+        let minter = SecretMinter(
+            expiresAt: referenceDate.addingTimeInterval(300),
+            holdsFirstMint: true
+        )
+        let prefetcher = makePrefetcher(minter)
+        let take = Task { try await prefetcher.takeSecret(for: Self.request()) }
+        await minter.waitUntilFirstMintStarted()
+        await prefetcher.invalidate()
+        await minter.releaseFirstMint()
+
+        do {
+            _ = try await take.value
+            XCTFail("A secret minted across invalidation must not be returned")
+        } catch is CancellationError {
+        }
+    }
+
     func testFailedPrefetchIsRetriedOnDemand() async throws {
         let minter = SecretMinter(
             expiresAt: referenceDate.addingTimeInterval(300),
