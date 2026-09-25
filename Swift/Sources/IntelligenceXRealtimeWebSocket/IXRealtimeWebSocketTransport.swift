@@ -30,18 +30,66 @@ public protocol IXRealtimeWebSocketConnecting: Sendable {
     ) async throws -> any IXRealtimeWebSocketConnection
 }
 
+/// Opens Realtime WebSockets with `URLSessionWebSocketTask`.
+///
+/// By default every connection creates, and later invalidates, its own
+/// ephemeral `URLSession`. Apps that connect repeatedly can instead pass one
+/// long-lived session so connections share its DNS, TLS session-resumption,
+/// and connection-pool state, and so the app can warm that session before the
+/// first voice start.
 public struct IXURLSessionRealtimeWebSocketConnector:
     IXRealtimeWebSocketConnecting, Sendable {
-    public init() {}
+    private let sharedSession: URLSession?
+
+    /// Creates a connector that uses a new ephemeral session per connection,
+    /// configured by `defaultSessionConfiguration()`.
+    public init() {
+        sharedSession = nil
+    }
+
+    /// Creates a connector that opens every WebSocket on `session`.
+    ///
+    /// The caller owns `session`: closing a connection cancels only its
+    /// WebSocket task and never invalidates the shared session. Build it from
+    /// `defaultSessionConfiguration()` to keep the default connection policy.
+    /// Do not use a background session; WebSocket tasks are not supported
+    /// there.
+    public init(session: URLSession) {
+        sharedSession = session
+    }
+
+    /// The configuration used for the per-connection sessions of `init()`:
+    /// ephemeral storage, waiting for connectivity, and a 30-second request
+    /// timeout. Returns a new instance on every call.
+    public static func defaultSessionConfiguration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 30
+        return configuration
+    }
 
     public func connect(
         to url: URL,
         protocols: [String]
     ) async throws -> any IXRealtimeWebSocketConnection {
-        let connection = IXURLSessionRealtimeWebSocketConnection(
-            url: url,
-            protocols: protocols
-        )
+        let connection: IXURLSessionRealtimeWebSocketConnection
+        if let sharedSession {
+            connection = IXURLSessionRealtimeWebSocketConnection(
+                session: sharedSession,
+                ownsSession: false,
+                url: url,
+                protocols: protocols
+            )
+        } else {
+            connection = IXURLSessionRealtimeWebSocketConnection(
+                session: URLSession(
+                    configuration: Self.defaultSessionConfiguration()
+                ),
+                ownsSession: true,
+                url: url,
+                protocols: protocols
+            )
+        }
         await connection.resume()
         return connection
     }
@@ -50,13 +98,12 @@ public struct IXURLSessionRealtimeWebSocketConnector:
 private actor IXURLSessionRealtimeWebSocketConnection:
     IXRealtimeWebSocketConnection {
     private let session: URLSession
+    private let ownsSession: Bool
     private let task: URLSessionWebSocketTask
 
-    init(url: URL, protocols: [String]) {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForRequest = 30
-        session = URLSession(configuration: configuration)
+    init(session: URLSession, ownsSession: Bool, url: URL, protocols: [String]) {
+        self.session = session
+        self.ownsSession = ownsSession
         task = session.webSocketTask(with: url, protocols: protocols)
     }
 
@@ -87,7 +134,9 @@ private actor IXURLSessionRealtimeWebSocketConnection:
 
     func close() {
         task.cancel(with: .goingAway, reason: nil)
-        session.invalidateAndCancel()
+        if ownsSession {
+            session.invalidateAndCancel()
+        }
     }
 
     func failureDiagnostics(
