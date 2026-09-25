@@ -6,26 +6,59 @@
 actor IXRealtimeWebRTCPeerFactoryProvider {
     static let shared = IXRealtimeWebRTCPeerFactoryProvider()
 
-    private var storedFactory: IXRealtimeWebRTCPeerFactoryBox?
-    private var creationTask: Task<IXRealtimeWebRTCPeerFactoryBox, Never>?
+    private let factoryValue = IXRealtimeSingleFlightValue {
+        IXRealtimeWebRTCPeerFactoryBox()
+    }
 
-    func factory() async -> IXRealtimeWebRTCPeerFactoryBox {
-        if let storedFactory {
-            return storedFactory
+    /// Returns the shared factory, creating it once. Concurrent callers join
+    /// the same creation, so a `prewarm()` that is still running is reused by
+    /// `connect()` instead of starting a second initialization.
+    func factory(
+        priority: TaskPriority = .userInitiated
+    ) async -> IXRealtimeWebRTCPeerFactoryBox {
+        await factoryValue.value(priority: priority)
+    }
+
+    /// Whether the factory has finished initializing.
+    var isFactoryReady: Bool {
+        get async { await factoryValue.isAvailable }
+    }
+}
+
+/// A lazily created value whose construction runs once, detached from the
+/// caller's executor. Concurrent requests join the in-flight construction, and
+/// awaiting it escalates the creation task to the waiter's priority.
+actor IXRealtimeSingleFlightValue<Value: Sendable> {
+    private let make: @Sendable () -> Value
+    private var storedValue: Value?
+    private var creationTask: Task<Value, Never>?
+
+    init(make: @escaping @Sendable () -> Value) {
+        self.make = make
+    }
+
+    var isAvailable: Bool {
+        storedValue != nil
+    }
+
+    func value(priority: TaskPriority) async -> Value {
+        if let storedValue {
+            return storedValue
         }
-        let task: Task<IXRealtimeWebRTCPeerFactoryBox, Never>
+        let task: Task<Value, Never>
         if let creationTask {
             task = creationTask
         } else {
-            task = Task.detached(priority: .userInitiated) {
-                IXRealtimeWebRTCPeerFactoryBox()
+            let make = make
+            task = Task.detached(priority: priority) {
+                make()
             }
             creationTask = task
         }
-        let factory = await task.value
-        storedFactory = factory
+        let value = await task.value
+        storedValue = value
         creationTask = nil
-        return factory
+        return value
     }
 }
 
