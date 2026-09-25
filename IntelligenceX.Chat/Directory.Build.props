@@ -34,7 +34,7 @@
     <ChartForgeXMarkupNuGetVersion Condition="'$(ChartForgeXMarkupNuGetVersion)' == ''">1.0.2</ChartForgeXMarkupNuGetVersion>
     <ChartForgeXMermaidNuGetVersion Condition="'$(ChartForgeXMermaidNuGetVersion)' == ''">1.0.2</ChartForgeXMermaidNuGetVersion>
     <ChartForgeXMarkupMermaidNuGetVersion Condition="'$(ChartForgeXMarkupMermaidNuGetVersion)' == ''">1.0.2</ChartForgeXMarkupMermaidNuGetVersion>
-    <AngleSharpNuGetVersion Condition="'$(AngleSharpNuGetVersion)' == ''">1.8.1</AngleSharpNuGetVersion>
+    <AngleSharpNuGetVersion Condition="'$(AngleSharpNuGetVersion)' == ''">1.8.2</AngleSharpNuGetVersion>
   </PropertyGroup>
 
   <ItemGroup>
