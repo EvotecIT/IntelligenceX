@@ -22,7 +22,10 @@ extension IXCodexClient {
             "reasoning": .object([
                 "effort": .string(reasoningEffort.rawValue),
             ]),
-            "prompt_cache_key": .string(sessionID),
+            "prompt_cache_key": .string(
+                responseOptions.promptCacheKey.flatMap { $0.isEmpty ? nil : $0 }
+                    ?? sessionID
+            ),
         ]
         if let verbosity = responseOptions.textVerbosity {
             object["text"] = .object(["verbosity": .string(verbosity.rawValue)])

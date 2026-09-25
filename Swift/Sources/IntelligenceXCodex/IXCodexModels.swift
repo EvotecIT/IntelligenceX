@@ -234,17 +234,23 @@ public struct IXCodexUsage: Sendable, Equatable {
     public let outputTokens: Int
     public let reasoningTokens: Int
     public let totalTokens: Int
+    /// Input tokens served from the provider's prompt cache
+    /// (`usage.input_tokens_details.cached_tokens`). Already included in
+    /// `inputTokens`; zero when the provider omitted the detail.
+    public let cachedInputTokens: Int
 
     public init(
         inputTokens: Int,
         outputTokens: Int,
         reasoningTokens: Int,
-        totalTokens: Int
+        totalTokens: Int,
+        cachedInputTokens: Int = 0
     ) {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.reasoningTokens = reasoningTokens
         self.totalTokens = totalTokens
+        self.cachedInputTokens = cachedInputTokens
     }
 
     func adding(_ other: IXCodexUsage) -> IXCodexUsage {
@@ -252,7 +258,8 @@ public struct IXCodexUsage: Sendable, Equatable {
             inputTokens: inputTokens + other.inputTokens,
             outputTokens: outputTokens + other.outputTokens,
             reasoningTokens: reasoningTokens + other.reasoningTokens,
-            totalTokens: totalTokens + other.totalTokens
+            totalTokens: totalTokens + other.totalTokens,
+            cachedInputTokens: cachedInputTokens + other.cachedInputTokens
         )
     }
 }

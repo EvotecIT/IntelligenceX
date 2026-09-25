@@ -759,11 +759,16 @@ public actor IXCodexClient {
         let total = Int(
             usage["total_tokens"]?.numberValue ?? Double(input + output)
         )
+        let cached = Int(
+            usage["input_tokens_details"]?.objectValue?["cached_tokens"]?
+                .numberValue ?? 0
+        )
         return IXCodexUsage(
             inputTokens: input,
             outputTokens: output,
             reasoningTokens: reasoning,
-            totalTokens: total
+            totalTokens: total,
+            cachedInputTokens: max(0, cached)
         )
     }
 
