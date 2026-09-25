@@ -33,15 +33,15 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        uses: github/codeql-action/init@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3
         with:
           languages: ${{ matrix.language }}
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        uses: github/codeql-action/autobuild@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        uses: github/codeql-action/analyze@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3
         # Repo settings can disable code scanning (e.g., private repos without Code Security enabled).
         # Keep CI green while still attempting analysis when available.
         continue-on-error: true
