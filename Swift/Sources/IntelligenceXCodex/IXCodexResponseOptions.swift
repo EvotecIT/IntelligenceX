@@ -26,13 +26,27 @@ public struct IXCodexResponseOptions: Sendable, Equatable {
     public var textVerbosity: IXCodexTextVerbosity?
     public var reasoningSummary: IXCodexReasoningSummary?
     public var serviceTier: IXCodexServiceTier?
+    /// The `prompt_cache_key` sent with each request of the run. When nil, the
+    /// conversation's session identifier is used, so turns of one
+    /// conversation share a cache.
+    ///
+    /// Set a stable key to share the cached prompt prefix across separate
+    /// conversations that repeat the same instructions and tools, such as a
+    /// one-shot classifier created per request. The key is sent to the
+    /// provider as-is: derive it from the stable prompt (for example a digest
+    /// of the model and instructions) and never embed raw user or account
+    /// identifiers. An empty key is treated as nil. Compare
+    /// `IXCodexUsage.cachedInputTokens` to confirm reuse.
+    public var promptCacheKey: String?
 
     public init(textVerbosity: IXCodexTextVerbosity? = .medium,
                 reasoningSummary: IXCodexReasoningSummary? = .auto,
-                serviceTier: IXCodexServiceTier? = nil) {
+                serviceTier: IXCodexServiceTier? = nil,
+                promptCacheKey: String? = nil) {
         self.textVerbosity = textVerbosity
         self.reasoningSummary = reasoningSummary
         self.serviceTier = serviceTier
+        self.promptCacheKey = promptCacheKey
     }
 }
 
