@@ -63,7 +63,15 @@ jobs:
               timeout-minutes: 10
 
             - name: Test Event Log v4 integration
-              run: dotnet test ./IntelligenceX.Tools/IntelligenceX.Tools.EventLog.Tests/IntelligenceX.Tools.EventLog.Tests.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --verbosity normal --logger trx
+              shell: pwsh
+              run: |
+                  $service = Get-Service -Name EventLog -ErrorAction Stop
+                  if ($service.Status -ne 'Running') {
+                      Start-Service -Name EventLog -ErrorAction Stop
+                  }
+                  Get-WinEvent -ListLog Application -ErrorAction Stop | Out-Null
+                  dotnet test ./IntelligenceX.Tools/IntelligenceX.Tools.EventLog.Tests/IntelligenceX.Tools.EventLog.Tests.csproj --configuration $env:BUILD_CONFIGURATION --verbosity normal --logger trx
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
               timeout-minutes: 10
 
             - name: Enforce OfficeIMO markdown package-mode gate
