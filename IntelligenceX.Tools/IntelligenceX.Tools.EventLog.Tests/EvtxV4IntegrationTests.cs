@@ -1,3 +1,4 @@
+using System.Diagnostics.Eventing.Reader;
 using System.Text.Json;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.EventLog;
@@ -17,7 +18,7 @@ public sealed class EvtxV4IntegrationTests {
             .Add("event_ids", new JsonArray().Add(4625))
             .Add("max_events", 1), CancellationToken.None);
         using var json = JsonDocument.Parse(result);
-        Assert.True(json.RootElement.GetProperty("ok").GetBoolean(), result);
+        AssertSucceeded(json.RootElement, result);
         Assert.Equal(1, json.RootElement.GetProperty("count").GetInt32());
         Assert.Equal(4625, json.RootElement.GetProperty("events")[0].GetProperty("id").GetInt32());
         Assert.False(json.RootElement.GetProperty("truncated").GetBoolean());
@@ -32,7 +33,7 @@ public sealed class EvtxV4IntegrationTests {
             .Add("event_ids", new JsonArray().Add(4625))
             .Add("max_events_scanned", 10), CancellationToken.None);
         using var json = JsonDocument.Parse(result);
-        Assert.True(json.RootElement.GetProperty("ok").GetBoolean(), result);
+        AssertSucceeded(json.RootElement, result);
         Assert.Equal(1, json.RootElement.GetProperty("scanned_events").GetInt32());
         Assert.Equal(4625, json.RootElement.GetProperty("top_event_ids")[0].GetProperty("id").GetInt32());
     }
@@ -46,7 +47,7 @@ public sealed class EvtxV4IntegrationTests {
             .Add("report_kind", "failed_logons")
             .Add("max_events_scanned", 10), CancellationToken.None);
         using var json = JsonDocument.Parse(result);
-        Assert.True(json.RootElement.GetProperty("ok").GetBoolean(), result);
+        AssertSucceeded(json.RootElement, result);
         var report = json.RootElement.GetProperty("report");
         Assert.Equal(4625, report.GetProperty("event_id").GetInt32());
         Assert.Equal(1, report.GetProperty("matched_events").GetInt32());
@@ -56,5 +57,18 @@ public sealed class EvtxV4IntegrationTests {
         var options = new EventLogToolOptions();
         options.AllowedRoots.Add(Path.GetDirectoryName(FixturePath)!);
         return options;
+    }
+
+    private static void AssertSucceeded(JsonElement response, string result) {
+        if (response.GetProperty("ok").GetBoolean()) return;
+
+        try {
+            var query = new EventLogQuery(FixturePath, PathType.FilePath, "*[System[(EventID=4625)]]");
+            using var reader = new EventLogReader(query);
+            using var record = reader.ReadEvent();
+            Assert.Fail($"{result}\nNative EVTX probe: event ID {record?.Id.ToString() ?? "none"}.");
+        } catch (EventLogException ex) {
+            Assert.Fail($"{result}\nNative EVTX probe: {ex.GetType().Name}, HResult 0x{ex.HResult:X8}, {ex}.");
+        }
     }
 }
