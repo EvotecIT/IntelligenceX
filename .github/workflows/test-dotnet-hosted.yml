@@ -21,7 +21,7 @@ jobs:
             fail-fast: false
             matrix:
                 os:
-                    - windows-latest
+                    - windows-2022
                     - ubuntu-latest
                     - macos-latest
         name: '${{ matrix.os }}'
@@ -46,8 +46,21 @@ jobs:
               run: dotnet test ${{ env.CI_SOLUTION }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal --logger trx --collect:"XPlat Code Coverage"
               timeout-minutes: 10
 
+            - name: Test Event Log v4 integration
+              if: matrix.os == 'windows-2022'
+              shell: pwsh
+              run: |
+                  $service = Get-Service -Name EventLog -ErrorAction Stop
+                  if ($service.Status -ne 'Running') {
+                      Start-Service -Name EventLog -ErrorAction Stop
+                  }
+                  Get-WinEvent -ListLog Application -ErrorAction Stop | Out-Null
+                  dotnet test ./IntelligenceX.Tools/IntelligenceX.Tools.EventLog.Tests/IntelligenceX.Tools.EventLog.Tests.csproj --configuration $env:BUILD_CONFIGURATION --verbosity normal --logger trx
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              timeout-minutes: 10
+
             - name: Enforce OfficeIMO markdown package-mode gate
-              if: matrix.os == 'windows-latest'
+              if: matrix.os == 'windows-2022'
               shell: pwsh
               run: pwsh -ExecutionPolicy Bypass -File ./.github/scripts/run-officeimo-markdown-package-gate.ps1
               timeout-minutes: 25

@@ -75,7 +75,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
         double Confidence);
 
     private sealed record NamedEventsQueryRequest(
-        IReadOnlyList<NamedEvents> NamedEvents,
+        IReadOnlyList<EventType> EventType,
         IReadOnlyList<string> EffectiveMachines,
         DateTime? StartUtc,
         DateTime? EndUtc,
@@ -148,7 +148,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 : null;
 
             var request = new NamedEventsQueryRequest(
-                NamedEvents: namedEvents,
+                EventType: namedEvents,
                 EffectiveMachines: EventLogNamedEventsQueryShared.ResolveMachines(arguments, EventLogNamedEventsQueryShared.MaxMachines),
                 StartUtc: startUtc,
                 EndUtc: endUtc,
@@ -169,7 +169,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
     private async Task<string> ExecuteAsync(ToolPipelineContext<NamedEventsQueryRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var namedEvents = context.Request.NamedEvents;
+        var namedEvents = context.Request.EventType;
         var categories = context.Request.Categories;
         var startUtc = context.Request.StartUtc;
         var endUtc = context.Request.EndUtc;
@@ -190,15 +190,15 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
         var truncated = false;
 
         try {
-            await foreach (var item in SearchEvents.FindEventsByNamedEvents(
-                               typeEventsList: namedEventsList,
-                               machineNames: machines.Count > 0 ? machines.Cast<string?>().ToList() : null,
-                               startTime: startUtc,
-                               endTime: endUtc,
-                               timePeriod: timePeriod,
-                               maxThreads: maxThreads,
-                               maxEvents: maxEvents,
-                               cancellationToken: cancellationToken)) {
+            var query = new EventTypeQuery(namedEventsList) {
+                MachineNames = machines.Count > 0 ? machines.Cast<string?>().ToArray() : null,
+                StartTime = startUtc,
+                EndTime = endUtc,
+                TimePeriod = timePeriod,
+                MaxConcurrency = maxThreads,
+                MaxEvents = maxEvents
+            };
+            await foreach (var item in EventTypeEngine.ReadAsync(query, cancellationToken: cancellationToken)) {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var namedEventName = EventLogNamedEventsPayload.ResolveNamedEventName(item);
@@ -211,12 +211,12 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 }
 
                 if (!string.IsNullOrWhiteSpace(logNameFilter)
-                    && !string.Equals(item.GatheredLogName, logNameFilter, StringComparison.OrdinalIgnoreCase)) {
+                    && !string.Equals(item.SourceLogName, logNameFilter, StringComparison.OrdinalIgnoreCase)) {
                     filteredOut++;
                     continue;
                 }
 
-                if (eventIdSet is not null && !eventIdSet.Contains(item.EventID)) {
+                if (eventIdSet is not null && !eventIdSet.Contains(item.EventId)) {
                     filteredOut++;
                     continue;
                 }
@@ -381,7 +381,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
     }
 
     private static ToolChainContractModel BuildChainContract(
-        IReadOnlyList<NamedEvents> namedEvents,
+        IReadOnlyList<EventType> namedEvents,
         IReadOnlyList<string> machines,
         DateTime? startUtc,
         DateTime? endUtc,
@@ -450,7 +450,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
     }
 
     private static IReadOnlyDictionary<string, string> BuildSelfQueryArguments(
-        IReadOnlyList<NamedEvents> namedEvents,
+        IReadOnlyList<EventType> namedEvents,
         IReadOnlyList<string> machines,
         DateTime? startUtc,
         DateTime? endUtc,
@@ -491,7 +491,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
     }
 
     private static NamedEventsQueryRow ToRow(
-        EventObjectSlim item,
+        EventTypeRecord item,
         string namedEvent,
         bool includePayload,
         HashSet<string>? payloadKeySet) {
@@ -502,16 +502,18 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
 
         return new NamedEventsQueryRow(
             NamedEvent: namedEvent,
-            RuleType: item.GetType().Name,
-            EventId: item.EventID,
-            RecordId: item.RecordID,
-            GatheredFrom: item.GatheredFrom,
-            GatheredLogName: item.GatheredLogName,
-            WhenUtc: EventLogNamedEventsPayload.ReadPayloadUtc(fullPayload, "when"),
+            RuleType: ResolveRuleType(item),
+            EventId: item.EventId,
+            RecordId: item.RecordId,
+            GatheredFrom: item.MachineName,
+            GatheredLogName: item.SourceLogName,
+            WhenUtc: item.TimeCreated.ToUniversalTime().ToString("O"),
             Who: EventLogNamedEventsPayload.ReadPayloadString(fullPayload, "who"),
             ObjectAffected: EventLogNamedEventsPayload.ReadPayloadString(fullPayload, "object_affected"),
             Computer: EventLogNamedEventsPayload.ReadPayloadString(fullPayload, "computer"),
             Action: EventLogNamedEventsPayload.ReadPayloadString(fullPayload, "action"),
             Payload: payload);
     }
+
+    internal static string ResolveRuleType(EventTypeRecord item) => item.GetType().Name;
 }

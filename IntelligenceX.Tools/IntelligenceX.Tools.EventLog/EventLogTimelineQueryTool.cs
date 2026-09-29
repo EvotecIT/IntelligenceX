@@ -17,7 +17,7 @@ namespace IntelligenceX.Tools.EventLog;
 public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
     private const int MaxViewTop = 5000;
 
-    private static readonly string[] CorrelationKeyNames = NamedEventsTimelineQueryExecutor.AllowedCorrelationKeys
+    private static readonly string[] CorrelationKeyNames = EventTypeCorrelationEngine.AllowedCorrelationKeys
         .ToArray();
     private static readonly string[] CorrelationProfileNames = NamedEventsTimelineCorrelationProfiles.Names
         .ToArray();
@@ -147,7 +147,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             var machines = EventLogNamedEventsQueryShared.ResolveMachines(arguments, EventLogNamedEventsQueryShared.MaxMachines);
 
             var queryRequest = new NamedEventsTimelineQueryRequest {
-                NamedEvents = namedEvents,
+                EventType = namedEvents,
                 MachineNames = machines,
                 StartTimeUtc = startUtc,
                 EndTimeUtc = endUtc,
@@ -174,7 +174,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
         var request = context.Request.QueryRequest;
         var categories = context.Request.Categories;
 
-        var (result, failure) = await NamedEventsTimelineQueryExecutor.TryBuildAsync(request, cancellationToken);
+        var (result, failure) = await EventTypeCorrelationEngine.TryQueryAsync(request, cancellationToken);
         if (failure is not null) {
             return ErrorFromTimelineFailure(failure);
         }
@@ -199,7 +199,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             scanned: result.Timeline.Count,
             maxTop: MaxViewTop,
             metaMutate: meta => {
-                meta.Add("requested_named_events_count", request.NamedEvents?.Count ?? 0);
+                meta.Add("requested_named_events_count", request.EventType?.Count ?? 0);
                 meta.Add("max_events", result.MaxEvents);
                 meta.Add("max_threads", result.MaxThreads);
                 meta.Add("max_groups", request.MaxGroups);

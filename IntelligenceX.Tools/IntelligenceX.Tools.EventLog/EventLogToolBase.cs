@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using EventViewerX.Reports.Inventory;
+using EventViewerX;
 using EventViewerX.Reports.Evtx;
+using EventViewerX.Reports.Inventory;
 using EventViewerX.Reports.Live;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -64,38 +65,78 @@ public abstract class EventLogToolBase : ToolBase {
     /// <summary>
     /// Maps EventViewerX EVTX query failures to tool error envelopes.
     /// </summary>
+    protected static string ErrorFromEvtxFailure(Exception failure) {
+        return ToolExceptionMapper.ErrorFromException(
+            failure,
+            defaultMessage: "EVTX query failed.",
+            unauthorizedMessage: "Access to the EVTX file was denied.",
+            timeoutMessage: "EVTX query timed out.",
+            fallbackErrorCode: "query_failed",
+            invalidOperationErrorCode: "query_failed");
+    }
+
+    /// <summary>Maps owner-reported EVTX statistics and security query failures.</summary>
     protected static string ErrorFromEvtxFailure(EvtxQueryFailure? failure) {
         return ToolFailureMapper.ErrorFromFailure(
             failure,
-            static x => x.Kind,
-            static x => x.Message,
+            static value => value.Kind,
+            static value => value.Message,
             defaultMessage: "EVTX query failed.",
-            fallbackErrorCode: "exception");
+            fallbackErrorCode: "query_failed");
     }
 
     /// <summary>
     /// Maps EventViewerX inventory query failures to tool error envelopes.
     /// </summary>
-    protected static string ErrorFromCatalogFailure(EventCatalogFailure? failure) {
+    protected static string ErrorFromCatalogFailure(Exception failure) {
         return ErrorFromCatalogFailure(
             failure: failure,
             machineName: null,
             listingKind: "event log catalog");
     }
 
+    private sealed class EventLogReportFailureException(string kind, string message) : Exception(message) {
+        public string Kind { get; } = kind;
+    }
+
+    /// <summary>Maps a typed EventViewerX catalog failure to the tool response.</summary>
+    protected static string ErrorFromCatalogFailure(
+        EventCatalogFailure? failure,
+        string? machineName,
+        string listingKind) => ErrorFromCatalogFailure(
+            new EventLogReportFailureException(failure?.Kind.ToString() ?? "Exception", failure?.Message ?? "Event log catalog query failed."),
+            machineName,
+            listingKind);
+
+    /// <summary>Maps a typed EventViewerX live query failure to the tool response.</summary>
+    protected static string ErrorFromLiveQueryFailure(
+        LiveEventQueryFailure? failure,
+        string? machineName,
+        string? logName) => ErrorFromLiveQueryFailure(
+            new EventLogReportFailureException(failure?.Kind.ToString() ?? "Exception", failure?.Message ?? "Event log query failed."),
+            machineName,
+            logName);
+
+    /// <summary>Maps a typed EventViewerX live statistics failure to the tool response.</summary>
+    protected static string ErrorFromLiveStatsFailure(
+        LiveStatsQueryFailure? failure,
+        string? machineName,
+        string? logName) => ErrorFromLiveStatsFailure(
+            new EventLogReportFailureException(failure?.Kind.ToString() ?? "Exception", failure?.Message ?? "Event log statistics query failed."),
+            machineName,
+            logName);
+
     /// <summary>
     /// Maps EventViewerX inventory query failures to remote/local-aware tool error envelopes.
     /// </summary>
     protected static string ErrorFromCatalogFailure(
-        EventCatalogFailure? failure,
+        Exception failure,
         string? machineName,
         string listingKind) {
         var platformNotSupported = IsPlatformNotSupportedFailure(
-            failureKindName: failure?.Kind.ToString(),
-            failureMessage: failure?.Message);
-        var errorCode = platformNotSupported
-            ? PlatformNotSupportedErrorCode
-            : ToolFailureMapper.MapCode(failure?.Kind.ToString(), fallbackErrorCode: "query_failed");
+            failureKindName: failure.GetType().Name,
+            failureMessage: failure.Message);
+        var errorCode = ClassifyEventFailure(failure, machineName, platformNotSupported);
         var normalizedMachine = NormalizeOptionalMachineName(machineName);
         var remote = normalizedMachine is not null;
         var normalizedListingKind = string.IsNullOrWhiteSpace(listingKind) ? "event log catalog" : listingKind.Trim();
@@ -103,7 +144,7 @@ public abstract class EventLogToolBase : ToolBase {
         var messagePrefix = remote
             ? $"Remote {normalizedListingKind} query failed on machine '{normalizedMachine}'."
             : $"Local {normalizedListingKind} query failed.";
-        var safeReason = ToolExceptionMapper.SanitizeErrorMessage(failure?.Message, "Event log catalog query failed.");
+        var safeReason = ToolExceptionMapper.SanitizeErrorMessage(failure.Message, "Event log catalog query failed.");
         var error = string.IsNullOrWhiteSpace(safeReason)
             ? messagePrefix
             : $"{messagePrefix} Reason: {safeReason}";
@@ -126,7 +167,7 @@ public abstract class EventLogToolBase : ToolBase {
     /// <summary>
     /// Maps EventViewerX live query failures to tool error envelopes.
     /// </summary>
-    protected static string ErrorFromLiveQueryFailure(LiveEventQueryFailure? failure) {
+    protected static string ErrorFromLiveQueryFailure(Exception failure) {
         return ErrorFromLiveQueryFailure(
             failure: failure,
             machineName: null,
@@ -137,13 +178,12 @@ public abstract class EventLogToolBase : ToolBase {
     /// Maps EventViewerX live query failures to remote/local-aware tool error envelopes.
     /// </summary>
     protected static string ErrorFromLiveQueryFailure(
-        LiveEventQueryFailure? failure,
+        Exception failure,
         string? machineName,
         string? logName) {
         return ErrorFromLiveOperationFailure(
             operationName: "query",
-            failureKindName: failure?.Kind.ToString(),
-            failureMessage: failure?.Message,
+            failure: failure,
             machineName: machineName,
             logName: logName);
     }
@@ -151,7 +191,7 @@ public abstract class EventLogToolBase : ToolBase {
     /// <summary>
     /// Maps EventViewerX live stats failures to tool error envelopes.
     /// </summary>
-    protected static string ErrorFromLiveStatsFailure(LiveStatsQueryFailure? failure) {
+    protected static string ErrorFromLiveStatsFailure(Exception failure) {
         return ErrorFromLiveStatsFailure(
             failure: failure,
             machineName: null,
@@ -162,27 +202,23 @@ public abstract class EventLogToolBase : ToolBase {
     /// Maps EventViewerX live stats failures to remote/local-aware tool error envelopes.
     /// </summary>
     protected static string ErrorFromLiveStatsFailure(
-        LiveStatsQueryFailure? failure,
+        Exception failure,
         string? machineName,
         string? logName) {
         return ErrorFromLiveOperationFailure(
             operationName: "stats query",
-            failureKindName: failure?.Kind.ToString(),
-            failureMessage: failure?.Message,
+            failure: failure,
             machineName: machineName,
             logName: logName);
     }
 
     private static string ErrorFromLiveOperationFailure(
         string operationName,
-        string? failureKindName,
-        string? failureMessage,
+        Exception failure,
         string? machineName,
         string? logName) {
-        var platformNotSupported = IsPlatformNotSupportedFailure(failureKindName, failureMessage);
-        var errorCode = platformNotSupported
-            ? PlatformNotSupportedErrorCode
-            : ToolFailureMapper.MapCode(failureKindName, fallbackErrorCode: "query_failed");
+        var platformNotSupported = IsPlatformNotSupportedFailure(failure.GetType().Name, failure.Message);
+        var errorCode = ClassifyEventFailure(failure, machineName, platformNotSupported);
         var normalizedMachine = NormalizeOptionalMachineName(machineName);
         var normalizedLogName = string.IsNullOrWhiteSpace(logName) ? "requested event log channel" : logName.Trim();
         var remote = normalizedMachine is not null;
@@ -190,7 +226,7 @@ public abstract class EventLogToolBase : ToolBase {
         var messagePrefix = remote
             ? $"Remote event log {operationName} failed for log '{normalizedLogName}' on machine '{normalizedMachine}'."
             : $"Local event log {operationName} failed for log '{normalizedLogName}'.";
-        var safeReason = ToolExceptionMapper.SanitizeErrorMessage(failureMessage, "Event log query failed.");
+        var safeReason = ToolExceptionMapper.SanitizeErrorMessage(failure.Message, "Event log query failed.");
         var error = string.IsNullOrWhiteSpace(safeReason)
             ? messagePrefix
             : $"{messagePrefix} Reason: {safeReason}";
@@ -208,6 +244,39 @@ public abstract class EventLogToolBase : ToolBase {
             error,
             hints: hints,
             isTransient: string.Equals(errorCode, "timeout", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ClassifyEventFailure(Exception failure, string? machineName, bool platformNotSupported) {
+        if (platformNotSupported) {
+            return PlatformNotSupportedErrorCode;
+        }
+        if (failure is EventLogReportFailureException reportFailure) {
+            return reportFailure.Kind switch {
+                "InvalidArgument" or "InvalidQuery" => "invalid_argument",
+                "LogNotFound" => "not_found",
+                "AccessDenied" => "access_denied",
+                "Timeout" => "timeout",
+                "HostUnavailable" => "host_unavailable",
+                _ => "query_failed"
+            };
+        }
+        if (EventLogRemoteQueryFailureClassifier.TryClassify(machineName, failure, out var remoteKind)) {
+            return remoteKind switch {
+                EventLogRemoteQueryFailureKind.AccessDenied => "access_denied",
+                EventLogRemoteQueryFailureKind.Timeout => "timeout",
+                EventLogRemoteQueryFailureKind.HostUnavailable => "host_unavailable",
+                EventLogRemoteQueryFailureKind.LogNotFound => "not_found",
+                _ => "query_failed"
+            };
+        }
+        return failure switch {
+            OperationCanceledException => "cancelled",
+            UnauthorizedAccessException => "access_denied",
+            TimeoutException => "timeout",
+            System.IO.FileNotFoundException => "not_found",
+            ArgumentException => "invalid_argument",
+            _ => "query_failed"
+        };
     }
 
     private static string? NormalizeOptionalMachineName(string? machineName) {
@@ -560,65 +629,46 @@ public abstract class EventLogToolBase : ToolBase {
 
         var sessionTimeoutMs = ResolveSessionTimeoutMs(arguments, minInclusive: 1000, maxInclusive: 600_000);
 
-        var request = new EventCatalogQueryRequest {
-            NameContains = nameContains,
-            MaxResults = max,
+        var request = new EventLogCatalogQuery {
             MachineName = machineName,
-            SessionTimeoutMs = sessionTimeoutMs
+            ConnectionTimeoutMilliseconds = sessionTimeoutMs ?? 5000
         };
 
-        if (providers) {
-            if (!EventCatalogQueryExecutor.TryListProviders(
-                    request: request,
-                    result: out var providersRoot,
-                    failure: out var providersFailure,
-                    cancellationToken: cancellationToken)) {
-                return ErrorFromCatalogFailure(
-                    failure: providersFailure,
-                    machineName: machineName,
-                    listingKind: "event log provider listing");
-            }
-
-            var preview = ToolPreview.Table(maxRows: 20, maxCellChars: null);
-            foreach (var row in providersRoot.Providers) {
-                preview.TryAdd(row.Name);
-            }
-
-            return ToolResponse.OkTablePreviewModel(
-                model: providersRoot,
-                title: title,
-                rowsPath: rowsPath,
-                headers: new[] { header },
-                previewRows: preview.Rows,
-                count: providersRoot.Count,
-                truncated: providersRoot.Truncated,
-                columns: new[] { new ToolColumn(columnName, header, "string") });
-        }
-
-        if (!EventCatalogQueryExecutor.TryListChannels(
-                request: request,
-                result: out var channelsRoot,
-                failure: out var channelsFailure,
-                cancellationToken: cancellationToken)) {
+        IReadOnlyList<string> allNames;
+        try {
+            allNames = providers
+                ? EventLogCatalog.GetProviderNames(request, cancellationToken: cancellationToken)
+                : EventLogCatalog.GetChannelNames(request, cancellationToken: cancellationToken);
+        } catch (Exception ex) {
             return ErrorFromCatalogFailure(
-                failure: channelsFailure,
-                machineName: machineName,
-                listingKind: "event log channel listing");
+                ex,
+                machineName,
+                providers ? "event log provider listing" : "event log channel listing");
         }
 
-        var channelPreview = ToolPreview.Table(maxRows: 20, maxCellChars: null);
-        foreach (var row in channelsRoot.Channels) {
-            channelPreview.TryAdd(row.Name);
+        var filteredNames = allNames
+            .Where(name => string.IsNullOrWhiteSpace(nameContains)
+                || name.Contains(nameContains, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var truncated = filteredNames.Length > max;
+        var selectedNames = filteredNames.Take(max).ToArray();
+        var rows = selectedNames.Select(static name => new { Name = name }).ToArray();
+
+        var preview = ToolPreview.Table(maxRows: 20, maxCellChars: null);
+        foreach (var name in selectedNames) {
+            preview.TryAdd(name);
         }
 
         return ToolResponse.OkTablePreviewModel(
-            model: channelsRoot,
+            model: providers
+                ? (object)new { Count = rows.Length, Truncated = truncated, Providers = rows }
+                : new { Count = rows.Length, Truncated = truncated, Channels = rows },
             title: title,
             rowsPath: rowsPath,
             headers: new[] { header },
-            previewRows: channelPreview.Rows,
-            count: channelsRoot.Count,
-            truncated: channelsRoot.Truncated,
+            previewRows: preview.Rows,
+            count: rows.Length,
+            truncated: truncated,
             columns: new[] { new ToolColumn(columnName, header, "string") });
     }
 }

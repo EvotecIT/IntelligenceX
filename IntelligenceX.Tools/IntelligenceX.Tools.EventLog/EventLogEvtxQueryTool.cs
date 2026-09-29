@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using EventViewerX;
-using EventViewerX.Reports.Evtx;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -16,6 +15,30 @@ namespace IntelligenceX.Tools.EventLog;
 /// Reads events from an EVTX file (restricted to allowed roots).
 /// </summary>
 public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
+    private sealed class EvtxEventReportRow {
+        public string? TimeCreatedUtc { get; init; }
+        public int Id { get; init; }
+        public long? RecordId { get; init; }
+        public string LogName { get; init; } = string.Empty;
+        public string ProviderName { get; init; } = string.Empty;
+        public long? Level { get; init; }
+        public string LevelDisplayName { get; init; } = string.Empty;
+        public string ComputerName { get; init; } = string.Empty;
+        public string QueriedMachine { get; init; } = string.Empty;
+        public string GatheredFrom { get; init; } = string.Empty;
+        public string MessageSubject { get; init; } = string.Empty;
+        public string UserSid { get; init; } = string.Empty;
+        public IReadOnlyDictionary<string, string> Data { get; init; } = new Dictionary<string, string>();
+        public IReadOnlyDictionary<string, string> MessageData { get; init; } = new Dictionary<string, string>();
+        public string? Message { get; init; }
+    }
+
+    private sealed class EvtxEventReportResult {
+        public string Path { get; init; } = string.Empty;
+        public int Count { get; init; }
+        public bool Truncated { get; init; }
+        public IReadOnlyList<EvtxEventReportRow> Events { get; init; } = Array.Empty<EvtxEventReportRow>();
+    }
     private const int MaxViewTop = 5000;
     private sealed record EvtxQueryToolRequest(
         string FullPath,
@@ -108,48 +131,18 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
     private Task<string> ExecuteAsync(ToolPipelineContext<EvtxQueryToolRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var request = new EvtxQueryRequest {
-            FilePath = context.Request.FullPath,
-            EventIds = context.Request.StructuredFilter?.EventIds?.ToList(),
-            ProviderName = context.Request.StructuredFilter?.ProviderName,
-            StartTimeUtc = context.Request.StructuredFilter?.StartTimeUtc,
-            EndTimeUtc = context.Request.StructuredFilter?.EndTimeUtc,
-            MaxEvents = context.Request.MaxEvents,
-            OldestFirst = context.Request.OldestFirst
-        };
-
-        var filter = context.Request.StructuredFilter;
-        var hasAdvancedFilters = filter is not null &&
-                                 (filter.Level.HasValue
-                                  || filter.Keywords.HasValue
-                                  || !string.IsNullOrWhiteSpace(filter.UserId)
-                                  || (filter.RecordIds?.Count ?? 0) > 0
-                                  || (filter.NamedDataFilter?.Count ?? 0) > 0
-                                  || (filter.NamedDataExcludeFilter?.Count ?? 0) > 0);
-
         EvtxEventReportResult root;
-        EvtxQueryFailure? failure;
-        if (!hasAdvancedFilters) {
-            if (!EvtxEventReportBuilder.TryBuild(
-                    request: request,
-                    includeMessage: context.Request.IncludeMessage,
-                    maxMessageChars: Options.MaxMessageChars,
-                    report: out root,
-                    failure: out failure,
-                    cancellationToken: cancellationToken)) {
-                return Task.FromResult(ErrorFromEvtxFailure(failure));
-            }
-        } else {
-            if (!TryBuildAdvancedReport(
-                    request: request,
-                    structuredFilter: filter,
-                    includeMessage: context.Request.IncludeMessage,
-                    maxMessageChars: Options.MaxMessageChars,
-                    report: out root,
-                    failure: out failure,
-                    cancellationToken: cancellationToken)) {
-                return Task.FromResult(ErrorFromEvtxFailure(failure));
-            }
+        try {
+            root = BuildReport(
+                context.Request.FullPath,
+                context.Request.StructuredFilter,
+                context.Request.MaxEvents,
+                context.Request.OldestFirst,
+                context.Request.IncludeMessage,
+                Options.MaxMessageChars,
+                cancellationToken);
+        } catch (Exception ex) {
+            return Task.FromResult(ErrorFromEvtxFailure(ex));
         }
 
         var response = ToolResultV2.OkAutoTableResponse(
@@ -164,119 +157,58 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
         return Task.FromResult(response);
     }
 
-    private static bool TryBuildAdvancedReport(
-        EvtxQueryRequest request,
+    private static EvtxEventReportResult BuildReport(
+        string path,
         EventStructuredQueryFilter? structuredFilter,
+        int maxEvents,
+        bool oldestFirst,
         bool includeMessage,
         int maxMessageChars,
-        out EvtxEventReportResult report,
-        out EvtxQueryFailure? failure,
         CancellationToken cancellationToken) {
-        if (request is null) {
-            report = new EvtxEventReportResult();
-            failure = new EvtxQueryFailure {
-                Kind = EvtxQueryFailureKind.InvalidArgument,
-                Message = "request is required."
-            };
-            return false;
-        }
-
         if (maxMessageChars < 0) {
-            report = new EvtxEventReportResult();
-            failure = new EvtxQueryFailure {
-                Kind = EvtxQueryFailureKind.InvalidArgument,
-                Message = "maxMessageChars must be greater than or equal to 0."
-            };
-            return false;
+            throw new ArgumentOutOfRangeException(nameof(maxMessageChars));
         }
 
-        try {
-            var rows = new List<EvtxEventReportRow>();
-            var eventIds = request.EventIds is null ? null : new List<int>(request.EventIds);
-
-            foreach (var ev in SearchEvents.QueryLogFile(
-                         filePath: request.FilePath,
-                         eventIds: eventIds,
-                         providerName: request.ProviderName,
-                         keywords: structuredFilter?.Keywords,
-                         level: structuredFilter?.Level,
-                         startTime: request.StartTimeUtc,
-                         endTime: request.EndTimeUtc,
-                         userId: structuredFilter?.UserId,
-                         maxEvents: request.MaxEvents,
-                         eventRecordId: structuredFilter?.RecordIds?.ToList(),
-                         oldest: request.OldestFirst,
-                         namedDataFilter: structuredFilter?.NamedDataFilter,
-                         namedDataExcludeFilter: structuredFilter?.NamedDataExcludeFilter,
-                         cancellationToken: cancellationToken)) {
+        var rows = new List<EvtxEventReportRow>();
+        var truncated = false;
+        var query = new EventLogFileQuery(path) {
+            XPath = EventStructuredQueryFilterService.BuildXPath(structuredFilter),
+            MaxEvents = maxEvents > 0 && maxEvents < int.MaxValue ? maxEvents + 1 : maxEvents,
+            Oldest = oldestFirst,
+            ReadMode = includeMessage ? EventReadMode.StructuredDataAndMessage : EventReadMode.StructuredData
+        };
+        foreach (var ev in EventLogEngine.ReadFile(query, cancellationToken)) {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (maxEvents > 0 && rows.Count == maxEvents) {
+                    truncated = true;
+                    break;
+                }
 
                 rows.Add(new EvtxEventReportRow {
-                    TimeCreatedUtc = ev.TimeCreated.ToUniversalTime().ToString("O"),
+                    TimeCreatedUtc = ev.TimeCreated == default ? null : ev.TimeCreated.ToUniversalTime().ToString("O"),
                     Id = ev.Id,
-                    RecordId = ev.RecordId ?? 0,
+                    RecordId = ev.RecordId,
                     LogName = ev.LogName ?? string.Empty,
                     ProviderName = ev.ProviderName ?? string.Empty,
-                    Level = (long)(ev.Level ?? 0),
+                    Level = ev.Level,
                     LevelDisplayName = ev.LevelDisplayName ?? string.Empty,
                     ComputerName = ev.ComputerName ?? string.Empty,
                     QueriedMachine = ev.QueriedMachine ?? string.Empty,
                     GatheredFrom = ev.GatheredFrom ?? string.Empty,
-                    MessageSubject = ev.MessageSubject ?? string.Empty,
+                    MessageSubject = includeMessage ? ev.MessageSubject : string.Empty,
                     UserSid = SafeGetUserSid(ev),
                     Data = NormalizeDict(ev.Data),
-                    MessageData = NormalizeDict(ev.MessageData),
+                    MessageData = includeMessage ? NormalizeDict(ev.MessageData) : new Dictionary<string, string>(),
                     Message = includeMessage ? TruncateSafe(SafeGetMessage(ev), maxMessageChars) : null
                 });
-            }
-
-            report = new EvtxEventReportResult {
-                Path = request.FilePath,
-                Count = rows.Count,
-                Truncated = request.MaxEvents > 0 && rows.Count >= request.MaxEvents,
-                Events = rows
-            };
-
-            failure = null;
-            return true;
-        } catch (OperationCanceledException) {
-            throw;
-        } catch (ArgumentException ex) {
-            report = new EvtxEventReportResult();
-            failure = new EvtxQueryFailure {
-                Kind = EvtxQueryFailureKind.InvalidArgument,
-                Message = ex.Message
-            };
-            return false;
-        } catch (FileNotFoundException ex) {
-            report = new EvtxEventReportResult();
-            failure = new EvtxQueryFailure {
-                Kind = EvtxQueryFailureKind.NotFound,
-                Message = ex.Message
-            };
-            return false;
-        } catch (UnauthorizedAccessException ex) {
-            report = new EvtxEventReportResult();
-            failure = new EvtxQueryFailure {
-                Kind = EvtxQueryFailureKind.AccessDenied,
-                Message = ex.Message
-            };
-            return false;
-        } catch (IOException ex) {
-            report = new EvtxEventReportResult();
-            failure = new EvtxQueryFailure {
-                Kind = EvtxQueryFailureKind.IoError,
-                Message = ex.Message
-            };
-            return false;
-        } catch (Exception ex) {
-            report = new EvtxEventReportResult();
-            failure = new EvtxQueryFailure {
-                Kind = EvtxQueryFailureKind.Exception,
-                Message = ex.Message
-            };
-            return false;
         }
+
+        return new EvtxEventReportResult {
+            Path = path,
+            Count = rows.Count,
+            Truncated = truncated,
+            Events = rows
+        };
     }
 
     private static string SafeGetUserSid(EventObject ev) {

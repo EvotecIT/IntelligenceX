@@ -8,7 +8,7 @@ namespace IntelligenceX.Tools.EventLog;
 
 internal static class EventLogNamedEventsHelper {
     private static readonly Lazy<IReadOnlyList<EventLogNamedEventCatalogRow>> CatalogRows = new(BuildCatalogRows);
-    private static readonly IReadOnlyDictionary<string, NamedEvents> ParseMap = BuildParseMap();
+    private static readonly IReadOnlyDictionary<string, EventType> ParseMap = BuildParseMap();
     private static readonly IReadOnlyList<string> KnownCategories = BuildKnownCategories();
 
     internal static IReadOnlyList<EventLogNamedEventCatalogRow> GetCatalogRows() {
@@ -18,9 +18,9 @@ internal static class EventLogNamedEventsHelper {
     internal static bool TryParseMany(
         IReadOnlyList<string> values,
         int maxItems,
-        out List<NamedEvents> parsed,
+        out List<EventType> parsed,
         out string? error) {
-        parsed = new List<NamedEvents>();
+        parsed = new List<EventType>();
         error = null;
 
         if (values is null || values.Count == 0) {
@@ -33,7 +33,7 @@ internal static class EventLogNamedEventsHelper {
             return false;
         }
 
-        var seen = new HashSet<NamedEvents>();
+        var seen = new HashSet<EventType>();
         for (var i = 0; i < values.Count; i++) {
             var value = values[i];
             if (!TryParseOne(value, out var parsedValue)) {
@@ -54,7 +54,7 @@ internal static class EventLogNamedEventsHelper {
         return true;
     }
 
-    internal static bool TryParseOne(string? value, out NamedEvents parsed) {
+    internal static bool TryParseOne(string? value, out EventType parsed) {
         parsed = default;
         if (string.IsNullOrWhiteSpace(value)) {
             return false;
@@ -64,15 +64,15 @@ internal static class EventLogNamedEventsHelper {
         return ParseMap.TryGetValue(normalized, out parsed);
     }
 
-    internal static string GetEnumName(NamedEvents value) {
+    internal static string GetEnumName(EventType value) {
         return value.ToString();
     }
 
-    internal static string GetQueryName(NamedEvents value) {
+    internal static string GetQueryName(EventType value) {
         return ToSnakeCase(value.ToString());
     }
 
-    internal static string GetCategory(NamedEvents value) {
+    internal static string GetCategory(EventType value) {
         return ResolveCategory(value.ToString());
     }
 
@@ -143,18 +143,19 @@ internal static class EventLogNamedEventsHelper {
 
     private static IReadOnlyList<EventLogNamedEventCatalogRow> BuildCatalogRows() {
         var rows = new List<EventLogNamedEventCatalogRow>();
-        foreach (var value in Enum.GetValues<NamedEvents>().OrderBy(static x => x.ToString(), StringComparer.OrdinalIgnoreCase)) {
+        foreach (var value in Enum.GetValues<EventType>().OrderBy(static x => x.ToString(), StringComparer.OrdinalIgnoreCase)) {
             var enumName = value.ToString();
             var queryName = ToSnakeCase(enumName);
             var category = GetCategory(value);
 
-            var mapping = EventObjectSlim.GetEventInfoForNamedEvents(new List<NamedEvents> { value });
-            var logNames = mapping.Keys
+            var sources = EventTypeCatalog.GetDefinition(value).Sources;
+            var logNames = sources.Select(static source => source.LogName)
                 .Where(static x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            var eventIds = mapping.Values
-                .SelectMany(static x => x)
+            var eventIds = sources
+                .SelectMany(static source => source.EventIds)
                 .Distinct()
                 .OrderBy(static x => x)
                 .ToArray();
@@ -172,25 +173,25 @@ internal static class EventLogNamedEventsHelper {
         return rows;
     }
 
-    private static IReadOnlyDictionary<string, NamedEvents> BuildParseMap() {
-        var map = new Dictionary<string, NamedEvents>(StringComparer.OrdinalIgnoreCase);
-        foreach (var value in Enum.GetValues<NamedEvents>()) {
+    private static IReadOnlyDictionary<string, EventType> BuildParseMap() {
+        var map = new Dictionary<string, EventType>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in Enum.GetValues<EventType>()) {
             var enumName = value.ToString();
             map[NormalizeKey(enumName)] = value;
             map[NormalizeKey(ToSnakeCase(enumName))] = value;
         }
 
         // Common alias variants produced by LLMs for Kerberos/authentication named events.
-        AddAlias(map, "ad_kerberos_authentication_ticket_requested", NamedEvents.KerberosTGTRequest);
-        AddAlias(map, "ad_kerberos_service_ticket_requested", NamedEvents.KerberosServiceTicket);
-        AddAlias(map, "ad_kerberos_pre_authentication_failed", NamedEvents.KerberosTicketFailure);
-        AddAlias(map, "ad_successful_account_logon", NamedEvents.ADUserLogon);
-        AddAlias(map, "ad_failed_logon", NamedEvents.ADUserLogonFailed);
+        AddAlias(map, "ad_kerberos_authentication_ticket_requested", EventType.KerberosTGTRequest);
+        AddAlias(map, "ad_kerberos_service_ticket_requested", EventType.KerberosServiceTicket);
+        AddAlias(map, "ad_kerberos_pre_authentication_failed", EventType.KerberosTicketFailure);
+        AddAlias(map, "ad_successful_account_logon", EventType.ADUserLogon);
+        AddAlias(map, "ad_failed_logon", EventType.ADUserLogonFailed);
 
         return map;
     }
 
-    private static void AddAlias(IDictionary<string, NamedEvents> map, string alias, NamedEvents target) {
+    private static void AddAlias(IDictionary<string, EventType> map, string alias, EventType target) {
         var normalized = NormalizeKey(alias);
         if (normalized.Length == 0) {
             return;
@@ -200,7 +201,7 @@ internal static class EventLogNamedEventsHelper {
     }
 
     private static IReadOnlyList<string> BuildKnownCategories() {
-        var categories = Enum.GetValues<NamedEvents>()
+        var categories = Enum.GetValues<EventType>()
             .Select(GetCategory)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)

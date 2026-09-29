@@ -129,7 +129,7 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
         var request = context.Request;
 
-        if (!LiveEventQueryExecutor.TryRead(
+        if (!LiveEventReportEngine.TryRead(
                 request: new LiveEventQueryRequest {
                     LogName = request.LogName,
                     MachineName = request.MachineName,

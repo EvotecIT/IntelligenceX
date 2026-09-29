@@ -27,10 +27,10 @@ internal static class EventLogNamedEventsQueryShared {
     internal static bool TryResolveNamedEvents(
         IReadOnlyList<string> rawNamedEvents,
         IReadOnlyList<string> rawCategories,
-        out List<NamedEvents> namedEvents,
+        out List<EventType> namedEvents,
         out List<string>? categories,
         out string? error) {
-        namedEvents = new List<NamedEvents>();
+        namedEvents = new List<EventType>();
         categories = null;
         error = null;
 
@@ -56,7 +56,7 @@ internal static class EventLogNamedEventsQueryShared {
 
             categories = parsedCategories;
             var categorySet = new HashSet<string>(categories, StringComparer.OrdinalIgnoreCase);
-            foreach (var namedEvent in Enum.GetValues<NamedEvents>()) {
+            foreach (var namedEvent in Enum.GetValues<EventType>()) {
                 if (!categorySet.Contains(EventLogNamedEventsHelper.GetCategory(namedEvent))) {
                     continue;
                 }

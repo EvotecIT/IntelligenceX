@@ -105,7 +105,7 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
         var request = context.Request;
 
-        if (!LiveStatsQueryExecutor.TryBuild(
+        if (!LiveEventReportEngine.TryBuildStats(
                 request: new LiveStatsQueryRequest {
                     LogName = request.LogName,
                     MachineName = request.MachineName,
@@ -136,7 +136,7 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
             viewRowsPath: "top_event_ids_view",
             title: "Live stats: top Event IDs (preview)",
             baseTruncated: result.Truncated,
-            scanned: result.ScannedEvents,
+            scanned: (int)Math.Min(result.ScannedEvents, int.MaxValue),
             maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta
@@ -147,8 +147,8 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
                     currentTool: "eventlog_live_stats",
                     logName: request.LogName,
                     machineName: request.MachineName,
-                    suggestedMaxEvents: request.MaxEventsScanned,
-                    scanned: result.ScannedEvents,
+                    suggestedMaxEvents: (int)Math.Min(request.MaxEventsScanned, int.MaxValue),
+                    scanned: (int)Math.Min(result.ScannedEvents, int.MaxValue),
                     truncated: result.Truncated,
                     queryMode: "stats");
             });

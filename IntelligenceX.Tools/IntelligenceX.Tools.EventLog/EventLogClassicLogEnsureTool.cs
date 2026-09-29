@@ -223,15 +223,18 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
                 ?? before.MinimumRetentionDays
                 ?? 7;
 
-            var writeSucceeded = SearchEvents.CreateLog(
-                logName: request.LogName,
-                sourceName: request.SourceName,
-                machineName: request.MachineName,
-                maximumKilobytes: request.RequestedMaximumKilobytes ?? 0,
-                overflowActionName: overflowActionName,
-                retentionDays: retentionDays,
-                sourceLogName: request.LogName);
-            if (!writeSucceeded) {
+            if (!ClassicLogOverflowActions.TryParse(overflowActionName, out var overflowAction)) {
+                return ToolResultV2.Error("invalid_argument", "Unsupported classic Event Log overflow action.");
+            }
+            var writeResult = ClassicEventLogManager.EnsureLog(new ClassicEventLogConfiguration {
+                LogName = request.LogName,
+                SourceName = request.SourceName,
+                MachineName = request.MachineName,
+                MaximumKilobytes = request.RequestedMaximumKilobytes,
+                OverflowAction = overflowAction,
+                RetentionDays = retentionDays
+            });
+            if (!writeResult.Success) {
                 return ToolResultV2.Error(
                     errorCode: "action_failed",
                     error: $"The requested classic Event Log ensure write failed for '{request.LogName}' on '{request.TargetMachineName}'.",
@@ -273,7 +276,7 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
 
     private static (ClassicLogSnapshot? Snapshot, string? ErrorResponse) TryGetClassicLogSnapshot(ClassicLogEnsureRequest request) {
         try {
-            var state = SearchEvents.GetClassicLogState(request.LogName, request.SourceName, request.MachineName);
+            var state = ClassicEventLogManager.GetState(request.LogName, request.SourceName, request.MachineName);
 
             return (new ClassicLogSnapshot(
                 LogName: request.LogName,

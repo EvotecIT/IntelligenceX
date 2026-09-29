@@ -213,7 +213,7 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
                 return ToolResultV2.Error("invalid_argument", modeError ?? "mode must be one of: circular, retain, auto_backup.");
             }
 
-            var applyResult = SearchEvents.SetChannelPolicyDetailed(policy);
+            var applyResult = EventLogChannelPolicyService.ApplyDetailed(policy);
 
             writeExecuted = applyResult.Success || applyResult.PartialSuccess || applyResult.AppliedProperties.Count > 0;
             partialSuccess = applyResult.PartialSuccess || applyResult.SkippedOrUnsupported.Count > 0;
@@ -270,7 +270,7 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
         string? machineName,
         string targetMachineName) {
         try {
-            var policy = SearchEvents.GetChannelPolicy(logName, machineName);
+            var policy = EventLogChannelPolicyService.Get(logName, machineName);
             return policy is null
                 ? (null, null)
                 : (CreateSnapshot(policy, targetMachineName), null);

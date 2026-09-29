@@ -151,7 +151,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
 
         if (request.MachineName is null) {
             // Local reads are typically fast and stay on the current thread to reduce overhead.
-            ok = LiveEventQueryExecutor.TryRead(
+            ok = LiveEventReportEngine.TryRead(
                 request: liveRequest,
                 result: out root,
                 failure: out failure,
@@ -167,7 +167,7 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 remote = await Task.Run(() => {
-                    var okInner = LiveEventQueryExecutor.TryRead(
+                    var okInner = LiveEventReportEngine.TryRead(
                         request: liveRequest,
                         result: out var remoteRoot,
                         failure: out var remoteFailure,

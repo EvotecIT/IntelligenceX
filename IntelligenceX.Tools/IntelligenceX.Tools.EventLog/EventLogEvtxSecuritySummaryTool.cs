@@ -180,7 +180,7 @@ public sealed class EventLogEvtxSecuritySummaryTool : EventLogToolBase, ITool {
         SecuritySummaryRequest request,
         SecurityEvtxQueryRequest queryRequest,
         CancellationToken cancellationToken) {
-        if (!SecurityEvtxQueryExecutor.TryBuildUserLogons(
+        if (!SecurityEvtxSummaryEngine.TryQueryUserLogons(
                 request: queryRequest,
                 result: out var result,
                 failure: out var failure,
@@ -211,7 +211,7 @@ public sealed class EventLogEvtxSecuritySummaryTool : EventLogToolBase, ITool {
         SecuritySummaryRequest request,
         SecurityEvtxQueryRequest queryRequest,
         CancellationToken cancellationToken) {
-        if (!SecurityEvtxQueryExecutor.TryBuildFailedLogons(
+        if (!SecurityEvtxSummaryEngine.TryQueryFailedLogons(
                 request: queryRequest,
                 result: out var result,
                 failure: out var failure,
@@ -242,7 +242,7 @@ public sealed class EventLogEvtxSecuritySummaryTool : EventLogToolBase, ITool {
         SecuritySummaryRequest request,
         SecurityEvtxQueryRequest queryRequest,
         CancellationToken cancellationToken) {
-        if (!SecurityEvtxQueryExecutor.TryBuildAccountLockouts(
+        if (!SecurityEvtxSummaryEngine.TryQueryAccountLockouts(
                 request: queryRequest,
                 result: out var result,
                 failure: out var failure,

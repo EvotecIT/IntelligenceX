@@ -103,7 +103,7 @@ public sealed class EventLogEvtxStatsTool : EventLogToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var request = context.Request;
-        if (!EvtxStatsQueryExecutor.TryBuild(request, out var result, out var failure, cancellationToken)) {
+        if (!EvtxStatisticsEngine.TryQuery(request, out var result, out var failure, cancellationToken)) {
             return Task.FromResult(ErrorFromEvtxFailure(failure));
         }
 

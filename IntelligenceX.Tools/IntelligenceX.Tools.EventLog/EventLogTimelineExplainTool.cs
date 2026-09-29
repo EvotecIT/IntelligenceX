@@ -14,7 +14,7 @@ namespace IntelligenceX.Tools.EventLog;
 /// Suggests correlation/timeline settings and follow-up tools based on investigation goals and timeline shape.
 /// </summary>
 public sealed class EventLogTimelineExplainTool : EventLogToolBase, ITool {
-    private static readonly string[] CorrelationKeyNames = NamedEventsTimelineQueryExecutor.AllowedCorrelationKeys.ToArray();
+    private static readonly string[] CorrelationKeyNames = EventTypeCorrelationEngine.AllowedCorrelationKeys.ToArray();
     private static readonly string[] CorrelationProfileNames = NamedEventsTimelineCorrelationProfiles.Names.ToArray();
     private static readonly string[] InvestigationGoalNames = BuildInvestigationGoalNames();
     private static readonly string[] KeyPriority = {
@@ -223,7 +223,7 @@ public sealed class EventLogTimelineExplainTool : EventLogToolBase, ITool {
         if (observedKeys.Count == 0) {
             return profileKeys.Count > 0
                 ? profileKeys
-                : NamedEventsTimelineQueryExecutor.DefaultCorrelationKeys.ToArray();
+                : EventTypeCorrelationEngine.DefaultCorrelationKeys.ToArray();
         }
 
         var observedSet = observedKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -243,7 +243,7 @@ public sealed class EventLogTimelineExplainTool : EventLogToolBase, ITool {
         }
 
         notes.Add($"No known observed keys were supplied for goal '{goal}'; using default correlation keys.");
-        return NamedEventsTimelineQueryExecutor.DefaultCorrelationKeys.ToArray();
+        return EventTypeCorrelationEngine.DefaultCorrelationKeys.ToArray();
     }
 
     private static bool ResolveIncludeUncorrelated(int groupsCount, int filteredUncorrelated) {

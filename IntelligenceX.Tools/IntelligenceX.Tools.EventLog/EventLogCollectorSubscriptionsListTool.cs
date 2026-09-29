@@ -96,7 +96,7 @@ public sealed class EventLogCollectorSubscriptionsListTool : EventLogToolBase, I
 
         IReadOnlyList<CollectorSubscriptionSnapshot> matchedRows;
         try {
-            matchedRows = SearchEvents.GetCollectorSubscriptionSnapshots(
+            matchedRows = CollectorSubscriptionManager.GetCollectorSubscriptionSnapshots(
                 machineName,
                 request.NameContains,
                 request.EnabledOnly);
