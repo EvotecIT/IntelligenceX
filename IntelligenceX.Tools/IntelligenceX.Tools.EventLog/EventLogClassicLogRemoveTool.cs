@@ -215,7 +215,7 @@ public sealed class EventLogClassicLogRemoveTool : EventLogToolBase, ITool {
                 var errors = new List<string>(2);
 
                 if (request.RemoveSource && before.SourceExists) {
-                    var removeSourceSucceeded = SearchEvents.RemoveSource(
+                    var removeSourceSucceeded = ClassicEventLogManager.RemoveSource(
                         request.SourceName,
                         request.MachineName,
                         request.LogName);
@@ -228,7 +228,7 @@ public sealed class EventLogClassicLogRemoveTool : EventLogToolBase, ITool {
                 }
 
                 if (request.RemoveLog && before.LogExists) {
-                    var removeLogSucceeded = SearchEvents.RemoveLog(
+                    var removeLogSucceeded = ClassicEventLogManager.RemoveLog(
                         request.LogName,
                         request.MachineName);
                     if (removeLogSucceeded) {
@@ -297,7 +297,7 @@ public sealed class EventLogClassicLogRemoveTool : EventLogToolBase, ITool {
 
     private static (ClassicLogSnapshot? Snapshot, string? ErrorResponse) TryGetClassicLogSnapshot(ClassicLogRemoveRequest request) {
         try {
-            var state = SearchEvents.GetClassicLogState(request.LogName, request.SourceName, request.MachineName);
+            var state = ClassicEventLogManager.GetState(request.LogName, request.SourceName, request.MachineName);
 
             return (new ClassicLogSnapshot(
                 LogName: request.LogName,

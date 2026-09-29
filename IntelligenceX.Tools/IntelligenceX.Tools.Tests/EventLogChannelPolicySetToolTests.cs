@@ -31,7 +31,7 @@ public sealed class EventLogChannelPolicySetToolTests {
             return;
         }
 
-        var policy = SearchEvents.GetChannelPolicy("Application") ?? SearchEvents.GetChannelPolicy("System");
+        var policy = EventLogChannelPolicyService.Get("Application") ?? EventLogChannelPolicyService.Get("System");
         if (policy is null) {
             return;
         }

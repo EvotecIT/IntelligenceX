@@ -11,13 +11,16 @@ namespace IntelligenceX.Tools.EventLog;
 internal static class EventLogNamedEventsPayload {
     private static readonly ConcurrentDictionary<Type, PayloadExtractionPlan> PayloadExtractionPlanCache = new();
 
-    internal static string ResolveNamedEventName(EventObjectSlim item) {
-        return EventLogNamedEventsHelper.TryParseOne(item.Type, out var parsedNamedEvent)
+    internal static string ResolveNamedEventName(EventTypeRecord item) {
+        if (item is IEventRule rule) {
+            return EventLogNamedEventsHelper.GetQueryName(rule.Type);
+        }
+        return EventLogNamedEventsHelper.TryParseOne(item.TypeName, out var parsedNamedEvent)
             ? EventLogNamedEventsHelper.GetQueryName(parsedNamedEvent)
-            : EventLogNamedEventsQueryShared.ToSnakeCase(item.Type);
+            : EventLogNamedEventsQueryShared.ToSnakeCase(item.TypeName);
     }
 
-    internal static Dictionary<string, object?> ExtractPayload(EventObjectSlim item) {
+    internal static Dictionary<string, object?> ExtractPayload(EventTypeRecord item) {
         ArgumentNullException.ThrowIfNull(item);
 
         var plan = PayloadExtractionPlanCache.GetOrAdd(
@@ -202,10 +205,10 @@ internal static class EventLogNamedEventsPayload {
             return false;
         }
 
-        if (string.Equals(field.Name, nameof(EventObjectSlim.EventID), StringComparison.OrdinalIgnoreCase)
-            || string.Equals(field.Name, nameof(EventObjectSlim.RecordID), StringComparison.OrdinalIgnoreCase)
-            || string.Equals(field.Name, nameof(EventObjectSlim.GatheredFrom), StringComparison.OrdinalIgnoreCase)
-            || string.Equals(field.Name, nameof(EventObjectSlim.GatheredLogName), StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(field.Name, nameof(EventTypeRecord.EventId), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(field.Name, nameof(EventTypeRecord.RecordId), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(field.Name, nameof(EventTypeRecord.MachineName), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(field.Name, nameof(EventTypeRecord.SourceLogName), StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
@@ -221,7 +224,9 @@ internal static class EventLogNamedEventsPayload {
             return false;
         }
 
-        return property.GetIndexParameters().Length == 0;
+        return property.DeclaringType != typeof(EventTypeRecord)
+            && property.PropertyType != typeof(EventObject)
+            && property.GetIndexParameters().Length == 0;
     }
 
     private static object? NormalizeValue(object? value) {

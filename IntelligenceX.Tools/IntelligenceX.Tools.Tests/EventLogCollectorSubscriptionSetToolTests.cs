@@ -49,10 +49,10 @@ public sealed class EventLogCollectorSubscriptionSetToolTests {
             return;
         }
 
-        SubscriptionInfo? knownSubscription;
+        CollectorSubscriptionSnapshot? knownSubscription;
         try {
-            knownSubscription = SearchEvents.GetCollectorSubscriptions()
-                .FirstOrDefault(static item => !string.IsNullOrWhiteSpace(item.Name));
+            knownSubscription = CollectorSubscriptionManager.GetCollectorSubscriptionSnapshots()
+                .FirstOrDefault(static item => !string.IsNullOrWhiteSpace(item.SubscriptionName));
         } catch {
             return;
         }
@@ -65,15 +65,15 @@ public sealed class EventLogCollectorSubscriptionSetToolTests {
 
         var json = await tool.InvokeAsync(
             new JsonObject()
-                .Add("subscription_name", knownSubscription.Name)
-                .Add("is_enabled", !(knownSubscription.Enabled ?? false))
+                .Add("subscription_name", knownSubscription.SubscriptionName)
+                .Add("is_enabled", !(knownSubscription.IsEnabled ?? false))
                 .Add("apply", false),
             CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         Assert.True(root.GetProperty("ok").GetBoolean());
-        Assert.Equal(knownSubscription.Name, root.GetProperty("subscription_name").GetString());
+        Assert.Equal(knownSubscription.SubscriptionName, root.GetProperty("subscription_name").GetString());
         Assert.False(root.GetProperty("meta").GetProperty("write_applied").GetBoolean());
         Assert.True(root.GetProperty("meta").GetProperty("write_candidate").GetBoolean());
         Assert.True(root.TryGetProperty("before", out var before));

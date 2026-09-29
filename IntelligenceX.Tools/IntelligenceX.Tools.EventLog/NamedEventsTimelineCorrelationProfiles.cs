@@ -39,7 +39,7 @@ internal static class NamedEventsTimelineCorrelationProfiles {
             return false;
         }
 
-        var allowed = NamedEventsTimelineQueryExecutor.AllowedCorrelationKeys
+        var allowed = EventTypeCorrelationEngine.AllowedCorrelationKeys
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var normalizedKeys = keys
             .Where(static value => !string.IsNullOrWhiteSpace(value))
@@ -48,7 +48,7 @@ internal static class NamedEventsTimelineCorrelationProfiles {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (normalizedKeys.Length == 0) {
-            correlationKeys = NamedEventsTimelineQueryExecutor.DefaultCorrelationKeys.ToArray();
+            correlationKeys = EventTypeCorrelationEngine.DefaultCorrelationKeys.ToArray();
         } else {
             correlationKeys = normalizedKeys;
         }

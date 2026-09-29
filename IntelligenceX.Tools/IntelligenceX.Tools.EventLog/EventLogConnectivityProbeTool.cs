@@ -95,7 +95,7 @@ public sealed class EventLogConnectivityProbeTool : EventLogToolBase, ITool {
             SessionTimeoutMs = request.SessionTimeoutMs
         };
 
-        var catalogOk = EventCatalogQueryExecutor.TryListChannels(
+        var catalogOk = EventCatalogReportEngine.TryListChannels(
             request: catalogRequest,
             result: out var channelsRoot,
             failure: out var channelsFailure,
@@ -120,7 +120,7 @@ public sealed class EventLogConnectivityProbeTool : EventLogToolBase, ITool {
                 SessionTimeoutMs = request.SessionTimeoutMs
             };
 
-            liveReadValidated = LiveEventQueryExecutor.TryRead(
+            liveReadValidated = LiveEventReportEngine.TryRead(
                 request: liveRequest,
                 result: out var liveRoot,
                 failure: out liveFailure,

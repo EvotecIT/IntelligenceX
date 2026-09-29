@@ -118,7 +118,12 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
                     return ToolRequestBindingResult<CollectorSubscriptionSetRequest>.Failure(NormalizeSubscriptionXmlError(xmlError));
                 }
 
-                subscriptionXml = xmlDetails!.NormalizedXml;
+                if (!string.Equals(xmlDetails!.SubscriptionId, subscriptionName, StringComparison.OrdinalIgnoreCase)) {
+                    return ToolRequestBindingResult<CollectorSubscriptionSetRequest>.Failure(
+                        "subscription_xml must identify the requested subscription_name.");
+                }
+
+                subscriptionXml = xmlDetails.NormalizedXml;
             }
 
             if (requestedIsEnabled is null && string.IsNullOrWhiteSpace(subscriptionXml)) {
@@ -174,6 +179,11 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
 
         var before = beforeAttempt.Snapshot;
         var plan = BuildMutationPlan(request, before);
+        if (request.Apply && !string.IsNullOrWhiteSpace(request.RequestedSubscriptionXml)
+            && !EventLogTarget.IsLocalMachine(request.MachineName)) {
+            return ToolResultV2.Error("precondition_failed",
+                "Subscription XML updates run on the local collector. Run this tool on the target collector host.");
+        }
         if (request.Apply && !plan.CanApply) {
             return ToolResultV2.Error(
                 errorCode: "precondition_failed",
@@ -195,11 +205,11 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
 
             if (request.RequestedIsEnabled.HasValue
                 && request.RequestedIsEnabled != before.IsEnabled) {
-                var enabledSuccess = SearchEvents.SetCollectorSubscriptionEnabled(
+                var enabledResult = CollectorSubscriptionManager.SetCollectorSubscriptionEnabled(
                     request.SubscriptionName,
                     request.RequestedIsEnabled.Value,
                     request.MachineName);
-                if (enabledSuccess) {
+                if (enabledResult.Success) {
                     appliedChanges.Add("is_enabled");
                 } else {
                     failedChanges.Add("is_enabled");
@@ -209,10 +219,17 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
 
             if (!string.IsNullOrWhiteSpace(request.RequestedSubscriptionXml)
                 && !CollectorSubscriptionXml.AreEquivalent(before.RawXml, request.RequestedSubscriptionXml)) {
-                var xmlSuccess = SearchEvents.SetCollectorSubscriptionXml(
-                    request.SubscriptionName,
-                    request.RequestedSubscriptionXml,
-                    request.MachineName);
+                var xmlSuccess = false;
+                try {
+                    var applied = CollectorSubscriptionManager.ApplyCollectorSubscriptionXml(
+                        request.SubscriptionName,
+                        request.RequestedSubscriptionXml,
+                        cancellationToken);
+                    xmlSuccess = applied.HasXml &&
+                        CollectorSubscriptionXml.AreEquivalent(applied.RawXml, request.RequestedSubscriptionXml);
+                } catch (Exception ex) {
+                    errors.Add(ToolExceptionMapper.SanitizeErrorMessage(ex.Message, "Subscription XML update failed."));
+                }
                 if (xmlSuccess) {
                     appliedChanges.Add("subscription_xml");
                 } else {
@@ -275,7 +292,7 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
         string subscriptionName,
         string? machineName) {
         try {
-            return (SearchEvents.GetCollectorSubscriptionSnapshot(subscriptionName, machineName), null);
+            return (CollectorSubscriptionManager.GetCollectorSubscriptionSnapshot(subscriptionName, machineName), null);
         } catch (Exception ex) {
             return (null, ErrorFromException(
                 ex,

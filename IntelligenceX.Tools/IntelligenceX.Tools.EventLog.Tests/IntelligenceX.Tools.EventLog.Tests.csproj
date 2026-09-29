@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>IntelligenceX.Tools.Tests</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <ProjectReference Include="../IntelligenceX.Tools.EventLog/IntelligenceX.Tools.EventLog.csproj" />
+    <ProjectReference Include="../IntelligenceX.Tools.Common/IntelligenceX.Tools.Common.csproj" />
+    <Compile Include="../IntelligenceX.Tools.Tests/EventLog*Tests.cs" />
+    <Compile Include="../IntelligenceX.Tools.Tests/TestRuntimeGuards.cs" />
+    <Compile Include="EvtxV4IntegrationTests.cs" />
+    <Content Include="Fixtures/Security4625.evtx" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

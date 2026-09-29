@@ -62,6 +62,10 @@ jobs:
               run: dotnet test ${{ env.CI_SOLUTION }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal --logger trx --collect:"XPlat Code Coverage"
               timeout-minutes: 10
 
+            - name: Test Event Log v4 integration
+              run: dotnet test ./IntelligenceX.Tools/IntelligenceX.Tools.EventLog.Tests/IntelligenceX.Tools.EventLog.Tests.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --verbosity normal --logger trx
+              timeout-minutes: 10
+
             - name: Enforce OfficeIMO markdown package-mode gate
               shell: pwsh
               run: pwsh -ExecutionPolicy Bypass -File ./.github/scripts/run-officeimo-markdown-package-gate.ps1
