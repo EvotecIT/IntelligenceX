@@ -21,6 +21,16 @@ final class IXCodexAccountUsageTests: XCTestCase {
         XCTAssertNil(unlimited.credits?.balanceAmount)
     }
 
+    func testFractionalNumericCreditsPreserveDecimalPresentation() throws {
+        for literal in ["0.07", "0.1", "62495.90935", "1e-7"] {
+            let data = Data("{\"credits\":{\"balance\":\(literal)}}".utf8)
+            let credits = try XCTUnwrap(IXCodexAccountUsage.decode(data).credits)
+            let expected = try XCTUnwrap(Decimal(string: literal, locale: Locale(identifier: "en_US_POSIX")))
+            XCTAssertEqual(credits.balanceAmount, expected)
+            XCTAssertEqual(credits.balance, NSDecimalNumber(decimal: expected).stringValue)
+        }
+    }
+
     func testAccountUsageIsAccountScopedAndParsesCurrentLimits() async throws {
         let recorder = AccountUsageRequestRecorder()
         let configuration = IXCodexConfiguration(

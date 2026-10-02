@@ -121,7 +121,7 @@ public struct IXCodexAccountUsage: Sendable, Equatable {
                 isUnlimited: creditsValue?["unlimited"]?.boolValue,
                 balance: creditsValue?["balance"]?.stringValue
                     ?? creditsValue?["balance"]?.numberValue.flatMap {
-                        $0.isFinite ? NSDecimalNumber(value: $0).stringValue : nil
+                        $0.isFinite ? NSDecimalNumber(string: String($0), locale: Locale(identifier: "en_US_POSIX")).stringValue : nil
                     }
             )
         } else {
