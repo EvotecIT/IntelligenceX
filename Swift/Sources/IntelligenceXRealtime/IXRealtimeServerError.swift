@@ -1,3 +1,4 @@
+import Foundation
 import IntelligenceXCodex
 
 /// Structured service error metadata. `eventID` identifies the client event
@@ -11,7 +12,9 @@ public struct IXRealtimeServerError: Sendable, Equatable {
     init(_ value: IXJSONValue) {
         type = value["type"]?.stringValue
         code = value["code"]?.stringValue
-        message = value["message"]?.stringValue
+        message = [value["message"]?.stringValue, code, type]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
         eventID = value["event_id"]?.stringValue
     }
 

@@ -14,6 +14,26 @@ final class IXRealtimeServerErrorTests: XCTestCase {
         XCTAssertEqual(id, "reply-1")
     }
 
+    func testMessageLessFailuresFallBackToCodeThenType() throws {
+        for eventType in ["response.done", "error", "conversation.item.input_audio_transcription.failed"] {
+            for error in [["code": "server_error", "type": "server"], ["message": "  ", "type": "server"]] {
+                var payload: [String: Any] = ["type": eventType, "item_id": "input-1", "error": error]
+                if eventType == "response.done" {
+                    payload["response"] = ["id": "reply-1", "status": "failed", "status_details": ["error": error]]
+                }
+                let event = try IXRealtimeEvent(data: JSONSerialization.data(withJSONObject: payload))
+                XCTAssertEqual(event.errorMessage, error["code"] ?? error["type"])
+                XCTAssertEqual(event.serverError?.message, event.errorMessage)
+                if eventType == "response.done" {
+                    guard case .responseCompleted(let id, _) = event.serverEvent else {
+                        return XCTFail("Failed response must retain completion identity")
+                    }
+                    XCTAssertEqual(id, "reply-1")
+                }
+            }
+        }
+    }
+
     func testTranscriptionFailurePreservesStructuredErrorAndInputIdentity() throws {
         let event = try IXRealtimeEvent(data: Data(#"{"type":"conversation.item.input_audio_transcription.failed","item_id":"input-1","error":{"code":"server_error","message":"Transcription unavailable"}}"#.utf8))
         XCTAssertEqual(event.serverError?.code, "server_error")
