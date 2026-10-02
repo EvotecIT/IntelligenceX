@@ -50,6 +50,13 @@ public struct IXCodexCredits: Sendable, Equatable {
     public let isUnlimited: Bool?
     public let balance: String?
 
+    /// Numeric credits for locale-aware display. A missing balance remains
+    /// unknown; it is not equivalent to zero or permission to exceed a limit.
+    public var balanceAmount: Decimal? {
+        guard let balance else { return nil }
+        return Decimal(string: balance, locale: Locale(identifier: "en_US_POSIX"))
+    }
+
     public init(
         hasCredits: Bool? = nil,
         isUnlimited: Bool? = nil,
@@ -113,6 +120,9 @@ public struct IXCodexAccountUsage: Sendable, Equatable {
                 hasCredits: creditsValue?["has_credits"]?.boolValue,
                 isUnlimited: creditsValue?["unlimited"]?.boolValue,
                 balance: creditsValue?["balance"]?.stringValue
+                    ?? creditsValue?["balance"]?.numberValue.flatMap {
+                        $0.isFinite ? NSDecimalNumber(string: String($0), locale: Locale(identifier: "en_US_POSIX")).stringValue : nil
+                    }
             )
         } else {
             credits = nil

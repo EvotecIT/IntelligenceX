@@ -1,3 +1,4 @@
+import Foundation
 import IntelligenceXCodex
 
 /// Structured service error metadata. `eventID` identifies the client event
@@ -11,17 +12,34 @@ public struct IXRealtimeServerError: Sendable, Equatable {
     init(_ value: IXJSONValue) {
         type = value["type"]?.stringValue
         code = value["code"]?.stringValue
-        message = value["message"]?.stringValue
+        message = [value["message"]?.stringValue, code, type]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
         eventID = value["event_id"]?.stringValue
+    }
+
+    static func payload(in raw: IXJSONValue) -> IXJSONValue? {
+        let payload: IXJSONValue?
+        switch raw["type"]?.stringValue {
+        case "error", "conversation.item.input_audio_transcription.failed":
+            payload = raw["error"]
+        case "response.done" where raw["response"]?["status"]?.stringValue == "failed":
+            payload = raw["response"]?["status_details"]?["error"]
+        default:
+            return nil
+        }
+        guard let payload, payload.objectValue != nil else { return nil }
+        return payload
     }
 }
 
 extension IXRealtimeEvent {
     /// Preserves error codes and request correlation without requiring clients
-    /// to parse the wire payload or classify localized message text.
+    /// to parse the wire payload or classify localized message text. Includes
+    /// failed responses and input transcription failures; their typed events
+    /// retain their response or input identity.
     public var serverError: IXRealtimeServerError? {
-        guard type == "error", let error = raw["error"],
-              error.objectValue != nil else { return nil }
+        guard let error = IXRealtimeServerError.payload(in: raw) else { return nil }
         return IXRealtimeServerError(error)
     }
 }

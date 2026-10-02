@@ -203,7 +203,8 @@ public struct IXRealtimeEvent: Sendable, Equatable {
         self.raw = raw
         self.textDelta = raw["delta"]?.stringValue
         self.transcriptDelta = type.contains("transcript") ? raw["delta"]?.stringValue : nil
-        self.errorMessage = raw["error"]?["message"]?.stringValue ?? raw["message"]?.stringValue
+        self.errorMessage = IXRealtimeServerError.payload(in: raw).map(IXRealtimeServerError.init)?.message
+            ?? raw["error"]?["message"]?.stringValue ?? raw["message"]?.stringValue
     }
 
     /// PCM16 output carried by WebSocket Realtime sessions. WebRTC sessions

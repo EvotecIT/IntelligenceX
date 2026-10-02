@@ -3,6 +3,34 @@ import Foundation
 import XCTest
 
 final class IXCodexAccountUsageTests: XCTestCase {
+    func testCreditBalanceSupportsNumberAndStringWithoutInventingMissingBalance() throws {
+        for balance in [62_500, "62500", 0, "0"] as [Any] {
+            let data = try JSONSerialization.data(withJSONObject: [
+                "credits": ["balance": balance, "has_credits": true, "unlimited": false]
+            ])
+            let credits = try XCTUnwrap(IXCodexAccountUsage.decode(data).credits)
+            XCTAssertNotNil(credits.balanceAmount)
+            XCTAssertEqual(credits.balanceAmount, Decimal(string: String(describing: balance)))
+        }
+        let unknown = try IXCodexAccountUsage.decode(Data(#"{"credits":{"has_credits":true}}"#.utf8))
+        XCTAssertNil(unknown.credits?.balance)
+        XCTAssertNil(unknown.credits?.balanceAmount)
+        XCTAssertEqual(unknown.credits?.hasCredits, true)
+        let unlimited = try IXCodexAccountUsage.decode(Data(#"{"credits":{"unlimited":true}}"#.utf8))
+        XCTAssertEqual(unlimited.credits?.isUnlimited, true)
+        XCTAssertNil(unlimited.credits?.balanceAmount)
+    }
+
+    func testFractionalNumericCreditsPreserveDecimalPresentation() throws {
+        for literal in ["0.07", "0.1", "62495.90935", "1e-7"] {
+            let data = Data("{\"credits\":{\"balance\":\(literal)}}".utf8)
+            let credits = try XCTUnwrap(IXCodexAccountUsage.decode(data).credits)
+            let expected = try XCTUnwrap(Decimal(string: literal, locale: Locale(identifier: "en_US_POSIX")))
+            XCTAssertEqual(credits.balanceAmount, expected)
+            XCTAssertEqual(credits.balance, NSDecimalNumber(decimal: expected).stringValue)
+        }
+    }
+
     func testAccountUsageIsAccountScopedAndParsesCurrentLimits() async throws {
         let recorder = AccountUsageRequestRecorder()
         let configuration = IXCodexConfiguration(
