@@ -4,6 +4,22 @@ import IntelligenceXRealtime
 import XCTest
 
 final class IXRealtimeServerErrorTests: XCTestCase {
+    func testFailedResponseExposesErrorWithoutLosingCompletionIdentity() throws {
+        let event = try IXRealtimeEvent(data: Data(#"{"type":"response.done","response":{"id":"reply-1","status":"failed","status_details":{"error":{"type":"insufficient_quota","code":"insufficient_quota","message":"Usage limit reached"}}}}"#.utf8))
+        XCTAssertEqual(event.errorMessage, "Usage limit reached")
+        XCTAssertEqual(event.serverError?.code, "insufficient_quota")
+        guard case .responseCompleted(let id, _) = event.serverEvent else {
+            return XCTFail("Failure must still release the identified response")
+        }
+        XCTAssertEqual(id, "reply-1")
+    }
+
+    func testTranscriptionFailurePreservesStructuredErrorAndInputIdentity() throws {
+        let event = try IXRealtimeEvent(data: Data(#"{"type":"conversation.item.input_audio_transcription.failed","item_id":"input-1","error":{"code":"server_error","message":"Transcription unavailable"}}"#.utf8))
+        XCTAssertEqual(event.serverError?.code, "server_error")
+        XCTAssertEqual(event.serverEvent, .inputTranscriptionFailed(itemID: "input-1", message: "Transcription unavailable"))
+    }
+
     func testErrorRetainsClientCorrelationAndLegacyMessage() throws {
         let event = try IXRealtimeEvent(data: Data(#"{"type":"error","event_id":"server-notification","error":{"type":"invalid_request_error","code":"response_cancel_not_active","message":"Already complete","event_id":"client-cancel"}}"#.utf8))
         let error = try XCTUnwrap(event.serverError)
