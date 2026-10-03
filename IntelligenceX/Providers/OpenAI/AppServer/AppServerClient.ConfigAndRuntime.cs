@@ -332,35 +332,34 @@ public sealed partial class AppServerClient : IDisposable {
     /// <param name="loginId">Optional login id to match.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that completes when the operation finishes.</returns>
-    public Task WaitForLoginCompletionAsync(string? loginId = null, CancellationToken cancellationToken = default) {
+    public async Task WaitForLoginCompletionAsync(string? loginId = null, CancellationToken cancellationToken = default) {
+        cancellationToken.ThrowIfCancellationRequested();
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void Handler(object? sender, JsonRpcNotificationEventArgs args) {
             if (!string.Equals(args.Method, "account/login/completed", StringComparison.Ordinal)) {
                 return;
             }
-            if (loginId is null) {
-                tcs.TrySetResult(null);
-                return;
-            }
-            var id = args.Params?.AsObject()?.GetString("loginId");
-            if (string.Equals(id, loginId, StringComparison.Ordinal)) {
-                tcs.TrySetResult(null);
-            }
+            var parameters = args.Params?.AsObject();
+            var id = parameters?.GetString("loginId");
+            if (loginId is not null && !string.Equals(id, loginId, StringComparison.Ordinal)) return;
+            if (parameters?.GetBoolean("success", defaultValue: true) == false)
+                tcs.TrySetException(new InvalidOperationException(parameters.GetString("error") ?? "The app-server login failed."));
+            else tcs.TrySetResult(null);
         }
 
+        void Closed(object? sender, Exception error) => tcs.TrySetException(error);
         NotificationReceived += Handler;
-        if (cancellationToken.CanBeCanceled) {
-            cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
-        }
-
-        return tcs.Task.ContinueWith(task => {
+        ConnectionClosed += Closed;
+        try {
+            if (ConnectionError is { } error) tcs.TrySetException(error);
+            await TaskCancellation.WaitAsync(tcs.Task, cancellationToken).ConfigureAwait(false);
+            ObserverDispatcher.Raise(LoginCompleted, this, new LoginEventArgs("chatgpt", loginId));
+        } finally {
             NotificationReceived -= Handler;
-            if (IsTaskSuccessful(task)) {
-                LoginCompleted?.Invoke(this, new LoginEventArgs("chatgpt", loginId));
-            }
-            return task;
-        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
+            ConnectionClosed -= Closed;
+            tcs.TrySetCanceled();
+        }
     }
 
     private async Task SendLineAsync(string line) {
@@ -368,17 +367,21 @@ public sealed partial class AppServerClient : IDisposable {
     }
 
     private async Task ReadLoopAsync() {
+        Exception? failure = null;
         try {
             while (!_cts.IsCancellationRequested) {
                 var line = await _stdout.ReadLineAsync().ConfigureAwait(false);
                 if (line is null) {
                     break;
                 }
-                ProtocolLineReceived?.Invoke(this, line);
+                ObserverDispatcher.Raise(ProtocolLineReceived, this, line);
                 _rpc.HandleLine(line);
             }
         } catch (Exception ex) {
-            ProtocolError?.Invoke(this, ex);
+            failure = ex;
+            ObserverDispatcher.Raise(ProtocolError, this, ex);
+        } finally {
+            CloseConnection(failure ?? new EndOfStreamException("The app-server closed its output before the operation completed."));
         }
     }
 
@@ -389,10 +392,10 @@ public sealed partial class AppServerClient : IDisposable {
                 if (line is null) {
                     break;
                 }
-                StandardErrorReceived?.Invoke(this, line);
+                ObserverDispatcher.Raise(StandardErrorReceived, this, line);
             }
         } catch (Exception ex) {
-            ProtocolError?.Invoke(this, ex);
+            ObserverDispatcher.Raise(ProtocolError, this, ex);
         }
     }
 
@@ -442,6 +445,7 @@ public sealed partial class AppServerClient : IDisposable {
         }
         _disposed = true;
 
+        CloseConnection(new ObjectDisposedException(nameof(AppServerClient)));
         _cts.Cancel();
         TryWait(_readerTask, _shutdownTimeout);
         TryWait(_stderrTask, _shutdownTimeout);

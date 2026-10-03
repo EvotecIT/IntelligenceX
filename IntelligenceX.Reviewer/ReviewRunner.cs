@@ -227,12 +227,10 @@ internal sealed partial class ReviewRunner {
         using var diagnostics = ReviewDiagnosticsSession.TryStart(_settings, client);
 
         var deltas = new StringBuilder();
-        var lastDelta = DateTimeOffset.UtcNow;
         using var subscription = client.SubscribeDelta(text => {
             if (!string.IsNullOrWhiteSpace(text)) {
                 lock (deltas) {
                     deltas.Append(text);
-                    lastDelta = DateTimeOffset.UtcNow;
                 }
             }
         });
@@ -260,18 +258,22 @@ internal sealed partial class ReviewRunner {
             TelemetryFeature = "reviewer",
             TelemetrySurface = "cli"
         };
+        using var completionTimeout = options.TransportKind == OpenAITransportKind.AppServer
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        completionTimeout?.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, _settings.WaitSeconds)));
         try {
             var input = ChatInput.FromText(prompt);
-            var turn = await client.ChatAsync(input, chatOptions, cancellationToken).ConfigureAwait(false);
-            if (options.TransportKind != OpenAITransportKind.AppServer && !string.Equals(turn.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            TurnInfo turn;
+            try {
+                turn = await client.ChatAsync(input, chatOptions, completionTimeout?.Token ?? cancellationToken).ConfigureAwait(false);
+            } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested && completionTimeout?.IsCancellationRequested == true) {
+                throw new TimeoutException("The app-server review did not complete within the configured wait limit.", ex);
+            }
+            if (!string.Equals(turn.Status, "completed", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("The provider returned an incomplete review.");
 
-            var output = ExtractOutputs(turn.Outputs);
-            if (!string.IsNullOrWhiteSpace(output)) {
-                return output;
-            }
-
-            return await WaitForDeltasAsync(deltas, () => lastDelta, cancellationToken).ConfigureAwait(false);
+            return ExtractOutputs(turn.Outputs);
         } catch {
             if (captureSnapshot is not null && diagnostics is not null) {
                 captureSnapshot(diagnostics.Snapshot());
@@ -451,31 +453,14 @@ internal sealed partial class ReviewRunner {
             $"Connectivity preflight failed for {host}. Check TLS/proxy settings and network connectivity.", ex);
     }
 
-    private async Task<string> WaitForDeltasAsync(StringBuilder deltas, Func<DateTimeOffset> getLastDelta,
-        CancellationToken cancellationToken) {
-        var start = DateTimeOffset.UtcNow;
-        var max = TimeSpan.FromSeconds(_settings.WaitSeconds);
-        var idle = TimeSpan.FromSeconds(_settings.IdleSeconds);
-
-        while (DateTimeOffset.UtcNow - start < max) {
-            await Task.Delay(500, cancellationToken).ConfigureAwait(false);
-            var last = getLastDelta();
-            if (DateTimeOffset.UtcNow - last > idle) {
-                break;
-            }
-        }
-
-        lock (deltas) {
-            return deltas.ToString();
-        }
-    }
-
     private static string ExtractOutputs(IReadOnlyList<TurnOutput> outputs) {
         if (outputs.Count == 0) {
             return string.Empty;
         }
         var builder = new StringBuilder();
+        var hasFinalAnswer = outputs.Any(o => o.IsText && o.Raw.GetString("phase") == "final_answer");
         foreach (var output in outputs.Where(o => o.IsText)) {
+            if (hasFinalAnswer && output.Raw.GetString("phase") != "final_answer") continue;
             if (!string.IsNullOrWhiteSpace(output.Text)) {
                 builder.AppendLine(output.Text);
             }

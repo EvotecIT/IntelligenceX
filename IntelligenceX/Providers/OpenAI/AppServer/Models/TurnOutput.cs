@@ -57,9 +57,10 @@ public sealed class TurnOutput {
     public JsonObject? Additional { get; }
 
     /// <summary>
-    /// Gets a value indicating whether this output is text.
+    /// Gets a value indicating whether this output is text, including an app-server agent message.
     /// </summary>
-    public bool IsText => string.Equals(Type, "text", StringComparison.OrdinalIgnoreCase);
+    public bool IsText => string.Equals(Type, "text", StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(Type, "agentMessage", StringComparison.Ordinal);
     /// <summary>
     /// Gets a value indicating whether this output is an image.
     /// </summary>
@@ -109,7 +110,7 @@ public sealed class TurnOutput {
     }
 
     private static JsonArray? FindOutputs(JsonObject turnObj) {
-        var outputs = turnObj.GetArray("output") ?? turnObj.GetArray("outputs");
+        var outputs = turnObj.GetArray("output") ?? turnObj.GetArray("outputs") ?? turnObj.GetArray("items");
         if (outputs is not null) {
             return outputs;
         }

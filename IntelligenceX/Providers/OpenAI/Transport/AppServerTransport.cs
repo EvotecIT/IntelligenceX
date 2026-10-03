@@ -12,7 +12,7 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.Transport;
 
-internal sealed class AppServerTransport : IOpenAITransport {
+internal sealed partial class AppServerTransport : IOpenAITransport {
     private readonly AppServerClient _client;
 
     public AppServerTransport(AppServerClient client) {
@@ -78,26 +78,46 @@ internal sealed class AppServerTransport : IOpenAITransport {
         return _client.ResumeThreadAsync(threadId, cancellationToken);
     }
 
-    public Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
+    public async Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
         var model = options?.Model;
         var normalizedInput = NormalizeAndFilterReplayInputItems(input.ToJson());
-        return _client.StartTurnAsync(threadId, normalizedInput, NormalizeModel(model), currentDirectory, approvalPolicy, sandboxPolicy, cancellationToken);
-    }
-
-    private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs args) {
-        var delta = TryExtractDelta(args.Params);
-        if (StreamingTextDelta.HasContent(delta)) {
-            DeltaReceived?.Invoke(this, delta!);
+        // Subscribe before starting: a fast turn can finish before the start receipt is delivered.
+        using var completion = new TurnCompletionWaiter(_client, threadId);
+        var started = await _client.StartTurnAsync(threadId, normalizedInput, NormalizeModel(model), currentDirectory,
+            approvalPolicy, sandboxPolicy, cancellationToken).ConfigureAwait(false);
+        try {
+            return await completion.WaitAsync(started, cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            // Stop server-side execution as well as the local wait, without letting an
+            // unresponsive interrupt acknowledgement hold the caller indefinitely.
+            using var interruptTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try {
+                await _client.InterruptTurnAsync(threadId, started.Id, interruptTimeout.Token).ConfigureAwait(false);
+            } catch (Exception) {
+                // Cancellation remains the operation's outcome if the server has already ended or disconnected.
+            }
+            throw;
         }
     }
 
-    private void OnLoginStarted(object? sender, LoginEventArgs args) => LoginStarted?.Invoke(this, args);
-    private void OnLoginCompleted(object? sender, LoginEventArgs args) => LoginCompleted?.Invoke(this, args);
-    private void OnProtocolLineReceived(object? sender, string line) => ProtocolLineReceived?.Invoke(this, line);
-    private void OnStandardErrorReceived(object? sender, string line) => StandardErrorReceived?.Invoke(this, line);
-    private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => RpcCallStarted?.Invoke(this, args);
-    private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => RpcCallCompleted?.Invoke(this, args);
+    private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs args) {
+        var parameters = args.Params?.AsObject();
+        var delta = string.Equals(args.Method, "item/agentMessage/delta", StringComparison.Ordinal)
+            ? parameters?.GetString("delta") ?? TryExtractDelta(args.Params)
+            : TryExtractDelta(args.Params);
+        if (StreamingTextDelta.HasContent(delta)) {
+            ObserverDispatcher.Raise(DeltaReceived, this, delta!);
+        }
+    }
+
+    private void OnLoginStarted(object? sender, LoginEventArgs args) => ObserverDispatcher.Raise(LoginStarted, this, args);
+    private void OnLoginCompleted(object? sender, LoginEventArgs args) => ObserverDispatcher.Raise(LoginCompleted, this, args);
+    private void OnProtocolLineReceived(object? sender, string line) => ObserverDispatcher.Raise(ProtocolLineReceived, this, line);
+    private void OnStandardErrorReceived(object? sender, string line) => ObserverDispatcher.Raise(StandardErrorReceived, this, line);
+    private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => ObserverDispatcher.Raise(RpcCallStarted, this, args);
+    private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => ObserverDispatcher.Raise(RpcCallCompleted, this, args);
 
     private static string? TryExtractDelta(JsonValue? value) {
         return value?.AsObject()?.GetObject("delta")?.GetString("text");

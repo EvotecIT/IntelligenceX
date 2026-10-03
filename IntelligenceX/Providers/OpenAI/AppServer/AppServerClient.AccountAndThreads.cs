@@ -30,7 +30,7 @@ public sealed partial class AppServerClient : IDisposable {
             throw new InvalidOperationException("Unexpected login response.");
         }
         var login = ChatGptLoginStart.FromJson(obj);
-        LoginStarted?.Invoke(this, new LoginEventArgs("chatgpt", login.LoginId, login.AuthUrl));
+        ObserverDispatcher.Raise(LoginStarted, this, new LoginEventArgs("chatgpt", login.LoginId, login.AuthUrl));
         return login;
     }
 
@@ -42,14 +42,14 @@ public sealed partial class AppServerClient : IDisposable {
     /// <returns>A task that completes when the operation finishes.</returns>
     public Task LoginWithApiKeyAsync(string apiKey, CancellationToken cancellationToken = default) {
         Guard.NotNullOrWhiteSpace(apiKey, nameof(apiKey));
-        LoginStarted?.Invoke(this, new LoginEventArgs("apikey"));
+        ObserverDispatcher.Raise(LoginStarted, this, new LoginEventArgs("apikey"));
         var parameters = new JsonObject()
             .Add("type", "apiKey")
             .Add("apiKey", apiKey);
         return CallWithRetryAsync("account/login/start", parameters, false, cancellationToken)
             .ContinueWith(task => {
                 if (IsTaskSuccessful(task)) {
-                    LoginCompleted?.Invoke(this, new LoginEventArgs("apikey"));
+                    ObserverDispatcher.Raise(LoginCompleted, this, new LoginEventArgs("apikey"));
                 }
                 return task;
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
@@ -114,6 +114,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <summary>
     /// Starts a turn with a text-only input.
     /// </summary>
+    /// <remarks>Returns the start receipt. Observe turn/completed for the final result, or use IntelligenceXClient.ChatAsync.</remarks>
     /// <param name="threadId">Thread id.</param>
     /// <param name="text">Prompt text.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -125,6 +126,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <summary>
     /// Starts a turn with a text-only input and optional overrides.
     /// </summary>
+    /// <remarks>Returns the start receipt. Observe turn/completed for the final result, or use IntelligenceXClient.ChatAsync.</remarks>
     /// <param name="threadId">Thread id.</param>
     /// <param name="text">Prompt text.</param>
     /// <param name="model">Optional model override.</param>
@@ -151,6 +153,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <summary>
     /// Starts a turn with a structured input payload.
     /// </summary>
+    /// <remarks>Returns the start receipt. Observe turn/completed for the final result, or use IntelligenceXClient.ChatAsync.</remarks>
     /// <param name="threadId">Thread id.</param>
     /// <param name="input">Input items.</param>
     /// <param name="model">Optional model override.</param>

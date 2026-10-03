@@ -26,7 +26,11 @@ public sealed partial class AppServerClient : IDisposable {
     private readonly Task? _stderrTask;
     private readonly TimeSpan _shutdownTimeout;
     private readonly RpcRetryOptions _rpcRetry;
+    private Exception? _connectionError;
     private bool _disposed;
+
+    internal event EventHandler<Exception>? ConnectionClosed;
+    internal Exception? ConnectionError => Volatile.Read(ref _connectionError);
 
     private AppServerClient(Process process, StreamWriter stdin, StreamReader stdout, StreamReader? stderr, TimeSpan shutdownTimeout,
         RpcRetryOptions rpcRetry) {
@@ -37,11 +41,11 @@ public sealed partial class AppServerClient : IDisposable {
         _shutdownTimeout = shutdownTimeout;
         _rpcRetry = rpcRetry;
         _rpc = new JsonRpcClient(SendLineAsync);
-        _rpc.CallStarted += (_, args) => RpcCallStarted?.Invoke(this, args);
-        _rpc.CallCompleted += (_, args) => RpcCallCompleted?.Invoke(this, args);
-        _rpc.NotificationReceived += (_, args) => NotificationReceived?.Invoke(this, args);
+        _rpc.CallStarted += (_, args) => ObserverDispatcher.Raise(RpcCallStarted, this, args);
+        _rpc.CallCompleted += (_, args) => ObserverDispatcher.Raise(RpcCallCompleted, this, args);
+        _rpc.NotificationReceived += (_, args) => ObserverDispatcher.Raise(NotificationReceived, this, args);
         _rpc.RequestReceived += (_, args) => RequestReceived?.Invoke(this, args);
-        _rpc.ProtocolError += (_, args) => ProtocolError?.Invoke(this, args);
+        _rpc.ProtocolError += (_, args) => ObserverDispatcher.Raise(ProtocolError, this, args);
         _readerTask = Task.Run(ReadLoopAsync, _cts.Token);
         if (_stderr is not null) {
             _stderrTask = Task.Run(ReadErrorLoopAsync, _cts.Token);
@@ -213,5 +217,11 @@ public sealed partial class AppServerClient : IDisposable {
 
     private Task<JsonValue?> CallWithRetryAsync(string method, JsonObject? parameters, bool idempotent, CancellationToken cancellationToken) {
         return RpcRetryHelper.ExecuteAsync(token => _rpc.CallAsync(method, parameters, token), _rpcRetry, idempotent, cancellationToken);
+    }
+
+    private void CloseConnection(Exception error) {
+        if (Interlocked.CompareExchange(ref _connectionError, error, null) is not null) return;
+        _rpc.FailConnection(error);
+        ObserverDispatcher.Raise(ConnectionClosed, this, error);
     }
 }
