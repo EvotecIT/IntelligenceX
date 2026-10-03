@@ -18,6 +18,7 @@ public actor IXCodexClient {
     private let configuration: IXCodexConfiguration
     private let authSession: IXCodexAuthSession
     private let httpClient: any IXHTTPClient
+    let requestTimeoutInterval: TimeInterval
     private var preferredToolWireFormat: ToolWireFormat?
     private var modelCapabilities: [String: IXCodexModel] = [:]
     private var modelCapabilitiesAccountID: String?
@@ -25,11 +26,13 @@ public actor IXCodexClient {
     public init(
         configuration: IXCodexConfiguration = IXCodexConfiguration(),
         authSession: IXCodexAuthSession,
-        httpClient: any IXHTTPClient = IXURLSessionHTTPClient()
+        httpClient: any IXHTTPClient = IXURLSessionHTTPClient(),
+        requestTimeoutInterval: TimeInterval = 60
     ) {
         self.configuration = configuration
         self.authSession = authSession
         self.httpClient = httpClient
+        self.requestTimeoutInterval = IXElapsedDeadline.normalized(requestTimeoutInterval)
     }
 
     public func models() async throws -> [IXCodexModel] {
@@ -228,7 +231,7 @@ public actor IXCodexClient {
         return components.url ?? url
     }
 
-    func response(
+    func responseWithinDeadline(
         input: [IXJSONValue],
         sessionID: String,
         instructions: String,
@@ -285,7 +288,7 @@ public actor IXCodexClient {
         }
     }
 
-    func compact(
+    func compactWithinDeadline(
         input: [IXJSONValue],
         sessionID: String,
         instructions: String,
@@ -595,6 +598,7 @@ public actor IXCodexClient {
         request.setValue(sessionID, forHTTPHeaderField: "session_id")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = requestTimeoutInterval
     }
 
     private func parseTurn(

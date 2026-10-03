@@ -73,6 +73,8 @@ extension IXJSONValue {
     }
 
     public func encodedData() throws -> Data {
-        try JSONEncoder().encode(self)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(self)
     }
 }
