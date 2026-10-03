@@ -127,6 +127,12 @@ final class IXCodexPromptCacheTests: XCTestCase {
         return IXCodexClient(authSession: auth, httpClient: http)
     }
 
+    func testNestedJSONObjectSerializationIsStableAcrossConstructionOrder() throws {
+        let first = IXJSONValue.object(["b": .object(["z": .number(1), "a": .number(2)]), "a": .string("text")])
+        let second = IXJSONValue.object(["a": .string("text"), "b": .object(["a": .number(2), "z": .number(1)])])
+        XCTAssertEqual(try first.encodedData(), try second.encodedData())
+    }
+
     private func firstBody(_ queue: ResponseQueue) async throws -> IXJSONValue {
         let requests = await queue.requests
         return try IXJSONValue.decode(try XCTUnwrap(requests.first?.httpBody))
