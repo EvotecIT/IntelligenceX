@@ -13,11 +13,16 @@ namespace IntelligenceX.OpenAI.Transport;
 internal sealed partial class AppServerTransport {
     private static readonly TimeSpan CancellationCleanupTimeout = TimeSpan.FromSeconds(2);
 
+    private static bool IsTerminalTurnStatus(string? status) =>
+        string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "interrupted", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase);
+
     private async Task InterruptCanceledTurnAsync(string threadId, Task<TurnInfo> start) {
         try {
             using var receiptTimeout = new CancellationTokenSource(CancellationCleanupTimeout);
             var started = await TaskCancellation.WaitAsync(start, receiptTimeout.Token).ConfigureAwait(false);
-            if (started.Status == "completed" || started.Status == "interrupted" || started.Status == "failed") return;
+            if (IsTerminalTurnStatus(started.Status)) return;
             if (string.IsNullOrWhiteSpace(started.Id)) throw new InvalidOperationException("The app-server returned a turn without an id.");
             using var interruptTimeout = new CancellationTokenSource(CancellationCleanupTimeout);
             await _client.InterruptTurnAsync(threadId, started.Id, interruptTimeout.Token).ConfigureAwait(false);
@@ -79,7 +84,7 @@ internal sealed partial class AppServerTransport {
                 _turns.Clear();
                 state ??= new TurnState();
                 _turns.Add(_turnId, state);
-                if (IsTerminal(started.Status)) state.Completed ??= started.Raw;
+                if (IsTerminalTurnStatus(started.Status)) state.Completed ??= started.Raw;
                 if (state.Completed is not null) Complete(state);
                 else if (_connectionError is not null) _completion.TrySetException(_connectionError);
             }
@@ -106,11 +111,11 @@ internal sealed partial class AppServerTransport {
         private void Complete(TurnState state) {
             var raw = new JsonObject();
             foreach (var field in state.Completed!) raw.Add(field.Key, field.Value ?? JsonValue.Null);
-            if (string.Equals(raw.GetString("status"), "failed", StringComparison.Ordinal)) {
+            if (string.Equals(raw.GetString("status"), "failed", StringComparison.OrdinalIgnoreCase)) {
                 _completion.TrySetException(new InvalidOperationException(raw.GetObject("error")?.GetString("message") ?? "The app-server turn failed."));
                 return;
             }
-            if (!IsTerminal(raw.GetString("status"))) {
+            if (!IsTerminalTurnStatus(raw.GetString("status"))) {
                 _completion.TrySetException(new InvalidOperationException("The app-server sent a completion with a non-terminal status."));
                 return;
             }
@@ -130,8 +135,6 @@ internal sealed partial class AppServerTransport {
                 if (_turnId is not null && !_completion.Task.IsCompleted) _completion.TrySetException(error);
             }
         }
-
-        private static bool IsTerminal(string? status) => status == "completed" || status == "interrupted" || status == "failed";
 
         public void Dispose() {
             _client.NotificationReceived -= OnNotification;

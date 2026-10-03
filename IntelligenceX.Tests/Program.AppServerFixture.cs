@@ -28,6 +28,10 @@ internal static partial class Program {
                     }
                     var turnId = "turn-" + ++turnNumber;
                     var started = FixtureTurn(turnId, "inProgress");
+                    if (scenario == "terminal-case-receipt") {
+                        FixtureResponse(id.Value, new JsonObject().Add("turn", FixtureTurn(turnId, "Completed")));
+                        continue;
+                    }
                     if ((scenario == "delayed-receipt" || scenario == "missing-receipt") && turnNumber == 1) {
                         pendingTurn = turnId;
                         pendingStartRequest = id.Value;
@@ -101,8 +105,13 @@ internal static partial class Program {
                             .Add("turn", FixtureTurn("other-turn", "failed")));
                         FixtureNotification("item/reasoning/textDelta", new JsonObject().Add("threadId", "thread-fixture")
                             .Add("turnId", turn).Add("itemId", "reasoning").Add("delta", "private reasoning"));
+                        foreach (var methodName in new[] { "item/reasoning/textDelta", "tool/progress", "future/event" }) {
+                            FixtureNotification(methodName, new JsonObject().Add("threadId", "thread-fixture").Add("turnId", turn)
+                                .Add("delta", new JsonObject().Add("text", "unrelated progress")));
+                        }
                         FixtureNotification("item/agentMessage/delta", new JsonObject().Add("threadId", "thread-fixture")
-                            .Add("turnId", turn).Add("itemId", "answer").Add("delta", "Final "));
+                            .Add("turnId", turn).Add("itemId", "answer").Add("delta", scenario == "object-delta"
+                                ? JsonValue.From(new JsonObject().Add("text", "Final ")) : JsonValue.From("Final ")));
                         FixtureNotification("item/agentMessage/delta", new JsonObject().Add("threadId", "thread-fixture")
                             .Add("turnId", turn).Add("itemId", "answer").Add("delta", "answer"));
                         FixtureItem(turn, "Final answer");
@@ -116,9 +125,11 @@ internal static partial class Program {
                                 .Add("turnId", turn).Add("willRetry", true)
                                 .Add("error", new JsonObject().Add("message", "retrying")));
                         }
-                        var status = scenario == "failed" ? "failed" : scenario == "interrupted" ? "interrupted" : "completed";
+                        var status = scenario == "failed" ? "failed" : scenario == "interrupted" ? "interrupted"
+                            : scenario == "case-varied" ? "Completed" : scenario == "case-varied-failed" ? "FAILED" : "completed";
                         var completed = FixtureTurn(turn, status);
-                        if (status == "failed") completed.Add("error", new JsonObject().Add("message", "permission denied"));
+                        if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase))
+                            completed.Add("error", new JsonObject().Add("message", "permission denied"));
                         FixtureNotification("turn/completed", new JsonObject().Add("threadId", "thread-fixture")
                             .Add("turn", completed));
                     }

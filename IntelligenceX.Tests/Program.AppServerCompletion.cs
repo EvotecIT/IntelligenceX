@@ -6,6 +6,9 @@ internal static partial class Program {
         var failed = 0;
         failed += Run("App-server v2 items retain assistant output", TestAppServerTurnItems);
         failed += Run("App-server chat awaits final result and usage", TestAppServerChatCompletion);
+        failed += Run("App-server assistant streaming is scoped to the message method", TestAppServerScopedDeltas);
+        failed += Run("App-server terminal status parsing uses consistent casing", TestAppServerTerminalCasing);
+        failed += Run("App-server canceled terminal receipt does not close the connection", TestAppServerCanceledTerminalReceipt);
         failed += Run("App-server completion before start receipt is retained", TestAppServerEarlyCompletion);
         failed += Run("App-server canceled wait does not affect the next turn", TestAppServerCanceledCompletion);
         failed += Run("App-server cancellation before the receipt interrupts the accepted turn", TestAppServerCanceledStart);
@@ -90,11 +93,21 @@ internal static partial class Program {
         AssertEqual(true, turn.Outputs[0].IsText, "assistant item is text output");
         AssertEqual("Final answer", turn.Outputs[0].Text, "assistant item text");
         AssertEqual("agentMessage", turn.Outputs[0].Raw.GetString("type"), "raw protocol type retained");
+        var variant = TurnInfo.FromJson(FixtureTurn("turn-2", "completed").Add("items", new JsonArray()
+            .Add(new JsonObject().Add("type", "AgentMessage").Add("text", "Final answer"))));
+        AssertEqual(true, variant.Outputs[0].IsText, "agent text matching retains the existing text type's casing tolerance");
     }
 
     private static void TestAppServerChatCompletion() => RunAppServerChatCompletionAsync("completed").GetAwaiter().GetResult();
 
     private static void TestAppServerEarlyCompletion() => RunAppServerChatCompletionAsync("early-completion").GetAwaiter().GetResult();
+
+    private static void TestAppServerScopedDeltas() => RunAppServerChatCompletionAsync("object-delta").GetAwaiter().GetResult();
+
+    private static void TestAppServerTerminalCasing() {
+        RunAppServerChatCompletionAsync("case-varied").GetAwaiter().GetResult();
+        TestAppServerFailedCompletionAsync("case-varied-failed").GetAwaiter().GetResult();
+    }
 
     private static async Task RunAppServerChatCompletionAsync(string scenario) {
         using var client = await ConnectAppServerFixtureAsync(scenario).ConfigureAwait(false);
@@ -108,11 +121,11 @@ internal static partial class Program {
         }
         await AwaitFixtureAsync(chat).ConfigureAwait(false);
         var turn = await chat.ConfigureAwait(false);
-        AssertEqual("completed", turn.Status, "chat returns a completed turn");
+        AssertEqual(scenario == "case-varied" ? "Completed" : "completed", turn.Status, "chat returns a completed turn");
         AssertEqual("turn-1", turn.Id, "matching turn retained");
         AssertEqual(1, turn.Outputs.Count, "streamed item retained when terminal items are empty");
         AssertEqual("Final answer", turn.Outputs[0].Text, "final assistant answer");
-        if (scenario == "completed") {
+        if (scenario == "completed" || scenario == "object-delta" || scenario == "case-varied") {
             lock (deltas) AssertEqual("Final answer", deltas.ToString(), "assistant deltas only");
             AssertEqual(12L, turn.Usage?.InputTokens, "per-turn input usage");
             AssertEqual(19L, turn.Usage?.TotalTokens, "per-turn usage instead of cumulative usage");
@@ -173,6 +186,19 @@ internal static partial class Program {
             "connection is closed when the accepted turn cannot be identified");
     }
 
+    private static void TestAppServerCanceledTerminalReceipt() {
+        using var client = ConnectAppServerFixtureAsync("terminal-case-receipt").GetAwaiter().GetResult();
+        using var cancellation = new CancellationTokenSource();
+        client.RawClient.RpcCallCompleted += (_, args) => {
+            if (args.Method == "turn/start") cancellation.Cancel();
+        };
+        var chat = client.ChatAsync("hello", cancellationToken: cancellation.Token);
+        AssertThrows<OperationCanceledException>(() => AwaitFixtureAsync(chat).GetAwaiter().GetResult(), "receipt cancellation remains cancellation");
+        var health = client.HealthCheckAsync();
+        AwaitFixtureAsync(health).GetAwaiter().GetResult();
+        AssertEqual(true, health.Result.Ok, "already terminal receipt does not trigger interruption or connection disposal");
+    }
+
     private static void TestAppServerObservers() {
         using var client = ConnectAppServerFixtureAsync("completed").GetAwaiter().GetResult();
         var ready = FixtureReady(client);
@@ -189,8 +215,8 @@ internal static partial class Program {
 
     private static void TestAppServerFailedCompletion() => TestAppServerFailedCompletionAsync().GetAwaiter().GetResult();
 
-    private static async Task TestAppServerFailedCompletionAsync() {
-        using var client = await ConnectAppServerFixtureAsync("failed").ConfigureAwait(false);
+    private static async Task TestAppServerFailedCompletionAsync(string scenario = "failed") {
+        using var client = await ConnectAppServerFixtureAsync(scenario).ConfigureAwait(false);
         var ready = FixtureReady(client);
         IntelligenceXTurnCompletedEventArgs? completion = null;
         client.TurnCompleted += (_, args) => completion = args;

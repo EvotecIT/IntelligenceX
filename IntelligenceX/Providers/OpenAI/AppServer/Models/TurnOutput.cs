@@ -60,7 +60,7 @@ public sealed class TurnOutput {
     /// Gets a value indicating whether this output is text, including an app-server agent message.
     /// </summary>
     public bool IsText => string.Equals(Type, "text", StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(Type, "agentMessage", StringComparison.Ordinal);
+                          || string.Equals(Type, "agentMessage", StringComparison.OrdinalIgnoreCase);
     /// <summary>
     /// Gets a value indicating whether this output is an image.
     /// </summary>

@@ -104,10 +104,9 @@ internal sealed partial class AppServerTransport : IOpenAITransport {
     }
 
     private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs args) {
+        if (!string.Equals(args.Method, "item/agentMessage/delta", StringComparison.Ordinal)) return;
         var parameters = args.Params?.AsObject();
-        var delta = string.Equals(args.Method, "item/agentMessage/delta", StringComparison.Ordinal)
-            ? parameters?.GetString("delta") ?? TryExtractDelta(args.Params)
-            : TryExtractDelta(args.Params);
+        var delta = parameters?.GetString("delta") ?? parameters?.GetObject("delta")?.GetString("text");
         if (StreamingTextDelta.HasContent(delta)) {
             ObserverDispatcher.Raise(DeltaReceived, this, delta!);
         }
@@ -119,10 +118,6 @@ internal sealed partial class AppServerTransport : IOpenAITransport {
     private void OnStandardErrorReceived(object? sender, string line) => ObserverDispatcher.Raise(StandardErrorReceived, this, line);
     private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => ObserverDispatcher.Raise(RpcCallStarted, this, args);
     private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => ObserverDispatcher.Raise(RpcCallCompleted, this, args);
-
-    private static string? TryExtractDelta(JsonValue? value) {
-        return value?.AsObject()?.GetObject("delta")?.GetString("text");
-    }
 
     private static string NormalizeModel(string? model) {
         return string.IsNullOrWhiteSpace(model)
