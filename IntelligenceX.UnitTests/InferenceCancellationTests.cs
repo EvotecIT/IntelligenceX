@@ -39,19 +39,54 @@ public sealed class InferenceCancellationTests {
         using var http = route == "native" ? new HttpClient(handler) : null;
         using IOpenAITransport transport = route == "native"
             ? new OpenAINativeTransport(new() { AuthStore = new Store(), LoadCodexAuthJson = false, PersistCodexAuthJson = false }, http!)
-            : new CopilotNativeTransport(new() { GitHubToken = "host-token", HttpMessageHandler = handler, RequestTimeout = TimeSpan.FromMilliseconds(80) });
+            : new CopilotNativeTransport(new() { GitHubToken = "host-token", HttpMessageHandler = handler, RequestTimeout = TimeSpan.FromSeconds(30) });
         var thread = await transport.StartThreadAsync("model", null, null, null, default);
         var turn = transport.StartTurnAsync(thread.Id, ChatInput.FromText("question"), new() { Model = "model" }, null, null, null, cancellation.Token);
         try {
             await blocked.Task.WaitAsync(TimeSpan.FromSeconds(3));
-            if (route == "native") cancellation.Cancel();
+            cancellation.Cancel();
             // This is a deadlock guard, not a scheduler-latency assertion. The HTTP fixture
             // remains blocked until after the result, so a missing cancellation bound still fails.
             Assert.Same(turn, await Task.WhenAny(turn, Task.Delay(TimeSpan.FromSeconds(10))));
-            if (route == "native") Assert.Equal(cancellation.Token, (await Assert.ThrowsAnyAsync<OperationCanceledException>(() => turn)).CancellationToken);
-            else await Assert.ThrowsAsync<TimeoutException>(() => turn);
+            Assert.Equal(cancellation.Token, (await Assert.ThrowsAnyAsync<OperationCanceledException>(() => turn)).CancellationToken);
         } finally {
             released.TrySetResult(true);
+            await Record.ExceptionAsync(() => turn);
+        }
+        await body.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    }
+
+    [Theory]
+    [InlineData("/chat/completions")]
+    [InlineData("/responses")]
+    public async Task CopilotRequestDeadlineBoundsANonCooperativeSend(string endpoint) {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lateResponse = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var released = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var body = new PendingStream(new(TaskCreationOptions.RunContinuationsAsynchronously), released);
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) };
+        using var transport = new CopilotNativeTransport(new() {
+            GitHubToken = "host-token", RequestTimeout = TimeSpan.FromSeconds(2),
+            HttpMessageHandler = new Handler(request => {
+                if (request.Method == HttpMethod.Get) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent("{\"data\":[{\"id\":\"model\",\"supported_endpoints\":[\"" + endpoint + "\"]}]}")
+                });
+                entered.TrySetResult(true);
+                return lateResponse.Task;
+            })
+        });
+        // Populate the model catalog before the deadline under test, keeping discovery/JIT cost
+        // separate from proof that a blocked HTTP send is bounded.
+        await transport.ListModelsAsync(default);
+        var thread = await transport.StartThreadAsync("model", null, null, null, default);
+        var turn = transport.StartTurnAsync(thread.Id, ChatInput.FromText("question"), new() { Model = "model" }, null, null, null, default);
+        try {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.Same(turn, await Task.WhenAny(turn, Task.Delay(TimeSpan.FromSeconds(10))));
+            await Assert.ThrowsAsync<TimeoutException>(() => turn);
+        } finally {
+            released.TrySetResult(true);
+            lateResponse.TrySetResult(response);
             await Record.ExceptionAsync(() => turn);
         }
         await body.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(3));

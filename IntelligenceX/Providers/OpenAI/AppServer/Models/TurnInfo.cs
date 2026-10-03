@@ -82,7 +82,7 @@ public sealed class TurnInfo {
         var outputs = TurnOutput.FromTurn(turnObj);
         var images = TurnOutput.FilterImages(outputs);
         var additional = turnObj.ExtractAdditional(
-            "id", "status", "responseId", "response_id", "output", "outputs", "response", "result",
+            "id", "status", "responseId", "response_id", "output", "outputs", "items", "response", "result",
             "usage", "token_usage", "tokenUsage");
         return new TurnInfo(id, responseId, status, outputs, images, turnObj, additional, usage);
     }
@@ -150,17 +150,17 @@ public sealed class TurnUsage {
 
         var inputDetails = obj.GetObject("input_tokens_details") ?? obj.GetObject("prompt_tokens_details");
         var outputDetails = obj.GetObject("output_tokens_details") ?? obj.GetObject("completion_tokens_details");
-        var cachedInputTokens = ReadInt64(obj, "cached_input_tokens", "cached_tokens")
+        var cachedInputTokens = ReadInt64(obj, "cached_input_tokens", "cached_tokens", "cachedInputTokens")
                                 ?? ReadInt64(inputDetails, "cached_tokens", "cachedTokens");
-        var reasoningTokens = ReadInt64(obj, "reasoning_tokens", "reasoningTokens")
+        var reasoningTokens = ReadInt64(obj, "reasoning_tokens", "reasoningTokens", "reasoningOutputTokens")
                               ?? ReadInt64(outputDetails, "reasoning_tokens", "reasoningTokens");
 
         var additional = obj.ExtractAdditional(
             "input_tokens", "prompt_tokens", "inputTokens", "promptTokens",
             "output_tokens", "completion_tokens", "outputTokens", "completionTokens",
             "total_tokens", "totalTokens",
-            "cached_input_tokens", "cached_tokens",
-            "reasoning_tokens", "reasoningTokens",
+            "cached_input_tokens", "cached_tokens", "cachedInputTokens",
+            "reasoning_tokens", "reasoningTokens", "reasoningOutputTokens",
             "input_tokens_details", "prompt_tokens_details",
             "output_tokens_details", "completion_tokens_details");
         return new TurnUsage(inputTokens, outputTokens, totalTokens, cachedInputTokens, reasoningTokens, obj, additional);

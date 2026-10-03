@@ -12,7 +12,7 @@ using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI.Transport;
 
-internal sealed class AppServerTransport : IOpenAITransport {
+internal sealed partial class AppServerTransport : IOpenAITransport {
     private readonly AppServerClient _client;
 
     public AppServerTransport(AppServerClient client) {
@@ -59,10 +59,16 @@ internal sealed class AppServerTransport : IOpenAITransport {
 
     public async Task<ChatGptLoginStart> LoginChatGptAsync(Action<string>? onUrl, Func<string, Task<string>>? onPrompt,
         bool useLocalListener, TimeSpan timeout, CancellationToken cancellationToken) {
-        var login = await _client.StartChatGptLoginAsync(cancellationToken).ConfigureAwait(false);
-        onUrl?.Invoke(login.AuthUrl);
-        await _client.WaitForLoginCompletionAsync(login.LoginId, cancellationToken).ConfigureAwait(false);
-        return login;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeout);
+        try {
+            var login = await _client.StartChatGptLoginAsync(deadline.Token).ConfigureAwait(false);
+            onUrl?.Invoke(login.AuthUrl);
+            await _client.WaitForLoginCompletionAsync(login.LoginId, deadline.Token).ConfigureAwait(false);
+            return login;
+        } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested) {
+            throw new TimeoutException("The app-server login did not complete within the configured timeout.", ex);
+        }
     }
 
     public Task LoginApiKeyAsync(string apiKey, CancellationToken cancellationToken) {
@@ -78,30 +84,40 @@ internal sealed class AppServerTransport : IOpenAITransport {
         return _client.ResumeThreadAsync(threadId, cancellationToken);
     }
 
-    public Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
+    public async Task<TurnInfo> StartTurnAsync(string threadId, ChatInput input, ChatOptions? options, string? currentDirectory,
         string? approvalPolicy, SandboxPolicy? sandboxPolicy, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
         var model = options?.Model;
         var normalizedInput = NormalizeAndFilterReplayInputItems(input.ToJson());
-        return _client.StartTurnAsync(threadId, normalizedInput, NormalizeModel(model), currentDirectory, approvalPolicy, sandboxPolicy, cancellationToken);
-    }
-
-    private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs args) {
-        var delta = TryExtractDelta(args.Params);
-        if (StreamingTextDelta.HasContent(delta)) {
-            DeltaReceived?.Invoke(this, delta!);
+        // Subscribe before starting: a fast turn can finish before the start receipt is delivered.
+        using var completion = new TurnCompletionWaiter(_client, threadId);
+        // Retain the receipt even if the caller cancels while the server is accepting the turn.
+        var start = _client.StartTurnAsync(threadId, normalizedInput, NormalizeModel(model), currentDirectory,
+            approvalPolicy, sandboxPolicy, CancellationToken.None);
+        try {
+            var started = await TaskCancellation.WaitAsync(start, cancellationToken).ConfigureAwait(false);
+            return await completion.WaitAsync(started, cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            await InterruptCanceledTurnAsync(threadId, start).ConfigureAwait(false);
+            throw;
         }
     }
 
-    private void OnLoginStarted(object? sender, LoginEventArgs args) => LoginStarted?.Invoke(this, args);
-    private void OnLoginCompleted(object? sender, LoginEventArgs args) => LoginCompleted?.Invoke(this, args);
-    private void OnProtocolLineReceived(object? sender, string line) => ProtocolLineReceived?.Invoke(this, line);
-    private void OnStandardErrorReceived(object? sender, string line) => StandardErrorReceived?.Invoke(this, line);
-    private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => RpcCallStarted?.Invoke(this, args);
-    private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => RpcCallCompleted?.Invoke(this, args);
-
-    private static string? TryExtractDelta(JsonValue? value) {
-        return value?.AsObject()?.GetObject("delta")?.GetString("text");
+    private void OnNotificationReceived(object? sender, JsonRpcNotificationEventArgs args) {
+        if (!string.Equals(args.Method, "item/agentMessage/delta", StringComparison.Ordinal)) return;
+        var parameters = args.Params?.AsObject();
+        var delta = parameters?.GetString("delta") ?? parameters?.GetObject("delta")?.GetString("text");
+        if (StreamingTextDelta.HasContent(delta)) {
+            ObserverDispatcher.Raise(DeltaReceived, this, delta!);
+        }
     }
+
+    private void OnLoginStarted(object? sender, LoginEventArgs args) => ObserverDispatcher.Raise(LoginStarted, this, args);
+    private void OnLoginCompleted(object? sender, LoginEventArgs args) => ObserverDispatcher.Raise(LoginCompleted, this, args);
+    private void OnProtocolLineReceived(object? sender, string line) => ObserverDispatcher.Raise(ProtocolLineReceived, this, line);
+    private void OnStandardErrorReceived(object? sender, string line) => ObserverDispatcher.Raise(StandardErrorReceived, this, line);
+    private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => ObserverDispatcher.Raise(RpcCallStarted, this, args);
+    private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => ObserverDispatcher.Raise(RpcCallCompleted, this, args);
 
     private static string NormalizeModel(string? model) {
         return string.IsNullOrWhiteSpace(model)
