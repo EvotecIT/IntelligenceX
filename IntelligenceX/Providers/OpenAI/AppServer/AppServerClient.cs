@@ -27,7 +27,7 @@ public sealed partial class AppServerClient : IDisposable {
     private readonly TimeSpan _shutdownTimeout;
     private readonly RpcRetryOptions _rpcRetry;
     private Exception? _connectionError;
-    private bool _disposed;
+    private int _disposed;
 
     internal event EventHandler<Exception>? ConnectionClosed;
     internal Exception? ConnectionError => Volatile.Read(ref _connectionError);
@@ -41,9 +41,15 @@ public sealed partial class AppServerClient : IDisposable {
         _shutdownTimeout = shutdownTimeout;
         _rpcRetry = rpcRetry;
         _rpc = new JsonRpcClient(SendLineAsync);
-        _rpc.CallStarted += (_, args) => ObserverDispatcher.Raise(RpcCallStarted, this, args);
+        _rpc.CallStarted += (_, args) => {
+            if (args.Method == "account/login/start" || args.Method == "account/logout") ResetLatestLoginCompletion();
+            ObserverDispatcher.Raise(RpcCallStarted, this, args);
+        };
         _rpc.CallCompleted += (_, args) => ObserverDispatcher.Raise(RpcCallCompleted, this, args);
-        _rpc.NotificationReceived += (_, args) => ObserverDispatcher.Raise(NotificationReceived, this, args);
+        _rpc.NotificationReceived += (_, args) => {
+            RecordLoginCompletion(args);
+            ObserverDispatcher.Raise(NotificationReceived, this, args);
+        };
         _rpc.RequestReceived += (_, args) => RequestReceived?.Invoke(this, args);
         _rpc.ProtocolError += (_, args) => ObserverDispatcher.Raise(ProtocolError, this, args);
         _readerTask = Task.Run(ReadLoopAsync, _cts.Token);

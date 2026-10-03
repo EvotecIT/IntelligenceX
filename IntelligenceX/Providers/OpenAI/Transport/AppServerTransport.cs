@@ -59,10 +59,16 @@ internal sealed partial class AppServerTransport : IOpenAITransport {
 
     public async Task<ChatGptLoginStart> LoginChatGptAsync(Action<string>? onUrl, Func<string, Task<string>>? onPrompt,
         bool useLocalListener, TimeSpan timeout, CancellationToken cancellationToken) {
-        var login = await _client.StartChatGptLoginAsync(cancellationToken).ConfigureAwait(false);
-        onUrl?.Invoke(login.AuthUrl);
-        await _client.WaitForLoginCompletionAsync(login.LoginId, cancellationToken).ConfigureAwait(false);
-        return login;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeout);
+        try {
+            var login = await _client.StartChatGptLoginAsync(deadline.Token).ConfigureAwait(false);
+            onUrl?.Invoke(login.AuthUrl);
+            await _client.WaitForLoginCompletionAsync(login.LoginId, deadline.Token).ConfigureAwait(false);
+            return login;
+        } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested) {
+            throw new TimeoutException("The app-server login did not complete within the configured timeout.", ex);
+        }
     }
 
     public Task LoginApiKeyAsync(string apiKey, CancellationToken cancellationToken) {
@@ -85,19 +91,14 @@ internal sealed partial class AppServerTransport : IOpenAITransport {
         var normalizedInput = NormalizeAndFilterReplayInputItems(input.ToJson());
         // Subscribe before starting: a fast turn can finish before the start receipt is delivered.
         using var completion = new TurnCompletionWaiter(_client, threadId);
-        var started = await _client.StartTurnAsync(threadId, normalizedInput, NormalizeModel(model), currentDirectory,
-            approvalPolicy, sandboxPolicy, cancellationToken).ConfigureAwait(false);
+        // Retain the receipt even if the caller cancels while the server is accepting the turn.
+        var start = _client.StartTurnAsync(threadId, normalizedInput, NormalizeModel(model), currentDirectory,
+            approvalPolicy, sandboxPolicy, CancellationToken.None);
         try {
+            var started = await TaskCancellation.WaitAsync(start, cancellationToken).ConfigureAwait(false);
             return await completion.WaitAsync(started, cancellationToken).ConfigureAwait(false);
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
-            // Stop server-side execution as well as the local wait, without letting an
-            // unresponsive interrupt acknowledgement hold the caller indefinitely.
-            using var interruptTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            try {
-                await _client.InterruptTurnAsync(threadId, started.Id, interruptTimeout.Token).ConfigureAwait(false);
-            } catch (Exception) {
-                // Cancellation remains the operation's outcome if the server has already ended or disconnected.
-            }
+            await InterruptCanceledTurnAsync(threadId, start).ConfigureAwait(false);
             throw;
         }
     }

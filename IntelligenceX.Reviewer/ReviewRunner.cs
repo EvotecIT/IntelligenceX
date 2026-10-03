@@ -460,7 +460,8 @@ internal sealed partial class ReviewRunner {
         var builder = new StringBuilder();
         var hasFinalAnswer = outputs.Any(o => o.IsText && o.Raw.GetString("phase") == "final_answer");
         foreach (var output in outputs.Where(o => o.IsText)) {
-            if (hasFinalAnswer && output.Raw.GetString("phase") != "final_answer") continue;
+            var phase = output.Raw.GetString("phase");
+            if (phase == "commentary" || (hasFinalAnswer && phase != "final_answer")) continue;
             if (!string.IsNullOrWhiteSpace(output.Text)) {
                 builder.AppendLine(output.Text);
             }

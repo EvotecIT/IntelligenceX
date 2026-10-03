@@ -8,6 +8,8 @@ internal static partial class Program {
         failed += Run("App-server chat awaits final result and usage", TestAppServerChatCompletion);
         failed += Run("App-server completion before start receipt is retained", TestAppServerEarlyCompletion);
         failed += Run("App-server canceled wait does not affect the next turn", TestAppServerCanceledCompletion);
+        failed += Run("App-server cancellation before the receipt interrupts the accepted turn", TestAppServerCanceledStart);
+        failed += Run("App-server cancellation without a receipt closes the connection", TestAppServerCanceledMissingReceipt);
         failed += Run("App-server cancellation bounds an unacknowledged interrupt", TestAppServerUnacknowledgedInterrupt);
         failed += Run("App-server observational callbacks do not terminate chat", TestAppServerObservers);
         failed += Run("App-server failed turn fails chat", TestAppServerFailedCompletion);
@@ -20,11 +22,19 @@ internal static partial class Program {
         failed += Run("App-server disposal releases login waiter", TestAppServerLoginDisposal);
         failed += Run("App-server login notification completes matching waiter", TestAppServerLoginCompletion);
         failed += Run("App-server failed login does not report success", TestAppServerLoginFailure);
+        failed += Run("App-server login completion before the receipt is retained", TestAppServerEarlyLogin);
+        failed += Run("App-server login completion inside the URL callback is retained", TestAppServerLoginDuringCallback);
+        failed += Run("App-server late login waiter retains failed outcomes", TestAppServerLateLoginFailure);
+        failed += Run("App-server new login does not reuse an earlier outcome", TestAppServerNextLogin);
+        failed += Run("App-server high-level login bounds authorization and start waits", TestAppServerLoginDeadline);
+        failed += Run("App-server login preserves caller cancellation", TestAppServerLoginCancellation);
 #if INTELLIGENCEX_REVIEWER
         failed += Run("App-server reviewer uses the final answer", TestAppServerFinalReview);
         failed += Run("App-server reviewer rejects interrupted output", TestAppServerInterruptedReview);
         failed += Run("App-server reviewer bounds the completion wait", TestAppServerReviewDeadline);
         failed += Run("App-server reviewer does not promote progress to final output", TestAppServerReviewProgressOnly);
+        failed += Run("App-server reviewer rejects commentary-only terminal output", TestAppServerReviewCommentaryOnly);
+        failed += Run("App-server reviewer accepts unphased terminal text", TestAppServerReviewUnphased);
 #endif
         return failed;
     }
@@ -137,6 +147,32 @@ internal static partial class Program {
         AssertThrows<OperationCanceledException>(() => AwaitFixtureAsync(chat).GetAwaiter().GetResult(), "interrupt acknowledgement is bounded");
     }
 
+    private static void TestAppServerCanceledStart() {
+        using var client = ConnectAppServerFixtureAsync("delayed-receipt").GetAwaiter().GetResult();
+        var ready = FixtureReady(client);
+        using var cancellation = new CancellationTokenSource();
+        var chat = client.ChatAsync("hello", cancellationToken: cancellation.Token);
+        AwaitFixtureAsync(ready.Task).GetAwaiter().GetResult();
+        cancellation.Cancel();
+        AwaitFixtureAsync(client.RawClient.CallAsync("fixture/release-start", null)).GetAwaiter().GetResult();
+        AssertThrows<OperationCanceledException>(() => AwaitFixtureAsync(chat).GetAwaiter().GetResult(), "start wait canceled");
+        var next = client.ChatAsync("next");
+        AwaitFixtureAsync(next).GetAwaiter().GetResult();
+        AssertEqual("completed", next.Result.Status, "accepted canceled turn was interrupted before the next turn");
+    }
+
+    private static void TestAppServerCanceledMissingReceipt() {
+        using var client = ConnectAppServerFixtureAsync("missing-receipt").GetAwaiter().GetResult();
+        var ready = FixtureReady(client);
+        using var cancellation = new CancellationTokenSource();
+        var chat = client.ChatAsync("hello", cancellationToken: cancellation.Token);
+        AwaitFixtureAsync(ready.Task).GetAwaiter().GetResult();
+        cancellation.Cancel();
+        AssertThrows<OperationCanceledException>(() => AwaitFixtureAsync(chat).GetAwaiter().GetResult(), "missing receipt cancellation is bounded");
+        AssertThrows<ObjectDisposedException>(() => client.RawClient.CallAsync("fixture/status", null).GetAwaiter().GetResult(),
+            "connection is closed when the accepted turn cannot be identified");
+    }
+
     private static void TestAppServerObservers() {
         using var client = ConnectAppServerFixtureAsync("completed").GetAwaiter().GetResult();
         var ready = FixtureReady(client);
@@ -240,5 +276,60 @@ internal static partial class Program {
         AwaitFixtureAsync(client.HealthCheckAsync()).GetAwaiter().GetResult();
         AssertThrows<InvalidOperationException>(() => AwaitFixtureAsync(login).GetAwaiter().GetResult(), "explicit login failure is propagated");
         AssertEqual(false, successful, "failed login does not raise successful completion");
+    }
+
+    private static void TestAppServerEarlyLogin() {
+        using var client = ConnectAppServerFixtureAsync("login-early").GetAwaiter().GetResult();
+        var login = client.LoginChatGptAsync();
+        AwaitFixtureAsync(login).GetAwaiter().GetResult();
+        // The documented start-then-wait flow must also work after the high-level login has already waited.
+        AwaitFixtureAsync(client.RawClient.WaitForLoginCompletionAsync(login.Result.LoginId)).GetAwaiter().GetResult();
+        AwaitFixtureAsync(client.RawClient.WaitForLoginCompletionAsync()).GetAwaiter().GetResult();
+    }
+
+    private static void TestAppServerLoginDuringCallback() {
+        using var client = ConnectAppServerFixtureAsync("login-pending").GetAwaiter().GetResult();
+        var login = client.LoginChatGptAsync(_ => client.RawClient.CallAsync("fixture/complete-login", null).GetAwaiter().GetResult(), null);
+        AwaitFixtureAsync(login).GetAwaiter().GetResult();
+    }
+
+    private static void TestAppServerLateLoginFailure() {
+        using var client = AppServerClient.StartAsync(AppServerFixtureOptions("login-early-failed")).GetAwaiter().GetResult();
+        var successful = false;
+        client.LoginCompleted += (_, _) => successful = true;
+        var started = client.StartChatGptLoginAsync().GetAwaiter().GetResult();
+        AssertThrows<InvalidOperationException>(() => AwaitFixtureAsync(client.WaitForLoginCompletionAsync(started.LoginId)).GetAwaiter().GetResult(),
+            "late waiter observes the failed outcome");
+        AssertEqual(false, successful, "replayed failure does not report success");
+    }
+
+    private static void TestAppServerNextLogin() {
+        using var client = AppServerClient.StartAsync(AppServerFixtureOptions("login-next-pending")).GetAwaiter().GetResult();
+        var first = client.StartChatGptLoginAsync().GetAwaiter().GetResult();
+        client.StartChatGptLoginAsync().GetAwaiter().GetResult();
+        using var cancellation = new CancellationTokenSource();
+        var current = client.WaitForLoginCompletionAsync(cancellationToken: cancellation.Token);
+        AssertEqual(false, current.IsCompleted, "generic waiter does not reuse a previous login outcome");
+        cancellation.Cancel();
+        AssertThrows<OperationCanceledException>(() => AwaitFixtureAsync(current).GetAwaiter().GetResult(), "current login canceled");
+        AwaitFixtureAsync(client.WaitForLoginCompletionAsync(first.LoginId)).GetAwaiter().GetResult();
+    }
+
+    private static void TestAppServerLoginDeadline() {
+        foreach (var scenario in new[] { "login-pending", "login-missing-receipt" }) {
+            using var client = ConnectAppServerFixtureAsync(scenario).GetAwaiter().GetResult();
+            var login = client.LoginChatGptAndWaitAsync(timeout: TimeSpan.FromSeconds(1));
+            AssertEqual(true, Task.WhenAny(login, Task.Delay(AppServerFixtureGuard)).GetAwaiter().GetResult() == login,
+                "configured login deadline settles before the fixture guard: " + scenario);
+            AssertThrows<TimeoutException>(() => login.GetAwaiter().GetResult(), "configured login deadline: " + scenario);
+        }
+    }
+
+    private static void TestAppServerLoginCancellation() {
+        using var client = ConnectAppServerFixtureAsync("login-pending").GetAwaiter().GetResult();
+        using var cancellation = new CancellationTokenSource();
+        var login = client.LoginChatGptAndWaitAsync(_ => cancellation.Cancel(), timeout: TimeSpan.FromSeconds(30),
+            cancellationToken: cancellation.Token);
+        AssertThrows<OperationCanceledException>(() => AwaitFixtureAsync(login).GetAwaiter().GetResult(), "caller cancellation remains cancellation");
     }
 }

@@ -326,42 +326,6 @@ public sealed partial class AppServerClient : IDisposable {
         return _rpc.NotifyAsync(method, parameters, cancellationToken);
     }
 
-    /// <summary>
-    /// Waits for a login completion notification.
-    /// </summary>
-    /// <param name="loginId">Optional login id to match.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A task that completes when the operation finishes.</returns>
-    public async Task WaitForLoginCompletionAsync(string? loginId = null, CancellationToken cancellationToken = default) {
-        cancellationToken.ThrowIfCancellationRequested();
-        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void Handler(object? sender, JsonRpcNotificationEventArgs args) {
-            if (!string.Equals(args.Method, "account/login/completed", StringComparison.Ordinal)) {
-                return;
-            }
-            var parameters = args.Params?.AsObject();
-            var id = parameters?.GetString("loginId");
-            if (loginId is not null && !string.Equals(id, loginId, StringComparison.Ordinal)) return;
-            if (parameters?.GetBoolean("success", defaultValue: true) == false)
-                tcs.TrySetException(new InvalidOperationException(parameters.GetString("error") ?? "The app-server login failed."));
-            else tcs.TrySetResult(null);
-        }
-
-        void Closed(object? sender, Exception error) => tcs.TrySetException(error);
-        NotificationReceived += Handler;
-        ConnectionClosed += Closed;
-        try {
-            if (ConnectionError is { } error) tcs.TrySetException(error);
-            await TaskCancellation.WaitAsync(tcs.Task, cancellationToken).ConfigureAwait(false);
-            ObserverDispatcher.Raise(LoginCompleted, this, new LoginEventArgs("chatgpt", loginId));
-        } finally {
-            NotificationReceived -= Handler;
-            ConnectionClosed -= Closed;
-            tcs.TrySetCanceled();
-        }
-    }
-
     private async Task SendLineAsync(string line) {
         await _stdin.WriteLineAsync(line).ConfigureAwait(false);
     }
@@ -440,17 +404,11 @@ public sealed partial class AppServerClient : IDisposable {
     /// Disposes the app-server client and underlying process.
     /// </summary>
     public void Dispose() {
-        if (_disposed) {
-            return;
-        }
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         CloseConnection(new ObjectDisposedException(nameof(AppServerClient)));
         _cts.Cancel();
-        TryWait(_readerTask, _shutdownTimeout);
-        TryWait(_stderrTask, _shutdownTimeout);
-        _rpc.Dispose();
-
+        // Stop the process before waiting: synchronous pipe reads do not observe _cts.
         try {
             if (!_process.HasExited) {
                 _process.Kill();
@@ -459,6 +417,9 @@ public sealed partial class AppServerClient : IDisposable {
             // Ignore process shutdown errors.
         }
 
+        TryWait(_readerTask, _shutdownTimeout);
+        TryWait(_stderrTask, _shutdownTimeout);
+        _rpc.Dispose();
         _process.Dispose();
         _cts.Dispose();
         _stdin.Dispose();

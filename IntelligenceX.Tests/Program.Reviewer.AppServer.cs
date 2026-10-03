@@ -39,5 +39,17 @@ internal static partial class Program {
         AwaitFixtureAsync(review).GetAwaiter().GetResult();
         AssertEqual(string.Empty, review.Result, "progress deltas are not a final review");
     }
+
+    private static void TestAppServerReviewCommentaryOnly() {
+        var review = RunAppServerReviewFixture("review-commentary-only");
+        AwaitFixtureAsync(review).GetAwaiter().GetResult();
+        AssertEqual(string.Empty, review.Result, "explicit commentary is not a final review");
+    }
+
+    private static void TestAppServerReviewUnphased() {
+        var review = RunAppServerReviewFixture("review-unphased");
+        AwaitFixtureAsync(review).GetAwaiter().GetResult();
+        AssertEqual("Final review", review.Result, "unphased final items retain compatibility");
+    }
 }
 #endif

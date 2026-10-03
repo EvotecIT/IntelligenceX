@@ -11,6 +11,27 @@ using IntelligenceX.Utils;
 namespace IntelligenceX.OpenAI.Transport;
 
 internal sealed partial class AppServerTransport {
+    private static readonly TimeSpan CancellationCleanupTimeout = TimeSpan.FromSeconds(2);
+
+    private async Task InterruptCanceledTurnAsync(string threadId, Task<TurnInfo> start) {
+        try {
+            using var receiptTimeout = new CancellationTokenSource(CancellationCleanupTimeout);
+            var started = await TaskCancellation.WaitAsync(start, receiptTimeout.Token).ConfigureAwait(false);
+            if (started.Status == "completed" || started.Status == "interrupted" || started.Status == "failed") return;
+            if (string.IsNullOrWhiteSpace(started.Id)) throw new InvalidOperationException("The app-server returned a turn without an id.");
+            using var interruptTimeout = new CancellationTokenSource(CancellationCleanupTimeout);
+            await _client.InterruptTurnAsync(threadId, started.Id, interruptTimeout.Token).ConfigureAwait(false);
+        } catch (Exception) {
+            // An unidentified or unacknowledged turn must not continue behind a canceled caller.
+            // Close the owned process connection; the caller can reconnect for subsequent work.
+            try {
+                _client.Dispose();
+            } catch (Exception) {
+                // Preserve the caller's cancellation if shutdown also fails.
+            }
+        }
+    }
+
     /// <summary>Collects one chat operation's turn notifications without changing the low-level start API.</summary>
     private sealed class TurnCompletionWaiter : IDisposable {
         private sealed class TurnState {
