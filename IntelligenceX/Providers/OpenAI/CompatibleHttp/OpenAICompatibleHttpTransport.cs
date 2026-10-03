@@ -20,6 +20,7 @@ using IntelligenceX.Utils;
 namespace IntelligenceX.OpenAI.CompatibleHttp;
 
 internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalThreadLifetime {
+    private const int MaximumModelCatalogResponseBytes = 4_194_304;
     private readonly OpenAICompatibleHttpOptions _options;
     private readonly HttpClient _http;
     private readonly Uri _apiBase;
@@ -110,13 +111,14 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalT
         try {
             using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-            var payload = await ResponseBudgetStream.ReadTextAsync(response.Content, 4_194_304, cancellationToken).ConfigureAwait(false);
+            var payload = await ResponseBudgetStream.ReadTextAsync(response.Content, MaximumModelCatalogResponseBytes, cancellationToken).ConfigureAwait(false);
 
             var value = JsonLite.Parse(payload);
             var obj = value?.AsObject() ?? new JsonObject();
-            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, true));
             var primary = ModelListResult.FromJson(obj);
-            return await TryMergeLmStudioCatalogAsync(primary, cancellationToken).ConfigureAwait(false);
+            var result = await TryMergeLmStudioCatalogAsync(primary, cancellationToken).ConfigureAwait(false);
+            ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, true));
+            return result;
         } catch (Exception ex) {
             ObserverDispatcher.Raise(RpcCallCompleted, this, new RpcCallCompletedEventArgs("models.list", sw.Elapsed, false, ex));
             throw;
@@ -145,12 +147,13 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport, ILocalT
         try {
             using var request = new HttpRequestMessage(HttpMethod.Get, _lmStudioModelsUrl);
             await PrepareRequestAsync(request, cancellationToken).ConfigureAwait(false);
-            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            using var response = await TaskCancellation.WaitAsync(_http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken),
+                cancellationToken, abandoned => abandoned.Dispose()).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
                 return null;
             }
 
-            var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
+            var payload = await ResponseBudgetStream.ReadTextAsync(response.Content, MaximumModelCatalogResponseBytes, cancellationToken).ConfigureAwait(false);
             var value = JsonLite.Parse(payload);
             var obj = value?.AsObject();
             return obj is null ? null : ModelListResult.FromJson(obj);

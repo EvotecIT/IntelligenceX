@@ -68,7 +68,7 @@ public static class ToolRunner {
                 var outputs = await ExecuteToolsAsync(calls, registry, runInParallel, cancellationToken).ConfigureAwait(false);
                 allOutputs.AddRange(outputs);
 
-                previousResponseId = TryGetResponseId(turn);
+                previousResponseId = client.TransportKind == OpenAITransportKind.Native ? TryGetResponseId(turn) : null;
                 nextInput = new ChatInput();
                 foreach (var output in outputs) {
                     nextInput.AddToolOutput(output.CallId, output.Output);

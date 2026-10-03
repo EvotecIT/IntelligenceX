@@ -113,7 +113,7 @@ internal partial class OpenAICompatibleHttpTransport {
                     string? type = evt.GetString("type");
                     if (type is ("response.output_text.delta" or "response.refusal.delta") && evt.GetString("delta") is { } delta)
                         ObserverDispatcher.Raise(DeltaReceived, this, delta);
-                    if (type == "response.completed" || type == "response.incomplete") result = evt.GetObject("response");
+                    if (type == "response.completed" || type == "response.done" || type == "response.incomplete") result = evt.GetObject("response");
                     if (type == "response.failed" || type == "error") throw new InvalidOperationException("The provider failed the Responses request.");
                     return Task.CompletedTask;
                 }, cancellationToken, allowSensitiveDiagnostics: false, stopOnTerminalResponse: true).ConfigureAwait(false);

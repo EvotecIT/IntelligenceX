@@ -187,11 +187,13 @@ public sealed class CopilotNativeTransportTests {
         else await Assert.ThrowsAsync<InvalidOperationException>(() => client.ChatAsync("question"));
     }
 
-    [Fact]
-    public async Task TerminalResponseReturnsWithoutWaitingForServerEof() {
+    [Theory]
+    [InlineData("response.completed")]
+    [InlineData("response.done")]
+    public async Task TerminalResponseReturnsWithoutWaitingForServerEof(string eventType) {
         using var client = await Connect(new Handler((request, _) => Task.FromResult(request.Method == HttpMethod.Get ? Catalog(true)
             : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new OpenEndedStream(Encoding.UTF8.GetBytes(
-                Event(new { type = "response.completed", response = new { status = "completed", output = Array.Empty<object>() } })))) {
+                Event(new { type = eventType, response = new { status = "completed", output = Array.Empty<object>() } })))) {
                 Headers = { ContentType = new("text/event-stream") }
             } })), true);
         var turn = await client.ChatAsync("question").WaitAsync(TimeSpan.FromSeconds(2));

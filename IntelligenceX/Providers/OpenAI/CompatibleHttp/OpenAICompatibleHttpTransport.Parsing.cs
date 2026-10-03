@@ -240,6 +240,16 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport {
                     outputObj.Add("call_id", id!.Trim());
                 }
 
+                // Responses replay retains original items locally; keep their completion status
+                // on normalized outputs without adding Responses-only fields to chat wire history.
+                var callStatus = tool.GetString("status") ?? assistantMessageForHistory.GetArray(ResponseReplayKey)?
+                    .Select(value => value.AsObject())
+                    .FirstOrDefault(item => item?.GetString("type") == "function_call" && item.GetString("call_id") == id)?
+                    .GetString("status");
+                if (callStatus is not null) {
+                    outputObj.Add("status", callStatus);
+                }
+
                 var function = tool.GetObject("function");
                 if (function is not null) {
                     outputObj.Add("function", function);
@@ -501,20 +511,6 @@ internal partial class OpenAICompatibleHttpTransport : IOpenAITransport {
 
             selectedCallMessageIndexById[pair.Key] = selectedCallIndex;
             selectedOutputMessageIndexById[pair.Key] = selectedOutputIndex;
-        }
-
-        if (selectedCallMessageIndexById.Count == 0) {
-            var passthrough = new List<JsonObject>(messages.Count);
-            for (var i = 0; i < messages.Count; i++) {
-                var message = messages[i];
-                var role = (message.GetString("role") ?? string.Empty).Trim();
-                if (!string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(role, "tool", StringComparison.OrdinalIgnoreCase)) {
-                    passthrough.Add(message);
-                }
-            }
-
-            return passthrough;
         }
 
         var filtered = new List<JsonObject>(messages.Count);
