@@ -58,15 +58,6 @@ internal partial class OpenAICompatibleHttpTransport {
         return OpenAICompatibleHttpProviderDetector.IsLikelyLmStudioEndpoint(apiBase);
     }
 
-    private static Task<string> ReadAsStringAsync(HttpContent content, CancellationToken cancellationToken) {
-#if NETSTANDARD2_0 || NET472
-        cancellationToken.ThrowIfCancellationRequested();
-        return content.ReadAsStringAsync();
-#else
-        return content.ReadAsStringAsync(cancellationToken);
-#endif
-    }
-
     private static Task<Stream> ReadAsStreamAsync(HttpContent content, CancellationToken cancellationToken) {
 #if NETSTANDARD2_0 || NET472
         cancellationToken.ThrowIfCancellationRequested();

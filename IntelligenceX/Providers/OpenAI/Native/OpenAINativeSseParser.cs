@@ -73,7 +73,7 @@ internal static class OpenAINativeSseParser {
             }
             cancellationToken.ThrowIfCancellationRequested();
             await onEvent(obj).ConfigureAwait(false);
-            if (stopOnTerminalResponse && obj.GetString("type") is "response.completed" or "response.incomplete" or "response.failed" or "error")
+            if (stopOnTerminalResponse && obj.GetString("type") is "response.completed" or "response.done" or "response.incomplete" or "response.failed" or "error")
                 return true;
         }
     }
