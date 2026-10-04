@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <script>(function(){var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t)})()</script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ page.title }} | IntelligenceX</title>
+  <title>{{ title_html }} | IntelligenceX</title>
   {{ if description_meta_html == "" }}
   <meta name="description" content="IntelligenceX documentation, API reference, and tooling guides." />
   {{ end }}
@@ -32,4 +32,3 @@
   {{ extra_scripts_html }}
 </body>
 </html>
-
