@@ -3,6 +3,65 @@ import Foundation
 import XCTest
 
 final class IXCodexAccountUsageTests: XCTestCase {
+    func testOptionalResetTimeoutPreservesSuccessfulUsage() async throws {
+        let configuration = IXCodexConfiguration(accountUsageURL: URL(string: "https://example.test/wham/usage")!)
+        let session = IXCodexAuthSession(configuration: configuration, credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+            accessToken: "access", refreshToken: "refresh", expiresAt: .distantFuture, accountID: "account-123"
+        )))
+        let client = IXCodexClient(configuration: configuration, authSession: session, httpClient: IXClosureHTTPClient { request in
+            if request.url?.path.hasSuffix("/history") == true { return .json(200, ["events": []]) }
+            if request.url?.path.hasSuffix("/rate-limit-reset-credits") == true {
+                // This custom transport ignores URLRequest.timeoutInterval.
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+                return .json(200, ["credits": []])
+            }
+            return .json(200, ["plan_type": "pro", "rate_limit_reset_credits": ["available_count": 3]])
+        })
+        let usage = try await IXElapsedDeadline.run(timeoutInterval: 15) { try await client.accountUsage() }
+        XCTAssertEqual(usage.plan, "pro")
+        XCTAssertEqual(usage.availableResetCredits, 3)
+        XCTAssertFalse(try XCTUnwrap(usage.resetCredits).detailsAvailable)
+        XCTAssertTrue(try XCTUnwrap(usage.resetCredits).historyAvailable)
+    }
+    func testOptionalResetFailurePreservesUsageAndAccountHeaders() async throws {
+        let recorder = AccountUsageRequestRecorder()
+        let configuration = IXCodexConfiguration(accountUsageURL: URL(string: "https://example.test/wham/usage")!)
+        let session = IXCodexAuthSession(configuration: configuration, credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+            accessToken: "access", refreshToken: "refresh", expiresAt: .distantFuture, accountID: "account-123"
+        )))
+        let client = IXCodexClient(configuration: configuration, authSession: session, httpClient: IXClosureHTTPClient { request in
+            await recorder.record(request)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "ChatGPT-Account-ID"), "account-123")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer access")
+            if request.url?.path.hasSuffix("/history") == true { return .json(200, ["events": []]) }
+            if request.url?.path.hasSuffix("/rate-limit-reset-credits") == true { return .json(403, ["error": "private-response"]) }
+            return .json(200, ["plan_type": "pro", "rate_limit_reset_credits": ["available_count": 3]])
+        })
+        let usage = try await client.accountUsage()
+        XCTAssertEqual(usage.plan, "pro")
+        XCTAssertEqual(usage.availableResetCredits, 3)
+        XCTAssertFalse(try XCTUnwrap(usage.resetCredits).detailsAvailable)
+        XCTAssertTrue(try XCTUnwrap(usage.resetCredits).historyAvailable)
+    }
+    func testResetGrantsRetainExactExpiryAndPartialHistoryEvidence() throws {
+        let usage = try IXCodexAccountUsage.decode(
+            Data(#"{"rate_limit_reset_credits":{"available_count":3,"applicable_available_count":0}}"#.utf8),
+            resetDetails: Data(#"{"credits":[{"id":"reset","status":"available","expires_at":"2026-10-05T04:18:41.901758Z"}]}"#.utf8),
+            resetHistory: Data(#"{"events":[{"kind":"used","occurred_at":"2026-10-03T22:18:02.243412Z"}],"next_cursor":"more"}"#.utf8)
+        )
+        let reset = try XCTUnwrap(usage.resetCredits)
+        XCTAssertEqual(reset.availableCount, 3)
+        XCTAssertEqual(reset.applicableAvailableCount, 0)
+        XCTAssertTrue(reset.detailsAvailable)
+        XCTAssertEqual(reset.grants.first?.expiresAtRaw, "2026-10-05T04:18:41.901758Z")
+        XCTAssertNotNil(reset.grants.first?.expiresAt)
+        XCTAssertEqual(reset.history.first?.kind, "used")
+        XCTAssertEqual(reset.historyNextCursor, "more")
+        let countsOnly = try IXCodexAccountUsage.decode(Data(#"{"rate_limit_reset_credits":{"available_count":0}}"#.utf8))
+        XCTAssertFalse(try XCTUnwrap(countsOnly.resetCredits).detailsAvailable)
+        XCTAssertNil(try IXCodexAccountUsage.decode(Data("{}".utf8)).resetCredits)
+    }
     func testCreditBalanceSupportsNumberAndStringWithoutInventingMissingBalance() throws {
         for balance in [62_500, "62500", 0, "0"] as [Any] {
             let data = try JSONSerialization.data(withJSONObject: [

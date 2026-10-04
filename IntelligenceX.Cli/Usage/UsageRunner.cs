@@ -12,7 +12,7 @@ using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Cli.Usage;
 
-internal static class UsageRunner {
+internal static partial class UsageRunner {
     public static void PrintHelp() {
         Console.WriteLine("Usage:");
         Console.WriteLine("  intelligencex usage [options]");
@@ -23,6 +23,8 @@ internal static class UsageRunner {
         Console.WriteLine("  --daily-breakdown     Include daily token usage breakdown");
         Console.WriteLine("  --json                Print JSON output");
         Console.WriteLine("  --no-cache            Do not write usage cache");
+        Console.WriteLine("  --current-codex       Prefer the current Codex login without changing it");
+        Console.WriteLine("  --all-accounts        Read each saved IX account independently");
         Console.WriteLine("  --account-id <id>      Select a specific ChatGPT account id");
         Console.WriteLine("  --base-url <url>       Override ChatGPT backend base URL");
         Console.WriteLine("  --auth-path <path>     Override auth store path");
@@ -45,6 +47,8 @@ internal static class UsageRunner {
 
         try {
             var nativeOptions = new OpenAINativeOptions();
+            nativeOptions.PersistCodexAuthJson = false;
+            nativeOptions.PreferCurrentCodexSession = options.CurrentCodex;
             if (!string.IsNullOrWhiteSpace(options.BaseUrl)) {
                 nativeOptions.ChatGptApiBaseUrl = options.BaseUrl!;
             }
@@ -56,6 +60,7 @@ internal static class UsageRunner {
             }
 
             using var service = new ChatGptUsageService(nativeOptions);
+            if (options.AllAccounts) return await PrintAllAccountsAsync(nativeOptions, options.Json).ConfigureAwait(false);
             var includeEventsForFetch = options.IncludeEvents || options.BySurface;
             var report = await service.GetReportAsync(includeEventsForFetch, options.DailyBreakdown, CancellationToken.None)
                 .ConfigureAwait(false);
@@ -140,6 +145,10 @@ internal static class UsageRunner {
         }
 
         PrintRateLimit("Rate limit", snapshot.RateLimit);
+        foreach (var additional in snapshot.AdditionalRateLimits) {
+            PrintRateLimit(additional.LimitName ?? additional.MeteredFeature ?? "Additional rate limit", additional.RateLimit);
+        }
+        Console.WriteLine(ChatGptResetCreditsFormatter.Format(snapshot.ResetCredits, snapshot.ResetCreditsError));
 
         if (snapshot.Credits is not null) {
             Console.WriteLine("Credits:");
@@ -283,7 +292,7 @@ internal static class UsageRunner {
         }
         if (window.ResetAtUnixSeconds.HasValue) {
             var resetAt = DateTimeOffset.FromUnixTimeSeconds(window.ResetAtUnixSeconds.Value).ToUniversalTime();
-            parts.Add($"reset at {resetAt.ToString("u", CultureInfo.InvariantCulture)}");
+            parts.Add("reset at " + ChatGptResetCreditsFormatter.FormatTimestamp(resetAt));
         }
         return parts.Count == 0 ? "n/a" : string.Join(", ", parts);
     }
@@ -353,6 +362,8 @@ internal sealed class UsageOptions {
     public bool Json { get; set; }
     public bool ShowHelp { get; set; }
     public bool NoCache { get; set; }
+    public bool CurrentCodex { get; set; }
+    public bool AllAccounts { get; set; }
     public string? BaseUrl { get; set; }
     public string? AccountId { get; set; }
     public string? AuthPath { get; set; }
@@ -382,6 +393,12 @@ internal sealed class UsageOptions {
                 case "--no-cache":
                     options.NoCache = true;
                     break;
+                case "--current-codex":
+                    options.CurrentCodex = true;
+                    break;
+                case "--all-accounts":
+                    options.AllAccounts = true;
+                    break;
                 case "--base-url":
                     options.BaseUrl = ReadValue(args, ref i);
                     break;
@@ -397,6 +414,9 @@ internal sealed class UsageOptions {
                 default:
                     throw new InvalidOperationException($"Unknown option or unexpected argument: {arg}");
             }
+        }
+        if (options.AllAccounts && (options.CurrentCodex || options.AccountId is not null || options.IncludeEvents || options.BySurface || options.DailyBreakdown)) {
+            throw new InvalidOperationException("--all-accounts reads saved account limits and resets; use per-account usage for --current-codex, --account-id, or token/credit event breakdowns.");
         }
         return options;
     }

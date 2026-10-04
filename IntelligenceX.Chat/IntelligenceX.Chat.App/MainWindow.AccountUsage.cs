@@ -354,6 +354,9 @@ public sealed partial class MainWindow : Window {
         if (accountId.Length == 0) {
             accountId = NormalizeLocalProviderOpenAIAccountId(login.AccountId);
         }
+        if (accountId.Length > 0) {
+            lock (_turnDiagnosticsSync) _nativeProviderUsageByAccountId[accountId] = usage;
+        }
 
         var planType = NormalizeOptionalText(usage.PlanType);
         var email = NormalizeOptionalText(usage.Email);

@@ -88,7 +88,7 @@ internal sealed partial class NativeChatWindow {
         rightStack.Children.Add(settingsButton);
 
         var trayButton = new Button { Content = "Tray", MinHeight = 30 };
-        ToolTipService.SetToolTip(trayButton, "Open IX Tray for account capacity and banked resets. This does not switch the chat account.");
+        ToolTipService.SetToolTip(trayButton, "Open IX Tray for all saved accounts, usage limits, exact reset expiry times, and reset history.");
         trayButton.Click += (_, _) => OpenTray();
         rightStack.Children.Add(trayButton);
 

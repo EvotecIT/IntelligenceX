@@ -2283,6 +2283,31 @@
         if (selectedSlotState.limitReached === true) {
           hintParts.push("Limit currently reached.");
         }
+        var providerUsage = selectedSlotState.providerUsage;
+        if (providerUsage) {
+          var providerDate = function(value) {
+            if (value == null) return "Not reported";
+            var date = new Date(value);
+            return Number.isFinite(date.getTime())
+              ? date.toLocaleString(undefined, { timeZoneName: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) + " (" + (typeof value === "string" ? value : date.toISOString()) + ")"
+              : "Not reported";
+          };
+          hintParts.push("Provider reading: " + (providerUsage.source || "unknown source") + " · " + providerDate(providerUsage.retrievedAtUtc) + ".");
+          if (providerUsage.credits && providerUsage.credits.balance != null) hintParts.push("Credits: " + providerUsage.credits.balance + ".");
+          var providerLimit = providerUsage.rateLimit;
+          [providerLimit && providerLimit.primary, providerLimit && providerLimit.secondary].forEach(function(window, index) {
+            if (window && window.resetAtUnixSeconds != null) hintParts.push((index === 0 ? "Primary" : "Secondary") + " window resets: " + providerDate(window.resetAtUnixSeconds * 1000) + ".");
+          });
+          var providerResets = providerUsage.resetCredits;
+          if (providerResets) {
+            hintParts.push("Reset grants: " + (providerResets.availableCount == null ? "unknown" : providerResets.availableCount) + " available; " + (providerResets.applicableAvailableCount == null ? "unknown" : providerResets.applicableAvailableCount) + " applicable now.");
+            (providerResets.credits || []).forEach(function(credit) {
+              hintParts.push((credit.title || credit.resetType || "Reset") + " · " + (credit.status || "unknown") + " · expires " + providerDate(credit.expiresAt) + ".");
+            });
+            if (!providerResets.detailsAvailable) hintParts.push("Grant expiry details unavailable.");
+          }
+          if (providerUsage.resetCreditsError) hintParts.push(providerUsage.resetCreditsError);
+        }
       }
       nativeAccountHint.textContent = hintParts.join(" ");
     }
