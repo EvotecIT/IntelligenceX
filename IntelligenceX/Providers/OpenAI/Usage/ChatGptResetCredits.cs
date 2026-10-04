@@ -55,9 +55,19 @@ public sealed class ChatGptResetCredits {
     }
     internal static DateTimeOffset? ReadTimestamp(JsonObject? obj, string name) {
         if (obj is null) return null;
-        var seconds = obj.GetInt64(name);
+        var seconds = obj.GetDouble(name);
         if (seconds.HasValue) {
-            try { return DateTimeOffset.FromUnixTimeSeconds(seconds.Value); }
+            var wholeSeconds = Math.Truncate(seconds.Value);
+            if (double.IsNaN(seconds.Value) || double.IsInfinity(seconds.Value)
+                || wholeSeconds < DateTimeOffset.MinValue.ToUnixTimeSeconds()
+                || wholeSeconds > DateTimeOffset.MaxValue.ToUnixTimeSeconds()) return null;
+            try {
+                // Split the whole seconds before scaling, to retain the represented
+                // fraction and avoid AddSeconds rounding on older .NET targets.
+                var fractionalTicks = (long)Math.Round((seconds.Value - wholeSeconds) * TimeSpan.TicksPerSecond,
+                    MidpointRounding.AwayFromZero);
+                return DateTimeOffset.FromUnixTimeSeconds((long)wholeSeconds).AddTicks(fractionalTicks);
+            }
             catch (ArgumentOutOfRangeException) { return null; }
         }
         return DateTimeOffset.TryParse(obj.GetString(name), CultureInfo.InvariantCulture,

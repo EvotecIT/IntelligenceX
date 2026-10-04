@@ -87,7 +87,10 @@ public sealed class ProviderLimitAccountSnapshot {
     public string? DetailMessage { get; }
     public DateTimeOffset RetrievedAtUtc { get; }
     public bool IsSelected { get; }
-    public bool IsAvailable => Windows.Count > 0;
+    /// <summary>Whether any usable provider evidence was reported; this does not establish window capacity.</summary>
+    public bool IsAvailable => Windows.Count > 0 || CreditBalance.HasValue
+        || ResetCredits is { AvailableCount: not null } or { ApplicableAvailableCount: not null }
+            or { DetailsAvailable: true } or { HistoryAvailable: true };
 }
 
 /// <summary>
