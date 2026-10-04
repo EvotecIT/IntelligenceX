@@ -207,6 +207,8 @@ internal sealed partial class ChatServiceSession {
             PlanType = string.IsNullOrWhiteSpace(snapshot.PlanType) ? null : snapshot.PlanType.Trim(),
             RateLimit = MapNativeRateLimit(snapshot.RateLimit),
             Credits = MapNativeCredits(snapshot.Credits),
+            ResetCredits = MapNativeResetCredits(snapshot.ResetCredits),
+            ResetCreditsError = snapshot.ResetCreditsError,
             RetrievedAtUtc = retrievedAtUtc.Kind == DateTimeKind.Utc ? retrievedAtUtc : retrievedAtUtc.ToUniversalTime(),
             Source = normalizedSource
         };

@@ -32,7 +32,41 @@ internal sealed class ChatGptUsageClient : IDisposable {
         if (obj is null) {
             throw new InvalidOperationException("Invalid ChatGPT usage response.");
         }
-        return ChatGptUsageSnapshot.FromJson(obj);
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj);
+        if (snapshot.ResetCredits is null) return snapshot;
+        // These optional read-only endpoints must not hide a successful usage reading.
+        using var resetTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        resetTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var root = style == ChatGptUsagePathStyle.ChatGptApi ? normalized + "/wham" : normalized + "/api/codex";
+        var results = await Task.WhenAll(
+            TryReadResetDataAsync(root + "/rate-limit-reset-credits", "credits", accessToken, accountId, userAgent, resetTimeout.Token, cancellationToken),
+            TryReadResetDataAsync(root + "/rate-limit-reset-credits/history", "events", accessToken, accountId, userAgent, resetTimeout.Token, cancellationToken))
+            .ConfigureAwait(false);
+        var enriched = new JsonObject();
+        foreach (var pair in obj) enriched.Add(pair.Key, pair.Value);
+        if (results[0] is not null) enriched.Add("rate_limit_reset_credit_details", results[0]!);
+        if (results[1] is not null) enriched.Add("rate_limit_reset_credit_history", results[1]!);
+        if (results.Any(static value => value is null)) {
+            enriched.Add("reset_credits_error", "Some reset grant details or history are unavailable. Reported counts and usage remain valid for this reading.");
+        }
+        return ChatGptUsageSnapshot.FromJson(enriched);
+    }
+
+    private async Task<JsonObject?> TryReadResetDataAsync(string url, string arrayName, string accessToken, string? accountId,
+        string? userAgent, CancellationToken timeoutToken, CancellationToken callerToken) {
+        try {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            ApplyHeaders(request, accessToken, accountId, userAgent);
+            using var response = await _httpClient.SendAsync(request, timeoutToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+            var payload = await ReadAsStringAsync(response.Content, timeoutToken).ConfigureAwait(false);
+            var result = JsonLite.Parse(payload)?.AsObject();
+            return result?.GetArray(arrayName) is null ? null : result;
+        } catch (OperationCanceledException) when (!callerToken.IsCancellationRequested) {
+            return null;
+        } catch (Exception ex) when (ex is HttpRequestException or FormatException or InvalidOperationException) {
+            return null;
+        }
     }
 
     public async Task<IReadOnlyList<ChatGptCreditUsageEvent>> GetCreditUsageEventsAsync(string baseUrl, string accessToken, string? accountId,

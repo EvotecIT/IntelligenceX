@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using IntelligenceX.OpenAI.Usage;
 
 #pragma warning disable CS1591
 
@@ -53,6 +54,12 @@ public sealed class ProviderLimitSnapshot {
 /// One provider-account limit snapshot within a multi-account provider view.
 /// </summary>
 public sealed class ProviderLimitAccountSnapshot {
+    /// <summary>Provider-reported spendable credit balance, in credits, when available.</summary>
+    public double? CreditBalance { get; internal set; }
+    /// <summary>Provider-reported Codex reset evidence, independent of local manual inventory.</summary>
+    public ChatGptResetCredits? ResetCredits { get; internal set; }
+    /// <summary>Safe availability message for optional reset information.</summary>
+    public string? ResetCreditsError { get; internal set; }
     public ProviderLimitAccountSnapshot(
         string? accountId,
         string? accountLabel,

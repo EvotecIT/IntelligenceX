@@ -136,6 +136,10 @@ public sealed record NativeUsageSnapshotDto {
     /// Credits snapshot when exposed by provider endpoints.
     /// </summary>
     public NativeCreditsSnapshotDto? Credits { get; init; }
+    /// <summary>Provider reset grant counts, lifecycle times, and retained history.</summary>
+    public NativeResetCreditsDto? ResetCredits { get; init; }
+    /// <summary>Safe availability message for optional reset reads.</summary>
+    public string? ResetCreditsError { get; init; }
     /// <summary>
     /// UTC timestamp when this snapshot was collected.
     /// </summary>

@@ -85,6 +85,12 @@ public sealed partial class ProviderLimitSnapshotService {
         return FetchSingleCoreAsync(normalized, cancellationToken);
     }
 
+    /// <summary>Reads every saved OpenAI account using explicit auth/endpoint options, without switching Codex accounts.</summary>
+    public Task<ProviderLimitSnapshot> FetchOpenAiAccountsAsync(OpenAINativeOptions options, CancellationToken cancellationToken = default) {
+        if (options is null) throw new ArgumentNullException(nameof(options));
+        return FetchCodexAsync("codex", options, cancellationToken);
+    }
+
     private async Task<ProviderLimitSnapshot> FetchSingleResilientAsync(string requestedProviderId, CancellationToken cancellationToken) {
         try {
             return await FetchSingleCoreAsync(requestedProviderId, cancellationToken).ConfigureAwait(false);
@@ -188,7 +194,7 @@ public sealed partial class ProviderLimitSnapshotService {
             if (snapshot.Credits.Unlimited) {
                 summaryParts.Add("Unlimited credits");
             } else if (snapshot.Credits.Balance.HasValue) {
-                summaryParts.Add("Credits $" + snapshot.Credits.Balance.Value.ToString("F2", CultureInfo.InvariantCulture));
+                summaryParts.Add("Credits " + snapshot.Credits.Balance.Value.ToString("F2", CultureInfo.InvariantCulture));
             }
 
             var localRange = FormatApproximateMessageRange(snapshot.Credits.ApproxLocalMessages);
@@ -204,6 +210,10 @@ public sealed partial class ProviderLimitSnapshotService {
 
         if (snapshot.RateLimit?.LimitReached == true) {
             summaryParts.Add("Active request window is exhausted");
+        }
+
+        if (snapshot.ResetCredits?.AvailableCount is { } resetCount) {
+            summaryParts.Add(resetCount.ToString(CultureInfo.InvariantCulture) + " reset credits available");
         }
 
         return new OpenAiLimitPresentation(

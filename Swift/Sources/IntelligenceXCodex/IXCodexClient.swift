@@ -199,7 +199,24 @@ public actor IXCodexClient {
         guard (200..<300).contains(response.statusCode) else {
             throw responseError(response)
         }
-        return try IXCodexAccountUsage.decode(response.body)
+        let usage = try IXCodexAccountUsage.decode(response.body)
+        guard usage.resetCredits != nil else { return usage }
+        var resetPayloads: [Data?] = []
+        for path in ["rate-limit-reset-credits", "rate-limit-reset-credits/history"] {
+            var resetRequest = request
+            resetRequest.url = configuration.accountUsageURL.deletingLastPathComponent().appendingPathComponent(path)
+            resetRequest.timeoutInterval = 10
+            do {
+                let result = try await httpClient.send(resetRequest)
+                resetPayloads.append((200..<300).contains(result.statusCode) ? result.body : nil)
+            } catch {
+                try Task.checkCancellation()
+                resetPayloads.append(nil)
+            }
+            // A sign-out or account change invalidates optional reads too.
+            try await authSession.validateRequestGeneration(authorization)
+        }
+        return try IXCodexAccountUsage.decode(response.body, resetDetails: resetPayloads[0], resetHistory: resetPayloads[1])
     }
 
     private func requestBundle(_ recovered: IXCodexAuthSession.RequestAuthorization?) async throws -> IXCodexAuthSession.RequestAuthorization {

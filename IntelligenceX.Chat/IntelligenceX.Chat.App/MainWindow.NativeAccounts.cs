@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private readonly Dictionary<string, IntelligenceX.Chat.Abstractions.Protocol.NativeUsageSnapshotDto> _nativeProviderUsageByAccountId = new(StringComparer.OrdinalIgnoreCase);
     private const int DefaultNativeAccountSlotCount = 3;
     private const int MaxNativeAccountSlotCount = 32;
     private const string NativeAccountSlotCountEnvVar = "IXCHAT_NATIVE_ACCOUNT_SLOTS";
@@ -230,7 +231,8 @@ public sealed partial class MainWindow : Window {
                     windowResetMinutes,
                     planType = planType ?? string.Empty,
                     usedPercent,
-                    limitReached
+                    limitReached,
+                    providerUsage = _nativeProviderUsageByAccountId.TryGetValue(accountId, out var providerUsage) ? providerUsage : null
                 };
             }
 

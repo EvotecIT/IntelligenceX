@@ -157,6 +157,23 @@ function formatUsageResult(data) {
     lines.push(`Credits: ${c.hasCredits ? 'yes' : 'no'}${c.unlimited ? ' (unlimited)' : ''}`);
     if (c.balance !== null && c.balance !== undefined) lines.push(`Credits balance: ${c.balance}`);
   }
+  if (usage.resetCredits) {
+    const resets = usage.resetCredits;
+    lines.push(`Reset credits: ${resets.availableCount ?? 'unknown'} available; applicable now: ${resets.applicableAvailableCount ?? 'unknown'}`);
+    if (!resets.detailsAvailable) lines.push('Grant expiry details: unavailable');
+    (resets.credits || []).forEach(credit => {
+      lines.push(`${credit.title || credit.resetType || 'Reset'} | ${credit.status || 'status unknown'}`);
+      lines.push(`  Expires: ${formatUsageTimestamp(credit.expiresAt)}`);
+      lines.push(`  Granted: ${formatUsageTimestamp(credit.grantedAt)}`);
+      if (credit.redeemedAt) lines.push(`  Redeemed: ${formatUsageTimestamp(credit.redeemedAt)}`);
+    });
+    if (resets.historyAvailable) {
+      lines.push(`Reset history: ${formatUsageTimestamp(resets.historyWindowStart)} through ${formatUsageTimestamp(resets.historyAsOf)}`);
+      (resets.history || []).forEach(event => lines.push(`  ${event.kind || 'Unknown event'} | ${formatUsageTimestamp(event.occurredAt)}`));
+      if (resets.historyNextCursor) lines.push('More history is available from the provider.');
+    } else lines.push('Reset history: unavailable');
+  } else lines.push('Reset credits: not reported');
+  if (usage.resetCreditsError) lines.push(usage.resetCreditsError);
   if (data.events && data.events.length > 0) {
     lines.push('');
     lines.push('Credit usage events:');
@@ -174,6 +191,7 @@ function formatUsageSummaryShort(data) {
   if (usage.planType) parts.push(`Plan ${usage.planType}`);
   if (usage.credits && usage.credits.balance !== null && usage.credits.balance !== undefined) parts.push(`Credits ${usage.credits.balance}`);
   if (usage.rateLimit && usage.rateLimit.limitReached) parts.push('Limit reached');
+  if (usage.resetCredits) parts.push(`Resets ${usage.resetCredits.availableCount ?? 'unknown'}`);
   return parts.length === 0 ? 'Usage available.' : parts.join(' | ');
 }
 
@@ -190,8 +208,15 @@ function formatWindow(w) {
   if (w.usedPercent !== null && w.usedPercent !== undefined) s.push(`${w.usedPercent}% used`);
   if (w.limitWindowSeconds) s.push(`${Math.round(w.limitWindowSeconds / 60)}m window`);
   if (w.resetAfterSeconds) s.push(`resets in ${Math.round(w.resetAfterSeconds / 60)}m`);
-  else if (w.resetAt) s.push(`reset at ${w.resetAt}`);
+  if (w.resetAt !== null && w.resetAt !== undefined) s.push(`reset at ${formatUsageTimestamp(w.resetAt * 1000)}`);
   return s.join(', ');
+}
+
+function formatUsageTimestamp(value) {
+  if (value === null || value === undefined) return 'Not reported';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Not reported';
+  return `${date.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })} (${date.toISOString()})`;
 }
 
 // ── Repo data ──

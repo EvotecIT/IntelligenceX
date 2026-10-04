@@ -18,6 +18,28 @@
                        Foreground="{DynamicResource SecondaryTextBrush}" />
             <Border Background="{DynamicResource CardBrush}" CornerRadius="10" Padding="14">
                 <StackPanel>
+                    <TextBlock Text="Provider-reported resets" FontWeight="SemiBold" />
+                    <TextBlock x:Name="ProviderResetsText" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <ItemsControl x:Name="ProviderCreditsList" Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,8,0,8">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Expiry}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding Granted}" TextWrapping="Wrap" FontSize="11" Margin="0,4,0,0"
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Expander Header="Reset history" Margin="0,8,0,0" Foreground="{DynamicResource PrimaryTextBrush}">
+                        <TextBlock x:Name="ProviderHistoryText" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" />
+                    </Expander>
+                </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource CardBrush}" CornerRadius="10" Padding="14" Margin="0,16,0,0">
+                <StackPanel>
                     <TextBlock Text="Recorded inventory · not a live balance" FontWeight="SemiBold" />
                     <TextBlock Text="Manual entries are local notes. Verify them with the provider before use. No action here redeems a reset or starts a usage window."
                                TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource SecondaryTextBrush}" />
