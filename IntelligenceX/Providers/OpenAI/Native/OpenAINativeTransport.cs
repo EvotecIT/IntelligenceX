@@ -298,7 +298,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
             await OpenAINativeSseParser.ParseAsync(stream, evt => {
                 HandleStreamEvent(evt, delta, streamedOutputs, ref status, ref completedResponse, ref streamError);
                 return Task.CompletedTask;
-            }, cancellationToken, _options.AllowSensitiveDiagnostics).ConfigureAwait(false);
+            }, cancellationToken, _options.AllowSensitiveDiagnostics, stopOnTerminalResponse: true).ConfigureAwait(false);
         } catch (Exception) when (cancellationToken.IsCancellationRequested) {
             throw new OperationCanceledException(cancellationToken);
         }
@@ -495,9 +495,11 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport, ILocalTh
         }
 
         if (string.Equals(type, "response.completed", StringComparison.Ordinal) ||
+            string.Equals(type, "response.incomplete", StringComparison.Ordinal) ||
             string.Equals(type, "response.done", StringComparison.Ordinal)) {
             completedResponse = evt.GetObject("response");
-            status = completedResponse?.GetString("status") ?? status;
+            status = completedResponse?.GetString("status")
+                ?? (type == "response.incomplete" ? "incomplete" : status);
             return;
         }
 
