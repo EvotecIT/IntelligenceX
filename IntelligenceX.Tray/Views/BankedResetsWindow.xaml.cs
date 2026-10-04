@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using IntelligenceX.Telemetry.Limits;
+using IntelligenceX.OpenAI.Usage;
 
 namespace IntelligenceX.Tray.Views;
 
@@ -20,6 +21,27 @@ public partial class BankedResetsWindow : Window {
         _account = account;
         _store = store ?? new BankedResetInventoryStore();
         AccountText.Text = account.AccountLabel ?? account.AccountId;
+        var resets = account.ResetCredits;
+        ProviderResetsText.Text = (resets is null ? "Reset credits: not reported"
+            : (resets.AvailableCount?.ToString(CultureInfo.CurrentCulture) ?? "Unknown") + " available · "
+              + (resets.ApplicableAvailableCount?.ToString(CultureInfo.CurrentCulture) ?? "Unknown") + " applicable now"
+              + (resets.DetailsAvailable ? "" : Environment.NewLine + "Grant expiry details unavailable"))
+            + Environment.NewLine + "Checked: " + ChatGptResetCreditsFormatter.FormatTimestamp(account.RetrievedAtUtc)
+            + (account.ResetCreditsError is null ? "" : Environment.NewLine + account.ResetCreditsError);
+        ProviderCreditsList.ItemsSource = resets?.Credits.OrderBy(static c => c.ExpiresAt ?? DateTimeOffset.MaxValue).Select(static credit => new {
+            Title = (credit.Title ?? credit.ResetType ?? "Reset") + " · " + (credit.Status ?? "status unknown"),
+            Expiry = "Expires: " + ChatGptResetCreditsFormatter.FormatTimestamp(credit.ExpiresAt),
+            Granted = "Granted: " + ChatGptResetCreditsFormatter.FormatTimestamp(credit.GrantedAt)
+                + (credit.RedeemedAt.HasValue ? Environment.NewLine + "Redeemed: " + ChatGptResetCreditsFormatter.FormatTimestamp(credit.RedeemedAt) : "")
+                + (credit.IsSupportedByPlan == false ? Environment.NewLine + "Not supported by the current plan" : "")
+        }).ToArray();
+        ProviderHistoryText.Text = resets?.HistoryAvailable == true
+            ? "Retained history: " + ChatGptResetCreditsFormatter.FormatTimestamp(resets.HistoryWindowStart) + " through "
+              + ChatGptResetCreditsFormatter.FormatTimestamp(resets.HistoryAsOf) + Environment.NewLine
+              + string.Join(Environment.NewLine, resets.History.Select(static item => (item.Kind ?? "Unknown event") + " · "
+                  + ChatGptResetCreditsFormatter.FormatTimestamp(item.OccurredAt)))
+              + (resets.HistoryNextCursor is null ? "" : Environment.NewLine + "More history is available from the provider.")
+            : "Reset history unavailable";
         Loaded += async (_, _) => { await RunAsync(null); if (!_isClosed) _evidenceTimer.Start(); };
         _evidenceTimer.Tick += (_, _) => { if (IsVisible && ContentPanel.IsEnabled) RenderEvidence(); };
         Closed += (_, _) => { _isClosed = true; _evidenceTimer.Stop(); };
@@ -99,7 +121,7 @@ public partial class BankedResetsWindow : Window {
             .Select(c => new CreditRow(c, now)).ToArray();
         CreditList.ItemsSource = rows;
         CreditList.SelectedItem = rows.FirstOrDefault(row => row.Credit.Id == selectedId);
-        AdviceText.Text = BankedResetPlanner.Build(_providerId, _account, _credits, now,
+        AdviceText.Text = "Manual inventory: " + BankedResetPlanner.Build(_providerId, _account, _credits, now,
             ProviderLimitSnapshotService.MaximumRecommendedReadingAge).Summary;
     }
 

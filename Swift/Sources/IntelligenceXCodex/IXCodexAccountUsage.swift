@@ -73,24 +73,27 @@ public struct IXCodexAccountUsage: Sendable, Equatable {
     public let rateLimits: [IXCodexRateLimit]
     public let credits: IXCodexCredits?
     public let availableResetCredits: Int?
+    public let resetCredits: IXCodexResetCredits?
 
     public init(
         plan: String? = nil,
         rateLimits: [IXCodexRateLimit] = [],
         credits: IXCodexCredits? = nil,
-        availableResetCredits: Int? = nil
+        availableResetCredits: Int? = nil,
+        resetCredits: IXCodexResetCredits? = nil
     ) {
         self.plan = plan
         self.rateLimits = rateLimits
         self.credits = credits
         self.availableResetCredits = availableResetCredits
+        self.resetCredits = resetCredits
     }
 
     public var primaryRateLimit: IXCodexRateLimit? {
         rateLimits.first(where: { $0.id == "codex" }) ?? rateLimits.first
     }
 
-    static func decode(_ data: Data) throws -> IXCodexAccountUsage {
+    static func decode(_ data: Data, resetDetails: Data? = nil, resetHistory: Data? = nil) throws -> IXCodexAccountUsage {
         let value = try IXJSONValue.decode(data)
         var limits: [IXCodexRateLimit] = [
             rateLimit(
@@ -128,13 +131,13 @@ public struct IXCodexAccountUsage: Sendable, Equatable {
             credits = nil
         }
 
+        let resets = IXCodexResetCredits.decode(summary: value["rate_limit_reset_credits"], details: resetDetails, history: resetHistory)
         return IXCodexAccountUsage(
             plan: value["plan_type"]?.stringValue,
             rateLimits: limits,
             credits: credits,
-            availableResetCredits: value["rate_limit_reset_credits"]?[
-                "available_count"
-            ]?.numberValue.map(Int.init)
+            availableResetCredits: resets?.availableCount,
+            resetCredits: resets
         )
     }
 

@@ -34,6 +34,10 @@ internal static partial class Program {
         failed += Run("OpenAI model catalog prefers runnable slug", TestOpenAiModelCatalogPrefersRunnableSlug);
         failed += Run("Native Codex model catalog excludes hidden entries", TestNativeCodexModelCatalogExcludesHiddenEntries);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
+        failed += Run("Reset grants preserve exact times and unknown evidence", TestResetCreditsPreserveExactTimesAndUnknownEvidence);
+#if !NET472
+        failed += Run("Reset grants remain independent across five accounts", TestResetCreditsFetchIndependentlyForFiveAccounts);
+#endif
         failed += Run("ChatGPT usage parse ignores legacy code review rate limit",
             TestChatGptUsageParseIgnoresLegacyCodeReviewRateLimit);
         failed += Run("ChatGPT daily token breakdown parse", TestChatGptDailyTokenBreakdownParse);

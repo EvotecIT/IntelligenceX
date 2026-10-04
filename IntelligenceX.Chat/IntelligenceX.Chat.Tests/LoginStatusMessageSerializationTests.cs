@@ -36,7 +36,17 @@ public sealed class LoginStatusMessageSerializationTests {
                     Balance = 123.45d,
                     ApproxLocalMessages = new[] { 10, 20 },
                     ApproxCloudMessages = new[] { 30, 40 }
-                }
+                },
+                ResetCredits = new NativeResetCreditsDto {
+                    AvailableCount = 3, ApplicableAvailableCount = 0, DetailsAvailable = true,
+                    Credits = new[] { new NativeResetCreditDto {
+                        Id = "grant", Status = "available", ExpiresAt = DateTimeOffset.Parse("2026-10-05T04:18:41.901758Z")
+                    } },
+                    HistoryAvailable = true,
+                    History = new[] { new NativeResetCreditEventDto { Kind = "used", OccurredAt = DateTimeOffset.Parse("2026-10-03T22:18:02.243412Z") } },
+                    HistoryNextCursor = "next-page"
+                },
+                ResetCreditsError = "History may be partial"
             }
         };
 
@@ -54,5 +64,21 @@ public sealed class LoginStatusMessageSerializationTests {
         Assert.NotNull(typed.NativeUsage.Credits);
         Assert.Equal(123.45d, typed.NativeUsage.Credits!.Balance);
         Assert.Equal(new[] { 10, 20 }, typed.NativeUsage.Credits.ApproxLocalMessages);
+        Assert.Equal(3, typed.NativeUsage.ResetCredits!.AvailableCount);
+        Assert.Equal(0, typed.NativeUsage.ResetCredits.ApplicableAvailableCount);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-05T04:18:41.901758Z"), typed.NativeUsage.ResetCredits.Credits[0].ExpiresAt);
+        Assert.Equal("used", typed.NativeUsage.ResetCredits.History[0].Kind);
+        Assert.Equal("next-page", typed.NativeUsage.ResetCredits.HistoryNextCursor);
+        Assert.Equal("History may be partial", typed.NativeUsage.ResetCreditsError);
+
+        // The WebView host wraps this projection using its default serializer.
+        var slotJson = JsonSerializer.Serialize(new {
+            providerUsage = JsonSerializer.SerializeToElement(typed.NativeUsage, ChatServiceJsonContext.Default.NativeUsageSnapshotDto)
+        });
+        using var slotDocument = JsonDocument.Parse(slotJson);
+        var providerUsage = slotDocument.RootElement.GetProperty("providerUsage");
+        Assert.Equal(123.45d, providerUsage.GetProperty("credits").GetProperty("balance").GetDouble());
+        Assert.Equal("live", providerUsage.GetProperty("source").GetString());
+        Assert.Contains(".901758", providerUsage.GetProperty("resetCredits").GetProperty("credits")[0].GetProperty("expiresAt").GetString());
     }
 }

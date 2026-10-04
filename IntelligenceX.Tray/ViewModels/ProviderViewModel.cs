@@ -1552,26 +1552,8 @@ public sealed partial class ProviderViewModel : ViewModelBase {
         };
     }
 
-    private static string FormatResetText(DateTimeOffset? resetsAt) {
-        if (!resetsAt.HasValue) {
-            return "Reset unknown";
-        }
-
-        var local = resetsAt.Value.ToLocalTime();
-        var now = DateTimeOffset.Now;
-        var remaining = local - now;
-        if (remaining.TotalMinutes > 0 && remaining.TotalHours < 24) {
-            if (remaining.TotalHours >= 1) {
-                return "Resets in "
-                       + Math.Floor(remaining.TotalHours).ToString(CultureInfo.InvariantCulture)
-                       + "h " + remaining.Minutes.ToString(CultureInfo.InvariantCulture) + "m";
-            }
-
-            return "Resets in " + Math.Max(1, remaining.Minutes).ToString(CultureInfo.InvariantCulture) + "m";
-        }
-
-        return "Resets " + local.ToString("MMM d HH:mm", CultureInfo.CurrentCulture);
-    }
+    private static string FormatResetText(DateTimeOffset? resetsAt) =>
+        resetsAt.HasValue ? "Resets " + IntelligenceX.OpenAI.Usage.ChatGptResetCreditsFormatter.FormatTimestamp(resetsAt) : "Reset unknown";
 
     private void RebuildStaticWindows() {
         var today = DateTime.Now.Date;
