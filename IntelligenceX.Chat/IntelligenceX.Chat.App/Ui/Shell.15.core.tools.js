@@ -2286,10 +2286,10 @@
         var providerUsage = selectedSlotState.providerUsage;
         if (providerUsage) {
           var providerDate = function(value) {
-            if (!value) return "Not reported";
+            if (value == null) return "Not reported";
             var date = new Date(value);
             return Number.isFinite(date.getTime())
-              ? date.toLocaleString(undefined, { timeZoneName: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) + " (" + date.toISOString() + ")"
+              ? date.toLocaleString(undefined, { timeZoneName: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) + " (" + (typeof value === "string" ? value : date.toISOString()) + ")"
               : "Not reported";
           };
           hintParts.push("Provider reading: " + (providerUsage.source || "unknown source") + " · " + providerDate(providerUsage.retrievedAtUtc) + ".");

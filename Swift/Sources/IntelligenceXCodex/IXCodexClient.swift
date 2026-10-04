@@ -205,9 +205,8 @@ public actor IXCodexClient {
         for path in ["rate-limit-reset-credits", "rate-limit-reset-credits/history"] {
             var resetRequest = request
             resetRequest.url = configuration.accountUsageURL.deletingLastPathComponent().appendingPathComponent(path)
-            resetRequest.timeoutInterval = 10
             do {
-                let result = try await httpClient.send(resetRequest)
+                let result = try await httpClient.send(resetRequest, timeoutInterval: 10)
                 resetPayloads.append((200..<300).contains(result.statusCode) ? result.body : nil)
             } catch {
                 try Task.checkCancellation()

@@ -70,5 +70,15 @@ public sealed class LoginStatusMessageSerializationTests {
         Assert.Equal("used", typed.NativeUsage.ResetCredits.History[0].Kind);
         Assert.Equal("next-page", typed.NativeUsage.ResetCredits.HistoryNextCursor);
         Assert.Equal("History may be partial", typed.NativeUsage.ResetCreditsError);
+
+        // The WebView host wraps this projection using its default serializer.
+        var slotJson = JsonSerializer.Serialize(new {
+            providerUsage = JsonSerializer.SerializeToElement(typed.NativeUsage, ChatServiceJsonContext.Default.NativeUsageSnapshotDto)
+        });
+        using var slotDocument = JsonDocument.Parse(slotJson);
+        var providerUsage = slotDocument.RootElement.GetProperty("providerUsage");
+        Assert.Equal(123.45d, providerUsage.GetProperty("credits").GetProperty("balance").GetDouble());
+        Assert.Equal("live", providerUsage.GetProperty("source").GetString());
+        Assert.Contains(".901758", providerUsage.GetProperty("resetCredits").GetProperty("credits")[0].GetProperty("expiresAt").GetString());
     }
 }

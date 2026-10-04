@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.Json;
+using IntelligenceX.Chat.Abstractions.Serialization;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
@@ -232,7 +234,9 @@ public sealed partial class MainWindow : Window {
                     planType = planType ?? string.Empty,
                     usedPercent,
                     limitReached,
-                    providerUsage = _nativeProviderUsageByAccountId.TryGetValue(accountId, out var providerUsage) ? providerUsage : null
+                    providerUsage = _nativeProviderUsageByAccountId.TryGetValue(accountId, out var providerUsage)
+                        ? JsonSerializer.SerializeToElement(providerUsage, ChatServiceJsonContext.Default.NativeUsageSnapshotDto)
+                        : (JsonElement?)null
                 };
             }
 

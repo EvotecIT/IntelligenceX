@@ -216,7 +216,8 @@ function formatUsageTimestamp(value) {
   if (value === null || value === undefined) return 'Not reported';
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return 'Not reported';
-  return `${date.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })} (${date.toISOString()})`;
+  const exact = typeof value === 'string' ? value : date.toISOString();
+  return `${date.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' })} (${exact})`;
 }
 
 // ── Repo data ──

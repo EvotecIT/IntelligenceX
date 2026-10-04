@@ -3,6 +3,26 @@ import Foundation
 import XCTest
 
 final class IXCodexAccountUsageTests: XCTestCase {
+    func testOptionalResetTimeoutPreservesSuccessfulUsage() async throws {
+        let configuration = IXCodexConfiguration(accountUsageURL: URL(string: "https://example.test/wham/usage")!)
+        let session = IXCodexAuthSession(configuration: configuration, credentialStore: IXMemoryCodexCredentialStore(bundle: .init(
+            accessToken: "access", refreshToken: "refresh", expiresAt: .distantFuture, accountID: "account-123"
+        )))
+        let client = IXCodexClient(configuration: configuration, authSession: session, httpClient: IXClosureHTTPClient { request in
+            if request.url?.path.hasSuffix("/history") == true { return .json(200, ["events": []]) }
+            if request.url?.path.hasSuffix("/rate-limit-reset-credits") == true {
+                // This custom transport ignores URLRequest.timeoutInterval.
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+                return .json(200, ["credits": []])
+            }
+            return .json(200, ["plan_type": "pro", "rate_limit_reset_credits": ["available_count": 3]])
+        })
+        let usage = try await IXElapsedDeadline.run(timeoutInterval: 15) { try await client.accountUsage() }
+        XCTAssertEqual(usage.plan, "pro")
+        XCTAssertEqual(usage.availableResetCredits, 3)
+        XCTAssertFalse(try XCTUnwrap(usage.resetCredits).detailsAvailable)
+        XCTAssertTrue(try XCTUnwrap(usage.resetCredits).historyAvailable)
+    }
     func testOptionalResetFailurePreservesUsageAndAccountHeaders() async throws {
         let recorder = AccountUsageRequestRecorder()
         let configuration = IXCodexConfiguration(accountUsageURL: URL(string: "https://example.test/wham/usage")!)
