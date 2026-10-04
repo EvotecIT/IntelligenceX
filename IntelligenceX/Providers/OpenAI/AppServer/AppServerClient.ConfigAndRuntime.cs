@@ -326,59 +326,26 @@ public sealed partial class AppServerClient : IDisposable {
         return _rpc.NotifyAsync(method, parameters, cancellationToken);
     }
 
-    /// <summary>
-    /// Waits for a login completion notification.
-    /// </summary>
-    /// <param name="loginId">Optional login id to match.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A task that completes when the operation finishes.</returns>
-    public Task WaitForLoginCompletionAsync(string? loginId = null, CancellationToken cancellationToken = default) {
-        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void Handler(object? sender, JsonRpcNotificationEventArgs args) {
-            if (!string.Equals(args.Method, "account/login/completed", StringComparison.Ordinal)) {
-                return;
-            }
-            if (loginId is null) {
-                tcs.TrySetResult(null);
-                return;
-            }
-            var id = args.Params?.AsObject()?.GetString("loginId");
-            if (string.Equals(id, loginId, StringComparison.Ordinal)) {
-                tcs.TrySetResult(null);
-            }
-        }
-
-        NotificationReceived += Handler;
-        if (cancellationToken.CanBeCanceled) {
-            cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
-        }
-
-        return tcs.Task.ContinueWith(task => {
-            NotificationReceived -= Handler;
-            if (IsTaskSuccessful(task)) {
-                LoginCompleted?.Invoke(this, new LoginEventArgs("chatgpt", loginId));
-            }
-            return task;
-        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
-    }
-
     private async Task SendLineAsync(string line) {
         await _stdin.WriteLineAsync(line).ConfigureAwait(false);
     }
 
     private async Task ReadLoopAsync() {
+        Exception? failure = null;
         try {
             while (!_cts.IsCancellationRequested) {
                 var line = await _stdout.ReadLineAsync().ConfigureAwait(false);
                 if (line is null) {
                     break;
                 }
-                ProtocolLineReceived?.Invoke(this, line);
+                ObserverDispatcher.Raise(ProtocolLineReceived, this, line);
                 _rpc.HandleLine(line);
             }
         } catch (Exception ex) {
-            ProtocolError?.Invoke(this, ex);
+            failure = ex;
+            ObserverDispatcher.Raise(ProtocolError, this, ex);
+        } finally {
+            CloseConnection(failure ?? new EndOfStreamException("The app-server closed its output before the operation completed."));
         }
     }
 
@@ -389,10 +356,10 @@ public sealed partial class AppServerClient : IDisposable {
                 if (line is null) {
                     break;
                 }
-                StandardErrorReceived?.Invoke(this, line);
+                ObserverDispatcher.Raise(StandardErrorReceived, this, line);
             }
         } catch (Exception ex) {
-            ProtocolError?.Invoke(this, ex);
+            ObserverDispatcher.Raise(ProtocolError, this, ex);
         }
     }
 
@@ -437,16 +404,11 @@ public sealed partial class AppServerClient : IDisposable {
     /// Disposes the app-server client and underlying process.
     /// </summary>
     public void Dispose() {
-        if (_disposed) {
-            return;
-        }
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
+        CloseConnection(new ObjectDisposedException(nameof(AppServerClient)));
         _cts.Cancel();
-        TryWait(_readerTask, _shutdownTimeout);
-        TryWait(_stderrTask, _shutdownTimeout);
-        _rpc.Dispose();
-
+        // Stop the process before waiting: synchronous pipe reads do not observe _cts.
         try {
             if (!_process.HasExited) {
                 _process.Kill();
@@ -455,6 +417,9 @@ public sealed partial class AppServerClient : IDisposable {
             // Ignore process shutdown errors.
         }
 
+        TryWait(_readerTask, _shutdownTimeout);
+        TryWait(_stderrTask, _shutdownTimeout);
+        _rpc.Dispose();
         _process.Dispose();
         _cts.Dispose();
         _stdin.Dispose();

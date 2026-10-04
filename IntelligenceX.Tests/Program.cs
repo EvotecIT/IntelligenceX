@@ -1,8 +1,15 @@
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
-    private static int Main() {
+    private static int Main(string[] args) {
+        if (args.Length == 2 && args[0] == "--app-server-fixture") {
+            return RunAppServerFixture(args[1]);
+        }
+        if (args.Length == 1 && args[0] == "--app-server-tests") {
+            return RunAppServerCompletionTests();
+        }
         var failed = 0;
+        failed += RunAppServerCompletionTests();
         failed += Run("Desktop companion resolves only paired bundle", TestDesktopCompanionResolvesOnlyPairedBundle);
         failed += Run("Parse basic object", TestParseBasicObject);
         failed += Run("Serialize roundtrip", TestSerializeRoundtrip);
