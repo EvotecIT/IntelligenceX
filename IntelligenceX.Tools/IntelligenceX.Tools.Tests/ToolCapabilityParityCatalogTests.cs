@@ -107,6 +107,17 @@ public sealed class ToolCapabilityParityCatalogTests {
     }
 
     [Fact]
+    public void EventViewerXExpectations_AllResolveAgainstCurrentEngine() {
+        var descriptors = ToolCapabilityParityCatalog.EventViewerXReadOnlyExpectations
+            .Concat(ToolCapabilityParityCatalog.EventViewerXGovernedWriteExpectations).ToArray();
+        var coverage = ToolCapabilityParityRuntime.EvaluateAvailableExpectations(Array.Empty<ToolDefinition>(), descriptors);
+
+        Assert.True(coverage.SourceAvailable);
+        Assert.Equal(descriptors.Select(static descriptor => descriptor.CapabilityId).OrderBy(static id => id),
+            coverage.ExpectedCapabilities.OrderBy(static id => id));
+    }
+
+    [Fact]
     public void EventViewerXGovernedWriteExpectations_ShouldIncludeClassicLogCleanup() {
         Assert.Contains(
             ToolCapabilityParityCatalog.EventViewerXGovernedWriteExpectations,
