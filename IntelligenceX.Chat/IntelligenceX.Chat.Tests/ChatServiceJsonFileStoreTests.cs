@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using IntelligenceX.Chat.Abstractions.Storage;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Service.Persistence;
@@ -86,16 +88,16 @@ public sealed class ChatServiceJsonFileStoreTests {
             var path = Path.Combine(root, "state.json");
             var expected = new TestStore { Version = 2, Value = "ready" };
 
-            ChatServiceJsonFileStore.Write(
+            Assert.True(ChatServiceJsonFileStore.Write(
                 path,
                 expected,
                 static value => JsonSerializer.Serialize(value),
-                "Test store");
-            ChatServiceJsonFileStore.Write(
+                "Test store"));
+            Assert.True(ChatServiceJsonFileStore.Write(
                 path,
                 new TestStore { Version = 2, Value = "updated" },
                 static value => JsonSerializer.Serialize(value),
-                "Test store");
+                "Test store"));
 
             var result = ChatServiceJsonFileStore.Read<TestStore>(
                 path,
@@ -108,6 +110,46 @@ public sealed class ChatServiceJsonFileStoreTests {
             Assert.Equal(ChatServiceJsonFileReadState.Loaded, result.State);
             Assert.NotNull(result.Value);
             Assert.Equal("updated", result.Value.Value);
+            Assert.Empty(Directory.GetFiles(root, "*.tmp"));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Write_OnWindowsRestrictsNewAndReplacedFilesToCurrentUser() {
+        if (!OperatingSystem.IsWindows()) {
+            return;
+        }
+
+        var root = CreateRoot();
+        try {
+            var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+            var directory = new DirectoryInfo(root);
+            var directorySecurity = directory.GetAccessControl();
+            directorySecurity.AddAccessRule(new FileSystemAccessRule(everyone, FileSystemRights.Read,
+                InheritanceFlags.ObjectInherit | InheritanceFlags.ContainerInherit, PropagationFlags.None, AccessControlType.Allow));
+            directory.SetAccessControl(directorySecurity);
+            var path = Path.Combine(root, "state.json");
+
+            foreach (var content in new[] { "first", "replacement" }) {
+                ChatJsonFileStore.Write(path, content);
+                Assert.Equal(content, ChatJsonFileStore.Read(path, 1024).Json);
+                var security = new FileInfo(path).GetAccessControl();
+                Assert.True(security.AreAccessRulesProtected);
+                var currentUser = WindowsIdentity.GetCurrent().User!;
+                Assert.Equal(currentUser, security.GetOwner(typeof(SecurityIdentifier)));
+                var rule = Assert.Single(security.GetAccessRules(includeExplicit: true, includeInherited: true,
+                    typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>());
+                Assert.Equal(currentUser, rule.IdentityReference);
+                Assert.Equal(AccessControlType.Allow, rule.AccessControlType);
+                Assert.Equal(FileSystemRights.FullControl, rule.FileSystemRights);
+                Assert.False(rule.IsInherited);
+
+                // Exercise replacement of a destination that has broader permissions than its private staging file.
+                security.AddAccessRule(new FileSystemAccessRule(everyone, FileSystemRights.Read, AccessControlType.Allow));
+                new FileInfo(path).SetAccessControl(security);
+            }
             Assert.Empty(Directory.GetFiles(root, "*.tmp"));
         } finally {
             Directory.Delete(root, recursive: true);
