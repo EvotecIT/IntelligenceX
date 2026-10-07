@@ -100,6 +100,8 @@
                                           VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}">
                                     <StackPanel Margin="0,6,0,0" MaxWidth="300">
                                         <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding AccountAnalyticsText}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                   Visibility="{Binding HasAccountAnalytics, Converter={StaticResource VisibleWhenTrue}}" />
                                         <TextBlock Text="{Binding DetailText}" TextWrapping="Wrap" Margin="0,4,0,0"
                                                    Visibility="{Binding HasDetailText, Converter={StaticResource VisibleWhenTrue}}" />
                                     </StackPanel>

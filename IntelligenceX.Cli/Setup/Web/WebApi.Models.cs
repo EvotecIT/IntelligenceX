@@ -261,6 +261,8 @@ internal sealed partial class WebApi {
         public UsageCredits? Credits { get; set; }
         public IntelligenceX.OpenAI.Usage.ChatGptResetCredits? ResetCredits { get; set; }
         public string? ResetCreditsError { get; set; }
+        public ChatGptAccountAnalytics? AccountAnalytics { get; set; }
+        public string? AccountAnalyticsSummary { get; set; }
 
         public static UsageSnapshot From(ChatGptUsageSnapshot snapshot) {
             return new UsageSnapshot {
@@ -270,7 +272,9 @@ internal sealed partial class WebApi {
                 RateLimit = UsageRateLimit.From(snapshot.RateLimit),
                 Credits = UsageCredits.From(snapshot.Credits),
                 ResetCredits = snapshot.ResetCredits,
-                ResetCreditsError = snapshot.ResetCreditsError
+                ResetCreditsError = snapshot.ResetCreditsError,
+                AccountAnalytics = snapshot.AccountAnalytics,
+                AccountAnalyticsSummary = ChatGptAccountAnalyticsFormatter.Format(snapshot.AccountAnalytics)
             };
         }
     }

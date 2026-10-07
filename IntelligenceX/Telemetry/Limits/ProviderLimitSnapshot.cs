@@ -60,6 +60,8 @@ public sealed class ProviderLimitAccountSnapshot {
     public ChatGptResetCredits? ResetCredits { get; internal set; }
     /// <summary>Safe availability message for optional reset information.</summary>
     public string? ResetCreditsError { get; internal set; }
+    /// <summary>Provider account-wide measurements, separate from machine-local token telemetry.</summary>
+    public ChatGptAccountAnalytics? AccountAnalytics { get; internal set; }
     public ProviderLimitAccountSnapshot(
         string? accountId,
         string? accountLabel,
@@ -88,7 +90,7 @@ public sealed class ProviderLimitAccountSnapshot {
     public DateTimeOffset RetrievedAtUtc { get; }
     public bool IsSelected { get; }
     /// <summary>Whether any usable provider evidence was reported; this does not establish window capacity.</summary>
-    public bool IsAvailable => Windows.Count > 0 || CreditBalance.HasValue
+    public bool IsAvailable => Windows.Count > 0 || CreditBalance.HasValue || AccountAnalytics?.IsAvailable == true
         || ResetCredits is { AvailableCount: not null } or { ApplicableAvailableCount: not null }
             or { DetailsAvailable: true } or { HistoryAvailable: true };
 }

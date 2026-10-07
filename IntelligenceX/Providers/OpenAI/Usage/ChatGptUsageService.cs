@@ -10,7 +10,7 @@ namespace IntelligenceX.OpenAI.Usage;
 /// <summary>
 /// Retrieves ChatGPT usage, rate limits, and credit usage events.
 /// </summary>
-public sealed class ChatGptUsageService : IDisposable {
+public sealed partial class ChatGptUsageService : IDisposable {
     private readonly OpenAINativeOptions _options;
     private readonly OpenAINativeAuthManager _auth;
     private readonly ChatGptUsageClient _client = new();
@@ -72,7 +72,8 @@ public sealed class ChatGptUsageService : IDisposable {
             events = await GetCreditUsageEventsInternalAsync(cancellationToken).ConfigureAwait(false);
         }
         if (includeDailyBreakdown) {
-            dailyBreakdown = await GetDailyTokenUsageBreakdownInternalAsync(cancellationToken).ConfigureAwait(false);
+            dailyBreakdown = snapshot.AccountAnalytics?.DailyUsage
+                ?? await GetDailyTokenUsageBreakdownInternalAsync(cancellationToken).ConfigureAwait(false);
         }
         return new ChatGptUsageReport(snapshot, events, dailyBreakdown);
     }

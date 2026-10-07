@@ -14,6 +14,28 @@ namespace IntelligenceX.Chat.Tests;
 /// </summary>
 public sealed class ChatContractsProtocolStabilityTests {
     [Fact]
+    public void LoginStatus_AccountAnalytics_RoundTripsThroughGeneratedProtocol() {
+        var analytics = IntelligenceX.OpenAI.Usage.ChatGptAccountAnalytics.FromJson(
+            IntelligenceX.Json.JsonLite.Parse("""
+                {"profile":{"stats":{"lifetime_tokens":9007199254740993}},
+                 "plan_history":{"coverage_complete":true,"approximate":null,"periods":[]},
+                 "future_measurement":{"value":42}}
+                """)!.AsObject()!);
+        ChatServiceMessage message = new LoginStatusMessage {
+            Kind = ChatServiceMessageKind.Response,
+            IsAuthenticated = true,
+            NativeUsage = new NativeUsageSnapshotDto { AccountAnalytics = analytics }
+        };
+        var json = JsonSerializer.Serialize(message, ChatServiceJsonContext.Default.ChatServiceMessage);
+        var parsed = Assert.IsType<LoginStatusMessage>(JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceMessage));
+        var restored = Assert.IsType<IntelligenceX.OpenAI.Usage.ChatGptAccountAnalytics>(parsed.NativeUsage!.AccountAnalytics);
+        Assert.Equal(9007199254740993L, restored.Profile!.LifetimeTokens);
+        Assert.Null(restored.PlanHistory!.Approximate);
+        Assert.Equal(42, restored.ToJson().GetObject("future_measurement")!.GetInt64("value"));
+        Assert.Contains("\"lifetime_tokens\":9007199254740993", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ChatStatusCodes_ExposeStableWireTokens() {
         Assert.Equal("accepted", ChatStatusCodes.Accepted);
         Assert.Equal("thinking", ChatStatusCodes.Thinking);

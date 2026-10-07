@@ -99,7 +99,7 @@ public sealed partial class ProviderLimitSnapshotService {
                     presentation.PlanLabel, presentation.Windows, presentation.Summary, presentation.DetailMessage,
                     DateTimeOffset.UtcNow, isSelected) {
                     CreditBalance = snapshot.Credits?.Balance,
-                    ResetCredits = snapshot.ResetCredits, ResetCreditsError = snapshot.ResetCreditsError };
+                    ResetCredits = snapshot.ResetCredits, ResetCreditsError = snapshot.ResetCreditsError, AccountAnalytics = snapshot.AccountAnalytics };
             } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
                 throw;
             } catch (Exception ex) {
@@ -161,7 +161,7 @@ public sealed partial class ProviderLimitSnapshotService {
         var accounts = snapshot.Accounts.Select(account => new ProviderLimitAccountSnapshot(
             account.AccountId, account.AccountLabel, account.PlanLabel, account.Windows,
             account.Summary, account.DetailMessage, account.RetrievedAtUtc) {
-            CreditBalance = account.CreditBalance, ResetCredits = account.ResetCredits, ResetCreditsError = account.ResetCreditsError }).ToArray();
+            CreditBalance = account.CreditBalance, ResetCredits = account.ResetCredits, ResetCreditsError = account.ResetCreditsError, AccountAnalytics = account.AccountAnalytics }).ToArray();
         return new ProviderLimitSnapshot(snapshot.ProviderId, snapshot.DisplayName, snapshot.SourceLabel,
             null, null, Array.Empty<ProviderLimitWindow>(), null,
             "The current Codex account changed while limits were read. Saved-account readings are shown; refresh to confirm the current account.",
@@ -189,7 +189,7 @@ public sealed partial class ProviderLimitSnapshotService {
                 || string.Equals(id, selectedAccountId, StringComparison.OrdinalIgnoreCase);
             result.Add(new ProviderLimitAccountSnapshot(id, preferred.AccountLabel, preferred.PlanLabel,
                 preferred.Windows, preferred.Summary, preferred.DetailMessage, preferred.RetrievedAtUtc, selected) {
-                CreditBalance = preferred.CreditBalance, ResetCredits = preferred.ResetCredits, ResetCreditsError = preferred.ResetCreditsError });
+                CreditBalance = preferred.CreditBalance, ResetCredits = preferred.ResetCredits, ResetCreditsError = preferred.ResetCreditsError, AccountAnalytics = preferred.AccountAnalytics });
         }
         // Unresolved credentials cannot be coalesced by their display label. Give
         // otherwise identical labels a stable per-scan suffix for advisory/card matching.
@@ -211,11 +211,11 @@ public sealed partial class ProviderLimitSnapshotService {
                 } while (originalLabels.Contains(candidate) || !usedLabels.Add(candidate));
                 result[i] = new ProviderLimitAccountSnapshot(row.AccountId, candidate, row.PlanLabel,
                     row.Windows, row.Summary, row.DetailMessage, row.RetrievedAtUtc, row.IsSelected) {
-                    CreditBalance = row.CreditBalance, ResetCredits = row.ResetCredits, ResetCreditsError = row.ResetCreditsError };
+                    CreditBalance = row.CreditBalance, ResetCredits = row.ResetCredits, ResetCreditsError = row.ResetCreditsError, AccountAnalytics = row.AccountAnalytics };
             } else if (row.AccountLabel is null) {
                 result[i] = new ProviderLimitAccountSnapshot(row.AccountId, label, row.PlanLabel,
                     row.Windows, row.Summary, row.DetailMessage, row.RetrievedAtUtc, row.IsSelected) {
-                    CreditBalance = row.CreditBalance, ResetCredits = row.ResetCredits, ResetCreditsError = row.ResetCreditsError };
+                    CreditBalance = row.CreditBalance, ResetCredits = row.ResetCredits, ResetCreditsError = row.ResetCreditsError, AccountAnalytics = row.AccountAnalytics };
             }
         }
         return result;

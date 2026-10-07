@@ -140,6 +140,10 @@ public sealed record NativeUsageSnapshotDto {
     public NativeResetCreditsDto? ResetCredits { get; init; }
     /// <summary>Safe availability message for optional reset reads.</summary>
     public string? ResetCreditsError { get; init; }
+    /// <summary>Provider account-wide measurements, independent of machine-local session logs.</summary>
+    public IntelligenceX.OpenAI.Usage.ChatGptAccountAnalytics? AccountAnalytics { get; init; }
+    /// <summary>Shared presentation of provider measurements and incomplete accounting.</summary>
+    public string? AccountAnalyticsSummary { get; init; }
     /// <summary>
     /// UTC timestamp when this snapshot was collected.
     /// </summary>
