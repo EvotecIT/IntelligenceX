@@ -42,10 +42,8 @@ internal sealed partial class ChatGptUsageClient {
                     var recognized = requiredField == "stats" ? data?.GetObject(requiredField) is not null : data?.GetArray(requiredField) is not null;
                     if (recognized) return (name, data, null);
                 }
-            } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
-                statusCode = null;
-            } catch (Exception ex) when (ex is HttpRequestException or FormatException or InvalidOperationException) {
-                statusCode = null;
+            } catch (Exception) when (!cancellationToken.IsCancellationRequested) {
+                // Optional endpoint failures must not discard other measurements or an already received HTTP status.
             }
             cancellationToken.ThrowIfCancellationRequested();
             return (name, null, new JsonObject().Add("endpoint", name).Add("status_code", statusCode.HasValue ? JsonValue.From(statusCode.Value) : JsonValue.Null)

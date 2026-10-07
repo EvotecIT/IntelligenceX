@@ -67,9 +67,8 @@ internal sealed partial class ChatGptUsageClient : IDisposable {
             var payload = await ReadAsStringAsync(response.Content, timeoutToken).ConfigureAwait(false);
             var result = JsonLite.Parse(payload)?.AsObject();
             return result?.GetArray(arrayName) is null ? null : result;
-        } catch (OperationCanceledException) when (!callerToken.IsCancellationRequested) {
-            return null;
-        } catch (Exception ex) when (ex is HttpRequestException or FormatException or InvalidOperationException) {
+        } catch (Exception) when (!callerToken.IsCancellationRequested) {
+            // Reset enrichment has the same optional failure boundary as account analytics.
             return null;
         }
     }

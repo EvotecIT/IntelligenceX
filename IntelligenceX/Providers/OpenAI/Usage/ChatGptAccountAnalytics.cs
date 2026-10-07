@@ -46,7 +46,7 @@ public sealed class ChatGptAnalyticsError {
     }
     /// <summary>Endpoint name, without account or authentication details.</summary>
     public string? Endpoint { get; }
-    /// <summary>HTTP status, or null for a timeout, transport or payload failure.</summary>
+    /// <summary>HTTP status when a response was received; null when no response status is available.</summary>
     public long? StatusCode { get; }
     /// <summary>Safe description of the unavailable measurement.</summary>
     public string? Message { get; }

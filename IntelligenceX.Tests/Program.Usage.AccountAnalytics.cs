@@ -101,6 +101,10 @@ internal static partial class Program {
                 AssertEqual(account.AccountId == "3" ? (long?)null : long.Parse(account.AccountId!) * 1000,
                     analytics.Profile?.LifetimeTokens, "profile identity isolated");
                 AssertEqual(account.AccountId == "4", analytics.PlanHistory is null, "invalid endpoint does not hide other measurements");
+                if (account.AccountId == "3")
+                    AssertEqual(403L, analytics.Errors.Single(error => error.Endpoint == "profile").StatusCode, "HTTP failures retain their response status");
+                if (account.AccountId == "4")
+                    AssertEqual(200L, analytics.Errors.Single(error => error.Endpoint == "plan_history").StatusCode, "malformed payloads retain the received HTTP status");
                 AssertEqual(false, JsonLite.Serialize(JsonValue.From(analytics.ToJson())).Contains("private-provider-response"), "raw failure bodies excluded");
             }
             var deselected = ProviderLimitSnapshotService.WithoutCurrentCodexAccount(snapshot);
@@ -112,10 +116,15 @@ internal static partial class Program {
             };
             AssertEqual(true, analyticsOnly.IsAvailable, "analytics-only evidence remains usable");
             AssertEqual(false, File.Exists(Path.Combine(directory, "auth.json")), "reads do not export a Codex login");
+            server.Dispose();
+            using var usage = new ChatGptUsageService(options);
+            var disconnected = usage.GetAccountAnalyticsAsync().GetAwaiter().GetResult();
+            AssertEqual(false, disconnected.IsAvailable, "transport failure does not invent measurements");
+            AssertEqual(3, disconnected.Errors.Count, "each unavailable endpoint has an independent error");
+            AssertEqual(true, disconnected.Errors.All(error => error.StatusCode is null), "transport errors without a response have no HTTP status");
             using var canceled = new CancellationTokenSource();
             canceled.Cancel();
             try {
-                using var usage = new ChatGptUsageService(options);
                 usage.GetAccountAnalyticsAsync(canceled.Token).GetAwaiter().GetResult();
                 AssertEqual(true, false, "caller cancellation must propagate");
             } catch (OperationCanceledException) { }
@@ -132,6 +141,8 @@ internal static partial class Program {
                 AssertEqual("Bearer synthetic-access", request.Headers["Authorization"], "query retains selected auth");
                 var query = JsonLite.Parse(request.Body)!.AsObject()!.GetArray("threads")!;
                 AssertEqual(2, query.Count, "query groups retained");
+                AssertEqual(IntelligenceX.Json.JsonValueKind.Null, query[0].AsObject()!["created_at"].Kind, "unknown creation time uses the provider's explicit-null contract");
+                AssertEqual("2026-10-07T10:00:00.0000000+00:00", query[1].AsObject()!.GetString("created_at"), "known creation time is sent in UTC");
                 AssertEqual("child", query[0].AsObject()!.GetArray("descendant_thread_ids")![0].AsString(), "explicit descendants sent");
                 return new HttpResponse("""
                     {"data_as_of":"2026-10-07T08:41:43.073936Z","threads":[
@@ -148,7 +159,8 @@ internal static partial class Program {
             using var service = new ChatGptUsageService(new OpenAINativeOptions { AuthStore = store, CodexHome = directory,
                 PersistCodexAuthJson = false, ChatGptApiBaseUrl = server.BaseUri.ToString().TrimEnd('/') + "/backend-api" });
             var usage = service.QueryThreadUsageAsync(new[] {
-                new ChatGptThreadUsageRequest("root", descendantThreadIds: new[] { "child" }), new ChatGptThreadUsageRequest("other")
+                new ChatGptThreadUsageRequest("root", descendantThreadIds: new[] { "child" }),
+                new ChatGptThreadUsageRequest("other", new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.FromHours(2)))
             }).GetAwaiter().GetResult();
             AssertEqual(47.34203320342946, usage.Threads[0].WeeklyLimitPercent, "provider percentages retain precision");
             AssertEqual(0d, usage.Threads[0].BalanceUsageCredits, "scientific credit strings parsed");

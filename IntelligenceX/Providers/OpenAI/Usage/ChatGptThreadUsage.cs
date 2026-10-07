@@ -15,7 +15,7 @@ public sealed class ChatGptThreadUsageRequest {
     }
     /// <summary>Provider root thread identifier.</summary>
     public string ThreadId { get; }
-    /// <summary>Root creation time, when known.</summary>
+    /// <summary>Root creation time, when known; unknown times are sent as JSON null in the provider query.</summary>
     public DateTimeOffset? CreatedAt { get; }
     /// <summary>Descendants belonging only to this root; groups must not overlap.</summary>
     public IReadOnlyList<string> DescendantThreadIds { get; }
