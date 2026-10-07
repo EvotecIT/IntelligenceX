@@ -13,7 +13,7 @@ internal static class ChatGptAnalyticsJson {
         return value.HasValue && !double.IsNaN(value.Value) && !double.IsInfinity(value.Value) ? value : null;
     }
     internal static bool? Boolean(JsonObject obj, string key) =>
-        obj.TryGetValue(key, out var value) ? value?.AsBoolean() : null;
+        obj.TryGetValue(key, out var value) && value?.Kind == JsonValueKind.Boolean ? value.AsBoolean() : null;
     internal static IReadOnlyList<T> Rows<T>(JsonObject obj, string key, Func<JsonObject, T> parse) {
         var result = new List<T>();
         foreach (var item in obj.GetArray(key) ?? new JsonArray())

@@ -52,6 +52,16 @@ internal static partial class Program {
         AssertContainsText(text, "units percent", "formatted units are explicit");
         AssertContainsText(text, "incomplete accounting", "display retains partial accounting warning");
         AssertEqual(null, ChatGptAccountAnalytics.FromJson(new JsonObject()).Profile, "missing statistics remain unknown");
+        foreach (var (jsonValue, expected) in new[] { ("null", (bool?)null), ("true", (bool?)true), ("false", (bool?)false) }) {
+            var history = ChatGptPlanLimitHistory.FromJson(JsonLite.Parse("{\"coverage_complete\":" + jsonValue
+                + ",\"approximate\":" + jsonValue + ",\"periods\":[{\"accounting_complete\":" + jsonValue + "}]}")!.AsObject()!);
+            AssertEqual(expected, history.CoverageComplete, "coverage flags retain provider null/true/false");
+            AssertEqual(expected, history.Approximate, "approximation flags retain provider null/true/false");
+            AssertEqual(expected, history.Periods[0].AccountingComplete, "period flags retain provider null/true/false");
+        }
+        var unknownApproximation = ChatGptAccountAnalytics.FromJson(JsonLite.Parse(
+            "{\"plan_history\":{\"coverage_complete\":true,\"approximate\":null,\"periods\":[]}}")!.AsObject()!);
+        AssertContainsText(ChatGptAccountAnalyticsFormatter.Format(unknownApproximation), "unconfirmed", "explicit null cannot suppress accounting uncertainty");
     }
 
 #if !NET472
