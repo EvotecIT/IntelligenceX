@@ -135,8 +135,9 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             var profile = new ServiceProfile {
                 PluginPaths = new() {
                     @"C:\Support\GitHub\IntelligenceX\artifacts\Releases\20260224-093226\portable\IntelligenceX.Chat-20260224-093226-win-x64\plugins",
-                    @"C:\Users\przemyslaw.klys.EVOTEC\AppData\Local\Temp\IntelligenceX.Chat\service-runtime\v1-demo\plugins",
-                    @"C:\Users\przemyslaw.klys.EVOTEC\AppData\Local\IntelligenceX.Chat\plugin-cache\zip-v2-deadbeef\plugins",
+                    Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "service-runtime", "v1-demo", "plugins"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "IntelligenceX.Chat", "plugin-cache", "zip-v2-deadbeef", "plugins"),
                     customPluginPath
                 }
             };
@@ -167,7 +168,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
                 PluginPaths = new() {
                     @"C:\Support\GitHub\IntelligenceX\artifacts\Releases\20260224-093226\portable\IntelligenceX.Chat-20260224-093226-win-x64\plugins",
                     managedServiceRuntimeRoot,
-                    @"C:\Users\przemyslaw.klys.EVOTEC\AppData\Local\Temp\IntelligenceX.Chat\service-runtime\v1-abc123\plugins",
+                    Path.Combine(managedServiceRuntimeRoot, "v1-abc123", "plugins"),
                     managedPluginCacheRoot,
                     Path.Combine(managedPluginCacheRoot, "zip-v2-abc123"),
                     @"C:\Custom\Plugins",

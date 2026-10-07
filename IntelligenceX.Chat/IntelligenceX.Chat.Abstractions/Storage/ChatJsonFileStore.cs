@@ -107,7 +107,6 @@ public static class ChatJsonFileStore {
                 : Path.Combine(directory, temporaryName);
 
             using (var stream = CreatePrivateTemporaryFile(temporaryPath)) {
-                HardenTemporaryFile(temporaryPath);
                 using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                 writer.Write(json);
                 writer.Flush();
@@ -168,20 +167,18 @@ public static class ChatJsonFileStore {
     }
 
     private static FileStream CreatePrivateTemporaryFile(string path) {
-        var options = new FileStreamOptions {
-            Mode = FileMode.CreateNew,
-            Access = FileAccess.Write,
-            Share = FileShare.None
-        };
-        if (!OperatingSystem.IsWindows()) {
-            options.UnixCreateMode = PrivateFileMode;
+        if (OperatingSystem.IsWindows()) {
+            // Apply the private ACL at creation: reopening a FileShare.None stream to change it fails on Windows.
+            return new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.Write, FileShare.None,
+                bufferSize: 4096, FileOptions.None, CreatePrivateWindowsFileSecurity());
         }
 
-        return new FileStream(path, options);
-    }
-
-    private static void HardenTemporaryFile(string path) {
-        HardenFile(path);
+        return new FileStream(path, new FileStreamOptions {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            UnixCreateMode = PrivateFileMode
+        });
     }
 
     private static void HardenFile(string path) {
@@ -195,24 +192,21 @@ public static class ChatJsonFileStore {
 
     [SupportedOSPlatform("windows")]
     private static void HardenWindowsFile(string path) {
+        new FileInfo(path).SetAccessControl(CreatePrivateWindowsFileSecurity());
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static FileSecurity CreatePrivateWindowsFileSecurity() {
         var currentSid = WindowsIdentity.GetCurrent().User
             ?? throw new InvalidOperationException("The current Windows identity does not expose a security identifier.");
-        var fileInfo = new FileInfo(path);
-        var security = fileInfo.GetAccessControl();
+        var security = new FileSecurity();
         security.SetOwner(currentSid);
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-        foreach (FileSystemAccessRule rule in security.GetAccessRules(
-                     includeExplicit: true,
-                     includeInherited: false,
-                     typeof(SecurityIdentifier))) {
-            security.RemoveAccessRuleSpecific(rule);
-        }
-
         security.AddAccessRule(new FileSystemAccessRule(
             currentSid,
             FileSystemRights.FullControl,
             AccessControlType.Allow));
-        fileInfo.SetAccessControl(security);
+        return security;
     }
 }
 
