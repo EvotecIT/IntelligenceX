@@ -13,7 +13,7 @@ internal enum ChatGptUsagePathStyle {
     ChatGptApi
 }
 
-internal sealed class ChatGptUsageClient : IDisposable {
+internal sealed partial class ChatGptUsageClient : IDisposable {
     private static readonly HttpClient SharedClient = CreateClient();
     private readonly HttpClient _httpClient = SharedClient;
 
@@ -33,7 +33,11 @@ internal sealed class ChatGptUsageClient : IDisposable {
             throw new InvalidOperationException("Invalid ChatGPT usage response.");
         }
         var snapshot = ChatGptUsageSnapshot.FromJson(obj);
-        if (snapshot.ResetCredits is null) return snapshot;
+        var analyticsTask = GetAccountAnalyticsAsync(baseUrl, accessToken, accountId, userAgent, cancellationToken);
+        if (snapshot.ResetCredits is null) {
+            obj.Add("account_analytics", (await analyticsTask.ConfigureAwait(false)).ToJson());
+            return ChatGptUsageSnapshot.FromJson(obj);
+        }
         // These optional read-only endpoints must not hide a successful usage reading.
         using var resetTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         resetTimeout.CancelAfter(TimeSpan.FromSeconds(10));
@@ -49,6 +53,7 @@ internal sealed class ChatGptUsageClient : IDisposable {
         if (results.Any(static value => value is null)) {
             enriched.Add("reset_credits_error", "Some reset grant details or history are unavailable. Reported counts and usage remain valid for this reading.");
         }
+        enriched.Add("account_analytics", (await analyticsTask.ConfigureAwait(false)).ToJson());
         return ChatGptUsageSnapshot.FromJson(enriched);
     }
 

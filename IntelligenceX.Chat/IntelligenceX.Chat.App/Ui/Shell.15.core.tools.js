@@ -2307,6 +2307,7 @@
             if (!providerResets.detailsAvailable) hintParts.push("Grant expiry details unavailable.");
           }
           if (providerUsage.resetCreditsError) hintParts.push(providerUsage.resetCreditsError);
+          if (providerUsage.accountAnalyticsSummary) hintParts.push(providerUsage.accountAnalyticsSummary);
         }
       }
       nativeAccountHint.textContent = hintParts.join(" ");

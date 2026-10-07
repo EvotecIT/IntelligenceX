@@ -21,6 +21,8 @@ internal static partial class UsageRunner {
         Console.WriteLine("  --events              Include credit usage events");
         Console.WriteLine("  --by-surface          Include grouped usage totals by product surface");
         Console.WriteLine("  --daily-breakdown     Include daily token usage breakdown");
+        Console.WriteLine("  --thread-id <id>      Query provider lifetime usage for a root thread (repeatable; root-only)");
+        Console.WriteLine("  Account analytics includes provider profile, daily attribution, and plan history.");
         Console.WriteLine("  --json                Print JSON output");
         Console.WriteLine("  --no-cache            Do not write usage cache");
         Console.WriteLine("  --current-codex       Prefer the current Codex login without changing it");
@@ -64,13 +66,20 @@ internal static partial class UsageRunner {
             var includeEventsForFetch = options.IncludeEvents || options.BySurface;
             var report = await service.GetReportAsync(includeEventsForFetch, options.DailyBreakdown, CancellationToken.None)
                 .ConfigureAwait(false);
+            var threadUsage = options.ThreadIds.Count == 0 ? null : await service.QueryThreadUsageAsync(
+                options.ThreadIds.Select(static id => new ChatGptThreadUsageRequest(id)).ToArray()).ConfigureAwait(false);
 
             if (options.Json) {
                 var jsonObject = BuildJsonOutput(report, options.IncludeEvents, options.BySurface, options.DailyBreakdown);
+                if (threadUsage is not null) jsonObject.Add("threadUsage", threadUsage.ToJson());
                 var json = JsonLite.Serialize(JsonValue.From(jsonObject));
                 Console.WriteLine(json);
             } else {
                 PrintSummary(report.Snapshot);
+                if (threadUsage is not null) {
+                    Console.WriteLine("Provider lifetime thread usage · root-only query; supply descendants through the SDK for full task aggregation");
+                    Console.WriteLine(JsonLite.Serialize(JsonValue.From(threadUsage.ToJson())));
+                }
                 if (options.IncludeEvents) {
                     PrintEvents(report.Events);
                 }
@@ -149,6 +158,7 @@ internal static partial class UsageRunner {
             PrintRateLimit(additional.LimitName ?? additional.MeteredFeature ?? "Additional rate limit", additional.RateLimit);
         }
         Console.WriteLine(ChatGptResetCreditsFormatter.Format(snapshot.ResetCredits, snapshot.ResetCreditsError));
+        Console.WriteLine(ChatGptAccountAnalyticsFormatter.Format(snapshot.AccountAnalytics));
 
         if (snapshot.Credits is not null) {
             Console.WriteLine("Credits:");
@@ -356,6 +366,7 @@ internal static partial class UsageRunner {
 }
 
 internal sealed class UsageOptions {
+    public List<string> ThreadIds { get; } = new();
     public bool IncludeEvents { get; set; }
     public bool BySurface { get; set; }
     public bool DailyBreakdown { get; set; }
@@ -378,6 +389,9 @@ internal sealed class UsageOptions {
                 return options;
             }
             switch (arg) {
+                case "--thread-id":
+                    options.ThreadIds.Add(ReadValue(args, ref i));
+                    break;
                 case "--events":
                     options.IncludeEvents = true;
                     break;
@@ -415,7 +429,7 @@ internal sealed class UsageOptions {
                     throw new InvalidOperationException($"Unknown option or unexpected argument: {arg}");
             }
         }
-        if (options.AllAccounts && (options.CurrentCodex || options.AccountId is not null || options.IncludeEvents || options.BySurface || options.DailyBreakdown)) {
+        if (options.AllAccounts && (options.CurrentCodex || options.AccountId is not null || options.IncludeEvents || options.BySurface || options.DailyBreakdown || options.ThreadIds.Count > 0)) {
             throw new InvalidOperationException("--all-accounts reads saved account limits and resets; use per-account usage for --current-codex, --account-id, or token/credit event breakdowns.");
         }
         return options;

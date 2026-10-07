@@ -70,7 +70,7 @@ internal static partial class Program {
                     return new HttpResponse("{\"access_token\":\"renewed\",\"refresh_token\":\"rotated\",\"expires_in\":3600}");
                 }
                 var account = request.Headers.TryGetValue("ChatGPT-Account-Id", out var requestedAccount) ? requestedAccount : "legacy";
-                usageRequests.Add(account);
+                if (request.Path.EndsWith("/usage", StringComparison.Ordinal)) usageRequests.Add(account);
                 if (account == "current") {
                     return new HttpResponse("private-response-body", StatusCode: 401, StatusText: "Unauthorized");
                 }
@@ -162,7 +162,7 @@ internal static partial class Program {
         try {
             var requests = 0;
             using var server = new LocalHttpServer(request => {
-                Interlocked.Increment(ref requests);
+                if (request.Path.EndsWith("/usage", StringComparison.Ordinal)) Interlocked.Increment(ref requests);
                 var account = request.Headers["Authorization"].EndsWith("access-one", StringComparison.Ordinal) ? "one" : "two";
                 return new HttpResponse("{\"account_id\":\"" + account + "\",\"rate_limit\":{\"primary_window\":{\"used_percent\":20}}}");
             });

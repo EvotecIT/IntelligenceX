@@ -35,6 +35,33 @@ Set `COPILOT_GITHUB_TOKEN` to a GitHub credential authorized for Copilot, or sup
 For interactive applications, configure the host's registered `GitHubClientId` and call `LoginCopilotAsync` with a callback that displays the user code and verification URL. Storage is opt-in; expiring stored credentials renew through that registered app. Authentication and inference entitlement are separate checks.
 
 The transport implements the Copilot client protocol, which is not a versioned public GitHub REST inference API. Model availability and protocol support can change. It rejects unsupported requests and does not install or fall back to a CLI. See the [provider guide and migration](https://github.com/EvotecIT/IntelligenceX/blob/master/Docs/library/providers.md#copilot) for options and replacements for the retired Copilot clients.
+## Codex account analytics
+
+`ChatGptUsageService` retrieves account-wide provider measurements alongside current limits and reset grants. `ChatGptUsageSnapshot.AccountAnalytics` contains profile totals and token activity, daily usage attribution, and plan accounting history. Applications can also request these measurements directly:
+
+```csharp
+using IntelligenceX.OpenAI.Native;
+using IntelligenceX.OpenAI.Usage;
+
+using var usage = new ChatGptUsageService(new OpenAINativeOptions {
+    AuthAccountId = accountId,
+    PersistCodexAuthJson = false
+});
+var analytics = await usage.GetAccountAnalyticsAsync();
+Console.WriteLine(analytics.Profile?.LifetimeTokens);
+Console.WriteLine(ChatGptAccountAnalyticsFormatter.Format(analytics));
+
+var tasks = await usage.QueryThreadUsageAsync(new[] {
+    new ChatGptThreadUsageRequest(rootThreadId, descendantThreadIds: knownDescendantIds)
+});
+```
+
+These measurements come from the account provider and do not depend on session logs from the current machine. Each endpoint retains its own freshness and availability. Missing measurements remain unknown; partial or approximate accounting is reported explicitly. Daily values use the provider's returned units, which can be percentages rather than token counts. Plan history uses basis points, with 100 basis points equal to one percentage point.
+
+Thread queries report lifetime task consumption compared with the current full allowance, plus actual credit debits. They are independent of the daily chart's date range. Supply the known descendants for complete task aggregation; groups must not overlap. A query accepts up to 100 root groups and 1,000 total thread identifiers.
+
+The CLI exports the same data with `intelligencex usage --all-accounts --json`. To query a specific root without descendants, use `intelligencex usage --account-id <id> --thread-id <thread-id> --json`. The shared analytics envelope preserves original provider fields for export and account-scoped caching. Account details in Tray, Chat, and setup display a shared provider summary. The provider protocol is not a versioned public API, so profile fields and endpoint access can vary by account. Local telemetry remains useful for machine-level detail.
+
 ## GitHub notification example
 
 ```csharp

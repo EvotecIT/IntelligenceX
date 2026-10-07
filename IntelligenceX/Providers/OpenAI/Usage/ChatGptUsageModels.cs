@@ -27,6 +27,7 @@ public sealed class ChatGptUsageSnapshot {
         Additional = additional;
         ResetCredits = ChatGptResetCredits.FromJson(raw);
         ResetCreditsError = raw.GetString("reset_credits_error");
+        AccountAnalytics = raw.GetObject("account_analytics") is { } analytics ? ChatGptAccountAnalytics.FromJson(analytics) : null;
     }
 
     /// <summary>
@@ -57,6 +58,8 @@ public sealed class ChatGptUsageSnapshot {
     public ChatGptResetCredits? ResetCredits { get; }
     /// <summary>Safe availability message when optional reset information could not be retrieved.</summary>
     public string? ResetCreditsError { get; }
+    /// <summary>Account-wide provider statistics and accounting, independent of machine-local logs.</summary>
+    public ChatGptAccountAnalytics? AccountAnalytics { get; }
     /// <summary>
     /// Gets any additional named rate limits returned by the API.
     /// </summary>
@@ -86,7 +89,7 @@ public sealed class ChatGptUsageSnapshot {
         var additional = obj.ExtractAdditional(
             "user_id", "userId", "account_id", "accountId", "email", "plan_type", "planType",
             "rate_limit", "rateLimit", "additional_rate_limits", "additionalRateLimits", "credits", "promo",
-            "rate_limit_reset_credits", "rate_limit_reset_credit_details", "rate_limit_reset_credit_history", "reset_credits_error");
+            "rate_limit_reset_credits", "rate_limit_reset_credit_details", "rate_limit_reset_credit_history", "reset_credits_error", "account_analytics");
         return new ChatGptUsageSnapshot(userId, accountId, email, planType, rateLimit, additionalRateLimits, credits, obj, additional);
     }
 

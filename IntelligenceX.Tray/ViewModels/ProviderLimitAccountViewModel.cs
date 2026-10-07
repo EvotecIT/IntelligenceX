@@ -13,6 +13,8 @@ public sealed class ProviderLimitAccountViewModel : ViewModelBase {
     public string Label { get; set; } = string.Empty;
     public string ProviderId { get; set; } = string.Empty;
     public ProviderLimitAccountSnapshot? Snapshot { get; set; }
+    public string AccountAnalyticsText => IntelligenceX.OpenAI.Usage.ChatGptAccountAnalyticsFormatter.Format(Snapshot?.AccountAnalytics);
+    public bool HasAccountAnalytics => Snapshot?.AccountAnalytics is not null;
     public bool CanManageResets => !string.IsNullOrWhiteSpace(Snapshot?.AccountId);
     public string ReadingText => Snapshot is null ? "Reading time unavailable"
         : (StatusLabel ?? "Unknown") + " · checked " + Snapshot.RetrievedAtUtc.ToLocalTime().ToString("g");

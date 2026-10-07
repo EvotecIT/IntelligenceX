@@ -26,6 +26,7 @@ internal static partial class UsageRunner {
                         + ChatGptResetCreditsFormatter.FormatTimestamp(window.ResetsAt));
                 }
                 Console.WriteLine(ChatGptResetCreditsFormatter.Format(account.ResetCredits, account.ResetCreditsError));
+                Console.WriteLine(ChatGptAccountAnalyticsFormatter.Format(account.AccountAnalytics));
             }
         }
         return snapshot.Accounts.Count > 0 && snapshot.Accounts.All(static account => account.IsAvailable) ? 0 : 1;

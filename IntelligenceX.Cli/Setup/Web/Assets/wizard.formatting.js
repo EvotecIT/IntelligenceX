@@ -174,6 +174,7 @@ function formatUsageResult(data) {
     } else lines.push('Reset history: unavailable');
   } else lines.push('Reset credits: not reported');
   if (usage.resetCreditsError) lines.push(usage.resetCreditsError);
+  if (usage.accountAnalyticsSummary) lines.push(usage.accountAnalyticsSummary);
   if (data.events && data.events.length > 0) {
     lines.push('');
     lines.push('Credit usage events:');

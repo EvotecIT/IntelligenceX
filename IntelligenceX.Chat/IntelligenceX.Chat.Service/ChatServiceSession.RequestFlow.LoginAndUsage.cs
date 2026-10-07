@@ -209,6 +209,8 @@ internal sealed partial class ChatServiceSession {
             Credits = MapNativeCredits(snapshot.Credits),
             ResetCredits = MapNativeResetCredits(snapshot.ResetCredits),
             ResetCreditsError = snapshot.ResetCreditsError,
+            AccountAnalytics = snapshot.AccountAnalytics,
+            AccountAnalyticsSummary = ChatGptAccountAnalyticsFormatter.Format(snapshot.AccountAnalytics),
             RetrievedAtUtc = retrievedAtUtc.Kind == DateTimeKind.Utc ? retrievedAtUtc : retrievedAtUtc.ToUniversalTime(),
             Source = normalizedSource
         };

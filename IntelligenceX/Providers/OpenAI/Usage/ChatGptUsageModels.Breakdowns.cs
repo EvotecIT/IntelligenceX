@@ -18,6 +18,8 @@ public sealed class ChatGptDailyTokenUsageBreakdown {
         Units = units;
         Raw = raw;
         Additional = additional;
+        GroupBy = raw.GetString("group_by");
+        DataFreshness = ChatGptResetCredits.ReadTimestamp(raw, "data_freshness_ts");
     }
 
     /// <summary>
@@ -28,6 +30,10 @@ public sealed class ChatGptDailyTokenUsageBreakdown {
     /// Gets the unit label reported by the API.
     /// </summary>
     public string? Units { get; }
+    /// <summary>Provider grouping, such as day.</summary>
+    public string? GroupBy { get; }
+    /// <summary>Provider freshness timestamp, when supplied.</summary>
+    public DateTimeOffset? DataFreshness { get; }
     /// <summary>
     /// Gets the raw JSON object.
     /// </summary>
@@ -95,12 +101,18 @@ public sealed class ChatGptDailyTokenUsageDay {
         ProductSurfaceUsageValues = productSurfaceUsageValues ?? new Dictionary<string, double>(StringComparer.Ordinal);
         Raw = raw;
         Additional = additional;
+        Attribution = ChatGptAnalyticsJson.Rows(raw, "attribution", static row => new ChatGptDailyUsageAttribution(row));
+        Models = ChatGptAnalyticsJson.Rows(raw, "models", static row => new ChatGptDailyModelUsage(row));
     }
 
     /// <summary>
     /// Gets the bucket date.
     /// </summary>
     public string? Date { get; }
+    /// <summary>Provider attribution in the enclosing breakdown's units.</summary>
+    public IReadOnlyList<ChatGptDailyUsageAttribution> Attribution { get; }
+    /// <summary>Provider model/speed measurements in the enclosing breakdown's units.</summary>
+    public IReadOnlyList<ChatGptDailyModelUsage> Models { get; }
     /// <summary>
     /// Gets usage values keyed by product surface.
     /// </summary>
