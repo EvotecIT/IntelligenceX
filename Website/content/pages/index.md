@@ -4,4 +4,8 @@ description: Zero-trust AI platform with code reviews, desktop chat, tool packs,
 slug: index
 collection: pages
 layout: home
+meta.source_code.name: IntelligenceX
+meta.source_code.code_repository: https://github.com/EvotecIT/IntelligenceX
+meta.source_code.programming_language: C#
+meta.source_code.license: https://github.com/EvotecIT/IntelligenceX/blob/master/LICENSE
 ---

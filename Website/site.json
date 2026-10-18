@@ -105,16 +105,20 @@
   "StructuredData": {
     "Enabled": true,
     "Breadcrumbs": true,
+    "WebPage": true,
+    "SoftwareSourceCode": true,
+    "OrganizationName": "Evotec",
+    "OrganizationUrl": "https://evotec.xyz/",
     "OrganizationLegalName": "Evotec Services sp. z o.o.",
-    "OrganizationDescription": "Zero-trust AI platform for code review, chat, and developer tooling.",
+    "OrganizationDescription": "Evotec develops open-source .NET and PowerShell libraries and automation tools.",
     "OrganizationLogo": "https://evotec.xyz/favicon.svg",
     "OrganizationSameAs": [
-      "https://github.com/EvotecIT/IntelligenceX",
+      "https://github.com/EvotecIT",
       "https://evotec.xyz",
       "https://evo.yt/discord"
     ],
     "OrganizationEmail": "support@evotec.xyz",
-    "OrganizationContactUrl": "https://evotec.xyz/docs/getting-started/"
+    "OrganizationContactUrl": "https://evotec.xyz/contact/"
   },
   "AgentReadiness": {
     "Enabled": true,
@@ -210,7 +214,8 @@
         "ReadOnly": true
       }
     ],
-    "MarkdownNegotiation": false
+    "MarkdownNegotiation": false,
+    "MarkdownArtifacts": { "Enabled": true, "MaxPages": 0 }
   },
   "Cloudflare": {
     "Cache": {
