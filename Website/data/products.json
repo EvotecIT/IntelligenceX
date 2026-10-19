@@ -59,7 +59,6 @@
     "link": "/docs/powershell/overview/",
     "tag": "Automation",
     "featured": false,
-    "install": "Install-Module IntelligenceX",
     "screenshot": "/assets/screenshots/product-powershell.svg"
   },
   {

@@ -77,6 +77,11 @@ p { margin: 0 0 1rem; color: var(--pf-muted); }
 .ix-footer-links li { margin: 0; min-width: 0; }
 .ix-footer-links a { display: block; font-size: 0.84rem; line-height: 1.4; color: var(--pf-muted); overflow-wrap: anywhere; }
 .ix-footer-links a:hover { color: var(--pf-accent); }
+.ix-footer-family { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.75rem 1.5rem; border-top: 1px solid var(--pf-border); padding: 1.25rem 0; }
+.ix-footer-family .ix-footer-heading { margin: 0; }
+.ix-footer-family-links { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; list-style: none; padding: 0; margin: 0; }
+.ix-footer-family-links a { display: block; padding: 0.25rem 0; font-size: 0.84rem; line-height: 1.4; color: var(--pf-muted); }
+.ix-footer-family-links a:hover, .ix-footer-family-links a:focus-visible { color: var(--pf-accent); }
 .ix-footer-bottom { border-top: 1px solid var(--pf-border); padding-top: 1.5rem; display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--pf-muted); }
 .ix-footer-bottom a { color: var(--pf-muted); }
 .ix-footer-bottom a:hover { color: var(--pf-accent); }
