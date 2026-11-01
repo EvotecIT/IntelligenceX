@@ -35,39 +35,47 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         Assert.Equal(4, signals);
     }
 
-    [Fact]
-    public async Task WatchFailure_ReconcilesAndClearsDiagnosticOnRecovery() {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WatchFailure_IsRearmedOnlyByReconcileAndClearsDiagnosticOnRecovery(bool failsAtCreation) {
         Write(Meta + Event("task_started"));
         var clock = new AgentWorkTestClock();
         var attempts = 0;
-        var allow = 0;
-        var second = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var broken = true;
+        ErroringWatcher? source = null;
         FileSystemWatcher Create(string directory, string filter) {
-            var count = Interlocked.Increment(ref attempts);
-            if (Volatile.Read(ref allow) == 0) {
-                if (count == 2) second.TrySetResult(true);
-                throw new IOException("synthetic watch failure");
-            }
-            return new FileSystemWatcher(directory, filter);
+            Interlocked.Increment(ref attempts);
+            if (broken && failsAtCreation) throw new IOException("synthetic watch failure");
+            return source = new ErroringWatcher(directory, filter);
         }
         await using var watcher = new AgentWorkWatcher(new[] { Root }, new AgentWorkOptions { ReconcileInterval = TimeSpan.FromSeconds(5) },
             null, null, null, () => throw new InvalidOperationException("Explicit roots must replace discovery."), Create, clock);
-        var recovered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        watcher.SnapshotChanged += (_, e) => {
-            if (e.Snapshot.Diagnostics.All(static d => d.Code != "watch-unavailable")) recovered.TrySetResult(true);
-        };
         await watcher.StartAsync();
-        Assert.Contains(watcher.CurrentSnapshot.Diagnostics, static d => d.Code == "watch-unavailable");
+        var before = watcher.CurrentSnapshot;
+        if (!failsAtCreation) source!.Fail();
         await Within(clock.Scheduled(TimeSpan.FromSeconds(5)));
         await Within(clock.Scheduled(TimeSpan.FromSeconds(1)));
         clock.Advance(TimeSpan.FromSeconds(1));
-        await Within(second.Task);
-        Interlocked.Exchange(ref allow, 1);
-        clock.Advance(TimeSpan.FromSeconds(5));
+        using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10))) {
+            while (ReferenceEquals(before, watcher.CurrentSnapshot)) await Task.Delay(1, deadline.Token);
+        }
+        Assert.Equal(1, attempts);
+        Assert.Contains(watcher.CurrentSnapshot.Diagnostics, static d => d.Code == "watch-unavailable" || d.Code == "watch-overflow");
+        var recovered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        watcher.SnapshotChanged += (_, e) => {
+            if (e.Snapshot.Diagnostics.All(static d => d.Code != "watch-unavailable" && d.Code != "watch-overflow")) recovered.TrySetResult(true);
+        };
+        broken = false;
+        clock.Advance(TimeSpan.FromSeconds(4));
         await Within(clock.Scheduled(TimeSpan.FromSeconds(1), 2));
         clock.Advance(TimeSpan.FromSeconds(1));
         await Within(recovered.Task);
-        Assert.Equal(3, attempts);
+        Assert.Equal(2, attempts);
+    }
+
+    private sealed class ErroringWatcher(string directory, string filter) : FileSystemWatcher(directory, filter) {
+        internal void Fail() => OnError(new ErrorEventArgs(new System.ComponentModel.Win32Exception(1)));
     }
 
     [Fact]
@@ -128,7 +136,7 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         Assert.Contains(Read().Diagnostics, static d => d.Code == "malformed-record");
         File.AppendAllText(PathToLog, "\"type\":\"turn_aborted\"}}\n");
         var completedLine = Read();
-        Assert.Equal(0, completedLine.Scan!.FilesTailed);
+        Assert.Equal(1, completedLine.Scan!.FilesTailed);
         Assert.Equal(AgentTurnOutcome.Interrupted, Assert.Single(completedLine.Sessions).LastTurnOutcome);
         Assert.Empty(completedLine.Diagnostics);
         Write(Meta.Replace("fake-live", "rewritten") + Event("task_complete") + new string(' ', 1000) + "\n");
@@ -175,6 +183,7 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         await Within(requested.Task);
         Assert.Equal(AgentWorkState.Running, watcher.CurrentSnapshot.Sessions.Single(static s => s.Id == "fake-live").State);
         var temporary = Path.Combine(_root, "synthetic-lock.tmp");
+        Directory.CreateDirectory(Path.Combine(_root, "tmp", "synthetic-tool", "child"));
         File.WriteAllText(temporary, "synthetic");
         File.Delete(temporary);
         File.AppendAllText(PathToLog, Event("turn_aborted"));

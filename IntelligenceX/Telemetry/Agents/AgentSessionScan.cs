@@ -12,7 +12,7 @@ namespace IntelligenceX.Telemetry.Agents;
 
 // Cache only parser observations. Clock aging, title indexes, Desktop metadata, Git and PRs are reapplied each scan.
 internal sealed class AgentSessionScan {
-    private const string ParserVersion = "3";
+    private const string ParserVersion = "4";
     private readonly SourceRootRecord _root;
     private readonly Action<string> _report;
     private readonly IRawArtifactStore? _store;
@@ -38,6 +38,7 @@ internal sealed class AgentSessionScan {
     private string Adapter => "agent-work/" + _root.ProviderId;
 
     internal AgentSessionState? Read(string path, DateTimeOffset? since, CancellationToken cancellationToken, bool persist = true) {
+        AgentWorkMeasurement.Add("files-checked", 1);
         var info = new FileInfo(path);
         if (!info.Exists) throw new FileNotFoundException("Session file no longer exists.");
         // A live strip never opens an old transcript, even to recover canonical identity.
@@ -60,25 +61,36 @@ internal sealed class AgentSessionScan {
         if (cached is not null && info.Exists && descriptor!.SizeBytes == info.Length && descriptor.LastWriteTimeUtc?.UtcDateTime == info.LastWriteTimeUtc) {
             FilesReused++;
             Replay(cached.Diagnostics);
+            if (cached.IncompleteRecord) _report("malformed-record");
             return cached.Session;
         }
         var before = RawArtifactDescriptor.CreateFile(_root.Id, Adapter, path, ParserVersion);
         var created = File.GetCreationTimeUtc(path);
-        var tail = cached is not null && cached.TailSafe && cached.Offset == descriptor!.SizeBytes
+        var tail = cached is not null && cached.TailSafe && cached.Offset <= descriptor!.SizeBytes
             && before.SizeBytes > cached.Offset && cached.CreatedAtUtc == created
             && cached.AnchorHash == AnchorHash(path, cached.Offset);
         var diagnostics = tail ? new Dictionary<string, int>(cached!.Diagnostics, StringComparer.Ordinal)
             : new Dictionary<string, int>(StringComparer.Ordinal);
         if (tail) Replay(diagnostics);
-        void Report(string code) { diagnostics.TryGetValue(code, out var count); diagnostics[code] = count + 1; _report(code); }
         var window = new AgentSessionReadWindow { StartOffset = tail ? cached!.Offset : 0 };
+        void Report(string code) {
+            if (!window.IncompleteRecord) { diagnostics.TryGetValue(code, out var count); diagnostics[code] = count + 1; }
+            _report(code);
+        }
         FilesRead++;
         if (tail) FilesTailed++;
-        var state = _root.ProviderId == "codex"
-            ? CodexAgentSessionReader.Read(path, _root, Report, cancellationToken, tail ? cached!.State : null, window)
-            : ClaudeAgentSessionReader.Read(path, _root, Report, cancellationToken, tail ? cached!.State : null, window);
-        BytesRead += window.EndOffset - window.StartOffset;
-        var result = new AgentSessionCacheEntry { State = state, Diagnostics = diagnostics,
+        AgentSessionParserState state;
+        using (AgentWorkMeasurement.Begin(tail ? "append-read" : "full-read")) {
+            state = _root.ProviderId == "codex"
+                ? CodexAgentSessionReader.Read(path, _root, Report, cancellationToken, tail ? cached!.State : null, window)
+                : ClaudeAgentSessionReader.Read(path, _root, Report, cancellationToken, tail ? cached!.State : null, window);
+        }
+        var bytes = window.TotalBytesRead >= 0 ? window.TotalBytesRead : window.EndOffset - window.StartOffset;
+        BytesRead += bytes;
+        AgentWorkMeasurement.Add(tail ? "tail-bytes" : "full-read-bytes", bytes);
+        AgentWorkMeasurement.Add(tail ? "files-tailed" : "files-parsed", 1);
+        var result = new AgentSessionCacheEntry { State = window.TailSafe ? window.Checkpoint ?? state : state,
+            Observation = window.TailSafe && !window.RecordIsComplete ? state : null, Diagnostics = diagnostics, IncompleteRecord = window.HadIncompleteRecord,
             Offset = window.EndOffset, TailSafe = window.TailSafe, CreatedAtUtc = created };
         if (_store is not null) {
             var after = RawArtifactDescriptor.CreateFile(_root.Id, Adapter, path, ParserVersion);
@@ -153,8 +165,11 @@ internal sealed class AgentSessionScan {
 
 internal sealed class AgentSessionCacheEntry {
     public AgentSessionParserState State { get; init; } = new();
+    public AgentSessionParserState? Observation { get; init; }
+    public bool IncompleteRecord { get; init; }
     [JsonIgnore]
-    public AgentSessionState? Session => State.Sidechain ? null : AgentSessionLogReader.Finish(State.Session, State.Active);
+    public AgentSessionState? Session => (Observation ?? State).Sidechain ? null : _session ??= AgentSessionLogReader.Finish((Observation ?? State).Session, (Observation ?? State).Active);
+    private AgentSessionState? _session;
     public Dictionary<string, int> Diagnostics { get; init; } = new();
     public long Offset { get; init; }
     public bool TailSafe { get; init; }

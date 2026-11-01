@@ -40,6 +40,7 @@ public static class LocalAgentWorkStateService {
         IEnumerable<AgentSessionState> metadataRows, HashSet<string> runningRoots, DateTimeOffset now,
         DateTimeOffset? since, TimeSpan window, TimeSpan staleAfter, IReadOnlyList<AgentSourceDiagnostic> diagnostics, IReadOnlyList<AgentPullRequestState> pullRequests,
         AgentWorkScanStatistics statistics) {
+        using var measurement = AgentWorkMeasurement.Begin("snapshot-build");
         var metadataKeys = new HashSet<string>(StringComparer.Ordinal);
         // Merge each root before cross-root deduplication: an old recovered copy must not hide
         // a local log whose newer activity is only available in that local root's Desktop database.

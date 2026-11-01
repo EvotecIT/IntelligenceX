@@ -71,6 +71,9 @@ internal static class AgentSessionLogReader {
 internal sealed class AgentSessionReadWindow {
     internal long StartOffset, EndOffset;
     internal bool TailSafe;
+    internal long TotalBytesRead = -1;
+    internal bool RecordIsComplete, IncompleteRecord, HadIncompleteRecord;
+    internal AgentSessionParserState? Checkpoint;
 }
 
 // StreamReader may buffer ahead. Bound bytes at open time and track the actual byte offset, including UTF-8.

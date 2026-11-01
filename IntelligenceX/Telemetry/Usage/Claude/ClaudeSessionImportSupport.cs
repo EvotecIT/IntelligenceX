@@ -14,7 +14,7 @@ internal static class ClaudeSessionImportSupport {
                string.Equals(normalized, "claude-code", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static IEnumerable<string> EnumerateCandidateFiles(string rootPath, bool preferRecentArtifacts) {
+    public static IEnumerable<string> EnumerateCandidateFiles(string rootPath, bool preferRecentArtifacts, UsageDirectorySnapshotCache? directoryCache = null) {
         if (File.Exists(rootPath)) {
             if (string.Equals(Path.GetExtension(rootPath), ".jsonl", StringComparison.OrdinalIgnoreCase)) {
                 yield return Path.GetFullPath(rootPath);
@@ -23,7 +23,8 @@ internal static class ClaudeSessionImportSupport {
         }
 
         foreach (var directory in EnumerateCandidateDirectories(rootPath)) {
-            var files = UsageTelemetryQuickReportSupport.EnumerateFilesSafe(directory, "*.jsonl", SearchOption.AllDirectories)
+            var files = (directoryCache?.Files(directory, "*.jsonl", SearchOption.AllDirectories)
+                ?? UsageTelemetryQuickReportSupport.EnumerateFilesSafe(directory, "*.jsonl", SearchOption.AllDirectories))
                 .Select(Path.GetFullPath)
                 .ToArray();
             var orderedFiles = preferRecentArtifacts
@@ -118,6 +119,10 @@ internal static class ClaudeSessionImportSupport {
 
         return candidateTimestampUtc == existingTimestampUtc && candidateLineNumber > existingLineNumber;
     }
+
+    internal static bool IsCandidateDirectory(string rootPath, string path) => EnumerateCandidateDirectories(rootPath).Any(directory =>
+        string.Equals(directory, path, StringComparison.OrdinalIgnoreCase) || path.StartsWith(
+            directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
 
     private static IEnumerable<string> EnumerateCandidateDirectories(string rootPath) {
         if (!Directory.Exists(rootPath)) {

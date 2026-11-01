@@ -21,11 +21,9 @@ internal static class CodexAgentSessionReader {
         var active = previous?.Active ?? false;
         var hasSessionMetadata = previous?.HasSessionMetadata ?? false;
         string? inputCallId = previous?.InputCallId;
-        foreach (var line in ReadLines(path, cancellationToken, window)) {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            JsonDocument document;
-            try { document = JsonDocument.Parse(line); }
-            catch (JsonException) { diagnostic("malformed-record"); continue; }
+        window ??= new AgentSessionReadWindow();
+        window.Checkpoint = previous ?? new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, InputCallId = inputCallId };
+        foreach (var document in AgentSessionMetadataProjection.Read(path, diagnostic, cancellationToken, window)) {
             using (document) {
                 var entry = document.RootElement;
                 var timestamp = Timestamp(entry);
@@ -37,7 +35,7 @@ internal static class CodexAgentSessionReader {
                 var payload = Object(entry, "payload");
                 if (type == "session_meta") {
                     // A fork can embed its parent's metadata after its own canonical first record.
-                    if (hasSessionMetadata) continue;
+                    if (!hasSessionMetadata) {
                     hasSessionMetadata = true;
                     var git = Object(payload, "git");
                     session = session with {
@@ -46,6 +44,7 @@ internal static class CodexAgentSessionReader {
                         Branch = Text(git, "branch") ?? session.Branch,
                         Repository = AgentRepositoryIdentity.FromRemote(Text(git, "repository_url")) ?? session.Repository
                     };
+                    }
                 } else if (type == "turn_context") {
                     session = session with { WorkingDirectory = session.WorkingDirectory ?? Text(payload, "cwd") };
                 } else if (type == "event_msg") {
@@ -101,6 +100,7 @@ internal static class CodexAgentSessionReader {
                     }
                 }
             }
+            if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, InputCallId = inputCallId };
         }
         return new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, InputCallId = inputCallId };
     }

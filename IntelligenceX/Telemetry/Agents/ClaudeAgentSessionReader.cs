@@ -17,11 +17,9 @@ internal static class ClaudeAgentSessionReader {
         };
         var active = previous?.Active ?? false;
         var sidechain = previous?.Sidechain ?? false;
-        foreach (var line in ReadLines(path, cancellationToken, window)) {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            JsonDocument document;
-            try { document = JsonDocument.Parse(line); }
-            catch (JsonException) { diagnostic("malformed-record"); continue; }
+        window ??= new AgentSessionReadWindow();
+        window.Checkpoint = previous ?? new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
+        foreach (var document in AgentSessionMetadataProjection.Read(path, diagnostic, cancellationToken, window)) {
             using (document) {
                 var entry = document.RootElement;
                 sidechain |= Object(entry, "isSidechain").ValueKind == JsonValueKind.True;
@@ -75,6 +73,7 @@ internal static class ClaudeAgentSessionReader {
                     session = session with { State = AgentWorkState.WaitingOnPerson, LastTurnOutcome = AgentTurnOutcome.Completed };
                 }
             }
+            if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
         }
         // Subagents share the parent sessionId. They must not replace its state during deduplication.
         return new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };

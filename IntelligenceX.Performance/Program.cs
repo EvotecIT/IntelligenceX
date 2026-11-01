@@ -7,7 +7,8 @@ using IntelligenceX.Telemetry.Usage;
 
 // Opt-in live workload diagnostic, not a microbenchmark or a correctness CI gate.
 // Each launch owns a new child of the supplied scratch directory. No provider discovery or network.
-if (args.Length < 1) throw new ArgumentException("Usage: <scratch-directory> [seconds=60] [files=1400] [control]");
+if (args.Length > 0 && args[0] == "real") { await AgentRealWorkload.RunAsync(args.Skip(1).ToArray()); return; }
+if (args.Length < 1) throw new ArgumentException("Usage: <scratch-directory> [seconds=60] [files=1400] [control], or real <scratch-directory> [seconds=120] [reconcile-seconds=30]");
 var seconds = args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 60;
 var fileCount = args.Length > 2 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 1400;
 if (seconds < 5 || fileCount < 4) throw new ArgumentOutOfRangeException(nameof(args));

@@ -15,7 +15,7 @@ internal static class CodexSessionImportSupport {
                string.Equals(normalized, "chatgpt-codex", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static IEnumerable<string> EnumerateCandidateFiles(string rootPath, bool preferRecentArtifacts, bool orderByActivity = true) {
+    public static IEnumerable<string> EnumerateCandidateFiles(string rootPath, bool preferRecentArtifacts, bool orderByActivity = true, UsageDirectorySnapshotCache? directoryCache = null) {
         if (File.Exists(rootPath)) {
             if (string.Equals(Path.GetExtension(rootPath), ".jsonl", StringComparison.OrdinalIgnoreCase)) {
                 yield return Path.GetFullPath(rootPath);
@@ -25,7 +25,7 @@ internal static class CodexSessionImportSupport {
 
         var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var directory in EnumerateCandidateDirectories(Path.GetFullPath(rootPath))) {
-            foreach (var file in EnumerateFilesFromDirectory(directory, preferRecentArtifacts, orderByActivity)) {
+            foreach (var file in EnumerateFilesFromDirectory(directory, preferRecentArtifacts, orderByActivity, directoryCache)) {
                 if (seenFiles.Add(file)) {
                     yield return file;
                 }
@@ -197,12 +197,16 @@ internal static class CodexSessionImportSupport {
         return ResolveAccount(artifactPath, rootPath).ProviderAccountId;
     }
 
-    private static IEnumerable<string> EnumerateFilesFromDirectory(string directory, bool preferRecentArtifacts, bool orderByActivity) {
+    private static IEnumerable<string> EnumerateFilesFromDirectory(string directory, bool preferRecentArtifacts, bool orderByActivity, UsageDirectorySnapshotCache? directoryCache) {
+        IEnumerable<string> Files(string path, SearchOption option) => directoryCache?.Files(path, "*.jsonl", option)
+            ?? UsageTelemetryQuickReportSupport.EnumerateFilesSafe(path, "*.jsonl", option);
+        IEnumerable<string> Directories(string path) => directoryCache?.Directories(path)
+            ?? UsageTelemetryQuickReportSupport.EnumerateDirectoriesSafe(path);
         // Live collections already stat each file for its fingerprint; avoid a second stat for ordering.
         Func<string, DateTime> activityOrder = orderByActivity
             ? UsageTelemetryQuickReportSupport.GetLastWriteTimeUtcSafe : static _ => DateTime.MinValue;
         foreach (var file in UsageTelemetryQuickReportSupport.OrderPathsByDirection(
-                     UsageTelemetryQuickReportSupport.EnumerateFilesSafe(directory, "*.jsonl", SearchOption.TopDirectoryOnly)
+                     Files(directory, SearchOption.TopDirectoryOnly)
                          .Where(IsSessionFile)
                          .Select(Path.GetFullPath),
                      preferRecentArtifacts,
@@ -211,14 +215,14 @@ internal static class CodexSessionImportSupport {
         }
 
         var partitionRoots = UsageTelemetryQuickReportSupport.OrderPathsByDirection(
-                UsageTelemetryQuickReportSupport.EnumerateDirectoriesSafe(directory)
+                Directories(directory)
                     .Where(static value => UsageTelemetryQuickReportSupport.IsIntegerPathSegment(Path.GetFileName(value), 4)),
                 preferRecentArtifacts,
                 UsageTelemetryQuickReportSupport.GetNumericPathSegment)
             .ToArray();
         if (partitionRoots.Length == 0) {
             foreach (var file in UsageTelemetryQuickReportSupport.OrderPathsByDirection(
-                         UsageTelemetryQuickReportSupport.EnumerateFilesSafe(directory, "*.jsonl", SearchOption.AllDirectories)
+                         Files(directory, SearchOption.AllDirectories)
                              .Where(IsSessionFile)
                              .Select(Path.GetFullPath),
                          preferRecentArtifacts,
@@ -231,7 +235,7 @@ internal static class CodexSessionImportSupport {
 
         foreach (var yearDirectory in partitionRoots) {
             var monthDirectories = UsageTelemetryQuickReportSupport.OrderPathsByDirection(
-                    UsageTelemetryQuickReportSupport.EnumerateDirectoriesSafe(yearDirectory)
+                    Directories(yearDirectory)
                         .Where(static value => UsageTelemetryQuickReportSupport.IsIntegerPathSegment(Path.GetFileName(value), 2)),
                     preferRecentArtifacts,
                     UsageTelemetryQuickReportSupport.GetNumericPathSegment)
@@ -239,7 +243,7 @@ internal static class CodexSessionImportSupport {
 
             if (monthDirectories.Length == 0) {
                 foreach (var file in UsageTelemetryQuickReportSupport.OrderPathsByDirection(
-                             UsageTelemetryQuickReportSupport.EnumerateFilesSafe(yearDirectory, "*.jsonl", SearchOption.AllDirectories)
+                             Files(yearDirectory, SearchOption.AllDirectories)
                                  .Where(IsSessionFile)
                                  .Select(Path.GetFullPath),
                              preferRecentArtifacts,
@@ -252,7 +256,7 @@ internal static class CodexSessionImportSupport {
 
             foreach (var monthDirectory in monthDirectories) {
                 var dayDirectories = UsageTelemetryQuickReportSupport.OrderPathsByDirection(
-                        UsageTelemetryQuickReportSupport.EnumerateDirectoriesSafe(monthDirectory)
+                        Directories(monthDirectory)
                             .Where(static value => UsageTelemetryQuickReportSupport.IsIntegerPathSegment(Path.GetFileName(value), 2)),
                         preferRecentArtifacts,
                         UsageTelemetryQuickReportSupport.GetNumericPathSegment)
@@ -260,7 +264,7 @@ internal static class CodexSessionImportSupport {
 
                 if (dayDirectories.Length == 0) {
                     foreach (var file in UsageTelemetryQuickReportSupport.OrderPathsByDirection(
-                                 UsageTelemetryQuickReportSupport.EnumerateFilesSafe(monthDirectory, "*.jsonl", SearchOption.AllDirectories)
+                                 Files(monthDirectory, SearchOption.AllDirectories)
                                      .Where(IsSessionFile)
                                      .Select(Path.GetFullPath),
                                  preferRecentArtifacts,
@@ -273,7 +277,7 @@ internal static class CodexSessionImportSupport {
 
                 foreach (var dayDirectory in dayDirectories) {
                     foreach (var file in UsageTelemetryQuickReportSupport.OrderPathsByDirection(
-                                 UsageTelemetryQuickReportSupport.EnumerateFilesSafe(dayDirectory, "*.jsonl", SearchOption.TopDirectoryOnly)
+                                 Files(dayDirectory, SearchOption.TopDirectoryOnly)
                                      .Where(IsSessionFile)
                                      .Select(Path.GetFullPath),
                                  preferRecentArtifacts,
@@ -311,6 +315,12 @@ internal static class CodexSessionImportSupport {
             yield return rootPath;
         }
     }
+
+    internal static bool IsCandidateDirectory(string rootPath, string path) => EnumerateCandidateDirectories(rootPath)
+        .Any(directory => IsWithin(directory, path));
+
+    private static bool IsWithin(string directory, string path) => string.Equals(directory, path, StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith(directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSessionFile(string path) {
         var name = Path.GetFileName(path);

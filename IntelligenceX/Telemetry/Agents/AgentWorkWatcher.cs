@@ -36,6 +36,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
     private readonly SemaphoreSlim _signal = new(0, 1);
     private readonly CancellationTokenSource _stop = new();
     private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _failedWatchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly AgentWorkDiagnostics _diagnostics;
     private IReadOnlyList<AgentSessionState> _metadata = Array.Empty<AgentSessionState>();
     private IReadOnlyList<AgentPullRequestState> _pullRequests = Array.Empty<AgentPullRequestState>();
@@ -46,6 +47,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
     private Task[] _workers = Array.Empty<Task>();
     private bool _disposed;
     private int _reconcileRequested;
+    private int _rearmRequested;
 
     /// <summary>Creates a recent-work watcher. Null roots reuse telemetry discovery; an empty list watches nothing.</summary>
     /// <param name="roots">Local or recovered telemetry roots.</param>
@@ -70,7 +72,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         _createWatcher = createWatcher;
         _diagnostics = new AgentWorkDiagnostics(Signal);
         _cache = _options.Cache ?? new InMemoryRawArtifactStore();
-        _local = new AgentLocalCollection(CopyReadOptions());
+        _local = new AgentLocalCollection(CopyReadOptions(), incremental: true);
         _readMetadata = readMetadataAsync;
         _github = github;
         _login = gitHubLogin;
@@ -98,7 +100,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
             _startTask = Task.Run(async () => {
                 using var startup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stop.Token);
                 try {
-                    await CollectAsync(startup.Token, reconcile: true).ConfigureAwait(false);
+                    await CollectAsync(startup.Token, reconcile: true, rearmWatchers: true).ConfigureAwait(false);
                     _stop.Token.ThrowIfCancellationRequested();
                     _workers = new[] { Task.Run(RunLocalAsync), Task.Run(RunReconcileAsync), Task.Run(RunMetadataAsync), Task.Run(RunGitHubAsync) };
                 } catch {
@@ -117,7 +119,9 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
                 // Coalesce a burst of writes without waiting for a quiet writer indefinitely.
                 await DelayAsync(TimeSpan.FromSeconds(1), _stop.Token).ConfigureAwait(false);
                 while (_signal.Wait(0)) { }
-                await CollectAsync(_stop.Token, Interlocked.Exchange(ref _reconcileRequested, 0) != 0).ConfigureAwait(false);
+                var request = Interlocked.Exchange(ref _reconcileRequested, 0);
+                await CollectAsync(_stop.Token, request != 0, forceMembership: request > 1,
+                    rearmWatchers: Interlocked.Exchange(ref _rearmRequested, 0) != 0).ConfigureAwait(false);
             }
         } catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
     }
@@ -126,7 +130,8 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         try {
             while (true) {
                 await DelayAsync(_options.ReconcileInterval, _stop.Token).ConfigureAwait(false);
-                Interlocked.Exchange(ref _reconcileRequested, 1);
+                Interlocked.CompareExchange(ref _reconcileRequested, 1, 0);
+                Interlocked.Exchange(ref _rearmRequested, 1);
                 Signal();
             }
         } catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
@@ -139,9 +144,9 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         Task.Delay(delay, cancellationToken);
 #endif
 
-    private async Task CollectAsync(CancellationToken cancellationToken, bool reconcile) {
+    private async Task CollectAsync(CancellationToken cancellationToken, bool reconcile, bool forceMembership = false, bool rearmWatchers = false) {
         if (reconcile) RefreshDiscoveredRoots();
-        EnsureWatchers();
+        EnsureWatchers(rearmWatchers);
         IReadOnlyList<AgentSessionState> metadata;
         IReadOnlyList<AgentPullRequestState> pullRequests;
         IReadOnlyList<AgentSourceDiagnostic> diagnostics;
@@ -157,7 +162,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         }
         var local = await Task.Run(() => {
             _local.ResetStatistics();
-            if (reconcile) _local.Reconcile(_roots, null, cancellationToken);
+            if (reconcile) _local.Reconcile(_roots, null, cancellationToken, forceMembership);
             else {
                 var discover = false;
                 foreach (var file in changed) discover |= !_local.Update(file.RootId, file.Path, cancellationToken);

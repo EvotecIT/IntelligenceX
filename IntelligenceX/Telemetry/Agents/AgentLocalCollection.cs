@@ -15,11 +15,15 @@ internal sealed class AgentLocalCollection {
     private readonly AgentWorkOptions _options;
     private readonly Dictionary<string, RootState> _roots = new(StringComparer.Ordinal);
     private readonly AgentRepositoryCache _repositories = new();
+    private readonly AgentSnapshotIndex? _index;
 
-    internal AgentLocalCollection(AgentWorkOptions options) { _options = options; }
+    internal AgentLocalCollection(AgentWorkOptions options, bool incremental = false) {
+        _options = options;
+        if (incremental) _index = new AgentSnapshotIndex(options);
+    }
 
-    internal void Reconcile(SourceRootRecord[] roots, DateTimeOffset? now, CancellationToken token) {
-        _repositories.Clear(); // Refresh HEAD/config and negative lookups at the reconcile cadence.
+    internal void Reconcile(SourceRootRecord[] roots, DateTimeOffset? now, CancellationToken token, bool forceMembership = false) {
+        using var measurement = AgentWorkMeasurement.Begin("reconcile");
         foreach (var id in _roots.Keys.Where(id => !roots.Any(root => root.Enabled && root.Id == id)).ToArray()) _roots.Remove(id);
         foreach (var root in roots) {
             token.ThrowIfCancellationRequested();
@@ -30,6 +34,8 @@ internal sealed class AgentLocalCollection {
                 _roots[root.Id] = state;
             }
             state.Scan.ResetStatistics();
+            if (forceMembership) state.Directories.Clear();
+            state.Directories.BeginScan();
             state.RootDiagnostics.Clear();
             if (!Directory.Exists(root.Path) && !File.Exists(root.Path)) {
                 state.Clear();
@@ -37,10 +43,11 @@ internal sealed class AgentLocalCollection {
                 continue;
             }
             try {
+                var previousListings = state.Directories.Listings;
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var paths = root.ProviderId == "codex"
-                    ? CodexSessionImportSupport.EnumerateCandidateFiles(root.Path, preferRecentArtifacts: false, orderByActivity: false)
-                    : ClaudeSessionImportSupport.EnumerateCandidateFiles(root.Path, preferRecentArtifacts: false);
+                    ? CodexSessionImportSupport.EnumerateCandidateFiles(root.Path, preferRecentArtifacts: false, orderByActivity: false, directoryCache: state.Directories)
+                    : ClaudeSessionImportSupport.EnumerateCandidateFiles(root.Path, preferRecentArtifacts: false, directoryCache: state.Directories);
                 foreach (var path in paths) {
                     token.ThrowIfCancellationRequested();
                     if (root.ProviderId == "claude" && LocalAgentWorkStateService.IsSubagentPath(path)) continue;
@@ -48,16 +55,24 @@ internal sealed class AgentLocalCollection {
                     ReadFile(state, path, Since(now), token);
                 }
                 foreach (var path in state.Files.Keys.Where(path => !seen.Contains(path)).ToArray()) state.Remove(path);
+                state.Directories.CompleteScan();
+                AgentWorkMeasurement.Add("directories-listed", state.Directories.Listings - previousListings);
                 state.Scan.Flush();
                 ReadTitles(state, token);
             } catch (IOException) { state.Report("unreadable-source");
             } catch (UnauthorizedAccessException) { state.Report("unreadable-source"); }
         }
+        if (_repositories.Refresh(_roots.Values.Where(static state => AgentRepositoryIdentity.CanResolveWorkspace(state.Root))
+            .SelectMany(static state => state.Files.Values)
+            .Where(static file => file.Session is not null).Select(static file => file.Session!)))
+            foreach (var state in _roots.Values)
+                foreach (var file in state.Files.Values) file.Enriched = null;
     }
 
     // Returns false for unknown paths: discovery belongs to reconciliation, not an alternative
     // copy of provider candidate rules. Existing files (including deletion) need no enumeration.
     internal bool Update(string rootId, string path, CancellationToken token) {
+        using var measurement = AgentWorkMeasurement.Begin("event-update");
         if (!_roots.TryGetValue(rootId, out var state)) return false;
         if (state.Root.ProviderId == "codex" && string.Equals(path, Path.Combine(state.Root.Path, "session_index.jsonl"), StringComparison.OrdinalIgnoreCase)) {
             ReadTitles(state, token);
@@ -67,9 +82,11 @@ internal sealed class AgentLocalCollection {
             if (state.Root.ProviderId == "claude" && LocalAgentWorkStateService.IsSubagentPath(path)) return true;
             if (state.Root.ProviderId == "codex" && !string.Equals(path, state.Root.Path, StringComparison.OrdinalIgnoreCase)
                 && !Path.GetFileName(path).StartsWith("rollout-", StringComparison.OrdinalIgnoreCase)) return true;
-            return !File.Exists(path); // A deleted unknown file needs no discovery.
+            if (!File.Exists(path)) return true; // A deleted unknown file needs no discovery.
+            state.Directories.Invalidate(Path.GetDirectoryName(path)!);
+            return false;
         }
-        if (!File.Exists(path)) { state.Remove(path); return true; }
+        if (!File.Exists(path)) { state.Directories.Invalidate(Path.GetDirectoryName(path)!); state.Remove(path); return true; }
         ReadFile(state, path, Since(null), token, persist: false);
         return true;
     }
@@ -80,6 +97,7 @@ internal sealed class AgentLocalCollection {
 
     internal AgentWorkSnapshot Snapshot(IEnumerable<AgentSessionState> metadata, DateTimeOffset? nowUtc = null, TimeSpan? window = null,
         IReadOnlyList<AgentPullRequestState>? pullRequests = null, IReadOnlyList<AgentSourceDiagnostic>? additionalDiagnostics = null) {
+        using var measurement = AgentWorkMeasurement.Begin("snapshot");
         var sessions = new List<AgentSessionState>();
         var diagnostics = new List<AgentSourceDiagnostic>();
         var running = new HashSet<string>(StringComparer.Ordinal);
@@ -95,7 +113,7 @@ internal sealed class AgentLocalCollection {
                     file.Enriched = local ? _repositories.Enrich(observation) : observation;
                 }
                 var session = file.Enriched;
-                if (state.Titles.TryGetValue(session.Id, out var title)) session = session with { Title = title.Title };
+                if (state.Titles.TryGetValue(session.Id, out var title) && session.Title != title.Title) session = session with { Title = title.Title };
                 sessions.Add(session);
             }
             sessions.AddRange(state.Titles.Values);
@@ -108,11 +126,13 @@ internal sealed class AgentLocalCollection {
         }
         var now = nowUtc ?? DateTimeOffset.UtcNow; // Sample after reading, including metadata supplied by the caller.
         if (additionalDiagnostics is not null) diagnostics.AddRange(additionalDiagnostics);
+        var statistics = new AgentWorkScanStatistics { FilesRead = _roots.Values.Sum(static s => s.Scan.FilesRead),
+            FilesReused = _roots.Values.Sum(static s => s.Scan.FilesReused), FilesSkipped = _roots.Values.Sum(static s => s.Scan.FilesSkipped),
+            FilesTailed = _roots.Values.Sum(static s => s.Scan.FilesTailed), BytesRead = _roots.Values.Sum(static s => s.Scan.BytesRead) };
+        if (_index is not null) return _index.Build(sessions, metadata, running, now, pullRequests ?? Array.Empty<AgentPullRequestState>(), diagnostics, statistics);
         return LocalAgentWorkStateService.BuildSnapshot(sessions, metadata.Where(static row => row.Provider == "codex"), running,
             now, Since(now), window ?? _options.ActiveTurnWindow, _options.StaleAfter, diagnostics, pullRequests ?? Array.Empty<AgentPullRequestState>(),
-            new AgentWorkScanStatistics { FilesRead = _roots.Values.Sum(static s => s.Scan.FilesRead),
-                FilesReused = _roots.Values.Sum(static s => s.Scan.FilesReused), FilesSkipped = _roots.Values.Sum(static s => s.Scan.FilesSkipped),
-                FilesTailed = _roots.Values.Sum(static s => s.Scan.FilesTailed), BytesRead = _roots.Values.Sum(static s => s.Scan.BytesRead) });
+            statistics);
     }
 
     private DateTimeOffset? Since(DateTimeOffset? now) => _options.ActiveWithin.HasValue
@@ -123,6 +143,8 @@ internal sealed class AgentLocalCollection {
         state.CurrentFile = file;
         try {
             file.Session = state.Scan.Read(path, since, token, persist);
+            if (state.Files.TryGetValue(path, out var previous) && previous.Session == file.Session
+                && previous.Diagnostics.Count == file.Diagnostics.Count && previous.Diagnostics.All(pair => file.Diagnostics.TryGetValue(pair.Key, out var count) && count == pair.Value)) return;
             state.Files[path] = file;
         } catch (IOException) { state.Report("unreadable-source"); state.Files[path] = file;
         } catch (UnauthorizedAccessException) { state.Report("unreadable-source"); state.Files[path] = file;
@@ -151,6 +173,7 @@ internal sealed class AgentLocalCollection {
 
     private sealed class RootState {
         internal readonly SourceRootRecord Root;
+        internal readonly UsageDirectorySnapshotCache Directories = new();
         internal readonly AgentSessionScan Scan;
         internal readonly Dictionary<string, FileState> Files = new(StringComparer.OrdinalIgnoreCase);
         internal readonly Dictionary<string, AgentSessionState> Titles = new(StringComparer.Ordinal);
@@ -167,6 +190,6 @@ internal sealed class AgentLocalCollection {
             diagnostics[code] = count + 1;
         }
         internal void Remove(string path) { Files.Remove(path); Scan.Forget(path); }
-        internal void Clear() { foreach (var path in Files.Keys.ToArray()) Remove(path); Titles.Clear(); IndexDiagnostics.Diagnostics.Clear(); }
+        internal void Clear() { foreach (var path in Files.Keys.ToArray()) Remove(path); Titles.Clear(); Directories.Clear(); IndexDiagnostics.Diagnostics.Clear(); }
     }
 }

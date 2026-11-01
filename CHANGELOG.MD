@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Reduce live work-state CPU with cached directory membership, incremental session evaluation, streamed state metadata and paced recovery for unavailable filesystem notifications. Add read-only real-root phase CPU measurement.
 - Add a recent-only in-process work watcher with targeted file updates, one-second burst coalescing, safe JSONL append checkpoints, independent conditional GitHub refresh, and a two-day default for native consumers.
 - Evaluate known unfinished turns after collection using the latest same-root Desktop/log activity, preserving explicit completion, interruption and waiting signals.
 - Add metadata-only Codex and Claude work snapshots, GitHub PR/check and review signals, attention rules, and `agents status --json`.

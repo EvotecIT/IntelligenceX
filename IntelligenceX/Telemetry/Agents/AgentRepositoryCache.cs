@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace IntelligenceX.Telemetry.Agents;
 
@@ -17,5 +18,17 @@ internal sealed class AgentRepositoryCache {
         return session with { Repository = session.Repository ?? identity.Repository, Branch = session.Branch ?? identity.Branch };
     }
 
-    internal void Clear() => _identities.Clear();
+    internal bool Refresh(IEnumerable<AgentSessionState> sessions) {
+        var needed = new HashSet<string>(sessions.Where(static session => session.WorkingDirectory is not null
+            && (session.Repository is null || session.Branch is null)).Select(static session => session.WorkingDirectory!), StringComparer.Ordinal);
+        foreach (var cwd in _identities.Keys.Where(cwd => !needed.Contains(cwd)).ToArray()) _identities.Remove(cwd);
+        var changed = false;
+        foreach (var cwd in new List<string>(_identities.Keys)) {
+            var current = AgentRepositoryIdentity.Enrich(new AgentSessionState { WorkingDirectory = cwd });
+            var previous = _identities[cwd];
+            changed |= previous.Repository != current.Repository || previous.Branch != current.Branch;
+            _identities[cwd] = current;
+        }
+        return changed;
+    }
 }
