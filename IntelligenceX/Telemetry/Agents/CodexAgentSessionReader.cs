@@ -10,9 +10,9 @@ using static IntelligenceX.Telemetry.Agents.AgentSessionLogReader;
 namespace IntelligenceX.Telemetry.Agents;
 
 internal static class CodexAgentSessionReader {
-    internal static AgentSessionState Read(string path, SourceRootRecord root, DateTimeOffset now,
-        TimeSpan activeWindow, Action<string> diagnostic, CancellationToken cancellationToken) {
+    internal static AgentSessionState Read(string path, SourceRootRecord root, Action<string> diagnostic, CancellationToken cancellationToken) {
         var session = new AgentSessionState {
+            SourceRootId = root.Id,
             Provider = "codex", Id = CodexSessionImportSupport.TryExtractSessionIdFromFileName(path) ?? Path.GetFileNameWithoutExtension(path),
             Machine = root.MachineLabel ?? (root.SourceKind == UsageSourceKind.LocalLogs ? Environment.MachineName : null),
             IsArchived = IsArchivedPath(path)
@@ -101,7 +101,7 @@ internal static class CodexAgentSessionReader {
                 }
             }
         }
-        return Finish(session, active, now, activeWindow, root);
+        return Finish(session, active);
     }
 
     private static bool IsArchivedPath(string path) {

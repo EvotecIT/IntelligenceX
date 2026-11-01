@@ -45,7 +45,7 @@ public sealed partial class GitHubDashboardService {
         var diagnostics = diagnostic is null ? local.Diagnostics : local.Diagnostics.Concat(new[] {
             new AgentSourceDiagnostic { Provider = "github", Code = diagnostic }
         }).ToArray();
-        return AgentWorkStateRules.Evaluate(local.Sessions, prs, local.CapturedAtUtc, staleAfter, diagnostics);
+        return AgentWorkStateRules.Evaluate(local.Sessions, prs, local.CapturedAtUtc, staleAfter, diagnostics) with { Scan = local.Scan };
     }
 
     private const string AgentPullRequestQuery = """

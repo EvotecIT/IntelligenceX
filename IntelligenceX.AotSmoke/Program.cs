@@ -30,7 +30,14 @@ try {
         new SourceRootRecord("claude-fixture", "claude", UsageSourceKind.LocalLogs, Path.Combine(fixture, "claude"))
     };
     var metadata = await CodexAgentSessionMetadataReader.ReadAsync(roots[0]);
-    var local = LocalAgentWorkStateService.ReadLocal(roots, nowUtc: DateTimeOffset.Parse("2026-11-01T12:00:00Z"), codexMetadata: metadata);
+    using var cache = new SqliteRawArtifactStore(Path.Combine(fixture, "scan-cache.db"));
+    var options = new AgentWorkReadOptions { Cache = cache };
+    var local = LocalAgentWorkStateService.ReadLocal(roots, options: options, nowUtc: DateTimeOffset.Parse("2026-11-01T12:00:00Z"), codexMetadata: metadata);
+    var warm = LocalAgentWorkStateService.ReadLocal(roots, options: options,
+        nowUtc: local.CapturedAtUtc, codexMetadata: metadata);
+    if (warm.Scan?.FilesReused != 2 || warm.Scan.FilesRead != 0 || AgentWorkJson.Serialize(local with { Scan = null }) != AgentWorkJson.Serialize(warm with { Scan = null })) {
+        throw new InvalidOperationException("Native cache did not preserve parsed observations.");
+    }
     // Root GitHub collection in the native binary too; pre-cancellation prevents any network access.
     using var github = new GitHubDashboardService("synthetic-token", "http://127.0.0.1:1");
     var partial = await github.EnrichAgentWorkAsync(local, "sample", cancellationToken: new CancellationToken(canceled: true));
@@ -48,7 +55,7 @@ try {
         throw new InvalidOperationException("Expected fixture sessions, database metadata and attention.");
     }
     if (json.Contains("private sentinel", StringComparison.Ordinal)) throw new InvalidOperationException("Transcript content escaped the metadata boundary.");
-    Console.WriteLine($"AOT snapshot passed: sessions={decoded.Sessions.Count}, attention={decoded.NeedsAttention.Count}, reflection={JsonSerializer.IsReflectionEnabledByDefault}");
+    Console.WriteLine($"AOT snapshot passed: sessions={decoded.Sessions.Count}, attention={decoded.NeedsAttention.Count}, cached={warm.Scan.FilesReused}, reflection={JsonSerializer.IsReflectionEnabledByDefault}");
 } finally {
     Directory.Delete(fixture, recursive: true);
 }

@@ -31,6 +31,16 @@ internal static partial class Program {
             AssertEqual(AgentWorkState.Finished, session.State, "archive state");
             AssertEqual(DateTimeOffset.FromUnixTimeSeconds(1793527260), session.LastActivityAtUtc, "provider activity time");
             AssertEqual(true, before.SequenceEqual(File.ReadAllBytes(path)), "read-only database bytes");
+            using (var sqlite = new SQLite()) {
+                sqlite.ExecuteNonQuery(path, """
+                    ALTER TABLE threads ADD COLUMN updated_at_ms INTEGER;
+                    UPDATE threads SET updated_at_ms = 1793527260123;
+                    """);
+            }
+            before = File.ReadAllBytes(path);
+            sessions = CodexAgentSessionMetadataReader.ReadAsync(root).GetAwaiter().GetResult();
+            AssertEqual(DateTimeOffset.FromUnixTimeMilliseconds(1793527260123), sessions[0].LastActivityAtUtc, "Desktop millisecond activity time");
+            AssertEqual(true, before.SequenceEqual(File.ReadAllBytes(path)), "millisecond metadata remains read-only");
             var json = AgentWorkJson.Serialize(new AgentWorkSnapshot { Sessions = sessions });
             AssertEqual(false, json.Contains("private sentinel"), "no message projection");
             AssertEqual(false, json.Contains("private-sentinel"), "no remote credentials");
@@ -56,7 +66,7 @@ internal static partial class Program {
                 """);
             Console.SetOut(capture);
             Console.SetError(capture);
-            var exit = IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--json", "--codex-root", directory }).GetAwaiter().GetResult();
+            var exit = IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--json", "--codex-root", directory, "--cache-path", Path.Combine(directory, "cache.db") }).GetAwaiter().GetResult();
             AssertEqual(0, exit, "CLI snapshot exit");
             var json = capture.ToString();
             var snapshot = JsonSerializer.Deserialize(json, AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
@@ -64,6 +74,23 @@ internal static partial class Program {
             AssertEqual("fake-cli", snapshot.Sessions[0].Id, "CLI session");
             AssertEqual(AgentAttentionKind.InterruptedTurn, snapshot.NeedsAttention[0].Kind, "CLI attention rule");
             AssertEqual(false, json.Contains("private sentinel"), "CLI privacy");
+            capture.GetStringBuilder().Clear();
+            exit = IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--json", "--codex-root", directory,
+                "--cache-path", Path.Combine(directory, "cache.db") }).GetAwaiter().GetResult();
+            var warm = JsonSerializer.Deserialize(capture.ToString(), AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
+            AssertEqual(0, exit, "warm CLI snapshot exit");
+            AssertEqual(1, warm.Scan!.FilesReused, "persistent CLI cache reuse");
+            File.WriteAllText(Path.Combine(directory, "sessions", "rollout-synthetic.jsonl"), $$$"""
+                {"timestamp":"{{{DateTimeOffset.UtcNow.AddDays(-8).ToString("O")}}}","type":"session_meta","payload":{"id":"fake-cli"}}
+                """);
+            capture.GetStringBuilder().Clear();
+            exit = IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--json", "--codex-root", directory,
+                "--since", "7d", "--no-cache" }).GetAwaiter().GetResult();
+            var recent = JsonSerializer.Deserialize(capture.ToString(), AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
+            AssertEqual(0, exit, "recent CLI snapshot exit");
+            AssertEqual(0, recent.Sessions.Count, "CLI since filter");
+            AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--since", "7" }).GetAwaiter().GetResult(), "invalid age");
+            AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--no-cache", "--cache-path", "unused" }).GetAwaiter().GetResult(), "conflicting cache flags");
             AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--stale-days", "0" }).GetAwaiter().GetResult(), "invalid threshold");
         } finally {
             Console.SetOut(output);

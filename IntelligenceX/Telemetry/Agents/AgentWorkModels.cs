@@ -45,6 +45,8 @@ public enum AgentCheckState {
 
 /// <summary>Metadata-only local session. No transcript messages or tool arguments are retained.</summary>
 public sealed record AgentSessionState {
+    /// <summary>Originating telemetry root, used to keep local and recovered metadata provenance separate.</summary>
+    public string? SourceRootId { get; init; }
     /// <summary>Provider identifier, such as codex or claude.</summary>
     public string Provider { get; init; } = string.Empty;
     /// <summary>Provider session identifier.</summary>
@@ -143,8 +145,10 @@ public sealed record AgentSourceDiagnostic {
 
 /// <summary>Portable snapshot for tray, native, CLI and other consumers.</summary>
 public sealed record AgentWorkSnapshot {
-    /// <summary>Time at which the snapshot was evaluated.</summary>
+    /// <summary>Time at which local collection finished and session state was evaluated. Optional remote enrichment follows.</summary>
     public DateTimeOffset CapturedAtUtc { get; init; }
+    /// <summary>Local session-log work performed, if collected by the local service.</summary>
+    public AgentWorkScanStatistics? Scan { get; init; }
     /// <summary>Deduplicated sessions, newest first.</summary>
     public IReadOnlyList<AgentSessionState> Sessions { get; init; } = Array.Empty<AgentSessionState>();
     /// <summary>Open PRs, including those without a local session.</summary>

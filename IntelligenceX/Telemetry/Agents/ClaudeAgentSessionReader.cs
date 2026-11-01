@@ -8,9 +8,9 @@ using static IntelligenceX.Telemetry.Agents.AgentSessionLogReader;
 namespace IntelligenceX.Telemetry.Agents;
 
 internal static class ClaudeAgentSessionReader {
-    internal static AgentSessionState? Read(string path, SourceRootRecord root, DateTimeOffset now,
-        TimeSpan activeWindow, Action<string> diagnostic, CancellationToken cancellationToken) {
+    internal static AgentSessionState? Read(string path, SourceRootRecord root, Action<string> diagnostic, CancellationToken cancellationToken) {
         var session = new AgentSessionState {
+            SourceRootId = root.Id,
             Provider = "claude", Id = Path.GetFileNameWithoutExtension(path),
             Machine = root.MachineLabel ?? (root.SourceKind == UsageSourceKind.LocalLogs ? Environment.MachineName : null)
         };
@@ -76,6 +76,6 @@ internal static class ClaudeAgentSessionReader {
             }
         }
         // Subagents share the parent sessionId. They must not replace its state during deduplication.
-        return sidechain ? null : Finish(session, active, now, activeWindow, root);
+        return sidechain ? null : Finish(session, active);
     }
 }

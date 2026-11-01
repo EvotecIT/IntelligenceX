@@ -5,7 +5,6 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
-using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Telemetry.Agents;
 
@@ -25,19 +24,25 @@ internal static class AgentSessionLogReader {
             var count = reader.Read(buffer, 0, (int)Math.Min(buffer.Length, remaining));
             if (count == 0) break;
             remaining -= count;
-            for (var i = 0; i < count; i++) {
-                if (buffer[i] == '\n') {
-                    if (!oversized) yield return line.ToString();
-                    line.Clear();
-                    oversized = false;
-                } else if (!oversized) {
-                    if (line.Length >= MaximumLineCharacters) {
+            var offset = 0;
+            while (offset < count) {
+                var newline = Array.IndexOf(buffer, '\n', offset, count - offset);
+                var end = newline < 0 ? count : newline;
+                if (!oversized) {
+                    var length = end - offset;
+                    if (length > MaximumLineCharacters - line.Length) {
                         line.Clear();
                         oversized = true;
                     } else {
-                        line.Append(buffer[i]);
+                        line.Append(buffer, offset, length);
                     }
                 }
+                if (newline >= 0) {
+                    if (!oversized) yield return line.ToString();
+                    line.Clear();
+                    oversized = false;
+                }
+                offset = end + 1;
             }
         }
         // A final unterminated record may be in flight; a complete JSON object can still be read safely.
@@ -55,18 +60,7 @@ internal static class AgentSessionLogReader {
         DateTimeOffset.TryParse(Text(element, property), CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal, out var time) ? time.ToUniversalTime() : null;
 
-    internal static AgentSessionState Finish(AgentSessionState session, bool active, DateTimeOffset now,
-        TimeSpan activeWindow, SourceRootRecord root) {
-        if (session.IsArchived) return session with { State = AgentWorkState.Finished, StateIsInferred = false };
-        if (!active) return session;
-        var recent = session.LastActivityAtUtc.HasValue && session.LastActivityAtUtc.Value <= now
-            && now - session.LastActivityAtUtc.Value <= activeWindow;
-        // Recovered/remote logs cannot establish that a process is running on this machine.
-        recent &= root.SourceKind == UsageSourceKind.LocalLogs;
-        return session with {
-            State = recent ? AgentWorkState.Running : AgentWorkState.Idle,
-            StateIsInferred = true,
-            LastTurnOutcome = recent ? AgentTurnOutcome.Unknown : AgentTurnOutcome.Incomplete
-        };
-    }
+    // Preserve an open-turn observation until all sources have been collected. Never cache clock-derived state.
+    internal static AgentSessionState Finish(AgentSessionState session, bool active) => active
+        ? session with { StateIsInferred = true, LastTurnOutcome = AgentTurnOutcome.Incomplete } : session;
 }

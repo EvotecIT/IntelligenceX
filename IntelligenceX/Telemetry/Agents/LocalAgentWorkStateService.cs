@@ -19,17 +19,21 @@ public static class LocalAgentWorkStateService {
 
     /// <summary>Reads local logs and title indexes. Explicit roots replace automatic discovery.</summary>
     /// <param name="roots">Optional telemetry source roots. An empty list reads nothing.</param>
-    /// <param name="nowUtc">Evaluation time; defaults to UTC now.</param>
+    /// <param name="nowUtc">Evaluation time; defaults to UTC now after all local sources have been read.</param>
     /// <param name="activeWindow">Maximum quiet interval for an inferred running turn; defaults to five minutes.</param>
     /// <param name="codexMetadata">Optional read-only Codex database metadata from the SQLite companion library.</param>
     /// <param name="cancellationToken">Cancels enumeration and parsing.</param>
+    /// <param name="options">Optional activity cutoff and parsed observation cache.</param>
     public static AgentWorkSnapshot ReadLocal(IEnumerable<SourceRootRecord>? roots = null, DateTimeOffset? nowUtc = null,
         TimeSpan? activeWindow = null, IEnumerable<AgentSessionState>? codexMetadata = null,
-        CancellationToken cancellationToken = default) {
-        var now = nowUtc ?? DateTimeOffset.UtcNow;
+        CancellationToken cancellationToken = default, AgentWorkReadOptions? options = null) {
         var window = activeWindow ?? TimeSpan.FromMinutes(5);
         if (window <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(activeWindow));
         var sessions = new List<AgentSessionState>();
+        var metadataRows = (codexMetadata ?? Array.Empty<AgentSessionState>()).Where(static s => s.Provider == "codex").ToArray();
+        var runningRoots = new HashSet<string>(StringComparer.Ordinal);
+        var metadataKeys = new HashSet<string>(StringComparer.Ordinal);
+        var scans = new List<AgentSessionScan>();
         var diagnostics = new Dictionary<string, int>(StringComparer.Ordinal);
         void Report(string provider, string code) {
             var key = provider + ":" + code;
@@ -44,6 +48,14 @@ public static class LocalAgentWorkStateService {
                 continue;
             }
             try {
+                var local = AgentRepositoryIdentity.CanResolveWorkspace(root);
+                var machine = root.MachineLabel ?? (root.SourceKind == UsageSourceKind.LocalLogs ? Environment.MachineName : null);
+                // WSL logs are local activity even though their workspace paths are not Windows paths.
+                if (root.SourceKind == UsageSourceKind.LocalLogs) runningRoots.Add(root.Id);
+                var recentIds = new HashSet<string>(metadataRows.Where(s => s.SourceRootId == root.Id && s.Machine == machine
+                    && s.LastActivityAtUtc >= options?.SinceUtc).Select(static s => s.Id), StringComparer.Ordinal);
+                var scan = new AgentSessionScan(root, options?.Cache, code => Report(root.ProviderId, code));
+                scans.Add(scan);
                 var firstSession = sessions.Count;
                 var files = root.ProviderId == "codex"
                     ? CodexSessionImportSupport.EnumerateCandidateFiles(root.Path, preferRecentArtifacts: false)
@@ -52,12 +64,12 @@ public static class LocalAgentWorkStateService {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (root.ProviderId == "claude" && IsSubagentPath(path)) continue;
                     try {
-                        Action<string> report = code => Report(root.ProviderId, code);
-                        var session = root.ProviderId == "codex"
-                            ? CodexAgentSessionReader.Read(path, root, now, window, report, cancellationToken)
-                            : ClaudeAgentSessionReader.Read(path, root, now, window, report, cancellationToken);
-                        if (session is not null) sessions.Add(AgentRepositoryIdentity.CanResolveWorkspace(root)
-                            ? AgentRepositoryIdentity.Enrich(session) : session);
+                        var session = scan.Read(path, options?.SinceUtc, recentIds, cancellationToken);
+                        if (session is not null) {
+                            session = session with { Machine = machine };
+                            session = local ? AgentRepositoryIdentity.Enrich(session) : session;
+                            sessions.Add(session);
+                        }
                     } catch (IOException) { Report(root.ProviderId, "unreadable-source");
                     } catch (UnauthorizedAccessException) { Report(root.ProviderId, "unreadable-source"); }
                 }
@@ -65,17 +77,20 @@ public static class LocalAgentWorkStateService {
             } catch (IOException) { Report(root.ProviderId, "unreadable-source");
             } catch (UnauthorizedAccessException) { Report(root.ProviderId, "unreadable-source"); }
         }
-        var deduped = sessions.GroupBy(Key, StringComparer.Ordinal).Select(group => group
-            .OrderByDescending(static s => s.LastActivityAtUtc).ThenBy(static s => s.IsArchived).First()).ToDictionary(Key, StringComparer.Ordinal);
-        foreach (var metadata in (codexMetadata ?? Array.Empty<AgentSessionState>()).GroupBy(Key, StringComparer.Ordinal)
-                     .Select(static group => group.OrderByDescending(static s => s.LastActivityAtUtc).First())) {
-            if (metadata.Provider != "codex") continue;
-            var key = Key(metadata);
-            if (!deduped.TryGetValue(key, out var log)) {
-                deduped[key] = metadata;
+        // Merge each root before cross-root deduplication: an old recovered copy must not hide
+        // a local log whose newer activity is only available in that local root's Desktop database.
+        var observations = sessions.GroupBy(OriginKey, StringComparer.Ordinal).Select(group => group
+            .OrderByDescending(static s => s.LastActivityAtUtc).ThenBy(static s => s.IsArchived).First()).ToDictionary(OriginKey, StringComparer.Ordinal);
+        foreach (var metadata in metadataRows.OrderByDescending(static s => s.LastActivityAtUtc)) {
+            var key = OriginKey(metadata);
+            if (metadataKeys.Contains(key)) continue;
+            if (!observations.TryGetValue(key, out var log)) {
+                observations[key] = metadata;
+                metadataKeys.Add(key);
                 continue;
             }
-            deduped[key] = log with {
+            metadataKeys.Add(key);
+            observations[key] = log with {
                 Title = log.Title ?? metadata.Title, WorkingDirectory = metadata.WorkingDirectory ?? log.WorkingDirectory,
                 Repository = metadata.Repository ?? log.Repository, Branch = metadata.Branch ?? log.Branch,
                 IsArchived = metadata.IsArchived,
@@ -83,16 +98,41 @@ public static class LocalAgentWorkStateService {
                     : log.IsArchived && log.State == AgentWorkState.Finished ? AgentWorkState.Idle : log.State,
                 StateIsInferred = !metadata.IsArchived && log.StateIsInferred,
                 StartedAtUtc = log.StartedAtUtc ?? metadata.StartedAtUtc,
-                LastActivityAtUtc = log.LastActivityAtUtc ?? metadata.LastActivityAtUtc
+                LastActivityAtUtc = log.LastActivityAtUtc is null || metadata.LastActivityAtUtc > log.LastActivityAtUtc
+                    ? metadata.LastActivityAtUtc : log.LastActivityAtUtc
             };
         }
-        return AgentWorkStateRules.Evaluate(deduped.Values, Array.Empty<AgentPullRequestState>(), now,
+        var now = nowUtc ?? DateTimeOffset.UtcNow;
+        var resolved = observations.Values.Select(session => ResolveState(session, now, window,
+            session.SourceRootId is not null && runningRoots.Contains(session.SourceRootId), metadataKeys.Contains(OriginKey(session))))
+            .GroupBy(Key, StringComparer.Ordinal).Select(group => group.OrderByDescending(static s => s.LastActivityAtUtc)
+                .ThenBy(static s => s.IsArchived).First())
+            .Where(session => options?.SinceUtc is null || session.LastActivityAtUtc >= options!.SinceUtc);
+        return AgentWorkStateRules.Evaluate(resolved, Array.Empty<AgentPullRequestState>(), now,
             diagnostics: diagnostics.Select(pair => new AgentSourceDiagnostic {
                 Provider = pair.Key.Substring(0, pair.Key.IndexOf(':')), Code = pair.Key.Substring(pair.Key.IndexOf(':') + 1), Count = pair.Value
-            }).ToArray());
+            }).ToArray()) with { Scan = new AgentWorkScanStatistics {
+                FilesRead = scans.Sum(static scan => scan.FilesRead), FilesReused = scans.Sum(static scan => scan.FilesReused),
+                FilesSkipped = scans.Sum(static scan => scan.FilesSkipped), BytesRead = scans.Sum(static scan => scan.BytesRead)
+            } };
+    }
+
+    private static AgentSessionState ResolveState(AgentSessionState session, DateTimeOffset now, TimeSpan window, bool local, bool metadata) {
+        if (session.IsArchived) return session with { State = AgentWorkState.Finished, StateIsInferred = false };
+        var openTurn = session.StateIsInferred && session.LastTurnOutcome == AgentTurnOutcome.Incomplete;
+        var unknown = metadata && session.State == AgentWorkState.Idle && session.LastTurnOutcome == AgentTurnOutcome.Unknown;
+        if (!openTurn && !unknown) return session;
+        var recent = local && session.LastActivityAtUtc.HasValue && session.LastActivityAtUtc <= now
+            && now - session.LastActivityAtUtc.Value <= window;
+        return session with {
+            State = recent ? AgentWorkState.Running : AgentWorkState.Idle,
+            StateIsInferred = recent || openTurn,
+            LastTurnOutcome = recent ? AgentTurnOutcome.Unknown : session.LastTurnOutcome
+        };
     }
 
     private static string Key(AgentSessionState session) => session.Provider + "\0" + session.Machine + "\0" + session.Id;
+    private static string OriginKey(AgentSessionState session) => Key(session) + "\0" + session.SourceRootId;
 
     private static bool IsSubagentPath(string path) => path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
         .Any(static part => part == "subagents") || Path.GetFileName(path).StartsWith("agent-", StringComparison.Ordinal);
@@ -121,7 +161,7 @@ public static class LocalAgentWorkStateService {
             }
         }
         foreach (var title in titles) sessions.Add(new AgentSessionState {
-            Provider = "codex", Id = title.Key, Machine = machine, Title = title.Value
+            Provider = "codex", Id = title.Key, Machine = machine, Title = title.Value, SourceRootId = root.Id
         });
     }
 }
