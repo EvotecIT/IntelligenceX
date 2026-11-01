@@ -200,6 +200,8 @@ Consumers:
 
 Making the library usable from Marquee also means trimming and Native AOT compatibility for the parts it consumes.
 
+The first read-only implementation is described in [Local work state and attention](../agent-work-state.md): shared session metadata, Codex/Claude readers, GitHub PR and review signals, attention rules, generated JSON, and `agents status --json`. Its .NET 10 native smoke consumer covers the library boundary; tray UI, continuous collection and cross-machine transport remain separate work.
+
 ## How We Stack Against CodexBar
 
 ### Where CodexBar is still ahead

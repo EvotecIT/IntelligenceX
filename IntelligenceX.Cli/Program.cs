@@ -51,6 +51,7 @@ internal static partial class Program {
             "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
             "todo" => await Todo.TodoRunner.RunAsync(rest).ConfigureAwait(false),
             "telemetry" => await Telemetry.TelemetryRunner.RunAsync(rest).ConfigureAwait(false),
+            "agents" => await Agents.AgentsRunner.RunAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
             "models" => await ModelsRunner.RunAsync(rest).ConfigureAwait(false),
             "usage" => await UsageRunner.RunAsync(rest).ConfigureAwait(false),

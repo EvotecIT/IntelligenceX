@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Add metadata-only Codex and Claude work snapshots, GitHub PR/check and review signals, attention rules, and `agents status --json`.
+- Add generated snapshot JSON and a .NET 10 Native AOT smoke consumer for native applications.
 - IntelligenceX.Chat.Host now defaults to parallel tool calls (`ParallelToolCalls = true`).
   Use `--no-parallel-tools` to force serial tool execution.
 - Swift: lower Realtime voice start-up latency with opt-in APIs; default behaviour is unchanged.
