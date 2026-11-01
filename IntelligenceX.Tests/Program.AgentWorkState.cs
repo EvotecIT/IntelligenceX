@@ -66,7 +66,7 @@ internal static partial class Program {
                 """);
             Console.SetOut(capture);
             Console.SetError(capture);
-            var exit = IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--json", "--codex-root", directory, "--cache-path", Path.Combine(directory, "cache.db") }).GetAwaiter().GetResult();
+            var exit = IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--json", "--all-history", "--codex-root", directory, "--cache-path", Path.Combine(directory, "cache.db") }).GetAwaiter().GetResult();
             AssertEqual(0, exit, "CLI snapshot exit");
             var json = capture.ToString();
             var snapshot = JsonSerializer.Deserialize(json, AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
@@ -75,7 +75,7 @@ internal static partial class Program {
             AssertEqual(AgentAttentionKind.InterruptedTurn, snapshot.NeedsAttention[0].Kind, "CLI attention rule");
             AssertEqual(false, json.Contains("private sentinel"), "CLI privacy");
             capture.GetStringBuilder().Clear();
-            exit = IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--json", "--codex-root", directory,
+            exit = IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--json", "--all-history", "--codex-root", directory,
                 "--cache-path", Path.Combine(directory, "cache.db") }).GetAwaiter().GetResult();
             var warm = JsonSerializer.Deserialize(capture.ToString(), AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
             AssertEqual(0, exit, "warm CLI snapshot exit");

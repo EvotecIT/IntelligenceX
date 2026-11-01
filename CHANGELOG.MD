@@ -1,7 +1,8 @@
 # Changelog
 
 ## Unreleased
-- Evaluate local work state after collection using the latest Desktop/log activity, and speed repeated snapshots with parsed metadata caching and `agents status --since 7d`.
+- Add a recent-only in-process work watcher with safe JSONL append checkpoints, independent conditional GitHub refresh, and a two-day default for native consumers.
+- Evaluate known unfinished turns after collection using the latest same-root Desktop/log activity, preserving explicit completion, interruption and waiting signals.
 - Add metadata-only Codex and Claude work snapshots, GitHub PR/check and review signals, attention rules, and `agents status --json`.
 - Add generated snapshot JSON and a .NET 10 Native AOT smoke consumer for native applications.
 - IntelligenceX.Chat.Host now defaults to parallel tool calls (`ParallelToolCalls = true`).

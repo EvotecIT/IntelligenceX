@@ -10,17 +10,18 @@ using static IntelligenceX.Telemetry.Agents.AgentSessionLogReader;
 namespace IntelligenceX.Telemetry.Agents;
 
 internal static class CodexAgentSessionReader {
-    internal static AgentSessionState Read(string path, SourceRootRecord root, Action<string> diagnostic, CancellationToken cancellationToken) {
-        var session = new AgentSessionState {
+    internal static AgentSessionParserState Read(string path, SourceRootRecord root, Action<string> diagnostic, CancellationToken cancellationToken,
+        AgentSessionParserState? previous = null, AgentSessionReadWindow? window = null) {
+        var session = previous?.Session ?? new AgentSessionState {
             SourceRootId = root.Id,
             Provider = "codex", Id = CodexSessionImportSupport.TryExtractSessionIdFromFileName(path) ?? Path.GetFileNameWithoutExtension(path),
             Machine = root.MachineLabel ?? (root.SourceKind == UsageSourceKind.LocalLogs ? Environment.MachineName : null),
             IsArchived = IsArchivedPath(path)
         };
-        var active = false;
-        var hasSessionMetadata = false;
-        string? inputCallId = null;
-        foreach (var line in ReadLines(path, cancellationToken)) {
+        var active = previous?.Active ?? false;
+        var hasSessionMetadata = previous?.HasSessionMetadata ?? false;
+        string? inputCallId = previous?.InputCallId;
+        foreach (var line in ReadLines(path, cancellationToken, window)) {
             if (string.IsNullOrWhiteSpace(line)) continue;
             JsonDocument document;
             try { document = JsonDocument.Parse(line); }
@@ -101,7 +102,7 @@ internal static class CodexAgentSessionReader {
                 }
             }
         }
-        return Finish(session, active);
+        return new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, InputCallId = inputCallId };
     }
 
     private static bool IsArchivedPath(string path) {

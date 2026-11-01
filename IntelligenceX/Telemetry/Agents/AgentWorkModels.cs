@@ -147,6 +147,8 @@ public sealed record AgentSourceDiagnostic {
 public sealed record AgentWorkSnapshot {
     /// <summary>Time at which local collection finished and session state was evaluated. Optional remote enrichment follows.</summary>
     public DateTimeOffset CapturedAtUtc { get; init; }
+    /// <summary>Last successful GitHub revalidation, independent of local capture time; null before remote collection.</summary>
+    public DateTimeOffset? GitHubCheckedAtUtc { get; init; }
     /// <summary>Local session-log work performed, if collected by the local service.</summary>
     public AgentWorkScanStatistics? Scan { get; init; }
     /// <summary>Deduplicated sessions, newest first.</summary>

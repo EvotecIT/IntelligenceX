@@ -31,7 +31,7 @@ try {
     };
     var metadata = await CodexAgentSessionMetadataReader.ReadAsync(roots[0]);
     using var cache = new SqliteRawArtifactStore(Path.Combine(fixture, "scan-cache.db"));
-    var options = new AgentWorkReadOptions { Cache = cache };
+    var options = new AgentWorkOptions { Cache = cache };
     var local = LocalAgentWorkStateService.ReadLocal(roots, options: options, nowUtc: DateTimeOffset.Parse("2026-11-01T12:00:00Z"), codexMetadata: metadata);
     var warm = LocalAgentWorkStateService.ReadLocal(roots, options: options,
         nowUtc: local.CapturedAtUtc, codexMetadata: metadata);
@@ -55,7 +55,21 @@ try {
         throw new InvalidOperationException("Expected fixture sessions, database metadata and attention.");
     }
     if (json.Contains("private sentinel", StringComparison.Ordinal)) throw new InvalidOperationException("Transcript content escaped the metadata boundary.");
-    Console.WriteLine($"AOT snapshot passed: sessions={decoded.Sessions.Count}, attention={decoded.NeedsAttention.Count}, cached={warm.Scan.FilesReused}, reflection={JsonSerializer.IsReflectionEnabledByDefault}");
+    var observed = new TaskCompletionSource<AgentWorkSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+    await using (var watcher = new AgentWorkWatcher(roots, new AgentWorkOptions { ActiveWithin = TimeSpan.FromDays(2) })) {
+        watcher.SnapshotChanged += (_, e) => {
+            if (e.Snapshot.Sessions.Any(static session => session.Id == "fake-codex" && session.State == AgentWorkState.Running))
+                observed.TrySetResult(e.Snapshot);
+        };
+        await watcher.StartAsync();
+        File.AppendAllText(Path.Combine(fixture, "codex", "sessions", "rollout-sample.jsonl"), "\n" +
+            "{\"type\":\"event_msg\",\"timestamp\":\"" + DateTimeOffset.UtcNow.ToString("O") + "\",\"payload\":{\"type\":\"task_started\"}}\n");
+        if (await Task.WhenAny(observed.Task, Task.Delay(TimeSpan.FromSeconds(10))) != observed.Task)
+            throw new InvalidOperationException("Native watcher did not observe appended state.");
+        var liveJson = AgentWorkJson.Serialize(await observed.Task);
+        if (liveJson.Contains("private sentinel", StringComparison.Ordinal)) throw new InvalidOperationException("Live content projection failed.");
+    }
+    Console.WriteLine($"AOT snapshot passed: sessions={decoded.Sessions.Count}, attention={decoded.NeedsAttention.Count}, cached={warm.Scan.FilesReused}, watcher=True, reflection={JsonSerializer.IsReflectionEnabledByDefault}");
 } finally {
     Directory.Delete(fixture, recursive: true);
 }

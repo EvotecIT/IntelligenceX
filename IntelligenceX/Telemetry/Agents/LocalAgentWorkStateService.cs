@@ -26,8 +26,11 @@ public static class LocalAgentWorkStateService {
     /// <param name="options">Optional activity cutoff and parsed observation cache.</param>
     public static AgentWorkSnapshot ReadLocal(IEnumerable<SourceRootRecord>? roots = null, DateTimeOffset? nowUtc = null,
         TimeSpan? activeWindow = null, IEnumerable<AgentSessionState>? codexMetadata = null,
-        CancellationToken cancellationToken = default, AgentWorkReadOptions? options = null) {
-        var window = activeWindow ?? TimeSpan.FromMinutes(5);
+        CancellationToken cancellationToken = default, AgentWorkOptions? options = null) {
+        options ??= new AgentWorkOptions();
+        options.Validate();
+        var since = options.ActiveWithin.HasValue ? (nowUtc ?? DateTimeOffset.UtcNow) - options.ActiveWithin.Value : (DateTimeOffset?)null;
+        var window = activeWindow ?? options.ActiveTurnWindow;
         if (window <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(activeWindow));
         var sessions = new List<AgentSessionState>();
         var metadataRows = (codexMetadata ?? Array.Empty<AgentSessionState>()).Where(static s => s.Provider == "codex").ToArray();
@@ -52,9 +55,7 @@ public static class LocalAgentWorkStateService {
                 var machine = root.MachineLabel ?? (root.SourceKind == UsageSourceKind.LocalLogs ? Environment.MachineName : null);
                 // WSL logs are local activity even though their workspace paths are not Windows paths.
                 if (root.SourceKind == UsageSourceKind.LocalLogs) runningRoots.Add(root.Id);
-                var recentIds = new HashSet<string>(metadataRows.Where(s => s.SourceRootId == root.Id && s.Machine == machine
-                    && s.LastActivityAtUtc >= options?.SinceUtc).Select(static s => s.Id), StringComparer.Ordinal);
-                var scan = new AgentSessionScan(root, options?.Cache, code => Report(root.ProviderId, code));
+                var scan = new AgentSessionScan(root, options.Cache, code => Report(root.ProviderId, code));
                 scans.Add(scan);
                 var firstSession = sessions.Count;
                 var files = root.ProviderId == "codex"
@@ -64,7 +65,7 @@ public static class LocalAgentWorkStateService {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (root.ProviderId == "claude" && IsSubagentPath(path)) continue;
                     try {
-                        var session = scan.Read(path, options?.SinceUtc, recentIds, cancellationToken);
+                        var session = scan.Read(path, since, cancellationToken);
                         if (session is not null) {
                             session = session with { Machine = machine };
                             session = local ? AgentRepositoryIdentity.Enrich(session) : session;
@@ -104,24 +105,23 @@ public static class LocalAgentWorkStateService {
         }
         var now = nowUtc ?? DateTimeOffset.UtcNow;
         var resolved = observations.Values.Select(session => ResolveState(session, now, window,
-            session.SourceRootId is not null && runningRoots.Contains(session.SourceRootId), metadataKeys.Contains(OriginKey(session))))
+            session.SourceRootId is not null && runningRoots.Contains(session.SourceRootId)))
             .GroupBy(Key, StringComparer.Ordinal).Select(group => group.OrderByDescending(static s => s.LastActivityAtUtc)
                 .ThenBy(static s => s.IsArchived).First())
-            .Where(session => options?.SinceUtc is null || session.LastActivityAtUtc >= options!.SinceUtc);
-        return AgentWorkStateRules.Evaluate(resolved, Array.Empty<AgentPullRequestState>(), now,
+            .Where(session => since is null || session.LastActivityAtUtc >= since);
+        return AgentWorkStateRules.Evaluate(resolved, Array.Empty<AgentPullRequestState>(), now, options.StaleAfter,
             diagnostics: diagnostics.Select(pair => new AgentSourceDiagnostic {
                 Provider = pair.Key.Substring(0, pair.Key.IndexOf(':')), Code = pair.Key.Substring(pair.Key.IndexOf(':') + 1), Count = pair.Value
             }).ToArray()) with { Scan = new AgentWorkScanStatistics {
                 FilesRead = scans.Sum(static scan => scan.FilesRead), FilesReused = scans.Sum(static scan => scan.FilesReused),
-                FilesSkipped = scans.Sum(static scan => scan.FilesSkipped), BytesRead = scans.Sum(static scan => scan.BytesRead)
+                FilesSkipped = scans.Sum(static scan => scan.FilesSkipped), FilesTailed = scans.Sum(static scan => scan.FilesTailed), BytesRead = scans.Sum(static scan => scan.BytesRead)
             } };
     }
 
-    private static AgentSessionState ResolveState(AgentSessionState session, DateTimeOffset now, TimeSpan window, bool local, bool metadata) {
+    private static AgentSessionState ResolveState(AgentSessionState session, DateTimeOffset now, TimeSpan window, bool local) {
         if (session.IsArchived) return session with { State = AgentWorkState.Finished, StateIsInferred = false };
         var openTurn = session.StateIsInferred && session.LastTurnOutcome == AgentTurnOutcome.Incomplete;
-        var unknown = metadata && session.State == AgentWorkState.Idle && session.LastTurnOutcome == AgentTurnOutcome.Unknown;
-        if (!openTurn && !unknown) return session;
+        if (!openTurn) return session;
         var recent = local && session.LastActivityAtUtc.HasValue && session.LastActivityAtUtc <= now
             && now - session.LastActivityAtUtc.Value <= window;
         return session with {

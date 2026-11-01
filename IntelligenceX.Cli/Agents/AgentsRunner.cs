@@ -15,7 +15,7 @@ namespace IntelligenceX.Cli.Agents;
 internal static class AgentsRunner {
     public static async Task<int> RunAsync(string[] args) {
         if (args.Length == 0 || args.Any(static arg => arg is "--help" or "-h" or "help")) {
-            Console.WriteLine("Usage: intelligencex agents status [--json] [--github] [--since 7d] [--no-cache | --cache-path PATH] [--login USER] [--stale-days N] [--codex-root PATH] [--claude-root PATH]");
+            Console.WriteLine("Usage: intelligencex agents status [--json] [--github] [--since 2d | --all-history] [--no-cache | --cache-path PATH] [--login USER] [--stale-days N] [--codex-root PATH] [--claude-root PATH]");
             Console.WriteLine("Explicit roots replace discovery. GitHub is opt-in and reuses existing local credentials; no sign-in is started.");
             return 0;
         }
@@ -23,7 +23,8 @@ internal static class AgentsRunner {
         var json = false;
         var github = false;
         var days = 7;
-        DateTimeOffset? since = null;
+        TimeSpan? activeWithin = TimeSpan.FromDays(2);
+        var windowSpecified = false;
         var noCache = false;
         string? cachePath = null;
         string? login = null;
@@ -37,9 +38,15 @@ internal static class AgentsRunner {
                     cachePath = args[++i];
                     if (string.IsNullOrWhiteSpace(cachePath)) return UsageError();
                     break;
+                case "--all-history":
+                    if (windowSpecified) return UsageError();
+                    windowSpecified = true;
+                    activeWithin = null;
+                    break;
                 case "--since" when i + 1 < args.Length:
-                    if (!TryReadSince(args[++i], out var age)) return UsageError();
-                    since = DateTimeOffset.UtcNow - age;
+                    if (windowSpecified || !TryReadSince(args[++i], out var age)) return UsageError();
+                    windowSpecified = true;
+                    activeWithin = age;
                     break;
                 case "--login" when i + 1 < args.Length: login = args[++i]; break;
                 case "--stale-days" when i + 1 < args.Length:
@@ -71,7 +78,7 @@ internal static class AgentsRunner {
                 catch (Exception) { diagnostics.Add(new AgentSourceDiagnostic { Provider = "codex", Code = "unreadable-metadata" }); }
             }
             var local = LocalAgentWorkStateService.ReadLocal(selectedRoots, codexMetadata: metadata, cancellationToken: timeout.Token,
-                options: new AgentWorkReadOptions { SinceUtc = since, Cache = cache });
+                options: new AgentWorkOptions { ActiveWithin = activeWithin, Cache = cache });
             diagnostics.AddRange(local.Diagnostics);
             var snapshot = AgentWorkStateRules.Evaluate(local.Sessions, Array.Empty<AgentPullRequestState>(), local.CapturedAtUtc,
                 TimeSpan.FromDays(days), diagnostics) with { Scan = local.Scan };

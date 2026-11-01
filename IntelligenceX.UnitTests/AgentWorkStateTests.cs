@@ -71,7 +71,7 @@ public sealed class AgentWorkStateTests : IDisposable {
         Write("copy/session_index.jsonl", """{"id":"fake-session","thread_name":"Older copy title"}""");
         var duplicateRoots = LocalAgentWorkStateService.ReadLocal(new[] {
             Root("codex"), new SourceRootRecord("copy", "codex", UsageSourceKind.LocalLogs, Path.Combine(_root, "copy"))
-        }, Now);
+        }, Now, options: new AgentWorkOptions { ActiveWithin = null });
         Assert.Equal("Index title", Assert.Single(duplicateRoots.Sessions).Title);
     }
 
@@ -294,7 +294,7 @@ public sealed class AgentWorkStateTests : IDisposable {
             """;
         Write(path, content);
         var cache = new InMemoryRawArtifactStore();
-        var options = new AgentWorkReadOptions { Cache = cache };
+        var options = new AgentWorkOptions { Cache = cache };
         AgentWorkSnapshot Scan(DateTimeOffset now) => LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, now, options: options);
         var cold = Scan(Now);
         Assert.Equal(1, cold.Scan!.FilesRead);
@@ -328,7 +328,7 @@ public sealed class AgentWorkStateTests : IDisposable {
     }
 
     [Fact]
-    public void Since_UsesActivityAfterPrefilterAndKeepsRecentDesktopThreadsWithOldLogs() {
+    public void ActiveWithin_SkipsOldFilesBeforeCacheOrParserAndFiltersCopiedOldActivity() {
         const string id = "01234567-0123-4567-89ab-0123456789ab";
         var recentPath = "sessions/rollout-" + id + ".jsonl";
         Write(recentPath, CodexMeta.Replace("fake-session", id) + "\n" + """
@@ -340,14 +340,14 @@ public sealed class AgentWorkStateTests : IDisposable {
         Write("sessions/rollout-copied.jsonl", CodexMeta.Replace("fake-session", "copied-old"));
         var metadata = new AgentSessionState { Provider = "codex", Id = id, Machine = Environment.MachineName, SourceRootId = "fixture", LastActivityAtUtc = Now.AddSeconds(-1) };
         var cache = new InMemoryRawArtifactStore();
-        LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, Now, options: new AgentWorkReadOptions { Cache = cache });
+        LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, Now, options: new AgentWorkOptions { ActiveWithin = null, Cache = cache });
         var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, Now, codexMetadata: new[] { metadata },
-            options: new AgentWorkReadOptions { SinceUtc = Now.AddDays(-7), Cache = cache });
+            options: new AgentWorkOptions { ActiveWithin = TimeSpan.FromDays(7), Cache = cache });
         var session = Assert.Single(snapshot.Sessions);
         Assert.Equal(id, session.Id);
-        Assert.Equal(AgentWorkState.Running, session.State);
-        Assert.Equal(1, snapshot.Scan!.FilesSkipped);
-        Assert.Equal(2, snapshot.Scan.FilesReused);
+        Assert.Equal(AgentWorkState.Idle, session.State);
+        Assert.Equal(2, snapshot.Scan!.FilesSkipped);
+        Assert.Equal(1, snapshot.Scan.FilesReused);
         Assert.Equal(0, snapshot.Scan.FilesRead);
     }
 
@@ -366,28 +366,20 @@ public sealed class AgentWorkStateTests : IDisposable {
         Assert.Empty(snapshot.NeedsAttention);
     }
 
-    [Theory]
-    [InlineData("task_complete", AgentWorkState.Idle, AgentTurnOutcome.Completed)]
-    [InlineData("turn_failed", AgentWorkState.Idle, AgentTurnOutcome.Failed)]
-    [InlineData("turn_aborted", AgentWorkState.Idle, AgentTurnOutcome.Interrupted)]
-    [InlineData("request_user_input", AgentWorkState.WaitingOnPerson, AgentTurnOutcome.Unknown)]
-    public void Since_RenamedOldLogsKeepTerminalEvidenceOnColdAndWarmScans(string type, AgentWorkState state, AgentTurnOutcome outcome) {
+    [Fact]
+    public void ActiveWithin_DoesNotOpenAnOldFileEvenWhenDesktopMetadataIsRecent() {
         const string path = "sessions/rollout-renamed.jsonl";
-        Write(path, CodexMeta + "\n" + $$$"""
-            {"timestamp":"2026-10-01T11:59:00Z","type":"event_msg","payload":{"type":"{{{type}}}"}}
-            """);
-        File.SetLastWriteTimeUtc(Path.Combine(_root, path), Now.AddDays(-30).UtcDateTime);
+        Write(path, "private sentinel malformed JSON");
+        var file = Path.Combine(_root, path);
+        File.SetLastWriteTimeUtc(file, Now.AddDays(-30).UtcDateTime);
+        using var locked = new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         var metadata = new AgentSessionState { Provider = "codex", Id = "fake-session", Machine = Environment.MachineName,
             SourceRootId = "fixture", LastActivityAtUtc = Now.AddSeconds(-1) };
-        var options = new AgentWorkReadOptions { Cache = new InMemoryRawArtifactStore(), SinceUtc = Now.AddDays(-7) };
-        for (var i = 0; i < 2; i++) {
-            var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, Now, codexMetadata: new[] { metadata }, options: options);
-            var session = Assert.Single(snapshot.Sessions);
-            Assert.Equal(state, session.State);
-            Assert.Equal(outcome, session.LastTurnOutcome);
-            Assert.Equal(i, snapshot.Scan!.FilesReused);
-            Assert.Equal(1 - i, snapshot.Scan.FilesRead);
-        }
+        var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, Now, codexMetadata: new[] { metadata });
+        Assert.Equal(1, snapshot.Scan!.FilesSkipped);
+        Assert.Equal(0, snapshot.Scan.FilesRead);
+        Assert.Empty(snapshot.Diagnostics);
+        Assert.Equal(AgentWorkState.Idle, Assert.Single(snapshot.Sessions).State);
     }
 
     [Fact]
@@ -411,7 +403,7 @@ public sealed class AgentWorkStateTests : IDisposable {
         Assert.Null(selected.Repository); // The recovered record must not inherit local log fields.
         var localOnly = LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, Now,
             codexMetadata: new[] { recent with { Id = "local-metadata-only", SourceRootId = "fixture" } });
-        Assert.Equal(AgentWorkState.Running, localOnly.Sessions.Single(static s => s.Id == "local-metadata-only").State);
+        Assert.Equal(AgentWorkState.Idle, localOnly.Sessions.Single(static s => s.Id == "local-metadata-only").State);
     }
 
     [Theory]
@@ -437,15 +429,15 @@ public sealed class AgentWorkStateTests : IDisposable {
             Machine = Environment.MachineName, LastActivityAtUtc = Now.AddSeconds(-1) };
         Directory.CreateDirectory(_root);
         var snapshot = LocalAgentWorkStateService.ReadLocal(roots, Now, codexMetadata: new[] { metadata },
-            options: new AgentWorkReadOptions { SinceUtc = Now.AddDays(-7) });
+            options: new AgentWorkOptions { ActiveWithin = TimeSpan.FromDays(7) });
         var session = Assert.Single(snapshot.Sessions);
         Assert.Equal("fixture", session.SourceRootId);
         Assert.Equal(metadata.LastActivityAtUtc, session.LastActivityAtUtc);
-        Assert.Equal(AgentWorkState.Running, session.State);
+        Assert.Equal(logs ? AgentWorkState.Running : AgentWorkState.Idle, session.State);
         Assert.Empty(snapshot.NeedsAttention);
     }
 
-    private AgentWorkSnapshot Read(string provider) => LocalAgentWorkStateService.ReadLocal(new[] { Root(provider) }, Now);
+    private AgentWorkSnapshot Read(string provider) => LocalAgentWorkStateService.ReadLocal(new[] { Root(provider) }, Now, options: new AgentWorkOptions { ActiveWithin = null });
     private SourceRootRecord Root(string provider, UsageSourceKind kind = UsageSourceKind.LocalLogs) => new("fixture", provider, kind, _root);
     private void Write(string relative, string content) {
         var path = Path.Combine(_root, relative);

@@ -8,15 +8,16 @@ using static IntelligenceX.Telemetry.Agents.AgentSessionLogReader;
 namespace IntelligenceX.Telemetry.Agents;
 
 internal static class ClaudeAgentSessionReader {
-    internal static AgentSessionState? Read(string path, SourceRootRecord root, Action<string> diagnostic, CancellationToken cancellationToken) {
-        var session = new AgentSessionState {
+    internal static AgentSessionParserState Read(string path, SourceRootRecord root, Action<string> diagnostic, CancellationToken cancellationToken,
+        AgentSessionParserState? previous = null, AgentSessionReadWindow? window = null) {
+        var session = previous?.Session ?? new AgentSessionState {
             SourceRootId = root.Id,
             Provider = "claude", Id = Path.GetFileNameWithoutExtension(path),
             Machine = root.MachineLabel ?? (root.SourceKind == UsageSourceKind.LocalLogs ? Environment.MachineName : null)
         };
-        var active = false;
-        var sidechain = false;
-        foreach (var line in ReadLines(path, cancellationToken)) {
+        var active = previous?.Active ?? false;
+        var sidechain = previous?.Sidechain ?? false;
+        foreach (var line in ReadLines(path, cancellationToken, window)) {
             if (string.IsNullOrWhiteSpace(line)) continue;
             JsonDocument document;
             try { document = JsonDocument.Parse(line); }
@@ -76,6 +77,6 @@ internal static class ClaudeAgentSessionReader {
             }
         }
         // Subagents share the parent sessionId. They must not replace its state during deduplication.
-        return sidechain ? null : Finish(session, active);
+        return new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
     }
 }
