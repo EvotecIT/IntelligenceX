@@ -29,59 +29,22 @@ public static class LocalAgentWorkStateService {
         CancellationToken cancellationToken = default, AgentWorkOptions? options = null) {
         options ??= new AgentWorkOptions();
         options.Validate();
-        var since = options.ActiveWithin.HasValue ? (nowUtc ?? DateTimeOffset.UtcNow) - options.ActiveWithin.Value : (DateTimeOffset?)null;
         var window = activeWindow ?? options.ActiveTurnWindow;
         if (window <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(activeWindow));
-        var sessions = new List<AgentSessionState>();
-        var metadataRows = (codexMetadata ?? Array.Empty<AgentSessionState>()).Where(static s => s.Provider == "codex").ToArray();
-        var runningRoots = new HashSet<string>(StringComparer.Ordinal);
+        var collection = new AgentLocalCollection(options);
+        collection.Reconcile((roots ?? DiscoverRoots()).ToArray(), nowUtc, cancellationToken);
+        return collection.Snapshot(codexMetadata ?? Array.Empty<AgentSessionState>(), nowUtc, window);
+    }
+
+    internal static AgentWorkSnapshot BuildSnapshot(IEnumerable<AgentSessionState> sessions,
+        IEnumerable<AgentSessionState> metadataRows, HashSet<string> runningRoots, DateTimeOffset now,
+        DateTimeOffset? since, TimeSpan window, TimeSpan staleAfter, IReadOnlyList<AgentSourceDiagnostic> diagnostics, IReadOnlyList<AgentPullRequestState> pullRequests,
+        AgentWorkScanStatistics statistics) {
         var metadataKeys = new HashSet<string>(StringComparer.Ordinal);
-        var scans = new List<AgentSessionScan>();
-        var diagnostics = new Dictionary<string, int>(StringComparer.Ordinal);
-        void Report(string provider, string code) {
-            var key = provider + ":" + code;
-            diagnostics.TryGetValue(key, out var count);
-            diagnostics[key] = count + 1;
-        }
-        foreach (var root in roots ?? DiscoverRoots()) {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!root.Enabled || (root.ProviderId != "codex" && root.ProviderId != "claude")) continue;
-            if (!Directory.Exists(root.Path) && !File.Exists(root.Path)) {
-                Report(root.ProviderId, "missing-source");
-                continue;
-            }
-            try {
-                var local = AgentRepositoryIdentity.CanResolveWorkspace(root);
-                var machine = root.MachineLabel ?? (root.SourceKind == UsageSourceKind.LocalLogs ? Environment.MachineName : null);
-                // WSL logs are local activity even though their workspace paths are not Windows paths.
-                if (root.SourceKind == UsageSourceKind.LocalLogs) runningRoots.Add(root.Id);
-                var scan = new AgentSessionScan(root, options.Cache, code => Report(root.ProviderId, code));
-                scans.Add(scan);
-                var firstSession = sessions.Count;
-                var files = root.ProviderId == "codex"
-                    ? CodexSessionImportSupport.EnumerateCandidateFiles(root.Path, preferRecentArtifacts: false)
-                    : ClaudeSessionImportSupport.EnumerateCandidateFiles(root.Path, preferRecentArtifacts: false);
-                foreach (var path in files) {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (root.ProviderId == "claude" && IsSubagentPath(path)) continue;
-                    try {
-                        var session = scan.Read(path, since, cancellationToken);
-                        if (session is not null) {
-                            session = session with { Machine = machine };
-                            session = local ? AgentRepositoryIdentity.Enrich(session) : session;
-                            sessions.Add(session);
-                        }
-                    } catch (IOException) { Report(root.ProviderId, "unreadable-source");
-                    } catch (UnauthorizedAccessException) { Report(root.ProviderId, "unreadable-source"); }
-                }
-                if (root.ProviderId == "codex" && Directory.Exists(root.Path)) ReadCodexTitles(root, sessions, firstSession, Report, cancellationToken);
-            } catch (IOException) { Report(root.ProviderId, "unreadable-source");
-            } catch (UnauthorizedAccessException) { Report(root.ProviderId, "unreadable-source"); }
-        }
         // Merge each root before cross-root deduplication: an old recovered copy must not hide
         // a local log whose newer activity is only available in that local root's Desktop database.
-        var observations = sessions.GroupBy(OriginKey, StringComparer.Ordinal).Select(group => group
-            .OrderByDescending(static s => s.LastActivityAtUtc).ThenBy(static s => s.IsArchived).First()).ToDictionary(OriginKey, StringComparer.Ordinal);
+        var observations = new Dictionary<string, AgentSessionState>(StringComparer.Ordinal);
+        foreach (var session in sessions) KeepLatest(observations, OriginKey(session), session);
         foreach (var metadata in metadataRows.OrderByDescending(static s => s.LastActivityAtUtc)) {
             var key = OriginKey(metadata);
             if (metadataKeys.Contains(key)) continue;
@@ -103,19 +66,18 @@ public static class LocalAgentWorkStateService {
                     ? metadata.LastActivityAtUtc : log.LastActivityAtUtc
             };
         }
-        var now = nowUtc ?? DateTimeOffset.UtcNow;
-        var resolved = observations.Values.Select(session => ResolveState(session, now, window,
-            session.SourceRootId is not null && runningRoots.Contains(session.SourceRootId)))
-            .GroupBy(Key, StringComparer.Ordinal).Select(group => group.OrderByDescending(static s => s.LastActivityAtUtc)
-                .ThenBy(static s => s.IsArchived).First())
-            .Where(session => since is null || session.LastActivityAtUtc >= since);
-        return AgentWorkStateRules.Evaluate(resolved, Array.Empty<AgentPullRequestState>(), now, options.StaleAfter,
-            diagnostics: diagnostics.Select(pair => new AgentSourceDiagnostic {
-                Provider = pair.Key.Substring(0, pair.Key.IndexOf(':')), Code = pair.Key.Substring(pair.Key.IndexOf(':') + 1), Count = pair.Value
-            }).ToArray()) with { Scan = new AgentWorkScanStatistics {
-                FilesRead = scans.Sum(static scan => scan.FilesRead), FilesReused = scans.Sum(static scan => scan.FilesReused),
-                FilesSkipped = scans.Sum(static scan => scan.FilesSkipped), FilesTailed = scans.Sum(static scan => scan.FilesTailed), BytesRead = scans.Sum(static scan => scan.BytesRead)
-            } };
+        var resolved = new Dictionary<string, AgentSessionState>(StringComparer.Ordinal);
+        foreach (var session in observations.Values) {
+            var value = ResolveState(session, now, window, session.SourceRootId is not null && runningRoots.Contains(session.SourceRootId));
+            KeepLatest(resolved, Key(value), value);
+        }
+        return AgentWorkStateRules.Evaluate(resolved.Values.Where(session => since is null || session.LastActivityAtUtc >= since), pullRequests, now, staleAfter,
+            diagnostics) with { Scan = statistics };
+    }
+
+    private static void KeepLatest(Dictionary<string, AgentSessionState> sessions, string key, AgentSessionState value) {
+        if (!sessions.TryGetValue(key, out var previous) || Nullable.Compare(value.LastActivityAtUtc, previous.LastActivityAtUtc) > 0
+            || (value.LastActivityAtUtc == previous.LastActivityAtUtc && previous.IsArchived && !value.IsArchived)) sessions[key] = value;
     }
 
     private static AgentSessionState ResolveState(AgentSessionState session, DateTimeOffset now, TimeSpan window, bool local) {
@@ -134,10 +96,10 @@ public static class LocalAgentWorkStateService {
     private static string Key(AgentSessionState session) => session.Provider + "\0" + session.Machine + "\0" + session.Id;
     private static string OriginKey(AgentSessionState session) => Key(session) + "\0" + session.SourceRootId;
 
-    private static bool IsSubagentPath(string path) => path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+    internal static bool IsSubagentPath(string path) => path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
         .Any(static part => part == "subagents") || Path.GetFileName(path).StartsWith("agent-", StringComparison.Ordinal);
 
-    private static void ReadCodexTitles(SourceRootRecord root, List<AgentSessionState> sessions, int firstSession,
+    internal static void ReadCodexTitles(SourceRootRecord root, List<AgentSessionState> sessions, int firstSession,
         Action<string, string> report, CancellationToken cancellationToken) {
         var titles = new Dictionary<string, string>(StringComparer.Ordinal);
         var indexPath = Path.Combine(root.Path, "session_index.jsonl");

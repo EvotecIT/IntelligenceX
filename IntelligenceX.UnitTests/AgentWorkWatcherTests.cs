@@ -59,13 +59,13 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         await watcher.StartAsync();
         Assert.Contains(watcher.CurrentSnapshot.Diagnostics, static d => d.Code == "watch-unavailable");
         await Within(clock.Scheduled(TimeSpan.FromSeconds(5)));
-        await Within(clock.Scheduled(TimeSpan.FromMilliseconds(75)));
-        clock.Advance(TimeSpan.FromMilliseconds(75));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1)));
+        clock.Advance(TimeSpan.FromSeconds(1));
         await Within(second.Task);
         Interlocked.Exchange(ref allow, 1);
         clock.Advance(TimeSpan.FromSeconds(5));
-        await Within(clock.Scheduled(TimeSpan.FromMilliseconds(75), 2));
-        clock.Advance(TimeSpan.FromMilliseconds(75));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1), 2));
+        clock.Advance(TimeSpan.FromSeconds(1));
         await Within(recovered.Task);
         Assert.Equal(3, attempts);
     }
@@ -86,8 +86,8 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         await Within(clock.Scheduled(TimeSpan.FromSeconds(5)));
         Write(Meta + Event("task_started"));
         clock.Advance(TimeSpan.FromSeconds(5));
-        await Within(clock.Scheduled(TimeSpan.FromMilliseconds(75)));
-        clock.Advance(TimeSpan.FromMilliseconds(75));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1)));
+        clock.Advance(TimeSpan.FromSeconds(1));
         await Within(found.Task);
         Assert.True(discoveries >= 2);
         Assert.Equal(AgentWorkState.Running, Assert.Single(watcher.CurrentSnapshot.Sessions).State);
@@ -157,6 +157,8 @@ public sealed class AgentWorkWatcherTests : IDisposable {
     [Fact]
     public async Task Watcher_EmitsAppendsWhileGitHubIsBlockedAndStopsOnDisposal() {
         Write(Meta + Event("task_started"));
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(PathToLog)!, "rollout-unrelated.jsonl"),
+            Meta.Replace("fake-live", "unrelated") + Event("task_complete"));
         var requested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var http = new HttpClient(new BlockedHandler(requested)) { BaseAddress = new Uri("https://api.github.com/") };
         using var github = new GitHubDashboardService(http, disposeHttpClient: false);
@@ -171,16 +173,126 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         };
         await watcher.StartAsync();
         await Within(requested.Task);
-        Assert.Equal(AgentWorkState.Running, Assert.Single(watcher.CurrentSnapshot.Sessions).State);
+        Assert.Equal(AgentWorkState.Running, watcher.CurrentSnapshot.Sessions.Single(static s => s.Id == "fake-live").State);
+        var temporary = Path.Combine(_root, "synthetic-lock.tmp");
+        File.WriteAllText(temporary, "synthetic");
+        File.Delete(temporary);
         File.AppendAllText(PathToLog, Event("turn_aborted"));
         var changed = await Within(interrupted.Task);
         Assert.Equal(1, changed.Scan!.FilesTailed);
+        Assert.Equal(1, changed.Scan.FilesRead);
+        Assert.Equal(0, changed.Scan.FilesReused);
+        Assert.Equal(2, changed.Sessions.Count);
         Assert.Equal(AgentAttentionKind.InterruptedTurn, Assert.Single(changed.NeedsAttention).Kind);
         await watcher.DisposeAsync();
         var stoppedEvents = events;
         File.AppendAllText(PathToLog, Event("task_started"));
         await Task.Delay(150);
         Assert.Equal(stoppedEvents, events);
+    }
+
+    [Fact]
+    public void WarmCache_ReappliesCurrentMachineForMetadataMergeAndAppendContinuation() {
+        Write(Meta + Event("task_started"));
+        var previous = Root;
+        previous.MachineLabel = "previous-machine";
+        var current = Root;
+        current.MachineLabel = "current-machine";
+        var options = new AgentWorkOptions { Cache = new InMemoryRawArtifactStore() };
+        var cold = LocalAgentWorkStateService.ReadLocal(new[] { previous }, options: options);
+        Assert.Equal("previous-machine", Assert.Single(cold.Sessions).Machine);
+        var metadata = new[] { new AgentSessionState { Provider = "codex", Id = "fake-live", SourceRootId = current.Id,
+            Machine = "current-machine", IsArchived = true, LastActivityAtUtc = DateTimeOffset.UtcNow } };
+        var warm = LocalAgentWorkStateService.ReadLocal(new[] { current }, codexMetadata: metadata, options: options);
+        Assert.Equal(1, warm.Scan!.FilesReused);
+        var merged = Assert.Single(warm.Sessions);
+        Assert.Equal("current-machine", merged.Machine);
+        Assert.Equal(AgentWorkState.Finished, merged.State);
+        File.AppendAllText(PathToLog, Event("turn_aborted"));
+        var appended = LocalAgentWorkStateService.ReadLocal(new[] { current }, options: options);
+        Assert.Equal(1, appended.Scan!.FilesTailed);
+        Assert.Equal("current-machine", Assert.Single(appended.Sessions).Machine);
+        Assert.Equal(AgentTurnOutcome.Interrupted, appended.Sessions[0].LastTurnOutcome);
+    }
+
+    [Fact]
+    public void LiveCollection_CheckpointsCacheAtReconcileAndRestartTailsUncheckpointedAppends() {
+        Write(Meta + Event("task_complete"));
+        var cache = new InMemoryRawArtifactStore();
+        var options = new AgentWorkOptions { Cache = cache };
+        var collection = new AgentLocalCollection(options);
+        collection.Reconcile(new[] { Root }, null, default);
+        var checkpoint = Assert.Single(cache.GetAll()).StateJson;
+        File.AppendAllText(PathToLog, Event("task_started"));
+        Assert.True(collection.Update(Root.Id, PathToLog, default));
+        Assert.Equal(AgentWorkState.Running, Assert.Single(collection.Snapshot(Array.Empty<AgentSessionState>()).Sessions).State);
+        Assert.Equal(checkpoint, Assert.Single(cache.GetAll()).StateJson);
+        var restarted = LocalAgentWorkStateService.ReadLocal(new[] { Root }, options: options);
+        Assert.Equal(AgentWorkState.Running, Assert.Single(restarted.Sessions).State);
+        Assert.Equal(1, restarted.Scan!.FilesTailed);
+        collection.Reconcile(new[] { Root }, null, default);
+        var warm = LocalAgentWorkStateService.ReadLocal(new[] { Root }, options: options);
+        Assert.Equal(1, warm.Scan!.FilesReused);
+        Assert.Equal(AgentWorkState.Running, Assert.Single(warm.Sessions).State);
+    }
+
+    [Fact]
+    public async Task Watcher_CoalescesNamedFileBurstsWithoutWaitingForAQuietWriter() {
+        Write(Meta + Event("task_started"));
+        var clock = new AgentWorkTestClock();
+        await using var watcher = new AgentWorkWatcher(new[] { Root }, new AgentWorkOptions(),
+            null, null, null, () => new[] { Root }, static (directory, filter) => new FileSystemWatcher(directory, filter), clock);
+        var updated = new TaskCompletionSource<AgentWorkSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var events = 0;
+        watcher.SnapshotChanged += (_, e) => {
+            Interlocked.Increment(ref events);
+            if (e.Snapshot.Sessions.Any(static s => s.Title == "burst")) updated.TrySetResult(e.Snapshot);
+        };
+        await watcher.StartAsync();
+        for (var i = 0; i < 50; i++) File.AppendAllText(PathToLog, Event("thread_name_updated", ",\"thread_name\":\"burst\""));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1)));
+        Assert.Equal(1, events); // First append schedules work; subsequent writes do not reset its deadline.
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var snapshot = await Within(updated.Task);
+        Assert.Equal(2, events);
+        Assert.Equal(1, snapshot.Scan!.FilesTailed);
+        Assert.Equal(0, snapshot.Scan.FilesReused);
+    }
+
+    [Fact]
+    public void LiveCollection_ReconcilesMembershipTitlesAndRepositoryIdentity() {
+        var cwd = Path.Combine(_root, "repository");
+        Directory.CreateDirectory(Path.Combine(cwd, ".git"));
+        var head = Path.Combine(cwd, ".git", "HEAD");
+        File.WriteAllText(head, "ref: refs/heads/first\n");
+        File.WriteAllText(Path.Combine(cwd, ".git", "config"), "[remote \"origin\"]\nurl = https://github.com/example/work.git\n");
+        Write(Meta.Replace("\"id\":\"fake-live\"", "\"id\":\"fake-live\",\"cwd\":\"" + cwd.Replace("\\", "\\\\") + "\"") + Event("task_started"));
+        var collection = new AgentLocalCollection(new AgentWorkOptions { Cache = new InMemoryRawArtifactStore() });
+        AgentWorkSnapshot Snapshot() => collection.Snapshot(Array.Empty<AgentSessionState>());
+        collection.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("first", Assert.Single(Snapshot().Sessions).Branch);
+        File.WriteAllText(head, "ref: refs/heads/second\n");
+        File.AppendAllText(PathToLog, Event("turn_aborted"));
+        Assert.True(collection.Update(Root.Id, PathToLog, default));
+        Assert.Equal("first", Assert.Single(Snapshot().Sessions).Branch);
+        var index = Path.Combine(_root, "session_index.jsonl");
+        File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"Renamed title\"}\n");
+        Assert.True(collection.Update(Root.Id, index, default));
+        Assert.Equal("Renamed title", Assert.Single(Snapshot().Sessions).Title);
+        var other = Path.Combine(Path.GetDirectoryName(PathToLog)!, "rollout-added.jsonl");
+        File.WriteAllText(other, Meta.Replace("fake-live", "added") + Event("task_complete"));
+        Assert.False(collection.Update(Root.Id, other, default));
+        File.Delete(PathToLog);
+        collection.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("added", Assert.Single(Snapshot().Sessions).Id); // Index-only row is outside the activity window.
+        File.Move(other, PathToLog);
+        collection.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("added", Assert.Single(Snapshot().Sessions).Id);
+        // Restore the cwd observation so the next reconcile must invalidate the cached HEAD.
+        Write(Meta.Replace("\"id\":\"fake-live\"", "\"id\":\"fake-live\",\"cwd\":\"" + cwd.Replace("\\", "\\\\") + "\"") + Event("task_started"));
+        collection.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("second", Assert.Single(Snapshot().Sessions).Branch);
+        Assert.Equal("example/work", Snapshot().Sessions[0].Repository);
     }
 
     [Fact]
@@ -198,7 +310,7 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         Write(Meta + Event("task_started"));
         await Within(running.Task);
         var count = events;
-        await Task.Delay(300);
+        await Task.Delay(1300);
         Assert.Equal(count, events);
         Assert.True(watcher.CurrentSnapshot.Scan!.FilesReused > 0);
     }

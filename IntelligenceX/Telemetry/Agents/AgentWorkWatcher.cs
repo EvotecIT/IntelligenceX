@@ -27,6 +27,8 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
 #endif
     private readonly AgentWorkOptions _options;
     private readonly IRawArtifactStore _cache;
+    private readonly AgentLocalCollection _local;
+    private readonly Dictionary<string, (string RootId, string Path)> _changedFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<CancellationToken, Task<IReadOnlyList<AgentSessionState>>>? _readMetadata;
     private readonly GitHubDashboardService? _github;
     private readonly string? _login;
@@ -39,7 +41,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
     private IReadOnlyList<AgentPullRequestState> _pullRequests = Array.Empty<AgentPullRequestState>();
     private DateTimeOffset? _gitHubCheckedAtUtc;
     private AgentWorkSnapshot _current = new();
-    private string? _published;
+    private AgentWorkSnapshot? _published;
     private Task? _startTask, _cleanup;
     private Task[] _workers = Array.Empty<Task>();
     private bool _disposed;
@@ -68,6 +70,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         _createWatcher = createWatcher;
         _diagnostics = new AgentWorkDiagnostics(Signal);
         _cache = _options.Cache ?? new InMemoryRawArtifactStore();
+        _local = new AgentLocalCollection(CopyReadOptions());
         _readMetadata = readMetadataAsync;
         _github = github;
         _login = gitHubLogin;
@@ -112,7 +115,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
             while (true) {
                 await _signal.WaitAsync(_stop.Token).ConfigureAwait(false);
                 // Coalesce a burst of writes without waiting for a quiet writer indefinitely.
-                await DelayAsync(TimeSpan.FromMilliseconds(75), _stop.Token).ConfigureAwait(false);
+                await DelayAsync(TimeSpan.FromSeconds(1), _stop.Token).ConfigureAwait(false);
                 while (_signal.Wait(0)) { }
                 await CollectAsync(_stop.Token, Interlocked.Exchange(ref _reconcileRequested, 0) != 0).ConfigureAwait(false);
             }
@@ -140,18 +143,32 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         if (reconcile) RefreshDiscoveredRoots();
         EnsureWatchers();
         IReadOnlyList<AgentSessionState> metadata;
-        lock (_gate) metadata = _metadata;
-        var local = await Task.Run(() => LocalAgentWorkStateService.ReadLocal(_roots, codexMetadata: metadata,
-            cancellationToken: cancellationToken, options: CopyReadOptions()), cancellationToken).ConfigureAwait(false);
-        AgentWorkSnapshot snapshot;
+        IReadOnlyList<AgentPullRequestState> pullRequests;
+        IReadOnlyList<AgentSourceDiagnostic> diagnostics;
+        DateTimeOffset? gitHubChecked;
+        (string RootId, string Path)[] changed;
         lock (_gate) {
-            snapshot = AgentWorkStateRules.Evaluate(local.Sessions, _pullRequests, local.CapturedAtUtc, _options.StaleAfter,
-                local.Diagnostics.Concat(_diagnostics.Snapshot).ToArray()) with { Scan = local.Scan, GitHubCheckedAtUtc = _gitHubCheckedAtUtc };
+            metadata = _metadata;
+            pullRequests = _pullRequests;
+            diagnostics = _diagnostics.Snapshot;
+            gitHubChecked = _gitHubCheckedAtUtc;
+            changed = _changedFiles.Values.ToArray();
+            _changedFiles.Clear();
         }
+        var local = await Task.Run(() => {
+            _local.ResetStatistics();
+            if (reconcile) _local.Reconcile(_roots, null, cancellationToken);
+            else {
+                var discover = false;
+                foreach (var file in changed) discover |= !_local.Update(file.RootId, file.Path, cancellationToken);
+                if (discover) _local.Reconcile(_roots, null, cancellationToken);
+            }
+            return _local.Snapshot(metadata, pullRequests: pullRequests, additionalDiagnostics: diagnostics);
+        }, cancellationToken).ConfigureAwait(false);
+        var snapshot = local with { GitHubCheckedAtUtc = gitHubChecked };
         Volatile.Write(ref _current, snapshot);
-        var signature = AgentWorkJson.Serialize(snapshot with { CapturedAtUtc = default, Scan = null });
-        if (signature == _published || _stop.IsCancellationRequested) return;
-        _published = signature;
+        if (SameContent(snapshot, _published) || _stop.IsCancellationRequested) return;
+        _published = snapshot;
         var handlers = SnapshotChanged;
         if (handlers is null) return;
         foreach (EventHandler<AgentWorkSnapshotChangedEventArgs> handler in handlers.GetInvocationList()) {
@@ -160,12 +177,28 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         }
     }
 
+    // Compare typed metadata instead of serializing the entire history to JSON on every tick.
+    private static bool SameContent(AgentWorkSnapshot current, AgentWorkSnapshot? previous) {
+        if (previous is null || current.GitHubCheckedAtUtc != previous.GitHubCheckedAtUtc
+            || current.Sessions.Count != previous.Sessions.Count || !current.PullRequests.SequenceEqual(previous.PullRequests)
+            || !current.NeedsAttention.SequenceEqual(previous.NeedsAttention) || !current.Diagnostics.SequenceEqual(previous.Diagnostics)) return false;
+        for (var i = 0; i < current.Sessions.Count; i++) {
+            var left = current.Sessions[i];
+            var right = previous.Sessions[i];
+            if (!left.PullRequests.SequenceEqual(right.PullRequests) || left with { PullRequests = right.PullRequests } != right) return false;
+        }
+        return true;
+    }
+
     private AgentWorkOptions CopyReadOptions() => new() { ActiveWithin = _options.ActiveWithin, ActiveTurnWindow = _options.ActiveTurnWindow,
         StaleAfter = _options.StaleAfter, Cache = _cache };
 
     private void Signal() {
         if (_stop.IsCancellationRequested) return;
-        try { _signal.Release(); } catch (SemaphoreFullException) { } catch (ObjectDisposedException) { }
+        // Most append callbacks arrive while a burst is already queued. Avoid throwing for
+        // that normal case; concurrent producers can still race, so retain the guarded release.
+        try { if (_signal.CurrentCount == 0) _signal.Release(); }
+        catch (SemaphoreFullException) { } catch (ObjectDisposedException) { }
     }
 
     private void SetDiagnostic(string provider, string? code, string? sourceRootId = null) => _diagnostics.Set(provider, code, sourceRootId);

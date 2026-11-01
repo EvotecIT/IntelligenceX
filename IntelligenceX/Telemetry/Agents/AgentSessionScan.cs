@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -15,40 +16,53 @@ internal sealed class AgentSessionScan {
     private readonly SourceRootRecord _root;
     private readonly Action<string> _report;
     private readonly IRawArtifactStore? _store;
-    private readonly IReadOnlyDictionary<string, RawArtifactDescriptor>? _cached;
+    private readonly Dictionary<string, RawArtifactDescriptor> _cached = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AgentSessionCacheEntry> _parsed = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _dirty = new(StringComparer.OrdinalIgnoreCase);
     private bool _cacheFailed;
     internal int FilesRead, FilesReused, FilesSkipped, FilesTailed;
     internal long BytesRead;
+    internal bool CacheUnavailable => _cacheFailed;
 
     internal AgentSessionScan(SourceRootRecord root, IRawArtifactStore? store, Action<string> report) {
         _root = root;
         _store = store;
         _report = report;
-        try { _cached = store?.GetBySourceRootAdapter(root.Id, Adapter); }
+        try {
+            if (store is not null)
+                foreach (var pair in store.GetBySourceRootAdapter(root.Id, Adapter)) _cached[pair.Key] = pair.Value;
+        }
         catch (Exception) { CacheFailed(); }
     }
 
     private string Adapter => "agent-work/" + _root.ProviderId;
 
-    internal AgentSessionState? Read(string path, DateTimeOffset? since, CancellationToken cancellationToken) {
-        var before = RawArtifactDescriptor.CreateFile(_root.Id, Adapter, path, ParserVersion);
+    internal AgentSessionState? Read(string path, DateTimeOffset? since, CancellationToken cancellationToken, bool persist = true) {
+        var info = new FileInfo(path);
+        if (!info.Exists) throw new FileNotFoundException("Session file no longer exists.");
         // A live strip never opens an old transcript, even to recover canonical identity.
-        if (since.HasValue && before.LastWriteTimeUtc < since) {
+        if (since.HasValue && info.LastWriteTimeUtc < since.Value.UtcDateTime) {
             FilesSkipped++;
             return null;
         }
         AgentSessionCacheEntry? cached = null;
         RawArtifactDescriptor? descriptor = null;
-        if (_cached is not null && _cached.TryGetValue(before.Path, out descriptor)
-            && descriptor.ParserVersion == ParserVersion && descriptor.StateJson is not null) {
-            try { cached = JsonSerializer.Deserialize(descriptor.StateJson, AgentSessionCacheJsonContext.Default.AgentSessionCacheEntry); }
+        if (_cached.TryGetValue(path, out descriptor)
+            && descriptor.ParserVersion == ParserVersion) {
+            try {
+                if (!_parsed.TryGetValue(path, out cached) && descriptor.StateJson is not null) {
+                    cached = JsonSerializer.Deserialize(descriptor.StateJson, AgentSessionCacheJsonContext.Default.AgentSessionCacheEntry);
+                    if (cached is not null) _parsed[path] = cached;
+                }
+            }
             catch (JsonException) { /* Cache damage falls back to source. */ }
         }
-        if (cached is not null && descriptor!.Fingerprint == before.Fingerprint) {
+        if (cached is not null && info.Exists && descriptor!.SizeBytes == info.Length && descriptor.LastWriteTimeUtc?.UtcDateTime == info.LastWriteTimeUtc) {
             FilesReused++;
             Replay(cached.Diagnostics);
             return cached.Session;
         }
+        var before = RawArtifactDescriptor.CreateFile(_root.Id, Adapter, path, ParserVersion);
         var created = File.GetCreationTimeUtc(path);
         var tail = cached is not null && cached.TailSafe && cached.Offset == descriptor!.SizeBytes
             && before.SizeBytes > cached.Offset && cached.CreatedAtUtc == created
@@ -66,16 +80,43 @@ internal sealed class AgentSessionScan {
         BytesRead += window.EndOffset - window.StartOffset;
         var result = new AgentSessionCacheEntry { State = state, Diagnostics = diagnostics,
             Offset = window.EndOffset, TailSafe = window.TailSafe, CreatedAtUtc = created };
-        if (_store is not null && !_cacheFailed) {
+        if (_store is not null) {
             var after = RawArtifactDescriptor.CreateFile(_root.Id, Adapter, path, ParserVersion);
             if (after.Fingerprint == before.Fingerprint) {
                 result.AnchorHash = AnchorHash(path, window.EndOffset);
-                before.StateJson = JsonSerializer.Serialize(result, AgentSessionCacheJsonContext.Default.AgentSessionCacheEntry);
-                try { _store.Upsert(before); }
-                catch (Exception) { CacheFailed(); }
+                _cached[before.Path] = before;
+                _parsed[before.Path] = result;
+                if (!_cacheFailed) {
+                    _dirty.Add(before.Path);
+                    if (persist) Persist(before.Path);
+                }
             }
         }
         return result.Session;
+    }
+
+    internal void ResetStatistics() { FilesRead = FilesReused = FilesSkipped = FilesTailed = 0; BytesRead = 0; }
+
+    internal void Forget(string path) {
+        _cached.Remove(path);
+        _parsed.Remove(path);
+        _dirty.Remove(path);
+    }
+
+    // Live appends advance the in-memory checkpoint immediately; the optional durable cache
+    // is checkpointed on reconciliation. A restart safely tails from that older checkpoint.
+    internal void Flush() {
+        foreach (var path in _dirty.ToArray()) Persist(path);
+    }
+
+    private void Persist(string path) {
+        if (!_cacheFailed && _store is not null) {
+            var descriptor = _cached[path];
+            descriptor.StateJson = JsonSerializer.Serialize(_parsed[path], AgentSessionCacheJsonContext.Default.AgentSessionCacheEntry);
+            try { _store.Upsert(descriptor); }
+            catch (Exception) { CacheFailed(); }
+        }
+        _dirty.Remove(path);
     }
 
     private void Replay(Dictionary<string, int> diagnostics) {

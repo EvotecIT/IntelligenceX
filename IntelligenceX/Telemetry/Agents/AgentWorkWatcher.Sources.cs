@@ -32,13 +32,16 @@ public sealed partial class AgentWorkWatcher {
                 if (!Directory.Exists(directory)) continue; // A later reconcile discovers roots created after startup.
                 FileSystemWatcher? pending = null;
                 try {
-                    var watcher = pending = _createWatcher(directory, File.Exists(root.Path) ? Path.GetFileName(root.Path) : "*.jsonl");
+                    var watcher = pending = _createWatcher(directory, File.Exists(root.Path) ? Path.GetFileName(root.Path) : "*");
                     watcher.IncludeSubdirectories = !File.Exists(root.Path);
                     watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size;
-                    watcher.Changed += (_, _) => Signal();
-                    watcher.Created += (_, _) => Signal();
-                    watcher.Deleted += (_, _) => Signal();
-                    watcher.Renamed += (_, _) => Signal();
+                    watcher.Changed += (_, e) => QueueFile(root.Id, e.FullPath, directoryChange: false);
+                    watcher.Created += (_, e) => QueueFile(root.Id, e.FullPath, directoryChange: true);
+                    watcher.Deleted += (_, e) => QueueFile(root.Id, e.FullPath, directoryChange: true);
+                    watcher.Renamed += (_, e) => {
+                        QueueFile(root.Id, e.OldFullPath, directoryChange: true);
+                        QueueFile(root.Id, e.FullPath, directoryChange: true);
+                    };
                     watcher.Error += (_, _) => ResetWatcher(root.Id);
                     _watchers[root.Id] = watcher;
                     watcher.EnableRaisingEvents = true;
@@ -60,7 +63,21 @@ public sealed partial class AgentWorkWatcher {
         lock (_gate) {
             if (_watchers.TryGetValue(rootId, out var watcher)) { _watchers.Remove(rootId); watcher.Dispose(); }
         }
+        Interlocked.Exchange(ref _reconcileRequested, 1);
         SetDiagnostic("watcher", "watch-overflow", rootId);
+    }
+
+    private void QueueFile(string rootId, string path, bool directoryChange) {
+        var jsonl = string.Equals(Path.GetExtension(path), ".jsonl", StringComparison.OrdinalIgnoreCase);
+        // Incoming directories can contain existing logs. Deletion/move-out of directories
+        // is repaired by reconciliation; a deleted WAL/lock must not look like a directory.
+        if (!jsonl && (!directoryChange || !Directory.Exists(path))) return;
+        lock (_gate) {
+            if (_disposed) return;
+            if (!jsonl || _changedFiles.Count >= 4096) Interlocked.Exchange(ref _reconcileRequested, 1);
+            else _changedFiles[rootId + "\0" + path] = (rootId, path);
+        }
+        Signal();
     }
 
     private async Task RunMetadataAsync() {

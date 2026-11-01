@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- Add a recent-only in-process work watcher with safe JSONL append checkpoints, independent conditional GitHub refresh, and a two-day default for native consumers.
+- Add a recent-only in-process work watcher with targeted file updates, one-second burst coalescing, safe JSONL append checkpoints, independent conditional GitHub refresh, and a two-day default for native consumers.
 - Evaluate known unfinished turns after collection using the latest same-root Desktop/log activity, preserving explicit completion, interruption and waiting signals.
 - Add metadata-only Codex and Claude work snapshots, GitHub PR/check and review signals, attention rules, and `agents status --json`.
 - Add generated snapshot JSON and a .NET 10 Native AOT smoke consumer for native applications.

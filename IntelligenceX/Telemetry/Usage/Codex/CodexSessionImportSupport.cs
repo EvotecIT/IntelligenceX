@@ -15,7 +15,7 @@ internal static class CodexSessionImportSupport {
                string.Equals(normalized, "chatgpt-codex", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static IEnumerable<string> EnumerateCandidateFiles(string rootPath, bool preferRecentArtifacts) {
+    public static IEnumerable<string> EnumerateCandidateFiles(string rootPath, bool preferRecentArtifacts, bool orderByActivity = true) {
         if (File.Exists(rootPath)) {
             if (string.Equals(Path.GetExtension(rootPath), ".jsonl", StringComparison.OrdinalIgnoreCase)) {
                 yield return Path.GetFullPath(rootPath);
@@ -25,7 +25,7 @@ internal static class CodexSessionImportSupport {
 
         var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var directory in EnumerateCandidateDirectories(Path.GetFullPath(rootPath))) {
-            foreach (var file in EnumerateFilesFromDirectory(directory, preferRecentArtifacts)) {
+            foreach (var file in EnumerateFilesFromDirectory(directory, preferRecentArtifacts, orderByActivity)) {
                 if (seenFiles.Add(file)) {
                     yield return file;
                 }
@@ -197,13 +197,16 @@ internal static class CodexSessionImportSupport {
         return ResolveAccount(artifactPath, rootPath).ProviderAccountId;
     }
 
-    private static IEnumerable<string> EnumerateFilesFromDirectory(string directory, bool preferRecentArtifacts) {
+    private static IEnumerable<string> EnumerateFilesFromDirectory(string directory, bool preferRecentArtifacts, bool orderByActivity) {
+        // Live collections already stat each file for its fingerprint; avoid a second stat for ordering.
+        Func<string, DateTime> activityOrder = orderByActivity
+            ? UsageTelemetryQuickReportSupport.GetLastWriteTimeUtcSafe : static _ => DateTime.MinValue;
         foreach (var file in UsageTelemetryQuickReportSupport.OrderPathsByDirection(
                      UsageTelemetryQuickReportSupport.EnumerateFilesSafe(directory, "*.jsonl", SearchOption.TopDirectoryOnly)
                          .Where(IsSessionFile)
                          .Select(Path.GetFullPath),
                      preferRecentArtifacts,
-                     UsageTelemetryQuickReportSupport.GetLastWriteTimeUtcSafe)) {
+                     activityOrder)) {
             yield return file;
         }
 
@@ -219,7 +222,7 @@ internal static class CodexSessionImportSupport {
                              .Where(IsSessionFile)
                              .Select(Path.GetFullPath),
                          preferRecentArtifacts,
-                         UsageTelemetryQuickReportSupport.GetLastWriteTimeUtcSafe)) {
+                         activityOrder)) {
                 yield return file;
             }
 
@@ -240,7 +243,7 @@ internal static class CodexSessionImportSupport {
                                  .Where(IsSessionFile)
                                  .Select(Path.GetFullPath),
                              preferRecentArtifacts,
-                             UsageTelemetryQuickReportSupport.GetLastWriteTimeUtcSafe)) {
+                             activityOrder)) {
                     yield return file;
                 }
 
@@ -261,7 +264,7 @@ internal static class CodexSessionImportSupport {
                                      .Where(IsSessionFile)
                                      .Select(Path.GetFullPath),
                                  preferRecentArtifacts,
-                                 UsageTelemetryQuickReportSupport.GetLastWriteTimeUtcSafe)) {
+                                 activityOrder)) {
                         yield return file;
                     }
 
@@ -274,7 +277,7 @@ internal static class CodexSessionImportSupport {
                                      .Where(IsSessionFile)
                                      .Select(Path.GetFullPath),
                                  preferRecentArtifacts,
-                                 UsageTelemetryQuickReportSupport.GetLastWriteTimeUtcSafe)) {
+                                 activityOrder)) {
                         yield return file;
                     }
                 }

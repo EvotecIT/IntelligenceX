@@ -21,25 +21,44 @@ var first = watcher.CurrentSnapshot;
 
 Keep the watcher for the application's lifetime. `StartAsync` awaits the first local snapshot on a background worker; it does not await optional GitHub or Desktop metadata. Events run on the background collection worker, so handlers should return promptly. Subscriber exceptions are isolated and produce `subscriber-failed`. `DisposeAsync` cancels and awaits owned workers and releases filesystem handles. Synchronous `Dispose` requests that teardown without blocking the caller.
 
-The watcher uses `FileSystemWatcher` with a short fixed coalescing delay. An independent thirty-second reconcile catches missed events, refreshes automatic root discovery, finds roots created after startup and reevaluates time-based state. Filesystem activity does not postpone that cadence. Unchanged capture times and scan counters do not generate notification storms. `ReconcileInterval` is configurable. Watch failures and buffer overflow produce content-free diagnostics; repeated identical failures do not requeue scans. Polling continues, failed watchers are rearmed, and their diagnostics clear on recovery.
+The watcher queues the file paths named by `FileSystemWatcher` and coalesces bursts for one second. Existing files update their own parsed observations without enumerating roots, statting other sessions, or loading the cache again. The delay starts with the first event, so continuous writing cannot postpone delivery indefinitely. Creation of a candidate file or directory can request discovery. An independent thirty-second reconcile catches missed events, refreshes automatic root discovery, finds roots created after startup and reevaluates time-based state. Filesystem activity does not postpone that cadence. `ReconcileInterval` is configurable. Watch failures and buffer overflow produce content-free diagnostics; polling continues and failed watchers are rearmed.
 
 Null roots reuse the existing Codex/Claude telemetry discovery. Explicit roots replace discovery, and an empty list watches nothing. `LocalAgentWorkStateService.ReadLocal` provides the same recent-only options for a one-shot read. `ActiveWithin = null` explicitly requests full history for analysis, not a live-strip default. Stale historical sessions outside the selected window require that wider analysis view; GitHub PR/review attention is independent of local history selection.
 
 ## Incremental parsing
 
-The watcher keeps an in-memory `IRawArtifactStore` unless a caller supplies `AgentWorkOptions.Cache`. Unchanged path, size, modification time and parser version reuse a parsed observation. Each entry holds metadata and the parser continuation needed to preserve canonical identity, open-turn/input state and Claude sidechain exclusion. It contains no transcript lines.
+The watcher retains per-root, per-file parsed observations in memory, including when a caller supplies `AgentWorkOptions.Cache`. The optional store is loaded once per root, rather than once per event. Unchanged path, size, modification time and parser version reuse a parsed observation. Each entry holds metadata and the parser continuation needed to preserve canonical identity, open-turn/input state and Claude sidechain exclusion. It contains no transcript lines.
 
-An append resumes only at a previous complete UTF-8 JSONL boundary, with matching file creation time and hashed prefix/boundary anchors. The byte offset includes multibyte UTF-8 correctly. Partial final records, truncation, replacement and detected rewrites fall back to a full parse. A file changing during parsing is not stamped with a newer cache fingerprint. Deleted files do not reappear from cache. Explicit title indexes, workspace identity, Desktop metadata, clock aging and PR association are reapplied independently of parser reuse.
+An append resumes only at a previous complete UTF-8 JSONL boundary, with matching file creation time and hashed prefix/boundary anchors. The byte offset includes multibyte UTF-8 correctly. Partial final records, truncation, replacement and detected rewrites fall back to a full parse. A file changing during parsing is not stamped with a newer cache fingerprint. Deleted files do not reappear from cache. Explicit title indexes, Desktop metadata, clock aging and PR association remain independent of parser reuse. Repository identity, including failed lookups, is cached by working directory and refreshed during reconciliation, so a Git branch/config change appears at that cadence.
+
+Live appends advance the in-memory checkpoint immediately. The optional durable cache is checkpointed during reconciliation instead of writing SQLite for every append burst. A shutdown before reconciliation can leave an older saved checkpoint; startup verifies it and tails the intervening bytes. One-shot `ReadLocal` calls persist their parsed results immediately. Cache failures retain in-memory reuse and report `cache-unavailable`.
 
 These logs are append-only provider artifacts. Editing an old interior while deliberately preserving size, timestamps, creation identity and checkpoint anchors is outside that contract; discard the parsed cache after such edits. A caller-owned cache remains caller-owned on watcher disposal. The optional SQLite companion's `SqliteRawArtifactStore` can persist parsed state across application restarts; use a dedicated application cache database and protect its metadata like exported snapshots.
 
 The snapshot's `scan` reports session files read, reused, skipped and tailed, plus bytes actually consumed by the parser. Small checkpoint anchors, title indexes, workspace and database reads are excluded from `bytesRead`.
 
-### Measured local behavior
+### Live workload diagnostic
 
-A read-only Windows/.NET 10 run on 1 November 2026, including discovery and watcher startup with an empty in-memory cache and `ActiveWithin = 2 days`, took **14.48 seconds**. It parsed 262 recent files containing 4.32 GB, skipped 1,144 old files before parsing, and returned 254 sessions with no activity timestamp later than capture. This first cold read still pays for history inside recent files; it is not an instant-start guarantee.
+`IntelligenceX.Performance` is an opt-in diagnostic workload. It creates 1,400 synthetic files split between Codex and Claude, a synthetic Git repository, a dedicated SQLite cache and four writers targeting five appends per second each. It uses the public watcher with a two-day window and the default thirty-second reconcile. No discovery, real transcripts, authentication or network access is involved.
 
-With those real roots still attached, a synthetic 34.1 MB history measured **366.15 ms** from appending a line to `SnapshotChanged`. That update reused 262 other files and tailed exactly the 103 appended bytes rather than rereading the history. No real provider file was modified. These are single-run observations with live source changes and filesystem scheduling, not latency thresholds or unit-test performance gates.
+Build the project in Release, then run its executable with a task-owned scratch directory, duration in seconds and file count. Append `control` for the same writers without a watcher. The executable retains its unique synthetic output directory for inspection; remove it after recording the result. This is a settled-process workload rather than a microbenchmark: startup and five seconds of warmup are excluded from `Process.TotalProcessorTime`, and the sixty-second default includes periodic reconciliation. CPU seconds per minute and percent of one core include the writers and snapshot subscriber. Latency measures the oldest append represented by each coalesced update; `singleAppendMs` is a separate append after the writers stop. Every writer must produce updates and drain to its final sequence within ten seconds before the separate probe. Drain deliveries contribute latency samples without extending the CPU window. Initial collection and final membership must also match the requested file count. Timing is diagnostic evidence, outside correctness CI.
+
+```powershell
+dotnet build IntelligenceX.Performance/IntelligenceX.Performance.csproj -c Release --artifacts-path D:/scratch/ix-workload-build
+dotnet D:/scratch/ix-workload-build/bin/IntelligenceX.Performance/release/IntelligenceX.Performance.dll D:/scratch/ix-workload 60 1400
+```
+
+On 1 November 2026, Windows build 26300 / .NET 10.0.14 on a Ryzen 9 9950X3D2 (32 logical processors), normal priority and default scheduler placement, the sixty-second workload measured:
+
+| Implementation | CPU seconds per minute | Percent of one core | Oldest append p95 / maximum | Separate append |
+| --- | ---: | ---: | ---: | ---: |
+| Before (`3a579993`) | 41.7940 | 69.657% | 2,695 / 3,035 ms | 1,618 ms |
+| Targeted updates and coalesced signalling | 1.2655 | 2.109% | 1,099 / 1,194 ms | 1,011 ms |
+| Writers without the watcher | 0.2500 | 0.417% | — | — |
+
+Both collection runs observed all four writers' final sequences. The final run handled 1,119 appends during measurement and emitted 56 snapshot events. Total process CPU fell by about 97%; subtracting the separate writer control gives an approximate watcher cost of 1.69% of one core. This subtraction is an estimate from separate launches.
+
+These are workstation observations, not a real-time guarantee. Earlier development runs ranged from 76.27–88.61% before the change. Before the final signalling optimization, candidate launches measured 1.88–2.53%; one run with concurrent validation reached 2,659 ms p95 and 4,032 ms maximum. The final pair ran after task-owned validation processes exited, with other normal workstation activity left alone. Large-history cold parsing, detected rewrites and real application CPU still need their own measurement; this workload isolates settled collection over many files.
 
 ## Optional metadata and GitHub
 
