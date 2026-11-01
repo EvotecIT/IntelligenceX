@@ -181,6 +181,25 @@ The tray app should eventually notify on things that matter:
 - a fork became more active than upstream
 - Copilot quota is near exhaustion
 
+### 6. Agent work state: what's cooking and what needs me
+
+Usage tells us how much was spent; it doesn't tell us what is happening right now. With several Claude and Codex sessions running across machines, the useful questions are:
+
+- what is running now, in which repository and branch, and how long it has been going
+- what is waiting on me: a question asked, a decision held, a review requested, an approval prompt
+- what has gone quiet or stale: a thread idle for days with an open pull request, a failed or held wake, a session that stopped mid-task
+- what finished: merged, pull request opened, CI red or green, with a link
+
+Shape it like the telemetry layer: a provider-neutral "agent session state" model fed by adapters (Codex threads and app state, Claude Code sessions, GitHub pull requests and checks), read locally, with no content beyond titles, state and links. Anything specific to our own coordination board and inboxes stays an optional adapter on top, not the core model.
+
+Consumers:
+
+- the IX tray dashboard (a "needs you" list next to the provider cards)
+- [Marquee](https://github.com/EvotecIT/Marquee), the touch strip host, which plans an agents tile and ambient-mode cards on top of this library rather than its own copy
+- digests and notifications (milestone 4) for "waiting on you" and "stale"
+
+Making the library usable from Marquee also means trimming and Native AOT compatibility for the parts it consumes.
+
 ## How We Stack Against CodexBar
 
 ### Where CodexBar is still ahead
