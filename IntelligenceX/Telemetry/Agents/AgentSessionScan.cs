@@ -12,7 +12,7 @@ namespace IntelligenceX.Telemetry.Agents;
 
 // Cache only parser observations. Clock aging, title indexes, Desktop metadata, Git and PRs are reapplied each scan.
 internal sealed class AgentSessionScan {
-    private const string ParserVersion = "4";
+    private const string ParserVersion = "5";
     private readonly SourceRootRecord _root;
     private readonly Action<string> _report;
     private readonly IRawArtifactStore? _store;
@@ -85,6 +85,10 @@ internal sealed class AgentSessionScan {
                 ? CodexAgentSessionReader.Read(path, _root, Report, cancellationToken, tail ? cached!.State : null, window)
                 : ClaudeAgentSessionReader.Read(path, _root, Report, cancellationToken, tail ? cached!.State : null, window);
         }
+        var observed = DateTimeOffset.UtcNow;
+        state = state with { Session = state.Session with { ObservationSources = AgentObservationSources.SessionLog, ObservedAtUtc = observed } };
+        if (window.Checkpoint is { } checkpoint)
+            window.Checkpoint = checkpoint with { Session = checkpoint.Session with { ObservationSources = AgentObservationSources.SessionLog, ObservedAtUtc = observed } };
         var bytes = window.TotalBytesRead >= 0 ? window.TotalBytesRead : window.EndOffset - window.StartOffset;
         BytesRead += bytes;
         AgentWorkMeasurement.Add(tail ? "tail-bytes" : "full-read-bytes", bytes);
@@ -177,12 +181,11 @@ internal sealed class AgentSessionCacheEntry {
     public string? AnchorHash { get; set; }
 }
 
-internal sealed class AgentSessionParserState {
+internal sealed record AgentSessionParserState {
     public AgentSessionState Session { get; init; } = new();
     public bool Active { get; init; }
     public bool HasSessionMetadata { get; init; }
     public bool Sidechain { get; init; }
-    public string? InputCallId { get; init; }
 }
 
 [JsonSourceGenerationOptions(UseStringEnumConverter = true)]

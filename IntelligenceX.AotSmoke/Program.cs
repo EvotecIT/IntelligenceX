@@ -14,6 +14,7 @@ try {
     File.WriteAllText(Path.Combine(fixture, "codex", "sessions", "rollout-sample.jsonl"), """
         {"timestamp":"2026-11-01T10:00:00Z","type":"session_meta","payload":{"id":"fake-codex","git":{"repository_url":"https://github.com/Sample/Project.git","branch":"feature/work"}}}
         {"timestamp":"2026-11-01T10:00:01Z","type":"event_msg","payload":{"type":"thread_name_updated","thread_id":"fake-codex","thread_name":"Synthetic work"}}
+        {"timestamp":"2026-11-01T10:00:02Z","type":"response_item","payload":{"type":"function_call","name":"functions.request_user_input_async","call_id":"fake-question","arguments":"private sentinel"}}
         {"timestamp":"2026-11-01T10:01:00Z","type":"event_msg","payload":{"type":"turn_aborted","message":"private sentinel"}}
         """);
     File.WriteAllText(Path.Combine(fixture, "claude", "projects", "sample", "sample.jsonl"), """
@@ -51,9 +52,15 @@ try {
     var json = AgentWorkJson.Serialize(snapshot);
     var decoded = JsonSerializer.Deserialize(json, AgentWorkJsonContext.Default.AgentWorkSnapshot)
         ?? throw new InvalidOperationException("Snapshot deserialization failed.");
-    if (decoded.Sessions.Count != 2 || decoded.NeedsAttention.Count != 3 || decoded.Sessions.All(static session => session.Title != "Synthetic work")) {
+    if (decoded.Sessions.Count != 2 || decoded.NeedsAttention.Count != 3 || decoded.Sessions.All(static session => session.Title != "Synthetic work")
+        || decoded.NeedsAttention.Any(static item => item.Provider == "claude" && item.Kind == AgentAttentionKind.WaitingOnPerson)) {
         throw new InvalidOperationException("Expected fixture sessions, database metadata and attention.");
     }
+    var codexObservation = decoded.Sessions.Single(static session => session.Id == "fake-codex");
+    if (codexObservation.PendingInputs.Single().Id != "fake-question" || !codexObservation.PendingInputs[0].AnswerIsUnconfirmed
+        || codexObservation.FailureEvidence != AgentFailureEvidence.TerminalEvent
+        || !codexObservation.ObservationSources.HasFlag(AgentObservationSources.SessionLog))
+        throw new InvalidOperationException("Expected typed request, failure and observation evidence.");
     if (json.Contains("private sentinel", StringComparison.Ordinal)) throw new InvalidOperationException("Transcript content escaped the metadata boundary.");
     var observed = new TaskCompletionSource<AgentWorkSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
     await using (var watcher = new AgentWorkWatcher(roots, new AgentWorkOptions { ActiveWithin = TimeSpan.FromDays(2) })) {

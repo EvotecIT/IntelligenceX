@@ -29,6 +29,8 @@ internal static class AgentRealWorkload {
         await watcher.StartAsync();
         startup.Stop();
         Console.WriteLine(FormattableString.Invariant($"realRoots={roots.Count} sessions={watcher.CurrentSnapshot.Sessions.Count} startupSeconds={startup.Elapsed.TotalSeconds:F3} processId={Environment.ProcessId}"));
+        var initialScan = watcher.CurrentSnapshot.Scan;
+        Console.WriteLine($"startupFilesRead={initialScan?.FilesRead} startupFilesReused={initialScan?.FilesReused} startupFilesSkipped={initialScan?.FilesSkipped} startupBytesRead={initialScan?.BytesRead} metadataChecked={watcher.CurrentSnapshot.MetadataCheckedAtUtc.HasValue}");
         await Task.Delay(TimeSpan.FromSeconds(5));
         await phases.WhenIdleAsync();
         using var process = Process.GetCurrentProcess();

@@ -120,7 +120,7 @@ public sealed partial class AgentWorkWatcher {
             while (true) {
                 try {
                     var metadata = await _readMetadata(_stop.Token).ConfigureAwait(false);
-                    lock (_gate) { _metadata = metadata.ToArray(); SetDiagnostic("codex", null); }
+                    lock (_gate) { _metadata = metadata.ToArray(); _metadataCheckedAtUtc = DateTimeOffset.UtcNow; SetDiagnostic("codex", null); }
                     Signal();
                 } catch (OperationCanceledException) when (_stop.IsCancellationRequested) { throw;
                 } catch (Exception) { SetDiagnostic("codex", "unreadable-metadata"); }

@@ -64,7 +64,9 @@ public static class LocalAgentWorkStateService {
                 StateIsInferred = !metadata.IsArchived && log.StateIsInferred,
                 StartedAtUtc = log.StartedAtUtc ?? metadata.StartedAtUtc,
                 LastActivityAtUtc = log.LastActivityAtUtc is null || metadata.LastActivityAtUtc > log.LastActivityAtUtc
-                    ? metadata.LastActivityAtUtc : log.LastActivityAtUtc
+                    ? metadata.LastActivityAtUtc : log.LastActivityAtUtc,
+                ObservationSources = log.ObservationSources | metadata.ObservationSources,
+                ObservedAtUtc = log.ObservedAtUtc is null || metadata.ObservedAtUtc > log.ObservedAtUtc ? metadata.ObservedAtUtc : log.ObservedAtUtc
             };
         }
         var resolved = new Dictionary<string, AgentSessionState>(StringComparer.Ordinal);
@@ -72,7 +74,7 @@ public static class LocalAgentWorkStateService {
             var value = ResolveState(session, now, window, session.SourceRootId is not null && runningRoots.Contains(session.SourceRootId));
             KeepLatest(resolved, Key(value), value);
         }
-        return AgentWorkStateRules.Evaluate(resolved.Values.Where(session => since is null || session.LastActivityAtUtc >= since), pullRequests, now, staleAfter,
+        return AgentWorkStateRules.Evaluate(resolved.Values.Where(session => since is null || session.LastActivityAtUtc >= since || AgentInputRequests.IsUnresolved(session)), pullRequests, now, staleAfter,
             diagnostics) with { Scan = statistics };
     }
 
@@ -124,7 +126,8 @@ public static class LocalAgentWorkStateService {
             }
         }
         foreach (var title in titles) sessions.Add(new AgentSessionState {
-            Provider = "codex", Id = title.Key, Machine = machine, Title = title.Value, SourceRootId = root.Id
+            Provider = "codex", Id = title.Key, Machine = machine, Title = title.Value, SourceRootId = root.Id,
+            ObservationSources = AgentObservationSources.TitleIndex
         });
     }
 }

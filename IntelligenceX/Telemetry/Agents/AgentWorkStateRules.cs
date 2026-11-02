@@ -34,11 +34,15 @@ public static class AgentWorkStateRules {
                 && nowUtc - session.LastActivityAtUtc.Value >= threshold;
             linked.Add(session with { PullRequests = matches, State = stale && baseState == AgentWorkState.Idle
                 ? AgentWorkState.Stale : baseState });
-            void Add(AgentAttentionKind kind) => attention.Add(new AgentAttentionItem {
+            void Add(AgentAttentionKind kind, string? inputId = null) => attention.Add(new AgentAttentionItem {
                 Kind = kind, Provider = session.Provider, SessionId = session.Id, Title = session.Title,
+                Machine = session.Machine, SourceRootId = session.SourceRootId, InputId = inputId,
                 Url = matches.FirstOrDefault()?.Url
             });
-            if (session.State == AgentWorkState.WaitingOnPerson) Add(AgentAttentionKind.WaitingOnPerson);
+            if (session.State != AgentWorkState.Finished && !session.IsArchived && session.PendingInputs.Count > 0) {
+                foreach (var input in session.PendingInputs)
+                    Add(input.AnswerIsUnconfirmed ? AgentAttentionKind.UnconfirmedInput : AgentAttentionKind.WaitingOnPerson, input.Id);
+            } else if (session.State == AgentWorkState.WaitingOnPerson) Add(AgentAttentionKind.WaitingOnPerson);
             if (stale) Add(AgentAttentionKind.Stale);
             if (session.State != AgentWorkState.Finished) {
                 switch (session.LastTurnOutcome) {

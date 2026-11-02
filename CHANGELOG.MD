@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Separate unresolved questions from execution state, keep asynchronous input acknowledgements from clearing questions, and treat normal Claude turn completion as idle. Expose controlled failure causes, observation freshness and session attention identity without retaining messages or answers.
 - Reduce live work-state CPU with cached directory membership, incremental session evaluation, streamed state metadata and paced recovery for unavailable filesystem notifications. Add read-only real-root phase CPU measurement.
 - Add a recent-only in-process work watcher with targeted file updates, one-second burst coalescing, safe JSONL append checkpoints, independent conditional GitHub refresh, and a two-day default for native consumers.
 - Evaluate known unfinished turns after collection using the latest same-root Desktop/log activity, preserving explicit completion, interruption and waiting signals.

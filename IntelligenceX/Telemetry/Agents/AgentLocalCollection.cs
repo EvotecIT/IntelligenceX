@@ -122,7 +122,7 @@ internal sealed class AgentLocalCollection {
             if (state.Scan.CacheUnavailable) counts["cache-unavailable"] = 1;
             foreach (var file in state.Files.Values)
                 foreach (var pair in file.Diagnostics) { counts.TryGetValue(pair.Key, out var count); counts[pair.Key] = count + pair.Value; }
-            diagnostics.AddRange(counts.Select(pair => new AgentSourceDiagnostic { Provider = state.Root.ProviderId, Code = pair.Key, Count = pair.Value }));
+            diagnostics.AddRange(counts.Select(pair => new AgentSourceDiagnostic { Provider = state.Root.ProviderId, SourceRootId = state.Root.Id, Code = pair.Key, Count = pair.Value }));
         }
         var now = nowUtc ?? DateTimeOffset.UtcNow; // Sample after reading, including metadata supplied by the caller.
         if (additionalDiagnostics is not null) diagnostics.AddRange(additionalDiagnostics);
@@ -143,12 +143,19 @@ internal sealed class AgentLocalCollection {
         state.CurrentFile = file;
         try {
             file.Session = state.Scan.Read(path, since, token, persist);
+            if (file.Session is null && state.Files.TryGetValue(path, out var known) && known.Session is { } retained
+                && AgentInputRequests.IsUnresolved(retained)) file.Session = retained; // A recent-window cutoff is not an answer.
             if (state.Files.TryGetValue(path, out var previous) && previous.Session == file.Session
                 && previous.Diagnostics.Count == file.Diagnostics.Count && previous.Diagnostics.All(pair => file.Diagnostics.TryGetValue(pair.Key, out var count) && count == pair.Value)) return;
             state.Files[path] = file;
-        } catch (IOException) { state.Report("unreadable-source"); state.Files[path] = file;
-        } catch (UnauthorizedAccessException) { state.Report("unreadable-source"); state.Files[path] = file;
+        } catch (IOException) { Unavailable();
+        } catch (UnauthorizedAccessException) { Unavailable();
         } finally { state.CurrentFile = null; }
+        void Unavailable() {
+            state.Report("unreadable-source");
+            if (state.Files.TryGetValue(path, out var previous)) file.Session = previous.Session;
+            state.Files[path] = file;
+        }
     }
 
     private static void ReadTitles(RootState state, CancellationToken token) {

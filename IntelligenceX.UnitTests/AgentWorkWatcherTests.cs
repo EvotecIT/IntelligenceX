@@ -157,7 +157,7 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         var append = "{\"type\":\"assistant\",\"sessionId\":\"claude-live\",\"message\":{\"stop_reason\":\"end_turn\"}}\n";
         File.AppendAllText(path, append);
         var changed = LocalAgentWorkStateService.ReadLocal(new[] { root }, options: options);
-        Assert.Equal(AgentWorkState.WaitingOnPerson, Assert.Single(changed.Sessions).State);
+        Assert.Equal(AgentWorkState.Idle, Assert.Single(changed.Sessions).State);
         Assert.Equal(1, changed.Scan!.FilesTailed);
         Assert.Equal(Encoding.UTF8.GetByteCount(append), changed.Scan.BytesRead);
     }

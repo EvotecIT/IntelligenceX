@@ -17,7 +17,7 @@ internal sealed class AgentWorkDiagnostics(Action changed) {
             if (code is null) { if (!_items.Remove(key)) return; }
             else {
                 if (_items.TryGetValue(key, out var previous) && previous.Code == code) return;
-                _items[key] = new AgentSourceDiagnostic { Provider = provider, Code = code };
+                _items[key] = new AgentSourceDiagnostic { Provider = provider, SourceRootId = sourceRootId, Code = code };
             }
         }
         changed();

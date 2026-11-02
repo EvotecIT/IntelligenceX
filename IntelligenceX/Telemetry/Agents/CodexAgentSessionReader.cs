@@ -20,9 +20,8 @@ internal static class CodexAgentSessionReader {
         };
         var active = previous?.Active ?? false;
         var hasSessionMetadata = previous?.HasSessionMetadata ?? false;
-        string? inputCallId = previous?.InputCallId;
         window ??= new AgentSessionReadWindow();
-        window.Checkpoint = previous ?? new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, InputCallId = inputCallId };
+        window.Checkpoint = previous ?? new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata };
         foreach (var document in AgentSessionMetadataProjection.Read(path, diagnostic, cancellationToken, window)) {
             using (document) {
                 var entry = document.RootElement;
@@ -51,27 +50,34 @@ internal static class CodexAgentSessionReader {
                     switch (Text(payload, "type")) {
                         case "task_started": case "turn_started":
                             active = true;
-                            inputCallId = null;
-                            session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown };
+                            session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
+                                FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
                             break;
                         case "task_complete": case "task_completed": case "turn_complete": case "turn_completed":
                             active = false;
                             var error = Object(payload, "error");
-                            session = session with { State = AgentWorkState.Idle, LastTurnOutcome =
-                                error.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
-                                    ? AgentTurnOutcome.Completed : AgentTurnOutcome.Failed };
+                            session = error.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+                                ? session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Completed,
+                                    FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None }
+                                : AgentFailureClassifier.Failed(session, error, codex: true);
                             break;
                         case "turn_aborted": case "task_aborted": case "turn_interrupted":
                             active = false;
-                            session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Interrupted };
+                            session = AgentFailureClassifier.Failed(session, payload, codex: true, AgentTurnOutcome.Interrupted);
                             break;
                         case "turn_failed": case "task_failed":
                             active = false;
-                            session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Failed };
+                            session = AgentFailureClassifier.Failed(session, payload, codex: true);
+                            break;
+                        case "error":
+                            if (AgentFailureClassifier.IsNonTurnCodexError(payload)) break;
+                            active = false;
+                            session = AgentFailureClassifier.Failed(session, payload, codex: true);
                             break;
                         case "request_user_input": case "approval_requested":
                             active = false;
-                            session = session with { State = AgentWorkState.WaitingOnPerson };
+                            session = AgentInputRequests.Add(session, Text(payload, "call_id") ?? Text(payload, "id"),
+                                Text(payload, "type") == "approval_requested" ? AgentInputKind.Approval : AgentInputKind.Question, true, timestamp);
                             break;
                         case "thread_name_updated":
                             var namedThread = Text(payload, "thread_id") ?? Text(payload, "threadId");
@@ -88,21 +94,19 @@ internal static class CodexAgentSessionReader {
                     var itemType = Text(payload, "type");
                     var name = Text(payload, "name");
                     if ((itemType == "function_call" || itemType == "custom_tool_call") &&
-                        (name == "request_user_input" || name == "functions.request_user_input" || name == "functions.request_user_input_async")) {
-                        active = false;
-                        inputCallId = Text(payload, "call_id");
-                        session = session with { State = AgentWorkState.WaitingOnPerson };
-                    } else if ((itemType == "function_call_output" || itemType == "custom_tool_call_output") &&
-                        inputCallId is not null && Text(payload, "call_id") == inputCallId) {
-                        inputCallId = null;
-                        active = true;
-                        session = session with { State = AgentWorkState.Idle };
+                        (name is "request_user_input" or "functions.request_user_input" or "request_user_input_async" or "functions.request_user_input_async")) {
+                        var asynchronous = name is "request_user_input_async" or "functions.request_user_input_async";
+                        active = asynchronous;
+                        session = AgentInputRequests.Add(session, Text(payload, "call_id"), AgentInputKind.Question, !asynchronous, timestamp);
+                    } else if (itemType is "function_call_output" or "custom_tool_call_output") {
+                        var updated = AgentInputRequests.CompleteBlocking(session, Text(payload, "call_id"));
+                        if (!ReferenceEquals(updated, session)) { session = updated; active = true; }
                     }
                 }
             }
-            if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, InputCallId = inputCallId };
+            if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata };
         }
-        return new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, InputCallId = inputCallId };
+        return new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata };
     }
 
     private static bool IsArchivedPath(string path) {

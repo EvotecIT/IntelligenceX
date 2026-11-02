@@ -40,7 +40,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
     private readonly AgentWorkDiagnostics _diagnostics;
     private IReadOnlyList<AgentSessionState> _metadata = Array.Empty<AgentSessionState>();
     private IReadOnlyList<AgentPullRequestState> _pullRequests = Array.Empty<AgentPullRequestState>();
-    private DateTimeOffset? _gitHubCheckedAtUtc;
+    private DateTimeOffset? _gitHubCheckedAtUtc, _metadataCheckedAtUtc;
     private AgentWorkSnapshot _current = new();
     private AgentWorkSnapshot? _published;
     private Task? _startTask, _cleanup;
@@ -151,12 +151,14 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         IReadOnlyList<AgentPullRequestState> pullRequests;
         IReadOnlyList<AgentSourceDiagnostic> diagnostics;
         DateTimeOffset? gitHubChecked;
+        DateTimeOffset? metadataChecked;
         (string RootId, string Path)[] changed;
         lock (_gate) {
             metadata = _metadata;
             pullRequests = _pullRequests;
             diagnostics = _diagnostics.Snapshot;
             gitHubChecked = _gitHubCheckedAtUtc;
+            metadataChecked = _metadataCheckedAtUtc;
             changed = _changedFiles.Values.ToArray();
             _changedFiles.Clear();
         }
@@ -170,7 +172,7 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
             }
             return _local.Snapshot(metadata, pullRequests: pullRequests, additionalDiagnostics: diagnostics);
         }, cancellationToken).ConfigureAwait(false);
-        var snapshot = local with { GitHubCheckedAtUtc = gitHubChecked };
+        var snapshot = local with { GitHubCheckedAtUtc = gitHubChecked, MetadataCheckedAtUtc = metadataChecked };
         Volatile.Write(ref _current, snapshot);
         if (SameContent(snapshot, _published) || _stop.IsCancellationRequested) return;
         _published = snapshot;
@@ -190,7 +192,8 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         for (var i = 0; i < current.Sessions.Count; i++) {
             var left = current.Sessions[i];
             var right = previous.Sessions[i];
-            if (!left.PullRequests.SequenceEqual(right.PullRequests) || left with { PullRequests = right.PullRequests } != right) return false;
+            if (!left.PullRequests.SequenceEqual(right.PullRequests) || !left.PendingInputs.SequenceEqual(right.PendingInputs)
+                || left with { PullRequests = right.PullRequests, PendingInputs = right.PendingInputs } != right) return false;
         }
         return true;
     }

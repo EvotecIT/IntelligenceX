@@ -38,6 +38,7 @@ public static class CodexAgentSessionMetadataReader {
             var archived = !row.IsDBNull(6) && Convert.ToInt64(row.GetValue(6), CultureInfo.InvariantCulture) != 0;
             return new AgentSessionState {
                 Provider = "codex", Id = ReadText(row, 0) ?? string.Empty, SourceRootId = root.Id,
+                ObservationSources = AgentObservationSources.DesktopMetadata,
                 WorkingDirectory = ReadText(row, 1), Branch = ReadText(row, 2), Machine = machine,
                 Repository = AgentRepositoryIdentity.FromRemote(ReadText(row, 3)),
                 StartedAtUtc = ReadTime(row, 7, milliseconds: true) ?? ReadTime(row, 4),

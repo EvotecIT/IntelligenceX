@@ -45,7 +45,7 @@ internal sealed class AgentSnapshotIndex {
             local ??= Array.Empty<AgentSessionState>();
             desktop ??= Array.Empty<AgentSessionState>();
             var inputs = local.Concat(desktop).ToArray();
-            if (since is null || inputs.Any(row => row.LastActivityAtUtc >= since)) {
+            if (since is null || inputs.Any(row => row.LastActivityAtUtc >= since || AgentInputRequests.IsUnresolved(row))) {
                 AgentWorkMeasurement.Add("session-groups-resolved", 1);
                 var result = LocalAgentWorkStateService.BuildSnapshot(local, desktop, running, now, since,
                     _options.ActiveTurnWindow, _options.StaleAfter, Array.Empty<AgentSourceDiagnostic>(), prs, statistics);

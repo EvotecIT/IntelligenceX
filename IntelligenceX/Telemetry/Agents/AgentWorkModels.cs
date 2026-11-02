@@ -7,7 +7,7 @@ namespace IntelligenceX.Telemetry.Agents;
 public enum AgentWorkState {
     /// <summary>A turn has recent activity; this is inferred from a local log, not a live process probe.</summary>
     Running,
-    /// <summary>A structured input/approval request or Claude end_turn awaits a person.</summary>
+    /// <summary>A structured blocking input/approval request awaits a response.</summary>
     WaitingOnPerson,
     /// <summary>No active turn is known.</summary>
     Idle,
@@ -73,6 +73,16 @@ public sealed record AgentSessionState {
     public DateTimeOffset? LastActivityAtUtc { get; init; }
     /// <summary>Outcome of the latest turn, distinct from the session lifecycle.</summary>
     public AgentTurnOutcome LastTurnOutcome { get; init; }
+    /// <summary>Controlled cause for the latest failure/interruption; never derived from prose.</summary>
+    public AgentFailureCause FailureCause { get; init; }
+    /// <summary>Evidence supporting FailureCause, including an unknown terminal failure.</summary>
+    public AgentFailureEvidence FailureEvidence { get; init; }
+    /// <summary>Unresolved questions/approvals, including nonblocking requests during running work.</summary>
+    public IReadOnlyList<AgentPendingInput> PendingInputs { get; init; } = Array.Empty<AgentPendingInput>();
+    /// <summary>Sources contributing state/activity metadata; title-only records do not establish liveness.</summary>
+    public AgentObservationSources ObservationSources { get; init; }
+    /// <summary>When session-log state was last parsed; cache reuse does not advance it. Desktop refresh time is on the snapshot.</summary>
+    public DateTimeOffset? ObservedAtUtc { get; init; }
     /// <summary>Matching open pull requests, linked only by repository and exact head branch.</summary>
     public IReadOnlyList<AgentPullRequestState> PullRequests { get; init; } = Array.Empty<AgentPullRequestState>();
 }
@@ -116,7 +126,9 @@ public enum AgentAttentionKind {
     /// <summary>The last turn was explicitly interrupted.</summary>
     InterruptedTurn,
     /// <summary>A turn has no terminal event and is no longer recently active.</summary>
-    IncompleteTurn
+    IncompleteTurn,
+    /// <summary>An explicit request exists, but the observed log cannot confirm a correlated response.</summary>
+    UnconfirmedInput
 }
 
 /// <summary>A rule result referencing a session or PR without copying transcript content.</summary>
@@ -127,6 +139,12 @@ public sealed record AgentAttentionItem {
     public string? Provider { get; init; }
     /// <summary>Session identifier, if applicable.</summary>
     public string? SessionId { get; init; }
+    /// <summary>Session machine identity. Combine with Provider and SessionId rather than title.</summary>
+    public string? Machine { get; init; }
+    /// <summary>Originating root, when this attention item refers to a session.</summary>
+    public string? SourceRootId { get; init; }
+    /// <summary>Correlated input identifier for a question/approval, when available.</summary>
+    public string? InputId { get; init; }
     /// <summary>Session or PR title, when available.</summary>
     public string? Title { get; init; }
     /// <summary>PR, CI, or other navigation link.</summary>
@@ -137,6 +155,8 @@ public sealed record AgentAttentionItem {
 public sealed record AgentSourceDiagnostic {
     /// <summary>Source provider.</summary>
     public string Provider { get; init; } = string.Empty;
+    /// <summary>Affected root when known; a null value applies to the provider or whole refresh.</summary>
+    public string? SourceRootId { get; init; }
     /// <summary>Stable code such as unreadable-source or malformed-record.</summary>
     public string Code { get; init; } = string.Empty;
     /// <summary>Number of affected files or records.</summary>
@@ -149,6 +169,8 @@ public sealed record AgentWorkSnapshot {
     public DateTimeOffset CapturedAtUtc { get; init; }
     /// <summary>Last successful GitHub revalidation, independent of local capture time; null before remote collection.</summary>
     public DateTimeOffset? GitHubCheckedAtUtc { get; init; }
+    /// <summary>Last successful optional Desktop metadata callback; null before success. A failure retains the prior time and reports a diagnostic.</summary>
+    public DateTimeOffset? MetadataCheckedAtUtc { get; init; }
     /// <summary>Local session-log work performed, if collected by the local service.</summary>
     public AgentWorkScanStatistics? Scan { get; init; }
     /// <summary>Deduplicated sessions, newest first.</summary>

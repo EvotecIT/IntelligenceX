@@ -88,7 +88,8 @@ public sealed class AgentWorkStateTests : IDisposable {
     }
 
     [Theory]
-    [InlineData("end_turn", AgentWorkState.WaitingOnPerson, AgentTurnOutcome.Completed)]
+    [InlineData("end_turn", AgentWorkState.Idle, AgentTurnOutcome.Completed)]
+    [InlineData("stop_sequence", AgentWorkState.Idle, AgentTurnOutcome.Completed)]
     [InlineData("tool_use", AgentWorkState.Running, AgentTurnOutcome.Unknown)]
     [InlineData("max_tokens", AgentWorkState.Idle, AgentTurnOutcome.Incomplete)]
     public void Claude_UsesStopReasonsWithoutReadingText(string stop, AgentWorkState state, AgentTurnOutcome outcome) {
@@ -104,6 +105,7 @@ public sealed class AgentWorkStateTests : IDisposable {
         Assert.Equal("feature/work", session.Branch);
         Assert.Equal(state, session.State);
         Assert.Equal(outcome, session.LastTurnOutcome);
+        Assert.DoesNotContain(snapshot.NeedsAttention, static item => item.Kind == AgentAttentionKind.WaitingOnPerson);
         Assert.DoesNotContain("private sentinel", AgentWorkJson.Serialize(snapshot));
     }
 

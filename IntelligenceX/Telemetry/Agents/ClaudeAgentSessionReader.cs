@@ -37,13 +37,22 @@ internal static class ClaudeAgentSessionReader {
                     session = session with { Title = Text(entry, "customTitle") ?? session.Title };
                 } else if (type == "user") {
                     active = true;
-                    session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown };
+                    session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
+                        FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
+                    var responses = Object(message, "content");
+                    if (responses.ValueKind == JsonValueKind.Array)
+                        foreach (var block in responses.EnumerateArray())
+                            if (Text(block, "type") == "tool_result")
+                                session = AgentInputRequests.CompleteBlocking(session, Text(block, "tool_use_id"));
                 } else if (type == "assistant") {
                     active = true;
+                    session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
+                        FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
                     var stop = Text(message, "stop_reason");
                     if (stop == "end_turn" || stop == "stop_sequence") {
                         active = false;
-                        session = session with { State = AgentWorkState.WaitingOnPerson, LastTurnOutcome = AgentTurnOutcome.Completed };
+                        session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Completed,
+                            FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
                     } else if (stop == "max_tokens") {
                         active = false;
                         session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Incomplete };
@@ -53,24 +62,27 @@ internal static class ClaudeAgentSessionReader {
                         foreach (var block in content.EnumerateArray()) {
                             if (Text(block, "type") == "tool_use" && Text(block, "name") == "AskUserQuestion") {
                                 active = false;
-                                session = session with { State = AgentWorkState.WaitingOnPerson };
+                                session = AgentInputRequests.Add(session, Text(block, "id"), AgentInputKind.Question, true, timestamp);
                             }
                         }
                     }
                     if (Object(entry, "isApiErrorMessage").ValueKind == JsonValueKind.True) {
                         active = false;
-                        session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Failed };
+                        session = AgentFailureClassifier.Failed(session, Object(entry, "error"), codex: false);
                     }
                 } else if (type == "result") {
                     active = false;
-                    session = session with {
-                        State = AgentWorkState.WaitingOnPerson,
-                        LastTurnOutcome = Object(entry, "is_error").ValueKind == JsonValueKind.True
-                            ? AgentTurnOutcome.Failed : AgentTurnOutcome.Completed
-                    };
+                    session = Object(entry, "is_error").ValueKind == JsonValueKind.True
+                        ? AgentFailureClassifier.Failed(session, Object(entry, "error"), codex: false)
+                        : session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Completed,
+                            FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
                 } else if (type == "system" && Text(entry, "subtype") == "turn_duration") {
                     active = false;
-                    session = session with { State = AgentWorkState.WaitingOnPerson, LastTurnOutcome = AgentTurnOutcome.Completed };
+                    if (session.LastTurnOutcome == AgentTurnOutcome.Unknown)
+                        session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Completed };
+                } else if (type == "error") {
+                    active = false;
+                    session = AgentFailureClassifier.Failed(session, Object(entry, "error"), codex: false);
                 }
             }
             if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };

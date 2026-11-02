@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -64,8 +65,11 @@ internal static class AgentSessionLogReader {
             DateTimeStyles.AssumeUniversal, out var time) ? time.ToUniversalTime() : null;
 
     // Preserve an open-turn observation until all sources have been collected. Never cache clock-derived state.
-    internal static AgentSessionState Finish(AgentSessionState session, bool active) => active
-        ? session with { StateIsInferred = true, LastTurnOutcome = AgentTurnOutcome.Incomplete } : session;
+    internal static AgentSessionState Finish(AgentSessionState session, bool active) {
+        if (!session.IsArchived && session.State != AgentWorkState.Finished && session.PendingInputs.Any(static input => input.IsBlocking))
+            return session with { State = AgentWorkState.WaitingOnPerson, StateIsInferred = false };
+        return active ? session with { StateIsInferred = true, LastTurnOutcome = AgentTurnOutcome.Incomplete } : session;
+    }
 }
 
 internal sealed class AgentSessionReadWindow {

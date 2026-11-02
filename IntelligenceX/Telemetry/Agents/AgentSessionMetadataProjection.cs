@@ -92,7 +92,7 @@ internal static class AgentSessionMetadataProjection {
         window.TailSafe = true; // EndOffset is the last complete newline, not an in-flight suffix.
     }
 
-    private enum Context { Root, Payload, Git, Message, Block }
+    private enum Context { Root, Payload, Git, Message, Block, Error, Code }
 
     private static void ProjectObject(Cursor input, Utf8JsonWriter writer, Context context, int depth) {
         if (depth > 64) throw new JsonException();
@@ -106,6 +106,8 @@ internal static class AgentSessionMetadataProjection {
             input.Space(); input.Expect(':'); input.Space();
             var nested = context == Context.Root && name == "payload" ? Context.Payload
                 : context == Context.Root && name == "message" ? Context.Message
+                : (context == Context.Root || context == Context.Payload) && name == "error" ? Context.Error
+                : (context == Context.Payload || context == Context.Error) && name == "codex_error_info" ? Context.Code
                 : context == Context.Payload && name == "git" ? Context.Git : (Context?)null;
             if (nested.HasValue && input.Peek() == '{') {
                 writer.WritePropertyName(name);
@@ -113,6 +115,9 @@ internal static class AgentSessionMetadataProjection {
             } else if (context == Context.Message && name == "content" && input.Peek() == '[') {
                 writer.WritePropertyName(name);
                 ProjectBlocks(input, writer, depth + 1);
+            } else if (context == Context.Code) {
+                writer.WriteNull(name);
+                input.Skip(depth + 1);
             } else if (context == Context.Payload && name == "error") {
                 var isNull = input.Peek() == 'n';
                 input.Skip(depth + 1);
@@ -146,10 +151,11 @@ internal static class AgentSessionMetadataProjection {
 
     private static bool Keep(Context context, string name) => context switch {
         Context.Root => name is "type" or "timestamp" or "sessionId" or "cwd" or "gitBranch" or "isSidechain" or "isApiErrorMessage" or "is_error" or "customTitle" or "subtype",
-        Context.Payload => name is "type" or "id" or "session_id" or "cwd" or "thread_id" or "threadId" or "thread_name" or "title" or "name" or "call_id",
+        Context.Payload => name is "type" or "id" or "session_id" or "cwd" or "thread_id" or "threadId" or "thread_name" or "title" or "name" or "call_id" or "codex_error_info",
         Context.Git => name is "branch" or "repository_url",
         Context.Message => name == "stop_reason",
-        Context.Block => name is "type" or "name",
+        Context.Block => name is "type" or "name" or "id" or "tool_use_id",
+        Context.Error => name is "type" or "codex_error_info",
         _ => false
     };
 
