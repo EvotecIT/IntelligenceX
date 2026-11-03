@@ -1,0 +1,265 @@
+using System.Net.Http.Headers;
+using System.Diagnostics;
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Telemetry.Agents;
+using IntelligenceX.Telemetry.GitHub;
+
+namespace IntelligenceX.Ledger.Reporting;
+
+public sealed record ReporterSettings {
+    public required string Endpoint { get; init; }
+    public required string Token { get; init; }
+    public required string MachineId { get; init; }
+    public required string ReporterId { get; init; }
+    public required string SpoolDirectory { get; init; }
+    public long MaximumSpoolBytes { get; init; } = 64 * 1024 * 1024;
+    public string? CertificateSha256 { get; init; }
+    public string? EvidenceFile { get; init; }
+    public Dictionary<string, string> AccountByRoot { get; init; } = [];
+    public bool GitHub { get; init; }
+    public ProjectClaimsSettings? ProjectClaims { get; init; }
+}
+
+/// <summary>Read-only watcher backstop with local durable delivery, usable on Windows, macOS and Linux.</summary>
+public static class LocalReporter {
+    public static string ItemId(string machine, string provider, string session) => Convert.ToHexStringLower(
+        SHA256.HashData(Encoding.UTF8.GetBytes(machine + "\n" + provider + "\n" + session)));
+
+    public static async Task<int> RunNotifyChainAsync(string file, string payload) {
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(file));
+        var root = document.RootElement;
+        var incumbent = root.GetProperty("incumbent").EnumerateArray().Select(x => x.GetString()!).ToArray();
+        if (incumbent.Length == 0) return 2;
+        var start = new ProcessStartInfo(incumbent[0]) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var argument in incumbent.Skip(1)) start.ArgumentList.Add(argument);
+        start.ArgumentList.Add(payload);
+        using var process = Process.Start(start) ?? throw new IOException("Notify incumbent did not start.");
+        await process.WaitForExitAsync();
+        var result = process.ExitCode;
+        try { await RunAsync(root.GetProperty("reporterConfig").GetString()!, hook: true, payload); }
+        catch (Exception) { /* Optional reporting must preserve the incumbent callback's outcome. */ }
+        return result;
+    }
+
+    public static async Task<int> RunAsync(string file, bool hook, string? suppliedPayload = null) {
+        var settings = JsonSerializer.Deserialize<ReporterSettings>(File.ReadAllText(file), LedgerJson.Options)!;
+        var endpoint = new Uri(settings.Endpoint);
+        if ((endpoint.Scheme != "https" && !(endpoint.Scheme == "http" && endpoint.IsLoopback)) ||
+            endpoint.UserInfo.Length != 0 || endpoint.Query.Length != 0 || endpoint.Fragment.Length != 0 ||
+            settings.Token.Length < 32 || settings.MaximumSpoolBytes < 1024 * 1024)
+            throw new InvalidDataException("Invalid reporter transport configuration.");
+        using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false };
+        if (settings.CertificateSha256 is { } pin) handler.ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
+            certificate is not null && certificate.NotBefore.ToUniversalTime() <= DateTime.UtcNow &&
+            certificate.NotAfter.ToUniversalTime() > DateTime.UtcNow &&
+            Convert.ToHexString(SHA256.HashData(certificate.RawData)).Equals(pin, StringComparison.OrdinalIgnoreCase);
+        using var client = new HttpClient(handler) { BaseAddress = endpoint, Timeout = TimeSpan.FromSeconds(10) };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.Token);
+        using var spool = new ReporterSpool(settings.SpoolDirectory, settings.MaximumSpoolBytes, ownsDelivery: !hook);
+        var epoch = Guid.NewGuid();
+        string sourceVersion;
+        using (var ownAssembly = File.OpenRead(typeof(LocalReporter).Assembly.Location))
+            sourceVersion = Convert.ToHexStringLower(SHA256.HashData(ownAssembly))[..16];
+        long sequence = 0;
+        LedgerEvent Event(string item, string provider, SessionFact? session = null, bool heartbeat = false,
+            string[]? coverage = null) => new() {
+            EventId = Guid.NewGuid(), Epoch = epoch, Sequence = Interlocked.Increment(ref sequence), MachineId = settings.MachineId,
+            ReporterId = settings.ReporterId, ItemId = item, Provider = provider, Source = hook ? "hook" : "watcher",
+            ObservedAtUtc = DateTimeOffset.UtcNow, SourceVersion = sourceVersion, Session = session, Heartbeat = heartbeat, Coverage = coverage
+        };
+        if (hook) {
+            // Hints only: a Stop or AskUserQuestion call does not establish completion or pending input.
+            var buffer = new char[256 * 1024 + 1];
+            var length = 0;
+            while (suppliedPayload is null && length < buffer.Length) {
+                var count = await Console.In.ReadAsync(buffer.AsMemory(length));
+                if (count == 0) break;
+                length += count;
+            }
+            if (length == buffer.Length) return 2;
+            var input = suppliedPayload ?? new string(buffer, 0, length);
+            if (input.Length > 256 * 1024) return 2;
+            using var payload = JsonDocument.Parse(input);
+            var root = payload.RootElement;
+            var provider = root.TryGetProperty("hook_event_name", out _) ? "claude" : "codex";
+            var id = root.TryGetProperty("session_id", out var sessionId) ? sessionId.GetString() :
+                root.TryGetProperty("thread-id", out var threadId) ? threadId.GetString() : null;
+            if (id is null) return 2;
+            spool.Append(Event(ItemId(settings.MachineId, provider, id), provider, coverage: ["hook-hint-requires-reconciliation"]));
+            return 0;
+        }
+        using var stop = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
+        var credentials = settings.GitHub || settings.ProjectClaims is not null
+            ? await GitHubCredentialResolver.ResolveAsync(stop.Token) : null;
+        using var github = credentials?.HasToken == true ? new GitHubDashboardService(credentials.Token!) : null;
+        using var projectClient = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        projectClient.DefaultRequestHeaders.UserAgent.ParseAdd("IntelligenceX-Ledger/1");
+        if (credentials?.HasToken == true) projectClient.DefaultRequestHeaders.Authorization = new("Bearer", credentials.Token);
+        var claimReader = settings.ProjectClaims is not null && credentials?.HasToken == true
+            ? new ProjectClaimReader(projectClient, settings.ProjectClaims) : null;
+        var prCatalog = github is null ? null : new PullRequestCatalog(settings.SpoolDirectory, github);
+        ClaimSnapshot? claimSnapshot = null;
+        await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
+            readMetadataAsync: async ct => {
+                var records = new List<AgentSessionState>();
+                foreach (var root in LocalAgentWorkStateService.DiscoverRoots().Where(r =>
+                    r.SourceKind == IntelligenceX.Telemetry.Usage.UsageSourceKind.LocalLogs && r.ProviderId == "codex"))
+                    records.AddRange(await IntelligenceX.Codex.CodexAgentSessionMetadataReader.ReadAsync(root, ct));
+                return records;
+            }, github: settings.GitHub ? github : null);
+        var last = new Dictionary<string, string>(StringComparer.Ordinal);
+        var lastWork = new Dictionary<string, string>(StringComparer.Ordinal);
+        var captureGate = new object();
+        void Capture(AgentWorkSnapshot snapshot) {
+            lock (captureGate) {
+            foreach (var session in snapshot.Sessions) {
+                var id = ItemId(settings.MachineId, session.Provider, session.Id);
+                var pending = session.PendingInputs;
+                var fact = new SessionFact {
+                    SourceSessionId = Guid.TryParse(session.Id, out var sourceId) ? sourceId : null,
+                    TurnOpen = session.TurnOpen, TurnStartedAtUtc = session.TurnStartedAtUtc?.ToUniversalTime(), TurnEndedAtUtc = session.TurnEndedAtUtc?.ToUniversalTime(),
+                    LastActivityAtUtc = session.LastTurnActivityAtUtc?.ToUniversalTime(), Outcome = session.LastTurnOutcome.ToString().ToLowerInvariant(),
+                    Question = pending.Any(x => !x.AnswerIsUnconfirmed), InputUnconfirmed = pending.Any(x => x.AnswerIsUnconfirmed),
+                    QuestionAtUtc = pending.MinBy(x => x.RequestedAtUtc)?.RequestedAtUtc?.ToUniversalTime(),
+                    UsageLimit = session.FailureCause == AgentFailureCause.UsageLimit,
+                    AccountId = session.SourceRootId is { } rootId && settings.AccountByRoot.TryGetValue(rootId, out var account) ? account : null
+                    , RepositoryBranchKey = session.Repository is not null && session.Branch is not null
+                        ? ItemId("branch", session.Repository.ToLowerInvariant(), session.Branch) : null
+                };
+                var signature = JsonSerializer.Serialize(fact, LedgerJson.Options);
+                if (!last.TryGetValue(id, out var previous) || previous != signature) {
+                    if (spool.TryAppend(Event(id, session.Provider, fact))) last[id] = signature;
+                }
+                var claims = Volatile.Read(ref claimSnapshot);
+                var work = new WorkFact { ActiveClaim = claims is null ? null : claims.ActiveItems.Contains(id),
+                    ClaimsAtUtc = claims?.CapturedAtUtc,
+                    HadPullRequests = session.PullRequests.Count > 0 || claims?.ItemsWithPullRequests.Contains(id) == true };
+                var workSignature = JsonSerializer.Serialize(work, LedgerJson.Options);
+                if (!lastWork.TryGetValue(id, out var previousWork) || previousWork != workSignature) {
+                    if (spool.TryAppend(Event(id, session.Provider) with { Work = work })) lastWork[id] = workSignature;
+                }
+            }
+            }
+        }
+        async Task UploadLoop() {
+            using var heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            do {
+                await DeliverAsync(client, spool, Event("machine", "machine", heartbeat: true), stop.Token);
+            } while (await heartbeatTimer.WaitForNextTickAsync(stop.Token));
+        }
+        spool.TryAppend(Event("source-health", "machine", coverage: ["collection-starting"]));
+        var uploader = UploadLoop();
+        _ = uploader.ContinueWith(_ => stop.Cancel(), TaskContinuationOptions.OnlyOnFaulted);
+        try {
+        await watcher.StartAsync(stop.Token);
+        watcher.SnapshotChanged += (_, change) => Capture(change.Snapshot);
+        Console.WriteLine(JsonSerializer.Serialize(new { phase = "watching", sessions = watcher.CurrentSnapshot.Sessions.Count,
+            sourceDiagnostics = watcher.CurrentSnapshot.Diagnostics.Select(x => x.Code).Distinct().ToArray() }));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        var evidenceImporter = settings.EvidenceFile is null ? null : new EvidenceSnapshotImporter(settings.EvidenceFile, settings.SpoolDirectory);
+        string? lastGlobalSignature = null;
+        var claimsChecked = DateTimeOffset.MinValue;
+        var proofsChecked = DateTimeOffset.MinValue;
+        PullRequestProof[] proofs = [];
+        var proofGap = false;
+        var claimFailure = "claims-unavailable";
+        do {
+            if (claimReader is not null && DateTimeOffset.UtcNow - claimsChecked > TimeSpan.FromMinutes(5)) {
+                claimsChecked = DateTimeOffset.UtcNow;
+                try { Volatile.Write(ref claimSnapshot, await claimReader.ReadAsync(stop.Token)); }
+                catch (Exception error) when (!stop.IsCancellationRequested) {
+                    claimFailure = error switch {
+                        HttpRequestException http => "claims-http-" + (int?)http.StatusCode,
+                        JsonException or KeyNotFoundException or InvalidOperationException or ArgumentException => "claims-schema-unavailable",
+                        InvalidDataException => "claims-incomplete",
+                        _ => "claims-read-unavailable"
+                    };
+                    Console.Error.WriteLine(claimFailure);
+                    Volatile.Write(ref claimSnapshot, null);
+                }
+            }
+            Capture(watcher.CurrentSnapshot);
+            if (prCatalog is not null && DateTimeOffset.UtcNow - proofsChecked > TimeSpan.FromMinutes(5)) {
+                proofsChecked = DateTimeOffset.UtcNow;
+                try {
+                    proofs = await prCatalog.RefreshAsync(watcher.CurrentSnapshot.PullRequests.Select(pr => pr.Url)
+                        .Concat(claimSnapshot?.PullRequestUrlsByItem.Values.SelectMany(urls => urls) ?? []), stop.Token);
+                    proofGap = prCatalog.ReadIncomplete;
+                } catch (Exception error) when (!stop.IsCancellationRequested && error is IOException or InvalidDataException or UnauthorizedAccessException or HttpRequestException or JsonException or InvalidOperationException or OperationCanceledException) {
+                    proofGap = true;
+                    Console.Error.WriteLine("pull-request-proof-unavailable");
+                }
+            }
+            if (claimReader is not null || settings.GitHub) {
+                var snapshot = watcher.CurrentSnapshot;
+                var global = new GlobalWorkFact(claimSnapshot?.CapturedAtUtc,
+                    claimSnapshot?.ActiveItems.Order(StringComparer.Ordinal).ToArray() ?? [], snapshot.GitHubCheckedAtUtc,
+                    snapshot.PullRequests.Where(pr => pr.HeadRepository is not null).GroupBy(pr =>
+                        ItemId("branch", pr.HeadRepository!.ToLowerInvariant(), pr.Branch)).ToDictionary(g => g.Key,
+                            g => g.Select(pr => ItemId("pr", "github", pr.Url)).Order(StringComparer.Ordinal).ToArray()), proofs,
+                    claimSnapshot?.PullRequestUrlsByItem.ToDictionary(pair => pair.Key, pair => new PullRequestLinks(
+                        pair.Value.Select(url => ItemId("pr", "github", url)).ToArray(), !claimSnapshot.IncompletePullRequestItems.Contains(pair.Key), claimSnapshot.CapturedAtUtc)));
+                var signature = JsonSerializer.Serialize(global, LedgerJson.Options);
+                if (signature != lastGlobalSignature) {
+                    if (spool.TryAppend(Event("project-evidence", "project") with { GlobalWork = global })) {
+                        lastGlobalSignature = signature;
+                        try { prCatalog?.RetireAdmittedMerged(proofs); }
+                        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine("pull-request-catalog-retirement-pending"); }
+                    }
+                }
+            }
+            string? evidenceGap = null;
+            if (evidenceImporter is not null) {
+                try { if (!evidenceImporter.Import(spool)) evidenceGap = "evidence-import-pending"; }
+                catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) {
+                    evidenceGap = "evidence-import-unavailable";
+                    Console.Error.WriteLine(evidenceGap);
+                }
+            }
+            spool.TryAppend(Event("source-health", "machine", coverage: watcher.CurrentSnapshot.Diagnostics.Select(x => x.Code)
+                .Append("queue-not-visible").Concat(settings.ProjectClaims is not null && claimSnapshot is null ? [claimFailure] : Array.Empty<string>())
+                .Concat(settings.GitHub && watcher.CurrentSnapshot.GitHubCheckedAtUtc is null ? ["pull-requests-unavailable"] : Array.Empty<string>())
+                .Concat(proofGap ? ["pull-request-proof-unavailable"] : Array.Empty<string>())
+                .Concat(settings.EvidenceFile is null ? ["delivery-evidence-not-configured"] :
+                    File.Exists(settings.EvidenceFile) ? Array.Empty<string>() : ["coordination-evidence-file-missing"])
+                .Concat(evidenceGap is null ? Array.Empty<string>() : [evidenceGap]).Distinct().ToArray()));
+        } while (await timer.WaitForNextTickAsync(stop.Token));
+        } finally {
+            stop.Cancel();
+            try { await uploader; } catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        }
+        return 0;
+    }
+
+    private sealed record Receipt(Guid[] AcknowledgedEventIds);
+    internal static async Task DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent heartbeat, CancellationToken token) {
+        await FlushAsync(client, spool, token);
+        spool.TryAppend(heartbeat);
+        await FlushAsync(client, spool, token);
+    }
+
+    private static async Task FlushAsync(HttpClient client, ReporterSpool spool, CancellationToken token) {
+        while (spool.Pending() is { Length: > 0 } pending) {
+            try {
+                using var response = await client.PostAsJsonAsync("api/ledger/v1/events", pending, LedgerJson.Options, token);
+                if (!response.IsSuccessStatusCode) { Console.Error.WriteLine("ledger-ingress-rejected:" + (int)response.StatusCode); return; }
+                var receipt = await response.Content.ReadFromJsonAsync<Receipt>(cancellationToken: token);
+                var sent = pending.Select(x => x.EventId).ToHashSet();
+                if (receipt is null || receipt.AcknowledgedEventIds.Any(id => !sent.Contains(id))) return;
+                spool.Acknowledge(receipt.AcknowledgedEventIds);
+                if (receipt.AcknowledgedEventIds.Length == 0) return;
+            } catch (HttpRequestException error) {
+                var root = error.GetBaseException();
+                var code = root is System.Net.Sockets.SocketException socket ? socket.SocketErrorCode.ToString() : root.GetType().Name;
+                Console.Error.WriteLine("ledger-transport-unavailable:" + error.HttpRequestError + ":" + code);
+                return;
+            }
+            catch (TaskCanceledException) when (!token.IsCancellationRequested) { return; }
+        }
+    }
+}

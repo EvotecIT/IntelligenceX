@@ -9,7 +9,9 @@
       "IntelligenceX.PowerShell\\IntelligenceX.PowerShell.csproj",
       "IntelligenceX.Reviewer\\IntelligenceX.Reviewer.csproj",
       "IntelligenceX.Cli\\IntelligenceX.Cli.csproj",
-      "IntelligenceX.UnitTests\\IntelligenceX.UnitTests.csproj"
+      "IntelligenceX.UnitTests\\IntelligenceX.UnitTests.csproj",
+      "IntelligenceX.Ledger\\IntelligenceX.Ledger.csproj",
+      "IntelligenceX.Ledger.Tests\\IntelligenceX.Ledger.Tests.csproj"
     ]
   }
 }

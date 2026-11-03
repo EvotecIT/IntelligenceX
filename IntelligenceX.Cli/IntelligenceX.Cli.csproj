@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <None Update="ix;ix.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>IntelligenceX.Cli</AssemblyName>
@@ -8,10 +11,6 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(PublishDir)' != '' ">
-    <TargetName>intelligencex</TargetName>
   </PropertyGroup>
 
   <Target Name="CopyCliAlias" AfterTargets="Build" Condition=" '$(PublishDir)' == '' ">

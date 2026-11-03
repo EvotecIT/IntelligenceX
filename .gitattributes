@@ -21,6 +21,7 @@
 *.csproj text eol=lf
 *.sln   text eol=lf
 *.sh    text eol=lf
+IntelligenceX.Cli/ix text eol=lf
 *.ps1   text eol=crlf
 .gitattributes text eol=lf
 .editorconfig text eol=lf
