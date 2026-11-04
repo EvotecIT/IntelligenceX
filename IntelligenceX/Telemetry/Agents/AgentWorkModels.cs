@@ -75,6 +75,8 @@ public sealed record AgentSessionState {
     public AgentTurnOutcome LastTurnOutcome { get; init; }
     /// <summary>Whether a provider turn is known to be open; null before any turn evidence.</summary>
     public bool? TurnOpen { get; init; }
+    /// <summary>Provider turn identity or its first structured record identity. Null when the source does not expose either.</summary>
+    public string? TurnId { get; init; }
     /// <summary>Start of the most recently observed turn, independent of session creation.</summary>
     public DateTimeOffset? TurnStartedAtUtc { get; init; }
     /// <summary>Explicit terminal timestamp of the latest turn; null while it is open.</summary>

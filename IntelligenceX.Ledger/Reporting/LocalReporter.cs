@@ -26,8 +26,7 @@ public sealed record ReporterSettings {
 
 /// <summary>Read-only watcher backstop with local durable delivery, usable on Windows, macOS and Linux.</summary>
 public static class LocalReporter {
-    public static string ItemId(string machine, string provider, string session) => Convert.ToHexStringLower(
-        SHA256.HashData(Encoding.UTF8.GetBytes(machine + "\n" + provider + "\n" + session)));
+    public static string ItemId(string machine, string provider, string session) => LedgerScope.SessionItemId(machine, provider, session);
 
     public static async Task<int> RunNotifyChainAsync(string file, string payload) {
         using var document = JsonDocument.Parse(await File.ReadAllTextAsync(file));
@@ -120,12 +119,15 @@ public static class LocalReporter {
             foreach (var session in snapshot.Sessions) {
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
                 var pending = session.PendingInputs;
+                var blocking = pending.FirstOrDefault(x => x.IsBlocking && x.Id is not null && !x.AnswerIsUnconfirmed);
                 var fact = new SessionFact {
+                    TurnId = session.TurnId is null ? null : LedgerScope.Id("turn", session.TurnId),
+                    InputId = blocking?.Id is { } inputId ? LedgerScope.Id("input", inputId) : null,
                     SourceSessionId = Guid.TryParse(session.Id, out var sourceId) ? sourceId : null,
                     TurnOpen = session.TurnOpen, TurnStartedAtUtc = session.TurnStartedAtUtc?.ToUniversalTime(), TurnEndedAtUtc = session.TurnEndedAtUtc?.ToUniversalTime(),
                     LastActivityAtUtc = session.LastTurnActivityAtUtc?.ToUniversalTime(), Outcome = session.LastTurnOutcome.ToString().ToLowerInvariant(),
-                    Question = pending.Any(x => !x.AnswerIsUnconfirmed), InputUnconfirmed = pending.Any(x => x.AnswerIsUnconfirmed),
-                    QuestionAtUtc = pending.MinBy(x => x.RequestedAtUtc)?.RequestedAtUtc?.ToUniversalTime(),
+                    Question = blocking is not null, InputUnconfirmed = pending.Any(x => x.AnswerIsUnconfirmed),
+                    QuestionAtUtc = blocking?.RequestedAtUtc?.ToUniversalTime(),
                     UsageLimit = session.FailureCause == AgentFailureCause.UsageLimit,
                     AccountId = session.SourceRootId is { } rootId && settings.AccountByRoot.TryGetValue(rootId, out var account) ? account : null
                     , RepositoryBranchKey = session.Repository is not null && session.Branch is not null
@@ -134,6 +136,18 @@ public static class LocalReporter {
                 var signature = JsonSerializer.Serialize(fact, LedgerJson.Options);
                 if (!last.TryGetValue(id, out var previous) || previous != signature) {
                     if (spool.TryAppend(Event(id, session.Provider, fact))) last[id] = signature;
+                }
+                foreach (var input in pending.Where(x => !x.IsBlocking && x.Id is not null)) {
+                    var childInputId = LedgerScope.Id("input", input.Id!);
+                    var childId = LedgerScope.InputItemId(id, childInputId);
+                    var inputFact = new SessionFact {
+                        SourceSessionId = fact.SourceSessionId, InputId = childInputId, Question = !input.AnswerIsUnconfirmed,
+                        InputUnconfirmed = input.AnswerIsUnconfirmed, QuestionAtUtc = input.RequestedAtUtc?.ToUniversalTime()
+                    };
+                    var inputSignature = JsonSerializer.Serialize(inputFact, LedgerJson.Options);
+                    if (last.GetValueOrDefault(childId) == inputSignature) continue;
+                    if (spool.TryAppend(Event(childId, session.Provider, inputFact) with { ItemKind = "input", ParentItemId = id }))
+                        last[childId] = inputSignature;
                 }
                 var claims = Volatile.Read(ref claimSnapshot);
                 var work = new WorkFact { ActiveClaim = claims is null ? null : claims.ActiveItems.Contains(id),

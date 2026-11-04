@@ -53,7 +53,7 @@ internal static class CodexAgentSessionReader {
                     switch (Text(payload, "type")) {
                         case "task_started": case "turn_started":
                             active = true;
-                            session = session with { TurnOpen = true, TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null,
+                            session = session with { TurnOpen = true, TurnId = Text(payload, "turn_id") ?? Text(payload, "turnId"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null,
                                 State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
                                 FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
                             break;

@@ -47,6 +47,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
             CREATE TABLE IF NOT EXISTS transitions (ordinal INTEGER PRIMARY KEY AUTOINCREMENT,
               item TEXT NOT NULL, recorded TEXT NOT NULL, json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS reviews (transition INTEGER PRIMARY KEY, mark TEXT NOT NULL, recorded TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS declaration_receipts (item TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL,
+              PRIMARY KEY(item,id));
             """, cancellationToken: token);
     }
 
@@ -129,19 +131,24 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                         new Dictionary<string, object?> { ["id"] = observation.ItemId }, ct);
                     var item = stored is string value ? Read<LedgerItem>(value) : new LedgerItem {
                         Id = observation.ItemId, MachineId = observation.MachineId, Provider = observation.Provider,
-                        Kind = observation.Delivery is null ? "session" : "delivery", FirstObservedAtUtc = received
+                        Kind = observation.ItemKind ?? (observation.Delivery is null ? "session" : "delivery"), ParentItemId = observation.ParentItemId,
+                        FirstObservedAtUtc = received
                     };
-                    if (item.MachineId != observation.MachineId || item.Provider != observation.Provider)
+                    if (item.MachineId != observation.MachineId || item.Provider != observation.Provider ||
+                        observation.ItemKind is not null && item.Kind != observation.ItemKind || item.ParentItemId != observation.ParentItemId)
                         throw new EventConflictException();
                     var evidence = new EvidenceRef(observation.EventId, observation.Source, observation.SourceVersion,
                         observation.ObservedAtUtc, received);
                     var decisionChanged = item.Current is null;
+                    item = AdvanceScope(item, observation.Session?.Scope ?? observation.Declaration?.Scope ?? observation.Control?.Scope ?? observation.Safety?.Scope);
                     if (observation.Session?.AppOwned is { } owned &&
                         (item.OwnershipEvidence is null || observation.ObservedAtUtc >= item.OwnershipEvidence.ObservedAtUtc)) {
                         decisionChanged |= item.Session?.AppOwned != owned;
                         item = item with { Session = (item.Session ?? new()) with { AppOwned = owned }, OwnershipEvidence = evidence };
                     }
-                    if (observation.Session is not null && (item.SessionEvidence is null || observation.ObservedAtUtc >= item.SessionEvidence.ObservedAtUtc)) {
+                    if (observation.Session is not null && (observation.Session.Scope is null || LedgerScope.SameTask(observation.Session.Scope, item.Scope)) &&
+                        (item.Session?.TurnStartedAtUtc is null || observation.Session.TurnStartedAtUtc is null || observation.Session.TurnStartedAtUtc >= item.Session.TurnStartedAtUtc) &&
+                        (item.SessionEvidence is null || observation.ObservedAtUtc >= item.SessionEvidence.ObservedAtUtc)) {
                         ObserveCondition(item, "question", observation.Session.Question, received);
                         ObserveCondition(item, "input-unconfirmed", observation.Session.InputUnconfirmed, received);
                         ObserveCondition(item, "usage-limit", observation.Session.UsageLimit, received);
@@ -161,12 +168,23 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                         item = MergeWork(item, observation.Work, evidence);
                         decisionChanged |= old != Json(item.ReportedWork);
                     }
+                    if (observation.Declaration is not null || observation.Control is not null || observation.Safety is not null) {
+                        var before = Json(item);
+                        item = await ApplyDeclaredAsync(tx, item, observation, evidence, ct);
+                        decisionChanged |= before != Json(item);
+                    }
                     if (observation.Delivery is { } delivery) {
                         if (!item.Deliveries.TryGetValue(delivery.DeliveryId, out var state))
                             item.Deliveries[delivery.DeliveryId] = state = new() { Id = delivery.DeliveryId };
                         if (state.TargetItemId is not null && delivery.TargetItemId is not null && state.TargetItemId != delivery.TargetItemId)
                             throw new EventConflictException();
                         state.TargetItemId ??= delivery.TargetItemId;
+                        if (state.Scope is not null && delivery.Scope is not null && state.Scope != delivery.Scope)
+                            throw new EventConflictException();
+                        state.Scope ??= delivery.Scope;
+                        state.NextActor ??= delivery.NextActor;
+                        state.AcceptanceBy ??= delivery.AcceptanceBy;
+                        state.ResultRef ??= delivery.ResultRef;
                         // Keep the first receipt; later direct evidence may fill unknown fields of that same stage.
                         var stage = state.Stages[delivery.Stage];
                         if (stage.Knowledge == "unknown") {
@@ -309,23 +327,32 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                 .Concat(declared is null ? [] : new[] { declared.Evidence }).DistinctBy(e => e.EventId).ToArray(), Work = work with {
             ActiveClaim = claimsKnown ? useClaims ? globalClaims!.ActiveClaimItems.Contains(item.Id) : work.ActiveClaim : null, ClaimsAtUtc = claimsAt,
             PullRequestsKnown = prsKnown ? true : null, PullRequestsAtUtc = prsAt,
-            OpenPullRequests = effectiveOpen, HadPullRequests = hadPrs },
+            OpenPullRequests = effectiveOpen, HadPullRequests = hadPrs,
+            OwnedPullRequests = work.OwnedPullRequests.Concat(itemLinks.Keys).Distinct(StringComparer.Ordinal).ToArray(),
+            CancelledPullRequests = linked.Where(id => envelope.Proofs.TryGetValue(id, out var proof) &&
+                proof.Fact.State == "closed" && !positive.Contains(id)).ToArray() },
             ClaimEvidence = useClaims ? Evidence(envelope.Claims) : item.WorkDimensionEvidence.GetValueOrDefault("claim") ?? item.WorkEvidence,
             PullRequestEvidence = usePrs ? Evidence(envelope.PullRequests) : item.WorkDimensionEvidence.GetValueOrDefault("pr") ?? item.WorkEvidence,
             GlobalEvidence = Evidence(envelope.Claims ?? envelope.PullRequests) };
     }
 
     private async Task<LedgerItem> EvaluateAsync(SQLiteAsyncSession tx, LedgerItem item, DateTimeOffset now, CancellationToken token, bool silent = false) {
-        if (item.Session?.Outcome == "completed" && item.Work is { OpenPullRequests.Length: > 0, Wait: null } work) {
-            if (item.ImplicitReviewWait is null || !work.OpenPullRequests.Contains(item.ImplicitReviewWait.ConditionId))
-                item = item with { ImplicitReviewWait = rules.ReviewWait(work.OpenPullRequests.Order(StringComparer.Ordinal).First(), now) };
-        } else if (item.ImplicitReviewWait is not null && (item.Session?.Outcome != "completed" ||
-            item.Work?.Wait is not null || item.Work?.PullRequestsKnown == true)) item = item with { ImplicitReviewWait = null };
+        var owned = item.Work?.OwnedPullRequests.Intersect(item.Work.OpenPullRequests).Order(StringComparer.Ordinal).ToArray() ?? [];
+        var waits = new Dictionary<string, WaitFact>(item.InferredReviewWaits, StringComparer.Ordinal);
+        if (item.Session?.Outcome == "completed" && item.Work?.Wait is null) {
+            foreach (var id in owned) {
+                if (waits.ContainsKey(id)) continue;
+                var first = item.ImplicitReviewWait?.ConditionId == id ? item.ImplicitReviewWait.RecordedAtUtc : now;
+                waits[id] = rules.ReviewWait(id, first, item.Scope);
+            }
+        }
+        foreach (var id in waits.Keys.Where(id => !owned.Contains(id)).ToArray()) waits.Remove(id);
+        var inferred = item.Session?.Outcome == "completed" && item.Work?.Wait is null ? owned.Select(id => waits[id]).FirstOrDefault() : null;
+        item = item with { InferredReviewWaits = waits, ImplicitReviewWait = inferred };
         var verdict = rules.Evaluate(item, now, silent);
-        if (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode) {
+        if (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode || item.Current.EpisodeId != verdict.EpisodeId) {
             var transition = new { item.Id, item.MachineId, item.Provider, verdict,
-                evidence = new[] { item.SessionEvidence, item.OwnershipEvidence, item.WorkEvidence, item.ClaimEvidence, item.PullRequestEvidence }.OfType<EvidenceRef>()
-                    .Concat(item.WorkDimensionEvidence.Values).Concat(item.PullRequestProofEvidence).Concat(item.Deliveries.Values.SelectMany(d => d.Stages.Values).SelectMany(s => s.Sources())).DistinctBy(e => e.EventId).ToArray() };
+                evidence = item.Evidence() };
             await tx.ExecuteNonQueryAsync("INSERT INTO transitions(item,recorded,json) VALUES(@item,@recorded,@json)",
                 new Dictionary<string, object?> { ["item"] = item.Id, ["recorded"] = now.ToString("O"), ["json"] = Json(transition) }, token);
         }

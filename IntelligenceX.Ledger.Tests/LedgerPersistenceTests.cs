@@ -8,6 +8,7 @@ namespace IntelligenceX.Ledger.Tests;
 public sealed class LedgerPersistenceTests : IDisposable {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
     private static readonly DateTimeOffset Now = new(2026, 1, 12, 12, 0, 0, TimeSpan.Zero);
+    private static readonly TaskScope Scope = new("synthetic-task", 1);
     private static LedgerEvent Event(long sequence = 1) => new() { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Sequence = sequence,
         MachineId = "synthetic-machine", ReporterId = "synthetic-reporter", ItemId = "synthetic-item", Provider = "codex",
         Source = "evidence", ObservedAtUtc = Now, Delivery = new("synthetic-delivery", "submitted", Now) };
@@ -30,7 +31,7 @@ public sealed class LedgerPersistenceTests : IDisposable {
         Assert.Equal("unknown", stages["admitted"].Knowledge);
         Assert.Equal("unknown", stages["started"].Knowledge);
         Assert.Equal("unknown", stages["accepted"].Knowledge);
-        Assert.Equal("not-accepted", row.Current!.ReasonCode);
+        Assert.Equal("delivery-uncertain", row.Current!.ReasonCode);
         Assert.Single(await restarted.HistoryAsync(row.Id, 0, 100, default));
     }
 
@@ -131,21 +132,23 @@ public sealed class LedgerPersistenceTests : IDisposable {
         await store.InitializeAsync();
         var session = Event() with { Delivery = null, Session = new() { TurnOpen = false, Outcome = "completed",
             TurnEndedAtUtc = Now, RepositoryBranchKey = "synthetic-branch" } };
-        var local = Event(2) with { Delivery = null, Work = new() };
+        var local = Event(2) with { Delivery = null, Work = new() { OwnedPullRequests = ["synthetic-pr"] } };
         var global = Event(3) with { Delivery = null, ItemId = "project-evidence", GlobalWork = new(Now, [], Now,
             new() { ["synthetic-branch"] = ["synthetic-pr"] }) };
         await store.IngestAsync([session, local, global], Now);
         var initial = Assert.Single(await store.EvaluateAllAsync(Now));
         var overdue = Now.AddHours(24);
-        Assert.Equal(overdue, initial.ImplicitReviewWait!.DueAtUtc);
+        Assert.Null(initial.ImplicitReviewWait!.DueAtUtc);
+        Assert.True(initial.ImplicitReviewWait.Inferred);
+        Assert.Equal(overdue, initial.ImplicitReviewWait.ReviewAfterUtc);
         var expired = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(11)));
         Assert.Null(expired.Work!.PullRequestsKnown);
-        Assert.Equal(overdue, expired.ImplicitReviewWait!.DueAtUtc);
+        Assert.Equal(overdue, expired.ImplicitReviewWait!.ReviewAfterUtc);
         await store.IngestAsync([global with { EventId = Guid.NewGuid(), Sequence = 4, ObservedAtUtc = Now.AddHours(23),
             GlobalWork = global.GlobalWork! with { PullRequestsAtUtc = Now.AddHours(23) } }], Now.AddHours(23));
         var returned = Assert.Single(await store.EvaluateAllAsync(Now.AddHours(25)));
-        Assert.Equal(overdue, returned.ImplicitReviewWait!.DueAtUtc);
-        Assert.Equal("wait-overdue", returned.Current!.ReasonCode);
+        Assert.Equal(overdue, returned.ImplicitReviewWait!.ReviewAfterUtc);
+        Assert.Equal("wait-review", returned.Current!.ReasonCode);
         await store.IngestAsync([global with { EventId = Guid.NewGuid(), Sequence = 5, ObservedAtUtc = Now.AddHours(26),
             GlobalWork = new(Now.AddHours(26), [], Now.AddHours(26), [], [new("synthetic-pr", "closed", Now.AddHours(26))]) }], Now.AddHours(26));
         Assert.Null(Assert.Single(await store.EvaluateAllAsync(Now.AddHours(26))).ImplicitReviewWait);
@@ -180,7 +183,7 @@ public sealed class LedgerPersistenceTests : IDisposable {
         await store.IngestAsync([first], Now);
         await store.IngestAsync([timed], Now.AddMinutes(1));
         var row = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(1)));
-        Assert.Equal("not-accepted", row.Current!.ReasonCode);
+        Assert.Equal("delivery-uncertain", row.Current!.ReasonCode);
         Assert.Equal(Now.AddMinutes(-11), row.Current.SinceUtc);
         var stages = row.Deliveries["synthetic-delivery"].Stages;
         Assert.Equal(first.EventId, stages["submitted"].EventId);
@@ -196,12 +199,12 @@ public sealed class LedgerPersistenceTests : IDisposable {
     public async Task IndependentWorkDimensionsSurviveWatcherRefreshUntilExplicitResolution(bool controls) {
         using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
         await store.InitializeAsync();
-        var session = Event() with { Delivery = null, Session = new() { TurnOpen = false, Outcome = "completed", TurnEndedAtUtc = Now, AppOwned = true } };
+        var session = Event() with { Delivery = null, Session = new() { Scope = Scope, TurnOpen = false, Outcome = "completed", TurnEndedAtUtc = Now, AppOwned = true } };
         var watcher = Event(2) with { Delivery = null, Source = "watcher", ObservedAtUtc = Now.AddMinutes(1), Work = new() {
             ActiveClaim = false, ClaimsAtUtc = Now.AddMinutes(1), PullRequestsKnown = true, PullRequestsAtUtc = Now.AddMinutes(1) } };
         await store.IngestAsync([session, watcher], Now.AddMinutes(1));
         var wait = new WaitFact("ci", "synthetic-condition", Now, Now.AddHours(2));
-        var external = Event(3) with { Delivery = null, Work = new() { Wait = wait,
+        var external = Event(3) with { Delivery = null, Work = new() { Scope = Scope, Wait = wait,
             GoalHeld = controls ? true : null, GoalHeldAtUtc = controls ? Now : null,
             QueuedInputs = controls ? 2 : null, Stalled = controls ? true : null, NeedsApp = controls ? true : null } };
         // Older evidence from an independent source is not discarded by a newer watcher envelope.
@@ -221,7 +224,6 @@ public sealed class LedgerPersistenceTests : IDisposable {
 
     [Theory]
     [InlineData("question")]
-    [InlineData("input-unconfirmed")]
     [InlineData("usage-limit")]
     [InlineData("goal-held")]
     [InlineData("needs-app")]
@@ -231,14 +233,14 @@ public sealed class LedgerPersistenceTests : IDisposable {
     public async Task TimestampFreeConditionSinceUsesConditionObservationInsteadOfOldItemEnrollment(string condition) {
         using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
         await store.InitializeAsync();
-        var original = Event() with { Delivery = null, ObservedAtUtc = Now.AddDays(-1), Session = new() { AppOwned = true } };
+        var original = Event() with { Delivery = null, ObservedAtUtc = Now.AddDays(-1), Session = new() { Scope = Scope, AppOwned = true } };
         await store.IngestAsync([original], Now.AddDays(-1));
         var state = original with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = Now, Session = new() {
-            AppOwned = true, Question = condition == "question", InputUnconfirmed = condition == "input-unconfirmed", UsageLimit = condition == "usage-limit",
+            Scope = Scope, AppOwned = true, Question = condition == "question", InputId = condition == "question" ? "synthetic-input" : null, UsageLimit = condition == "usage-limit",
             TurnOpen = condition is "active" or "quiet" ? true : null,
             LastActivityAtUtc = condition == "active" ? Now : condition == "quiet" ? Now.AddMinutes(-11) : null } };
         await store.IngestAsync([state, Event(3) with { Delivery = null, Work = new() {
-            GoalHeld = condition == "goal-held" ? true : null, NeedsApp = condition == "needs-app" ? true : null,
+            Scope = Scope, GoalHeld = condition == "goal-held" ? true : null, NeedsApp = condition == "needs-app" ? true : null,
             QueuedInputs = condition == "goal-held" ? 1 : condition == "queue-behind-stall" ? 2 : null } }], Now);
         var row = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(1)));
         Assert.Equal(condition, row.Current!.ReasonCode);
@@ -346,16 +348,17 @@ public sealed class LedgerPersistenceTests : IDisposable {
     }
 
     [Fact]
-    public async Task RepeatedWorkEvidenceDoesNotExtendReviewDeadline() {
+    public async Task RepeatedWorkEvidenceDoesNotExtendInferredReviewTime() {
         using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
         await store.InitializeAsync();
         var session = Event() with { Delivery = null, Session = new() { Outcome = "completed", TurnEndedAtUtc = Now } };
-        var work = Event(2) with { Delivery = null, Work = new() { OpenPullRequests = ["synthetic-pr"], PullRequestsKnown = true, PullRequestsAtUtc = Now } };
+        var work = Event(2) with { Delivery = null, Work = new() { OpenPullRequests = ["synthetic-pr"], OwnedPullRequests = ["synthetic-pr"], PullRequestsKnown = true, PullRequestsAtUtc = Now } };
         await store.IngestAsync([session, work], Now);
         await store.IngestAsync([work with { EventId = Guid.NewGuid(), Sequence = 3, ObservedAtUtc = Now.AddHours(23) }], Now.AddHours(23));
         var row = Assert.Single(await store.EvaluateAllAsync(Now.AddHours(25)));
-        Assert.Equal(Now.AddHours(24), row.ImplicitReviewWait!.DueAtUtc);
-        Assert.Equal("wait-overdue", row.Current!.ReasonCode);
+        Assert.Null(row.ImplicitReviewWait!.DueAtUtc);
+        Assert.Equal(Now.AddHours(24), row.ImplicitReviewWait.ReviewAfterUtc);
+        Assert.Equal("wait-review", row.Current!.ReasonCode);
     }
 
     [Theory]
@@ -411,7 +414,9 @@ public sealed class LedgerPersistenceTests : IDisposable {
             TurnOpen = false, Outcome = "completed", TurnEndedAtUtc = Now.AddMinutes(-1), RepositoryBranchKey = "synthetic-branch" } };
         using (var initial = new LedgerStore(path, new(new()))) {
             await initial.InitializeAsync();
-            await initial.IngestAsync([remote, global, global with { EventId = Guid.NewGuid(), Sequence = 3, ObservedAtUtc = Now.AddMinutes(1),
+            var ownership = Event(7) with { Delivery = null, MachineId = "remote-machine", ItemId = "remote-item",
+                Work = new() { OwnedPullRequests = ["synthetic-pr"] } };
+            await initial.IngestAsync([remote, ownership, global, global with { EventId = Guid.NewGuid(), Sequence = 3, ObservedAtUtc = Now.AddMinutes(1),
                 GlobalWork = new(Now.AddMinutes(1), [], Now.AddMinutes(1), [], null,
                     itemLink ? new() { ["remote-item"] = new([], true, Now.AddMinutes(1)) } : null) }], Now.AddMinutes(1));
         }
@@ -424,7 +429,7 @@ public sealed class LedgerPersistenceTests : IDisposable {
         await store.IngestAsync([global with { EventId = Guid.NewGuid(), Sequence = 4, ObservedAtUtc = Now.AddMinutes(2),
             GlobalWork = new(Now.AddMinutes(2), [], Now.AddMinutes(2), [], [new("synthetic-pr", "closed", Now.AddMinutes(2))]) }], Now.AddMinutes(2));
         var done = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(2)));
-        Assert.Equal("complete", done.Current!.ReasonCode);
+        Assert.Equal("cancelled", done.Current!.ReasonCode);
         Assert.Equal(Now.AddMinutes(-1), done.Current.SinceUtc);
         await store.IngestAsync([global with { EventId = Guid.NewGuid(), Sequence = 5, ObservedAtUtc = Now.AddMinutes(3),
             GlobalWork = new(Now.AddMinutes(3), [], Now.AddMinutes(3), new() { ["synthetic-branch"] = ["synthetic-pr"] }) }], Now.AddMinutes(3));
@@ -445,11 +450,11 @@ public sealed class LedgerPersistenceTests : IDisposable {
             [new("synthetic-pr", "closed", Now)], new() { [session.ItemId] = new(["synthetic-pr"], true, Now) }) };
         await store.IngestAsync([session, global], Now);
         var done = Assert.Single(await store.EvaluateAllAsync(Now));
-        Assert.Equal("complete", done.Current!.ReasonCode);
+        Assert.Equal("cancelled", done.Current!.ReasonCode);
         Assert.Contains(done.PullRequestProofEvidence, proof => proof.EventId == global.EventId);
         var aged = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(11)));
         Assert.Null(aged.Work!.PullRequestsKnown);
-        Assert.Equal("complete", aged.Current!.ReasonCode); // Completed verdict stays sticky until affirmative new work.
+        Assert.Equal("cancelled", aged.Current!.ReasonCode); // Terminal verdict stays sticky until affirmative new work.
         await store.IngestAsync([Event(3) with { Delivery = null, ObservedAtUtc = Now.AddMinutes(12), Work = new() {
             ActiveClaim = false, ClaimsAtUtc = Now.AddMinutes(12), PullRequestsKnown = true, PullRequestsAtUtc = Now.AddMinutes(12), HadPullRequests = true } },
             global with { EventId = Guid.NewGuid(), Sequence = 4, ObservedAtUtc = Now.AddMinutes(13), GlobalWork = new(null, [], null, [],

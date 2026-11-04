@@ -40,7 +40,7 @@ All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET route
 | Route | Result |
 | --- | --- |
 | `POST /events` | Acknowledges up to 100 typed events after history and projection commit together. |
-| `GET /status` | Versions, counts, expected machines and source coverage. |
+| `GET /status` | Versions, verdict counts, quiet paused count, expected machines and source coverage. |
 | `GET /machines` | Healthy, silent and not-enrolled machine rows. |
 | `GET /items` | Stable snapshot pagination, filtered by verdict, machine or provider. |
 | `GET /items/{id}` | Verdict, reason, since, evidence and independent delivery-stage knowledge. |
@@ -49,15 +49,33 @@ All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET route
 
 Requested, admitted, submitted, started, terminal and accepted stages are independent. A terminal result does not fill missing admission or requester-acceptance evidence. Unknown timestamps remain null. A delivery's target links back to its session item when known.
 
-Work observations update independent dimensions. Null leaves a dimension unobserved; it does not erase an explicit wait, Goal hold, queue or application-steering requirement. Use false or zero to clear those observed conditions. Resolve an explicit wait with `resolved: true` and its matching kind/condition identity. Re-observing the same wait preserves its original deadline. Later direct evidence can fill an unknown field of the same delivery stage; the first receipt and the supplementary evidence remain linked.
+Work observations update independent dimensions. Null leaves a dimension unobserved. Use false or zero to clear an observed hold or queue. Resolve an explicit wait with `resolved: true` and its matching kind/condition identity. Re-observing the same wait preserves its original boundary. Later direct evidence can fill an unknown field of the same delivery stage. The first receipt and supplementary evidence remain linked.
 
-Rules version 1 evaluates Needs you, Stuck, Waiting, Working, then Done. Other matching reasons remain in `alsoMatched`. Active turns become quiet after ten minutes and no-progress after thirty. Re-observation preserves `sinceUtc` while verdict and reason remain the same. Done is sticky until new work appears. A completed turn with an open PR creates a persisted review wait; repeated polling does not extend its deadline. An invisible application queue is a coverage note; known unaccepted submissions have their own rule.
+Rules version 2 applies task generation, turn/condition scope, supersession and native controls before evaluating Needs you, Stuck, Waiting, Working and Done. Each match carries its own episode, scope and evidence. `sinceUtc` follows that episode, including a new occurrence of the same reason. `lastProgressAtUtc` retains observed work activity independently. `alsoMatched` keeps the compact reason list, and `matches` supplies the corresponding details.
+
+Undeclared active turns become quiet after ten minutes and no-progress after thirty. A declared operation uses its own `reviewAfterUtc`. Waits distinguish an actual `dueAtUtc` from a dependency review time. A passed review time produces `wait-review`. A passed deadline produces `wait-overdue`. A completed turn with an open PR owned by its task gets an inferred 24-hour review wait. Each owned PR retains its original review clock. Branch association alone supplies correlation evidence.
+
+Deliberate native Stop or pause observations produce a quiet `paused-by-user` hold. Queued work behind the pause produces a warning. Submission without an observed start becomes Stuck/`delivery-uncertain` after ten minutes. Needs you/`needs-app` requires both app ownership and evidence that human steering is the next step. Unconfirmed input stays explicit. Optional questions have their own item with `parentItemId`. Done requires clear delivery and queue gates, and closed unmerged work is `cancelled`.
+
+Items expose `hold`, `nextActor`, `acceptanceBy`, `resultRef` and a read-only `wakeEligibility` explanation. Unavailable metadata remains null or explicitly unknown. Eligibility includes eligible, suppressed or unknown, with its reason, condition and evidence. Versioned urgent-safety facts carry the matching policy, source reference and any required manual action. Phase 1 evaluates and reports these observations.
+
+## Declare a work boundary
+
+Worker declarations use the existing typed events endpoint and durable reporter outbox. A declaration names its immutable `id`, verified `scope` (`taskId`, increasing `generation` and `turnId`), `checkpointRef`, `conditionRef`, `kind`, `nextActor`, `blocking`, `recordedAtUtc` and at least one review time or deadline. Kinds are `wait`, `operation`, `question` and `handoff`. References are opaque identifiers. Use `nextActor: human` only when direct evidence requires a person to act. Include `acceptanceBy`, `resultRef`, `candidateRef` and the typed hold when observed.
+
+```text
+ix ledger declare codex <source-session-id> /absolute/path/declaration.json --config /absolute/path/reporter.json
+```
+
+The command requires an explicit native session UUID and observed turn identity. It derives the same session key as the watcher and appends a deterministic event without opening a connection. Repeating the same declaration preserves its receipt and review time. Changed content requires a new declaration ID. Reusing an ID with different content is a conflict. A newer declaration for the same condition records resolution or a changed candidate. An optional question is stored under its own input key, leaving the parent's work state independent.
+
+Task generations increase only at a verified task boundary. Reporter epochs describe transport sessions. Native controls arrive as separate observations. Automatic producers can submit the same declaration envelope through their existing supported wait or handoff integration.
 
 ## Project evidence and source coverage
 
 Optional `gitHub` and `projectClaims` reporter settings use the SDK's existing credential resolver. Project configuration supplies the organization, project number, numeric field identities, machine aliases and inactive status values. These values belong in local configuration. The reader performs paginated GET requests and rejects incomplete or duplicate items and empty continuation pages. It retains no issue bodies.
 
-The service's `projectEvidenceReporterId` selects the reporter allowed to supply central claim/PR evidence. Repository/branch associations are hashed consistently at each reporter. This lets the service apply central read evidence to sessions on other machines without copying GitHub credentials between hosts. Claim and PR facts carry separate source-check timestamps; a new combined observation does not renew cached evidence. Unavailable evidence preserves an established review deadline. Missing decisive evidence becomes Stuck/unknown with `missingFacts`; general coverage notes stay in status.
+The service's `projectEvidenceReporterId` selects the reporter allowed to supply central claim/PR evidence. Repository/branch associations are hashed consistently at each reporter. This lets the service apply central read evidence to sessions on other machines without copying GitHub credentials between hosts. Claim and PR facts carry separate source-check timestamps. Unavailable evidence preserves an established review time. Missing decisive evidence becomes Stuck/unknown with `missingFacts`. General coverage notes stay in status.
 
 Known PR links survive later empty search results. The reporter reads exact lifecycle metadata for links found in the open authored/review-requested search and configured project fields; an absent search result does not establish closure. Multiple project rows for one session contribute all their links, and an uninterpretable field keeps association coverage incomplete. Positive branch and item associations persist during event admission, including when several retained snapshots arrive before evaluation.
 

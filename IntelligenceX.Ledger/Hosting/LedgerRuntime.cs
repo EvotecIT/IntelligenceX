@@ -30,11 +30,8 @@ internal sealed class LedgerRuntime(LedgerStore store, LedgerSettings settings) 
         var machines = await MachinesAsync(now, token);
         var silent = machines.Where(m => m.State != "healthy").Select(m => m.Id).ToHashSet();
         var items = await store.EvaluateAllAsync(now, token, silent);
-        var limited = items.Where(i => i.Session?.UsageLimit == true && i.Session.AccountId is not null)
-            .Select(i => i.Session!.AccountId!).ToHashSet();
         var rules = new LedgerRules(settings.Rules);
-        return items.Select(i => i with { Current = rules.Evaluate(i, now, silent.Contains(i.MachineId),
-            i.Session?.AccountId is { } account && limited.Contains(account)) }).ToArray();
+        return items.Select(i => i with { Current = rules.Evaluate(i, now, silent.Contains(i.MachineId)) }).ToArray();
     }
 
     internal async Task<ItemPage?> PageAsync(string? cursor, int limit, string? verdict, string? machineId,

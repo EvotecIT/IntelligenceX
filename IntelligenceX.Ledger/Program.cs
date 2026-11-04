@@ -67,7 +67,8 @@ public static class Program {
             var items = await runtime.ItemsAsync(now, ct);
             return Results.Ok(new { schemaVersion = 1, rulesVersion = LedgerRules.Version, generatedAtUtc = now,
                 machines = await runtime.MachinesAsync(now, ct), coverage = await store.CoverageAsync(ct),
-                counts = items.GroupBy(i => i.Current!.Value).ToDictionary(g => g.Key, g => g.Count()) });
+                counts = items.GroupBy(i => i.Current!.Value).ToDictionary(g => g.Key, g => g.Count()),
+                pausedCount = items.Count(i => i.Current!.Hold is { Type: "paused-by-user", Quiet: true }) });
         });
         app.MapGet(prefix + "/machines", async (CancellationToken ct) => Results.Ok(await runtime.MachinesAsync(DateTimeOffset.UtcNow, ct)));
         app.MapGet(prefix + "/items", async (string? cursor, int? limit, string? verdict, string? machineId, string? provider, CancellationToken ct) => {

@@ -10,9 +10,11 @@ namespace IntelligenceX.Cli.Ledger;
 /// <summary>Read-only HTTP view of service-evaluated state; never runs local verdict rules.</summary>
 internal static class LedgerRunner {
     internal static async Task<int> RunAsync(string[] args) {
+        if (args.Length > 0 && args[0] == "declare") return LedgerDeclarationRunner.Run(args);
         if (args.Length == 0 || args[0] is "--help" or "-h" || args[0] is not ("status" or "needs-you" or "stuck" or "item" or "report" or "mark")) {
             Console.WriteLine("ix ledger status|needs-you|stuck|item <id> [--config <local-client-json>]");
             Console.WriteLine("Set IX_LEDGER_ENDPOINT and IX_LEDGER_READ_TOKEN locally. Output is JSON from the read API.");
+            Console.WriteLine("ix ledger declare <codex|claude> <source-session-id> <declaration-json> --config <reporter-json>");
             return args.Length == 0 ? 2 : 0;
         }
         var address = Environment.GetEnvironmentVariable("IX_LEDGER_ENDPOINT");

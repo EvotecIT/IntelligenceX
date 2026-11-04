@@ -12,12 +12,17 @@ public sealed record LedgerEvent {
     public required long Sequence { get; init; }
     public required string MachineId { get; init; }
     public required string ItemId { get; init; }
+    public string? ParentItemId { get; init; }
+    public string? ItemKind { get; init; }
     public required string Provider { get; init; }
     public required string Source { get; init; }
     public string SourceVersion { get; init; } = "1";
     public required DateTimeOffset ObservedAtUtc { get; init; }
     public SessionFact? Session { get; init; }
     public WorkFact? Work { get; init; }
+    public WorkerDeclaration? Declaration { get; init; }
+    public NativeControlFact? Control { get; init; }
+    public SafetyFact? Safety { get; init; }
     public DeliveryFact? Delivery { get; init; }
     public ReviewMarkFact? ReviewMark { get; init; }
     public GlobalWorkFact? GlobalWork { get; init; }
@@ -27,6 +32,10 @@ public sealed record LedgerEvent {
 
 /// <summary>Latest provider turn evidence, independent of watcher liveness heuristics.</summary>
 public sealed record SessionFact {
+    public TaskScope? Scope { get; init; }
+    public string? TurnId { get; init; }
+    public string? InputId { get; init; }
+    public bool QuestionBlocking { get; init; } = true;
     public Guid? SourceSessionId { get; init; }
     public bool? TurnOpen { get; init; }
     public DateTimeOffset? TurnStartedAtUtc { get; init; }
@@ -44,6 +53,9 @@ public sealed record SessionFact {
 
 /// <summary>Independent task/claim/wait updates. Null means unobserved; false/zero and a matching resolved wait explicitly clear state.</summary>
 public sealed record WorkFact {
+    public TaskScope? Scope { get; init; }
+    public string[] OwnedPullRequests { get; init; } = [];
+    public string[] CancelledPullRequests { get; init; } = [];
     public bool? ActiveClaim { get; init; }
     public DateTimeOffset? ClaimsAtUtc { get; init; }
     public bool? PullRequestsKnown { get; init; }
@@ -60,10 +72,12 @@ public sealed record WorkFact {
     public WaitFact? Wait { get; init; }
 }
 
-public sealed record WaitFact(string Kind, string ConditionId, DateTimeOffset RecordedAtUtc, DateTimeOffset DueAtUtc, bool Resolved = false);
+public sealed record WaitFact(string Kind, string ConditionId, DateTimeOffset RecordedAtUtc, DateTimeOffset? DueAtUtc = null, bool Resolved = false,
+    DateTimeOffset? ReviewAfterUtc = null, bool Inferred = false, TaskScope? Scope = null, string? CandidateRef = null);
 
 /// <summary>A single observed delivery stage; later stages do not fill earlier gaps.</summary>
-public sealed record DeliveryFact(string DeliveryId, string Stage, DateTimeOffset? AtUtc, string? Outcome = null, string? TargetItemId = null, string? CauseCode = null);
+public sealed record DeliveryFact(string DeliveryId, string Stage, DateTimeOffset? AtUtc, string? Outcome = null, string? TargetItemId = null, string? CauseCode = null,
+    TaskScope? Scope = null, string? NextActor = null, string? AcceptanceBy = null, string? ResultRef = null);
 public sealed record ReviewMarkFact(long TransitionId, string Mark);
 public sealed record GlobalWorkFact(DateTimeOffset? ClaimsAtUtc, string[] ActiveClaimItems,
     DateTimeOffset? PullRequestsAtUtc, Dictionary<string, string[]> OpenPullRequestsByBranch,

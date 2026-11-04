@@ -11,6 +11,7 @@
       "IntelligenceX.Cli\\IntelligenceX.Cli.csproj",
       "IntelligenceX.UnitTests\\IntelligenceX.UnitTests.csproj",
       "IntelligenceX.Ledger\\IntelligenceX.Ledger.csproj",
+      "IntelligenceX.Ledger.Contracts\\IntelligenceX.Ledger.Contracts.csproj",
       "IntelligenceX.Ledger.Tests\\IntelligenceX.Ledger.Tests.csproj"
     ]
   }

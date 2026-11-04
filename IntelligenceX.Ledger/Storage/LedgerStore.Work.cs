@@ -10,6 +10,8 @@ public sealed partial class LedgerStore {
 
     private static LedgerItem MergeWork(LedgerItem item, WorkFact fact, EvidenceRef evidence) {
         var work = item.ReportedWork ?? new WorkFact();
+        if (fact.Scope is not null && !LedgerScope.SameTask(fact.Scope, item.Scope)) return item;
+        if (fact.Scope is not null) work = work with { Scope = fact.Scope };
         bool New(string dimension, bool supplied, DateTimeOffset? time = null, DateTimeOffset? previousTime = null) {
             if (!supplied) return false;
             if (item.WorkDimensionEvidence.TryGetValue(dimension, out var previous) &&
@@ -19,8 +21,11 @@ public sealed partial class LedgerStore {
         }
         if (New("claim", fact.ActiveClaim.HasValue && fact.ClaimsAtUtc.HasValue, fact.ClaimsAtUtc, work.ClaimsAtUtc))
             work = work with { ActiveClaim = fact.ActiveClaim, ClaimsAtUtc = fact.ClaimsAtUtc };
+        if (New("pr-owner", fact.OwnedPullRequests.Length > 0))
+            work = work with { OwnedPullRequests = work.OwnedPullRequests.Concat(fact.OwnedPullRequests).Distinct(StringComparer.Ordinal).ToArray() };
         if (New("pr", fact.PullRequestsKnown == true && fact.PullRequestsAtUtc.HasValue, fact.PullRequestsAtUtc, work.PullRequestsAtUtc))
-            work = work with { PullRequestsKnown = true, PullRequestsAtUtc = fact.PullRequestsAtUtc, OpenPullRequests = fact.OpenPullRequests };
+            work = work with { PullRequestsKnown = true, PullRequestsAtUtc = fact.PullRequestsAtUtc, OpenPullRequests = fact.OpenPullRequests,
+                CancelledPullRequests = fact.CancelledPullRequests };
         if (New("goal", fact.GoalHeld.HasValue)) {
             work = work with { GoalHeld = fact.GoalHeld,
                 GoalHeldAtUtc = fact.GoalHeldAtUtc ?? (fact.GoalHeld == work.GoalHeld ? work.GoalHeldAtUtc : null) };

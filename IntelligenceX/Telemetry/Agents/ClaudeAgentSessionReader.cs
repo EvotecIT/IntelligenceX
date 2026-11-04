@@ -40,7 +40,7 @@ internal static class ClaudeAgentSessionReader {
                     session = session with { Title = Text(entry, "customTitle") ?? session.Title };
                 } else if (type == "user") {
                     if (session.TurnOpen != true)
-                        session = session with { TurnOpen = true, TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null };
+                        session = session with { TurnOpen = true, TurnId = Text(entry, "uuid"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null };
                     active = true;
                     session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
                         FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
@@ -51,7 +51,7 @@ internal static class ClaudeAgentSessionReader {
                                 session = AgentInputRequests.CompleteBlocking(session, Text(block, "tool_use_id"));
                 } else if (type == "assistant") {
                     if (session.TurnOpen != true)
-                        session = session with { TurnOpen = true, TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null };
+                        session = session with { TurnOpen = true, TurnId = Text(entry, "uuid"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null };
                     active = true;
                     session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
                         FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };

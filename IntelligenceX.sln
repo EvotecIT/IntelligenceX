@@ -69,6 +69,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Ledger", "Int
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Ledger.Tests", "IntelligenceX.Ledger.Tests\IntelligenceX.Ledger.Tests.csproj", "{AD867730-83C4-4390-996F-D5EDE5CE4FC6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Ledger.Contracts", "IntelligenceX.Ledger.Contracts\IntelligenceX.Ledger.Contracts.csproj", "{C74BE392-0120-4C95-959E-FAB7DF497543}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -451,6 +453,18 @@ Global
 		{AD867730-83C4-4390-996F-D5EDE5CE4FC6}.Release|x64.Build.0 = Release|Any CPU
 		{AD867730-83C4-4390-996F-D5EDE5CE4FC6}.Release|x86.ActiveCfg = Release|Any CPU
 		{AD867730-83C4-4390-996F-D5EDE5CE4FC6}.Release|x86.Build.0 = Release|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Debug|x64.Build.0 = Debug|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Debug|x86.Build.0 = Debug|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Release|x64.ActiveCfg = Release|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Release|x64.Build.0 = Release|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Release|x86.ActiveCfg = Release|Any CPU
+		{C74BE392-0120-4C95-959E-FAB7DF497543}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
