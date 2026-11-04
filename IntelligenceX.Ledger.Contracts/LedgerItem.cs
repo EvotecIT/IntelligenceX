@@ -38,6 +38,8 @@ public sealed record LedgerItem {
     public required DateTimeOffset FirstObservedAtUtc { get; init; }
     public SessionFact? Session { get; init; }
     public TaskScope? Scope { get; init; }
+    public EvidenceRef? ScopeEvidence { get; init; }
+    public SupersessionFact? Supersession { get; init; }
     public string? CandidateRef { get; init; }
     public DateTimeOffset? CandidateAtUtc { get; init; }
     public EvidenceRef? CandidateEvidence { get; init; }
@@ -51,6 +53,7 @@ public sealed record LedgerItem {
     public WorkFact? Work { get; init; }
     public WorkFact? ReportedWork { get; init; }
     public Dictionary<string, EvidenceRef> WorkDimensionEvidence { get; init; } = [];
+    public Dictionary<string, TaskScope?> WorkDimensionScopes { get; init; } = [];
     public Dictionary<string, DateTimeOffset> ConditionFirstObservedAtUtc { get; init; } = [];
     public WaitFact? ImplicitReviewWait { get; init; }
     public Dictionary<string, WaitFact> InferredReviewWaits { get; init; } = [];
@@ -69,8 +72,8 @@ public sealed record LedgerItem {
 
     /// <summary>Direct observation references supporting this projection, without duplicating event payloads.</summary>
     public EvidenceRef[] Evidence() => new[] { SessionEvidence, OwnershipEvidence, WorkEvidence, ClaimEvidence, PullRequestEvidence,
-            ControlEvidence, SafetyEvidence, CandidateEvidence }.OfType<EvidenceRef>().Concat(WorkDimensionEvidence.Values).Concat(PullRequestProofEvidence)
-        .Concat(Declarations.Values.Select(d => d.Evidence)).Concat(Deliveries.Values.SelectMany(d => d.Stages.Values).SelectMany(s => s.Sources()))
+            ControlEvidence, SafetyEvidence, CandidateEvidence, ScopeEvidence, Supersession?.Evidence }.OfType<EvidenceRef>().Concat(WorkDimensionEvidence.Values).Concat(PullRequestProofEvidence)
+        .Concat(Declarations.Values.SelectMany(d => new[] { d.Evidence, d.EpisodeEvidence }.OfType<EvidenceRef>())).Concat(Deliveries.Values.SelectMany(d => d.Stages.Values).SelectMany(s => s.Sources()))
         .DistinctBy(e => e.EventId).ToArray();
 }
 

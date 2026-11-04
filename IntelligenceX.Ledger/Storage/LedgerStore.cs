@@ -16,6 +16,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
         public Dictionary<string, LinkObservation> Links { get; init; } = [];
         public Dictionary<string, Dictionary<string, AssociationObservation>> BranchLinks { get; init; } = [];
         public Dictionary<string, Dictionary<string, AssociationObservation>> ItemLinks { get; init; } = [];
+        public Dictionary<string, Dictionary<string, AssociationObservation>> QualifiedItemLinks { get; init; } = [];
     }
     private static void RememberLinks(Dictionary<string, Dictionary<string, AssociationObservation>> map, string key,
         string[] ids, DateTimeOffset at, EvidenceRef evidence) {
@@ -96,6 +97,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                                 global.Proofs[proof.Id] = new(proof, reference);
                         foreach (var pair in observation.GlobalWork.LinksByItem ?? []) {
                             RememberLinks(global.ItemLinks, pair.Key, pair.Value.Ids, pair.Value.CheckedAtUtc, reference);
+                            if (pair.Value.Scope is { } task)
+                                RememberLinks(global.QualifiedItemLinks, TaskLinkKey(pair.Key, task), pair.Value.Ids, pair.Value.CheckedAtUtc, reference);
                             if (!global.Links.TryGetValue(pair.Key, out var prior) || pair.Value.CheckedAtUtc >= prior.Fact.CheckedAtUtc)
                                 global.Links[pair.Key] = new(pair.Value, reference);
                         }
@@ -140,7 +143,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                     var evidence = new EvidenceRef(observation.EventId, observation.Source, observation.SourceVersion,
                         observation.ObservedAtUtc, received);
                     var decisionChanged = item.Current is null;
-                    item = AdvanceScope(item, observation.Session?.Scope ?? observation.Declaration?.Scope ?? observation.Control?.Scope ?? observation.Safety?.Scope);
+                    item = AdvanceScope(item, observation.Session?.Scope ?? observation.Declaration?.Scope ?? observation.Control?.Scope ?? observation.Safety?.Scope, evidence);
                     if (observation.Session?.AppOwned is { } owned &&
                         (item.OwnershipEvidence is null || observation.ObservedAtUtc >= item.OwnershipEvidence.ObservedAtUtc)) {
                         decisionChanged |= item.Session?.AppOwned != owned;
@@ -218,6 +221,11 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                         }
                     }
                     if (observation.Coverage is not null) item = item with { Coverage = observation.Coverage };
+                    if (item.ParentItemId is { } parentId) {
+                        var parentJson = await tx.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
+                            new Dictionary<string, object?> { ["id"] = parentId }, ct);
+                        item = ApplyParent(item, parentJson is string parentValue ? Read<LedgerItem>(parentValue) : null);
+                    }
                     item = ApplyGlobal(item, global, received);
                     // Only the runtime's heartbeat check can release a last-known projection.
                     // Historical stages may enrich history without proving that the reporter is live.
@@ -237,9 +245,11 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
             return await db.RunInTransactionAsync(async (tx, ct) => {
                 var rows = await tx.QueryAsListAsync("SELECT json FROM items ORDER BY id", r => Read<LedgerItem>(r.GetString(0)), cancellationToken: ct);
                 var global = await ReadGlobalAsync(tx, ct);
+                var parents = rows.ToDictionary(row => row.Id, StringComparer.Ordinal);
                 var results = new List<LedgerItem>();
                 foreach (var row in rows) {
-                    var item = await EvaluateAsync(tx, ApplyGlobal(row, global, now), now, ct, silentMachines?.Contains(row.MachineId) == true);
+                    var related = ApplyParent(row, row.ParentItemId is { } parentId ? parents.GetValueOrDefault(parentId) : null);
+                    var item = await EvaluateAsync(tx, ApplyGlobal(related, global, now), now, ct, silentMachines?.Contains(row.MachineId) == true);
                     // Polling computes a fresh evaluation time without rewriting otherwise unchanged rows.
                     var previous = row with { Current = row.Current is null ? null : row.Current with { EvaluatedAtUtc = item.Current!.EvaluatedAtUtc } };
                     if (Json(previous) != Json(item)) await tx.ExecuteNonQueryAsync("UPDATE items SET json=@json WHERE id=@id",
@@ -281,6 +291,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
             .GroupBy(pair => pair.Key).ToDictionary(group => group.Key, group => group.MaxBy(pair => pair.Value.ObservedAtUtc).Value);
         var itemLinks = envelope.ItemLinks.GetValueOrDefault(item.Id) ?? [];
         envelope.Links.TryGetValue(item.Id, out var declared);
+        var ownership = item.Scope is { } taskScope ? envelope.QualifiedItemLinks.GetValueOrDefault(TaskLinkKey(item.Id, taskScope)) ?? [] : itemLinks;
+        var owned = work.OwnedPullRequests.Concat(ownership.Keys).Distinct(StringComparer.Ordinal).ToArray();
         var linked = item.LinkedPullRequestIds.Concat(work.OpenPullRequests).Concat(open).Concat(associated.Keys).Concat(itemLinks.Keys).Concat(declared?.Fact.Ids ?? [])
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         var relationAt = linked.SequenceEqual(item.LinkedPullRequestIds) ? item.LinkedEvidenceChangedAtUtc :
@@ -318,18 +330,24 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
         // Exact terminal proof retires stale positive search entries and their implicit waits.
         effectiveOpen = effectiveOpen.Where(id => !envelope.Proofs.TryGetValue(id, out var proof) ||
             proof.Fact.State == "open" || proof.Fact.State != "merged" && PositiveAt(id) is { } positiveAt && proof.Fact.CheckedAtUtc < positiveAt).ToArray();
+        if (item.Scope is not null) {
+            var taskPr = TaskPullRequests(item, work, envelope, declared, owned, positives, positive, now);
+            prsKnown = taskPr.Known;
+            effectiveOpen = taskPr.Open;
+            hadPrs = work.HadPullRequests || owned.Length > 0;
+        }
         static EvidenceRef? Evidence(GlobalObservation? observation) => observation is null ? null : new(observation.Event.EventId,
             observation.Event.Source, observation.Event.SourceVersion, observation.Event.ObservedAtUtc, observation.Received);
         return item with { ReportedWork = item.ReportedWork ?? work, LinkedPullRequestIds = linked, LinkedEvidenceChangedAtUtc = relationAt, PositivePullRequests = positives,
             PullRequestProofEvidence = linked.Where(envelope.Proofs.ContainsKey).Select(id => envelope.Proofs[id].Evidence)
-                .Concat(associated.Values.Concat(itemLinks.Values).Select(link => link.Evidence))
+                .Concat(associated.Values.Concat(itemLinks.Values).Concat(ownership.Values).Select(link => link.Evidence))
                 .Concat(positives.Values.Select(proof => proof.Evidence))
                 .Concat(declared is null ? [] : new[] { declared.Evidence }).DistinctBy(e => e.EventId).ToArray(), Work = work with {
             ActiveClaim = claimsKnown ? useClaims ? globalClaims!.ActiveClaimItems.Contains(item.Id) : work.ActiveClaim : null, ClaimsAtUtc = claimsAt,
             PullRequestsKnown = prsKnown ? true : null, PullRequestsAtUtc = prsAt,
             OpenPullRequests = effectiveOpen, HadPullRequests = hadPrs,
-            OwnedPullRequests = work.OwnedPullRequests.Concat(itemLinks.Keys).Distinct(StringComparer.Ordinal).ToArray(),
-            CancelledPullRequests = linked.Where(id => envelope.Proofs.TryGetValue(id, out var proof) &&
+            OwnedPullRequests = owned,
+            CancelledPullRequests = (item.Scope is null ? linked : owned).Where(id => envelope.Proofs.TryGetValue(id, out var proof) &&
                 proof.Fact.State == "closed" && !positive.Contains(id)).ToArray() },
             ClaimEvidence = useClaims ? Evidence(envelope.Claims) : item.WorkDimensionEvidence.GetValueOrDefault("claim") ?? item.WorkEvidence,
             PullRequestEvidence = usePrs ? Evidence(envelope.PullRequests) : item.WorkDimensionEvidence.GetValueOrDefault("pr") ?? item.WorkEvidence,

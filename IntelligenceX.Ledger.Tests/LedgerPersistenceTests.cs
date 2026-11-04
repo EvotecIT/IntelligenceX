@@ -216,9 +216,15 @@ public sealed class LedgerPersistenceTests : IDisposable {
         Assert.Equal(controls ? "goal-held" : "waiting-ci", row.Current!.ReasonCode);
         if (controls) { Assert.True(row.Work.GoalHeld); Assert.True(row.Work.NeedsApp); Assert.True(row.Work.Stalled); Assert.Equal(2, row.Work.QueuedInputs); }
         await store.IngestAsync([Event(5) with { Delivery = null, ObservedAtUtc = Now.AddMinutes(4), Work = new() {
-            Wait = wait with { Resolved = true }, GoalHeld = false, NeedsApp = false, Stalled = false, QueuedInputs = 0 } }], Now.AddMinutes(4));
+            Scope = Scope, Wait = wait with { Resolved = true }, GoalHeld = false, NeedsApp = false, Stalled = false, QueuedInputs = 0 } }], Now.AddMinutes(4));
         row = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(4)));
         Assert.Null(row.Work!.Wait);
+        Assert.Equal("unknown", row.Current!.ReasonCode);
+        Assert.Contains("pull-requests", row.Current.MissingFacts!);
+        await store.IngestAsync([Event(6) with { Delivery = null, ObservedAtUtc = Now.AddMinutes(5), Work = new() {
+            Scope = Scope, ActiveClaim = false, ClaimsAtUtc = Now.AddMinutes(5),
+            PullRequestsKnown = true, PullRequestsAtUtc = Now.AddMinutes(5) } }], Now.AddMinutes(5));
+        row = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(5)));
         Assert.Equal("idle", row.Current!.ReasonCode);
     }
 

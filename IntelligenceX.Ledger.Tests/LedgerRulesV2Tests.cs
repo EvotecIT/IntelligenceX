@@ -15,7 +15,7 @@ public sealed class LedgerRulesV2Tests {
         Session = new() { TurnOpen = true, TurnId = Scope.TurnId, TurnStartedAtUtc = Now.AddHours(-2), LastActivityAtUtc = Now.AddHours(-1) }
     };
     private static WorkerDeclaration Declaration(string kind = "operation") => new() {
-        Id = "synthetic-declaration", Scope = Scope, CheckpointRef = "synthetic-checkpoint", ConditionRef = "synthetic-condition",
+        Id = "synthetic-declaration", EpisodeId = "synthetic-episode", Scope = Scope, CheckpointRef = "synthetic-checkpoint", ConditionRef = "synthetic-condition",
         Kind = kind, NextActor = "worker", Blocking = true, RecordedAtUtc = Now.AddHours(-1), ReviewAfterUtc = Now.AddHours(1)
     };
     private static LedgerItem Declared(WorkerDeclaration declaration) {
@@ -24,11 +24,14 @@ public sealed class LedgerRulesV2Tests {
         return item;
     }
 
-    [Fact]
-    public void DeliberateStopIsQuietUntilWorkQueuesBehindIt() {
+    [Theory]
+    [InlineData("stopped")]
+    [InlineData("paused")]
+    [InlineData("budget")]
+    public void DeliberateNativeHoldIsQuietUntilWorkQueuesBehindIt(string state) {
         var item = Item() with {
             Session = new() { TurnId = Scope.TurnId, TurnOpen = false, Outcome = "interrupted", TurnEndedAtUtc = Now.AddHours(-1) },
-            Control = new(Scope, "synthetic-stop", "stopped", Now.AddHours(-1)), ControlEvidence = Evidence,
+            Control = new(Scope, "synthetic-stop", state, Now.AddHours(-1)), ControlEvidence = Evidence,
             Work = new() { Scope = Scope, GoalHeld = true, QueuedInputs = 0, ActiveClaim = true }
         };
         var quiet = _rules.Evaluate(item, Now);

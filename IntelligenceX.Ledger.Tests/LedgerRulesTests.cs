@@ -55,7 +55,7 @@ public sealed class LedgerRulesTests {
         AssertVerdict(_rules.Evaluate(item, Now), "stuck", "delivery-uncertain", Now.AddMinutes(-10));
         // A terminal failed delivery retires its admission wait; explicit next action needs the app.
         Delivery(item, "terminal", Now, "failed");
-        item = item with { Work = new() { NeedsApp = true, NeedsAppAtUtc = Now } };
+        item = item with { Work = new() { Scope = Scope, NeedsApp = true, NeedsAppAtUtc = Now } };
         AssertVerdict(_rules.Evaluate(item, Now), "needs-you", "needs-app", Now);
     }
 
@@ -100,7 +100,7 @@ public sealed class LedgerRulesTests {
     public void OnlyDecisiveUnknownPreventsDoneButNotKnownWaitOrQuestion() {
         var incomplete = Item(new() { Outcome = "completed", TurnEndedAtUtc = Now.AddMinutes(-1) });
         Assert.Equal("unknown", _rules.Evaluate(incomplete, Now).ReasonCode);
-        var waiting = incomplete with { Work = new() { Wait = new("ci", "synthetic-check", Now.AddMinutes(-1), Now.AddHours(1)) } };
+        var waiting = incomplete with { Work = new() { Scope = Scope, Wait = new("ci", "synthetic-check", Now.AddMinutes(-1), Now.AddHours(1)) } };
         Assert.Equal("waiting-ci", _rules.Evaluate(waiting, Now).ReasonCode);
         var question = waiting with { Session = new() { Question = true, InputId = "synthetic-input", QuestionAtUtc = Now.AddMinutes(-2) } };
         var verdict = _rules.Evaluate(question, Now);

@@ -3,16 +3,19 @@ using IntelligenceX.Ledger.Contracts;
 namespace IntelligenceX.Ledger.Rules;
 
 public sealed partial class LedgerRules {
+    private static string DeclarationEpisode(WorkerDeclaration fact) => LedgerScope.Id(fact.Scope.TurnId!,
+        fact.CandidateRef ?? "", fact.ConditionRef, fact.EpisodeId);
+
     private static void AddDeclarationMatch(LedgerItem item, DeclarationObservation declaration, DateTimeOffset now, List<RuleMatch> matches) {
         var fact = declaration.Fact;
-        var identity = fact.ConditionRef + ":" + fact.CandidateRef + ":" + fact.RecordedAtUtc.ToString("O");
+        var identity = DeclarationEpisode(fact);
         if (fact.DueAtUtc is { } due && now > due) {
             matches.Add(Match(item, "stuck", "wait-overdue", due, "time-threshold", identity, declaration.Evidence));
         } else if (fact.ReviewAfterUtc is { } review && now > review) {
             matches.Add(Match(item, "stuck", "wait-review", review, "time-threshold", identity, declaration.Evidence));
         } else {
             matches.Add(Match(item, fact.Kind == "operation" ? "working" : "waiting", fact.Kind == "operation" ? "active" : "waiting-task",
-                fact.RecordedAtUtc, "source-event", identity, declaration.Evidence));
+                declaration.EpisodeStartedAtUtc ?? fact.RecordedAtUtc, "source-event", identity, declaration.Evidence));
         }
     }
 
@@ -26,6 +29,10 @@ public sealed partial class LedgerRules {
             QueuedInputs = null, OldestQueuedAtUtc = null, Stalled = null, Wait = null
         };
         if (work?.Wait?.Scope is { } waitScope && !Current(waitScope)) work = work with { Wait = null };
+        TaskScope? Dimension(string name) => item.WorkDimensionScopes.TryGetValue(name, out var observed) ? observed : work?.Scope;
+        if (Dimension("goal") is { } goal && !LedgerScope.SameTask(goal, scope)) work = work is null ? null : work with { GoalHeld = null };
+        if (Dimension("app") is { } app && !LedgerScope.SameTask(app, scope)) work = work is null ? null : work with { NeedsApp = null };
+        if (Dimension("wait") is { } waitTask && !Current(waitTask)) work = work is null ? null : work with { Wait = null };
         return item with {
             Scope = scope, Work = work,
             Control = item.Control is { } control && LedgerScope.SameTask(control.Scope, scope) ? control : null,
@@ -60,14 +67,21 @@ public sealed partial class LedgerRules {
             _ when reason.StartsWith("wait", StringComparison.Ordinal) => item.WorkDimensionEvidence.GetValueOrDefault("wait") ?? item.PullRequestEvidence ?? item.WorkEvidence,
             _ => item.SessionEvidence
         };
-        var declaration = item.Declarations.Values.FirstOrDefault(d => d.Evidence.EventId == evidence?.EventId)?.Fact;
-        if (declaration is not null) wait = new(declaration.Kind == "operation" ? "operation" : "task", declaration.ConditionRef,
-            declaration.RecordedAtUtc, declaration.DueAtUtc, ReviewAfterUtc: declaration.ReviewAfterUtc, Scope: declaration.Scope, CandidateRef: declaration.CandidateRef);
+        var declared = item.Declarations.Values.FirstOrDefault(d => d.Evidence.EventId == evidence?.EventId);
+        var declaration = declared?.Fact;
+        if (declaration is not null) {
+            wait = new(declaration.Kind == "operation" ? "operation" : "task", declaration.ConditionRef,
+                declared!.EpisodeStartedAtUtc ?? declaration.RecordedAtUtc, declaration.DueAtUtc, ReviewAfterUtc: declaration.ReviewAfterUtc,
+                Scope: declaration.Scope, CandidateRef: declaration.CandidateRef);
+        }
+        var matchScope = declaration?.Scope ?? (reason == "paused-by-user" ? item.Control?.Scope :
+            reason == "urgent-safety" ? item.Safety?.Scope :
+            item.Scope is null ? null : item.Scope with { TurnId = session?.TurnId ?? item.Scope.TurnId });
         return new(verdict, reason, at ?? item.ConditionFirstObservedAtUtc.GetValueOrDefault(reason, item.FirstObservedAtUtc),
             at.HasValue ? basis : "first-observation") {
                 EpisodeId = LedgerScope.Id(item.Id, item.Scope?.TaskId ?? "unscoped", item.Scope?.Generation.ToString() ?? "unknown",
                     reason, identity ?? item.ConditionFirstObservedAtUtc.GetValueOrDefault(reason, item.FirstObservedAtUtc).ToString("O")),
-                Scope = item.Scope, Evidence = evidence is null ? [] : [evidence],
+                Scope = matchScope, Evidence = new[] { evidence, declared?.EpisodeEvidence }.OfType<EvidenceRef>().DistinctBy(e => e.EventId).ToArray(),
                 Wait = verdict == "waiting" || reason.StartsWith("wait", StringComparison.Ordinal) || declaration?.Kind == "operation" ? wait : null
             };
     }

@@ -83,7 +83,7 @@ public sealed record GlobalWorkFact(DateTimeOffset? ClaimsAtUtc, string[] Active
     DateTimeOffset? PullRequestsAtUtc, Dictionary<string, string[]> OpenPullRequestsByBranch,
     PullRequestProof[]? PullRequestProofs = null, Dictionary<string, PullRequestLinks>? LinksByItem = null);
 public sealed record PullRequestProof(string Id, string State, DateTimeOffset CheckedAtUtc);
-public sealed record PullRequestLinks(string[] Ids, bool Complete, DateTimeOffset CheckedAtUtc);
+public sealed record PullRequestLinks(string[] Ids, bool Complete, DateTimeOffset CheckedAtUtc, TaskScope? Scope = null);
 
 public static class LedgerJson {
     public const int MaximumBatchBytes = 1024 * 1024;

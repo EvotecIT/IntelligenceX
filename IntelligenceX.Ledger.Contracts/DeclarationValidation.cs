@@ -13,7 +13,7 @@ public static class DeclarationValidation {
         (review is null || review.Value.Offset == TimeSpan.Zero && (resolved || review >= recorded));
 
     public static bool Valid(WorkerDeclaration declaration, DateTimeOffset now) =>
-        Identifier(declaration.Id) && declaration.Scope is not null && ValidScope(declaration.Scope) &&
+        Identifier(declaration.Id) && Identifier(declaration.EpisodeId) && declaration.Scope is { TurnId: not null } && ValidScope(declaration.Scope) &&
         Identifier(declaration.CheckpointRef) && Identifier(declaration.ConditionRef) && Identifier(declaration.NextActor) &&
         new[] { declaration.AcceptanceBy, declaration.ResultRef, declaration.CandidateRef }.All(x => x is null || Identifier(x)) &&
         (declaration.Kind is "wait" or "operation" or "question" or "handoff") &&

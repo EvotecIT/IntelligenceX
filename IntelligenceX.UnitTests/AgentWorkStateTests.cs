@@ -39,12 +39,14 @@ public sealed class AgentWorkStateTests : IDisposable {
         var path = "sessions/rollout-fake.jsonl";
         var prefix = CodexMeta + "\n" + """
             {"timestamp":"2026-11-01T11:58:00Z","type":"event_msg","payload":{"type":"turn_aborted"}}
-            {"timestamp":"2026-11-01T11:59:00Z","type":"event_msg","payload":{"type":"task_started"}}
+            {"timestamp":"2026-11-01T11:59:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"synthetic-input-turn"}}
             {"timestamp":"2026-11-01T11:59:01Z","type":"response_item","payload":{"type":"function_call","name":"functions.request_user_input","call_id":"ask","arguments":"private sentinel"}}
             {"timestamp":"2026-11-01T11:59:02Z","type":"response_item","payload":{"type":"function_call_output","call_id":"other","output":"private sentinel"}}
             """;
         Write(path, prefix);
-        Assert.Equal(AgentWorkState.WaitingOnPerson, Assert.Single(Read("codex").Sessions).State);
+        var waiting = Assert.Single(Read("codex").Sessions);
+        Assert.Equal(AgentWorkState.WaitingOnPerson, waiting.State);
+        Assert.Equal("synthetic-input-turn", Assert.Single(waiting.PendingInputs).TurnId);
         Write(path, prefix + "\n" + """
             {"timestamp":"2026-11-01T11:59:03Z","type":"response_item","payload":{"type":"function_call_output","call_id":"ask","output":"private sentinel"}}
             """);

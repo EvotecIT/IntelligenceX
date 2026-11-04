@@ -6,6 +6,8 @@ public sealed record TaskScope(string TaskId, long Generation, string? TurnId = 
 /// <summary>Metadata declared at a real wait, operation, question or handoff boundary. References are opaque local identifiers.</summary>
 public sealed record WorkerDeclaration {
     public required string Id { get; init; }
+    /// <summary>Stable condition occurrence, shared by checkpoint updates and the resolution of that occurrence.</summary>
+    public required string EpisodeId { get; init; }
     public required TaskScope Scope { get; init; }
     public required string CheckpointRef { get; init; }
     public required string ConditionRef { get; init; }
@@ -29,7 +31,9 @@ public sealed record NativeControlFact(TaskScope Scope, string EpisodeId, string
 public sealed record SafetyFact(TaskScope Scope, string EpisodeId, string Case, string PolicyId, int PolicyVersion,
     string EvidenceRef, DateTimeOffset AtUtc, string? ManualAction = null, bool Resolved = false);
 
-public sealed record DeclarationObservation(WorkerDeclaration Fact, EvidenceRef Evidence);
+public sealed record DeclarationObservation(WorkerDeclaration Fact, EvidenceRef Evidence,
+    DateTimeOffset? EpisodeStartedAtUtc = null, EvidenceRef? EpisodeEvidence = null);
+public sealed record SupersessionFact(TaskScope? Scope, DateTimeOffset AtUtc, string SinceBasis, EvidenceRef Evidence, string? TurnId = null);
 public sealed record HoldView(string Type, string EpisodeId, TaskScope? Scope, string? NextActor = null,
     string? AcceptanceBy = null, string? ResultRef = null, bool Quiet = false);
 public sealed record WakeEligibilityView(string State, string ReasonCode, string? ConditionRef,

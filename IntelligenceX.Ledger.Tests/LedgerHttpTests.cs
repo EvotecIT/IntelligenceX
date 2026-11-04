@@ -54,6 +54,13 @@ public sealed class LedgerHttpTests {
                 Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
             using (var rejected = await client.PostAsJsonAsync("events", new[] { observation with { MachineId = null! } }, LedgerJson.Options, timeout.Token))
                 Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+            var unbound = observation with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Delivery = null, Declaration = new() {
+                Id = "synthetic-declaration", EpisodeId = "synthetic-episode", Scope = new("synthetic-task", 1),
+                Kind = "operation", CheckpointRef = "synthetic-checkpoint", ConditionRef = "synthetic-condition",
+                NextActor = "worker", Blocking = true, RecordedAtUtc = observation.ObservedAtUtc, ReviewAfterUtc = observation.ObservedAtUtc.AddHours(1)
+            } };
+            using (var rejected = await client.PostAsJsonAsync("events", new[] { unbound }, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
             using (var accepted = await client.PostAsJsonAsync("events", new[] { observation }, LedgerJson.Options, timeout.Token))
                 Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
             using (var replay = await client.PostAsJsonAsync("events", new[] { observation }, LedgerJson.Options, timeout.Token))
@@ -85,6 +92,19 @@ public sealed class LedgerHttpTests {
             using var globalHistory = await client.GetAsync("items/project-evidence/events", timeout.Token);
             using var globalEvents = JsonDocument.Parse(await globalHistory.Content.ReadAsStringAsync(timeout.Token));
             Assert.Equal(2, globalEvents.RootElement.GetArrayLength());
+            var budgetScope = new TaskScope("synthetic-budget-task", 1);
+            var budget = observation with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), ItemId = "synthetic-budget-item", Delivery = null,
+                Control = new(budgetScope, "synthetic-budget", "budget", DateTimeOffset.UtcNow) };
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/events", new[] { budget }, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            using (var status = await client.GetFromJsonAsync<JsonDocument>("status", timeout.Token))
+                Assert.Equal(1, status!.RootElement.GetProperty("pausedCount").GetInt32());
+            var queued = budget with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Control = null,
+                Work = new() { Scope = budgetScope, QueuedInputs = 1, OldestQueuedAtUtc = DateTimeOffset.UtcNow } };
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/events", new[] { queued }, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            using (var status = await client.GetFromJsonAsync<JsonDocument>("status", timeout.Token))
+                Assert.Equal(1, status!.RootElement.GetProperty("pausedCount").GetInt32());
         } finally {
             if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
             await Task.WhenAll(output, error);

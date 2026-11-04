@@ -12,7 +12,7 @@ internal static class AgentInputRequests {
         bool blocking, DateTimeOffset? timestamp) {
         if (session.PendingInputs.Any(input => input.Id == id && input.Kind == kind)) return session;
         return session with { PendingInputs = session.PendingInputs.Concat(new[] { new AgentPendingInput {
-            Id = id, Kind = kind, IsBlocking = blocking, AnswerIsUnconfirmed = !blocking || id is null, RequestedAtUtc = timestamp
+            Id = id, TurnId = session.TurnId, Kind = kind, IsBlocking = blocking, AnswerIsUnconfirmed = !blocking || id is null, RequestedAtUtc = timestamp
         }}).ToArray() };
     }
 

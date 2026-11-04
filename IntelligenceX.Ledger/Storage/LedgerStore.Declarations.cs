@@ -4,7 +4,7 @@ using IntelligenceX.Ledger.Contracts;
 namespace IntelligenceX.Ledger.Storage;
 
 public sealed partial class LedgerStore {
-    private static LedgerItem AdvanceScope(LedgerItem item, TaskScope? scope) {
+    private static LedgerItem AdvanceScope(LedgerItem item, TaskScope? scope, EvidenceRef evidence) {
         if (scope is null) return item;
         if (item.Scope is { } prior) {
             if (scope.Generation < prior.Generation) return item;
@@ -15,8 +15,8 @@ public sealed partial class LedgerStore {
         }
         var sameTurn = scope.TurnId is not null && scope.TurnId == item.Session?.TurnId;
         return item with {
-            Scope = scope, ReportedWork = null, Work = null, WorkEvidence = null,
-            WorkDimensionEvidence = [], ImplicitReviewWait = null, InferredReviewWaits = [], Declarations = [], Control = null,
+            Scope = scope, ScopeEvidence = evidence, Supersession = null, ReportedWork = null, Work = null, WorkEvidence = null,
+            WorkDimensionEvidence = [], WorkDimensionScopes = [], ImplicitReviewWait = null, InferredReviewWaits = [], Declarations = [], Control = null,
             ControlEvidence = null, Safety = null, SafetyEvidence = null,
             LinkedPullRequestIds = [], PositivePullRequests = [], RepositoryBranchKeys = [], CandidateRef = null, CandidateAtUtc = null, CandidateEvidence = null,
             Session = sameTurn ? item.Session : null, SessionEvidence = sameTurn ? item.SessionEvidence : null
@@ -41,9 +41,17 @@ public sealed partial class LedgerStore {
                 if (item.CandidateAtUtc is null || declaration.RecordedAtUtc > item.CandidateAtUtc)
                     item = item with { CandidateRef = declaration.CandidateRef, CandidateAtUtc = declaration.RecordedAtUtc, CandidateEvidence = evidence };
             }
-            if (!item.Declarations.TryGetValue(declaration.ConditionRef, out var previous) ||
+            var key = LedgerScope.Id(declaration.Scope.TaskId, declaration.Scope.Generation.ToString(), declaration.Scope.TurnId!,
+                declaration.CandidateRef ?? "", declaration.ConditionRef);
+            item.Declarations.TryGetValue(key, out var previous);
+            if (declaration.Resolved && previous is not null && declaration.EpisodeId != previous.Fact.EpisodeId)
+                return item;
+            if (previous is null ||
                 declaration.RecordedAtUtc > previous.Fact.RecordedAtUtc) {
-                item.Declarations[declaration.ConditionRef] = new(declaration, evidence);
+                var sameEpisode = previous?.Fact.EpisodeId == declaration.EpisodeId;
+                item.Declarations[key] = new(declaration, evidence,
+                    sameEpisode ? previous!.EpisodeStartedAtUtc ?? previous.Fact.RecordedAtUtc : declaration.RecordedAtUtc,
+                    sameEpisode ? previous!.EpisodeEvidence ?? previous.Evidence : evidence);
             } else if (declaration.RecordedAtUtc == previous.Fact.RecordedAtUtc && declaration != previous.Fact) {
                 // Two different facts cannot establish an ordering by their arrival or arbitrary identifiers.
                 throw new EventConflictException();

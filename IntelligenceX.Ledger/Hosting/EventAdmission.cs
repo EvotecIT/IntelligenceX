@@ -47,7 +47,7 @@ internal static class EventAdmission {
         if (e.GlobalWork is { } evidence && (evidence.PullRequestProofs?.Length > 1000 || evidence.LinksByItem?.Count > 10000 ||
             evidence.PullRequestProofs?.Any(p => p is null || !Id(p.Id) || p.State is not ("open" or "closed" or "merged") || !Time(p.CheckedAtUtc)) == true ||
             evidence.LinksByItem?.Any(p => !Id(p.Key) || p.Value is null || p.Value.Ids is null || p.Value.Ids.Length > 100 ||
-                p.Value.Ids.Any(id => !Id(id)) || !Time(p.Value.CheckedAtUtc)) == true)) return false;
+                p.Value.Ids.Any(id => !Id(id)) || !Time(p.Value.CheckedAtUtc) || !DeclarationValidation.ValidScope(p.Value.Scope)) == true)) return false;
         return e.Coverage is null || e.Coverage.Length <= 32 && e.Coverage.All(Id);
     }
 }

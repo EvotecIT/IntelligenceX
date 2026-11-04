@@ -19,6 +19,7 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
     public string? TurnId { get; init; }
     public SafetyFact? Safety { get; init; }
     public string? CandidateRef { get; init; }
+    public SupersessionFact? Supersession { get; init; }
     public static LedgerItemView From(LedgerItem item) {
         var verdict = item.Current ?? throw new InvalidOperationException("Unevaluated item.");
         var declaration = item.Declarations.Values.Where(d => LedgerScope.Applies(d.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
@@ -33,7 +34,8 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
                 NextActor = verdict.Hold?.NextActor ?? declaration?.NextActor ?? delivery?.NextActor,
                 AcceptanceBy = verdict.Hold?.AcceptanceBy ?? declaration?.AcceptanceBy ?? delivery?.AcceptanceBy,
                 ResultRef = verdict.Hold?.ResultRef ?? declaration?.ResultRef ?? delivery?.ResultRef,
-                ParentItemId = item.ParentItemId, TurnId = item.Session?.TurnId, Safety = item.Safety, CandidateRef = item.CandidateRef
+                ParentItemId = item.ParentItemId, TurnId = item.Session?.TurnId, Safety = item.Safety, CandidateRef = item.CandidateRef,
+                Supersession = item.Supersession
             };
     }
 }

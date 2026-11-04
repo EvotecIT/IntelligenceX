@@ -14,6 +14,8 @@ public enum AgentInputKind {
 public sealed record AgentPendingInput {
     /// <summary>Provider call/request identifier, when available. Interpret within the session identity.</summary>
     public string? Id { get; init; }
+    /// <summary>Turn containing the request, when the provider exposes its identity.</summary>
+    public string? TurnId { get; init; }
     /// <summary>Question or approval evidence.</summary>
     public AgentInputKind Kind { get; init; }
     /// <summary>Whether this request suspends execution. Asynchronous questions do not.</summary>

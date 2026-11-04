@@ -9,7 +9,7 @@ public sealed class LedgerDeclarationPersistenceTests : IDisposable {
     private static readonly DateTimeOffset Now = new(2026, 1, 12, 12, 0, 0, TimeSpan.Zero);
     private static readonly TaskScope Scope = new("synthetic-task", 1, "synthetic-turn");
     private static WorkerDeclaration Declaration() => new() {
-        Id = "synthetic-declaration", Scope = Scope, Kind = "wait", CheckpointRef = "synthetic-checkpoint",
+        Id = "synthetic-declaration", EpisodeId = "synthetic-episode", Scope = Scope, Kind = "wait", CheckpointRef = "synthetic-checkpoint",
         ConditionRef = "synthetic-condition", NextActor = "dependency", Blocking = true,
         RecordedAtUtc = Now, ReviewAfterUtc = Now.AddHours(1)
     };

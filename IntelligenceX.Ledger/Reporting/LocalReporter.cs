@@ -119,7 +119,7 @@ public static class LocalReporter {
             foreach (var session in snapshot.Sessions) {
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
                 var pending = session.PendingInputs;
-                var blocking = pending.FirstOrDefault(x => x.IsBlocking && x.Id is not null && !x.AnswerIsUnconfirmed);
+                var blocking = pending.FirstOrDefault(x => x.IsBlocking && x.Id is not null && !x.AnswerIsUnconfirmed && !PriorTurn(x, session));
                 var fact = new SessionFact {
                     TurnId = session.TurnId is null ? null : LedgerScope.Id("turn", session.TurnId),
                     InputId = blocking?.Id is { } inputId ? LedgerScope.Id("input", inputId) : null,
@@ -135,13 +135,15 @@ public static class LocalReporter {
                 };
                 var signature = JsonSerializer.Serialize(fact, LedgerJson.Options);
                 if (!last.TryGetValue(id, out var previous) || previous != signature) {
-                    if (spool.TryAppend(Event(id, session.Provider, fact))) last[id] = signature;
+                    if (!spool.TryAppend(Event(id, session.Provider, fact))) continue;
+                    last[id] = signature;
                 }
-                foreach (var input in pending.Where(x => !x.IsBlocking && x.Id is not null)) {
+                foreach (var input in pending.Where(x => x.Id is not null && (!x.IsBlocking || PriorTurn(x, session)))) {
                     var childInputId = LedgerScope.Id("input", input.Id!);
                     var childId = LedgerScope.InputItemId(id, childInputId);
                     var inputFact = new SessionFact {
-                        SourceSessionId = fact.SourceSessionId, InputId = childInputId, Question = !input.AnswerIsUnconfirmed,
+                        SourceSessionId = fact.SourceSessionId, InputId = childInputId, TurnId = input.TurnId is null ? null : LedgerScope.Id("turn", input.TurnId),
+                        Question = !input.AnswerIsUnconfirmed,
                         InputUnconfirmed = input.AnswerIsUnconfirmed, QuestionAtUtc = input.RequestedAtUtc?.ToUniversalTime()
                     };
                     var inputSignature = JsonSerializer.Serialize(inputFact, LedgerJson.Options);
@@ -276,4 +278,8 @@ public static class LocalReporter {
             catch (TaskCanceledException) when (!token.IsCancellationRequested) { return; }
         }
     }
+
+    private static bool PriorTurn(AgentPendingInput input, AgentSessionState session) =>
+        input.TurnId is not null && session.TurnId is not null && input.TurnId != session.TurnId ||
+        input.RequestedAtUtc is { } requested && session.TurnStartedAtUtc is { } started && requested < started;
 }

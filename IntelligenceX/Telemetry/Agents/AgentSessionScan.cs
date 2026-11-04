@@ -12,7 +12,7 @@ namespace IntelligenceX.Telemetry.Agents;
 
 // Cache only parser observations. Clock aging, title indexes, Desktop metadata, Git and PRs are reapplied each scan.
 internal sealed class AgentSessionScan {
-    private const string ParserVersion = "7";
+    private const string ParserVersion = "8";
     private readonly SourceRootRecord _root;
     private readonly Action<string> _report;
     private readonly IRawArtifactStore? _store;

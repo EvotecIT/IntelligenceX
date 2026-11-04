@@ -14,11 +14,22 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         var matches = new List<RuleMatch>();
         var session = item.Session;
         var work = item.Work;
+        TaskScope? WorkScope(string dimension) => item.WorkDimensionScopes.TryGetValue(dimension, out var dimensionScope) ? dimensionScope : work?.Scope;
+        var goalScope = WorkScope("goal");
         void Add(bool condition, string verdict, string reason, DateTimeOffset? since, string basis = "source-event",
             string? identity = null, EvidenceRef? evidence = null, WaitFact? waitFact = null) {
             if (condition) matches.Add(Match(item, verdict, reason, since, basis, identity, evidence, waitFact));
         }
-        var pause = item.Control?.State is "paused" or "stopped";
+        if (item.Supersession is { } superseded) {
+            if (reporterSilent && item.Current is not null) return LastKnown(item.Current, now);
+            var cancelled = Match(item, "done", "cancelled", superseded.AtUtc, superseded.SinceBasis,
+                "parent:" + superseded.Scope?.TaskId + ":" + superseded.Scope?.Generation + ":" + superseded.TurnId, superseded.Evidence);
+            return new("done", "cancelled", cancelled.SinceUtc, cancelled.SinceBasis, now, Version, reporterSilent ? ["reporter-silent"] : [], reporterSilent) {
+                EpisodeId = cancelled.EpisodeId, Matches = [cancelled], LastProgressAtUtc = session?.LastActivityAtUtc,
+                WakeEligibility = new("suppressed", "superseded", null, [superseded.Evidence], [])
+            };
+        }
+        var pause = item.Control?.State is "paused" or "stopped" or "budget";
         var declarations = item.Declarations.Values.OrderBy(d => d.Fact.RecordedAtUtc).ToArray();
         var hasDeclaredCondition = declarations.Any(d => !d.Fact.Resolved && (d.Fact.Blocking || item.Kind == "input"));
         var operation = declarations.LastOrDefault(d => !d.Fact.Resolved && d.Fact.Blocking && d.Fact.Kind == "operation");
@@ -31,31 +42,31 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         Add(session?.UsageLimit == true, "needs-you", "usage-limit", session?.TurnEndedAtUtc);
         var queued = work?.QueuedInputs ?? 0;
         var heldGoal = work?.GoalHeld == true && (queued > 0 || work.ActiveClaim == true || item.Deliveries.Values.Any(IsPending));
-        Add(heldGoal && LedgerScope.SameTask(work?.Scope, item.Scope), "needs-you", "goal-held", work?.GoalHeldAtUtc);
-        Add(item.Control?.State == "budget", "needs-you", "goal-held", item.Control?.AtUtc,
-            identity: item.Control?.EpisodeId, evidence: item.ControlEvidence);
+        Add(heldGoal && LedgerScope.SameTask(goalScope, item.Scope), "needs-you", "goal-held", work?.GoalHeldAtUtc);
         foreach (var declaration in declarations.Where(d => !d.Fact.Resolved && (d.Fact.Blocking || item.Kind == "input") &&
                      (d.Fact.Kind is "question" or "handoff")))
             Add(true, declaration.Fact.NextActor == "human" ? "needs-you" : "waiting",
                 declaration.Fact.Kind == "question" ? "question" : "waiting-acceptance",
-                declaration.Fact.RecordedAtUtc, identity: declaration.Fact.Id, evidence: declaration.Evidence);
+                declaration.EpisodeStartedAtUtc ?? declaration.Fact.RecordedAtUtc, identity: DeclarationEpisode(declaration.Fact), evidence: declaration.Evidence);
         foreach (var delivery in item.Deliveries.Values.OrderBy(x => x.Id, StringComparer.Ordinal)) {
             var submitted = delivery.Stages["submitted"];
             Add(submitted.Knowledge == "known" && delivery.Stages["started"].Knowledge == "unknown" &&
                 delivery.Stages["terminal"].Knowledge == "unknown" && now - submitted.AtUtc >= settings.AdmissionGrace,
                 "stuck", "delivery-uncertain", submitted.AtUtc, identity: delivery.Id, evidence: submitted.Evidence);
         }
-        Add(work?.NeedsApp == true && session?.AppOwned == true, "needs-you", "needs-app", work?.NeedsAppAtUtc);
+        var appScopeUnknown = item.Scope is not null && work?.NeedsApp == true && WorkScope("app") is null;
+        Add(!appScopeUnknown && work?.NeedsApp == true && session?.AppOwned == true, "needs-you", "needs-app", work?.NeedsAppAtUtc);
         // Stuck. A coverage note by itself is not a decisive missing fact.
         var declaredWait = declarations.LastOrDefault(d => !d.Fact.Resolved && d.Fact.Blocking && d.Fact.Kind == "wait");
         var declared = operation ?? declaredWait;
+        var waitScopeUnknown = item.Scope is not null && work?.Wait is not null && (work.Wait.Scope ?? WorkScope("wait")) is null;
         var owned = work?.OwnedPullRequests.Intersect(work.OpenPullRequests).Order(StringComparer.Ordinal).FirstOrDefault();
-        var wait = declared is null ? work?.Wait ?? item.ImplicitReviewWait ?? (session?.Outcome == "completed" && owned is not null
+        var wait = declared is null ? (waitScopeUnknown ? null : work?.Wait) ?? item.ImplicitReviewWait ?? (session?.Outcome == "completed" && owned is not null
             ? ReviewWait(owned, item.WorkEvidence?.ObservedAtUtc ?? session.TurnEndedAtUtc ?? item.FirstObservedAtUtc, item.Scope) : null)
             : new WaitFact(declared.Fact.Kind == "operation" ? "operation" : "task", declared.Fact.ConditionRef,
-                declared.Fact.RecordedAtUtc, declared.Fact.DueAtUtc, ReviewAfterUtc: declared.Fact.ReviewAfterUtc,
+                declared.EpisodeStartedAtUtc ?? declared.Fact.RecordedAtUtc, declared.Fact.DueAtUtc, ReviewAfterUtc: declared.Fact.ReviewAfterUtc,
                 Scope: declared.Fact.Scope, CandidateRef: declared.Fact.CandidateRef);
-        var waitIdentity = wait?.ConditionId + ":" + wait?.CandidateRef + ":" + wait?.RecordedAtUtc.ToString("O");
+        var waitIdentity = declared is null ? wait?.ConditionId + ":" + wait?.CandidateRef + ":" + wait?.RecordedAtUtc.ToString("O") : DeclarationEpisode(declared.Fact);
         Add(wait is not null && now > wait.DueAtUtc, "stuck", "wait-overdue", wait?.DueAtUtc, "time-threshold", waitIdentity, declared?.Evidence);
         Add(wait?.ReviewAfterUtc is { } review && now > review && !(wait.DueAtUtc is { } due && now > due),
             "stuck", "wait-review", wait?.ReviewAfterUtc, "time-threshold", waitIdentity, declared?.Evidence);
@@ -69,7 +80,7 @@ public sealed partial class LedgerRules(RuleSettings settings) {
             var identity = other.ConditionId + ":" + other.RecordedAtUtc.ToString("O");
             var expired = now > other.ReviewAfterUtc;
             Add(true, expired ? "stuck" : "waiting", expired ? "wait-review" : "waiting-review",
-                expired ? other.ReviewAfterUtc : other.RecordedAtUtc, expired ? "time-threshold" : "source-event", identity,
+                expired ? other.ReviewAfterUtc : other.RecordedAtUtc, expired ? "time-threshold" : "first-observation", identity,
                 item.PositivePullRequests.GetValueOrDefault(other.ConditionId)?.Evidence ?? item.PullRequestEvidence, other);
         }
         Add(session?.Outcome is "failed" or "interrupted" && session.TurnOpen != true &&
@@ -96,12 +107,13 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         // Missing completion gates decide Done, but cannot suppress a known question/wait/open turn.
         var knownPrimary = matches.Count > 0 || wait is not null || session?.TurnOpen == true || work?.OpenPullRequests.Length > 0;
         var completed = session?.Outcome == "completed";
-        var unknown = heldGoal && !LedgerScope.SameTask(work?.Scope, item.Scope) || work?.NeedsApp == true && session?.AppOwned is null && !matches.Any(m => m.Verdict == "needs-you") ||
+        var unknown = heldGoal && !LedgerScope.SameTask(goalScope, item.Scope) || appScopeUnknown || waitScopeUnknown || work?.NeedsApp == true && session?.AppOwned is null && !matches.Any(m => m.Verdict == "needs-you") ||
             !knownPrimary && !(completed && work?.ActiveClaim is not null && work.PullRequestsKnown == true);
         Add(unknown, "stuck", "unknown", now, "first-observation", "missing:" + string.Join("-", MissingFacts(item)));
 
         if (wait is not null) Add(!(wait.DueAtUtc is { } deadline && now > deadline) && !(wait.ReviewAfterUtc is { } reviewAt && now > reviewAt),
             operation is null ? "waiting" : "working", operation is null ? "waiting-" + wait.Kind : "active", wait.RecordedAtUtc,
+            wait.Inferred ? "first-observation" : "source-event",
             identity: waitIdentity, evidence: declared?.Evidence);
         if (wait is null && !hasDeclaredCondition && session?.TurnOpen == true && session.LastActivityAtUtc is { } last && now - last < settings.NoProgressAfter)
             Add(true, "working", now - last < settings.RecentActivity ? "active" : "quiet", session.TurnStartedAtUtc);
@@ -141,7 +153,10 @@ public sealed partial class LedgerRules(RuleSettings settings) {
 
     private static string[] MissingFacts(LedgerItem item) {
         if (item.Kind == "input" && item.Session?.InputUnconfirmed == true) return ["input-status"];
-        if (item.Work?.GoalHeld == true && item.Work.Scope is null) return ["goal-task-scope"];
+        TaskScope? WorkScope(string dimension) => item.WorkDimensionScopes.TryGetValue(dimension, out var scope) ? scope : item.Work?.Scope;
+        if (item.Work?.GoalHeld == true && WorkScope("goal") is null) return ["goal-task-scope"];
+        if (item.Scope is not null && item.Work?.NeedsApp == true && WorkScope("app") is null) return ["app-task-scope"];
+        if (item.Scope is not null && item.Work?.Wait is { Scope: null } && WorkScope("wait") is null) return ["wait-task-scope"];
         if (item.Work?.NeedsApp == true && item.Session?.AppOwned is null) return ["app-ownership"];
         if (item.Deliveries.Values.Any(d => d.Stages["submitted"] is { Knowledge: "known", AtUtc: null } &&
             d.Stages["started"].Knowledge == "unknown")) return ["submission-time"];

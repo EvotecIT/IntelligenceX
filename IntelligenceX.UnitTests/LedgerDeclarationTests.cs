@@ -10,7 +10,7 @@ public sealed class LedgerDeclarationTests : IDisposable {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "ix-ledger-cli", Guid.NewGuid().ToString("N"));
     private static readonly Guid SessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static WorkerDeclaration Declaration() => new() {
-        Id = "synthetic-declaration", Scope = new("synthetic-task", 1, "synthetic-turn"),
+        Id = "synthetic-declaration", EpisodeId = "synthetic-episode", Scope = new("synthetic-task", 1, "synthetic-turn"),
         Kind = "wait", CheckpointRef = "synthetic-checkpoint", ConditionRef = "synthetic-condition",
         NextActor = "worker", Blocking = true, RecordedAtUtc = new(2026, 1, 12, 12, 0, 0, TimeSpan.Zero),
         ReviewAfterUtc = new(2026, 1, 12, 13, 0, 0, TimeSpan.Zero)
