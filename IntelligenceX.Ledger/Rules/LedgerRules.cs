@@ -140,10 +140,11 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         // Silent reporters retain each item's last known verdict, with machine-level Stuck.
         var also = matches.Skip(1).Select(x => x.ReasonCode).ToList();
         if (reporterSilent) also.Add("reporter-silent");
-        var sameEpisode = previous?.EpisodeId == selected.EpisodeId && previous.Value == selected.Verdict && previous.ReasonCode == selected.ReasonCode;
+        var retainSince = previous?.EpisodeId == selected.EpisodeId && previous.Value == selected.Verdict && previous.ReasonCode == selected.ReasonCode &&
+            previous.SinceUtc <= selected.SinceUtc;
         return new(selected.Verdict, selected.ReasonCode,
-            sameEpisode ? previous!.SinceUtc : selected.SinceUtc,
-            sameEpisode ? previous!.SinceBasis : selected.SinceBasis,
+            retainSince ? previous!.SinceUtc : selected.SinceUtc,
+            retainSince ? previous!.SinceBasis : selected.SinceBasis,
             now, Version, also.Distinct(StringComparer.Ordinal).Where(x => x != selected.ReasonCode).ToArray(), reporterSilent,
             selected.ReasonCode == "unknown" ? MissingFacts(item) : []) {
                 EpisodeId = selected.EpisodeId, Matches = matches.ToArray(), LastProgressAtUtc = session?.LastActivityAtUtc,

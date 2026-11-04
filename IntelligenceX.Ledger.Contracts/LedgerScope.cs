@@ -17,6 +17,16 @@ public static class LedgerScope {
     public static bool Applies(TaskScope? fact, TaskScope? current, string? turnId) => SameTask(fact, current) &&
         (fact!.TurnId is null || fact.TurnId == turnId);
 
+    /// <summary>A condition retains separate retry episodes within its task, turn and candidate.</summary>
+    public static string DeclarationCondition(WorkerDeclaration fact) => Id(fact.Scope.TaskId,
+        fact.Scope.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture), fact.Scope.TurnId!,
+        fact.CandidateRef ?? "", fact.ConditionRef);
+
+    /// <summary>Checkpoint arrival and recording times cannot reactivate an older retry.</summary>
+    public static IEnumerable<DeclarationObservation> CurrentDeclarations(IEnumerable<DeclarationObservation> observations) =>
+        observations.GroupBy(d => DeclarationCondition(d.Fact))
+            .Select(group => group.MaxBy(d => d.EpisodeStartedAtUtc ?? d.Fact.RecordedAtUtc)!);
+
     /// <summary>Opaque identifiers avoid copying provider paths, titles or tool arguments into events.</summary>
     public static string Id(params string[] values) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(string.Join("\0", values)))).ToLowerInvariant();

@@ -22,8 +22,8 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
     public SupersessionFact? Supersession { get; init; }
     public static LedgerItemView From(LedgerItem item) {
         var verdict = item.Current ?? throw new InvalidOperationException("Unevaluated item.");
-        var declaration = item.Declarations.Values.Where(d => LedgerScope.Applies(d.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
-            (d.Fact.CandidateRef is null || item.CandidateRef is null || d.Fact.CandidateRef == item.CandidateRef)).MaxBy(d => d.Fact.RecordedAtUtc)?.Fact;
+        var declaration = LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(d => LedgerScope.Applies(d.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
+            (d.Fact.CandidateRef is null || item.CandidateRef is null || d.Fact.CandidateRef == item.CandidateRef))).MaxBy(d => d.Fact.RecordedAtUtc)?.Fact;
         var delivery = item.Deliveries.Values.Where(d => d.Scope is null || LedgerScope.SameTask(d.Scope, item.Scope)).MaxBy(d => d.LastStageOrderAtUtc);
         return new(item.Id, item.Kind, item.MachineId, item.Provider, verdict.Value, verdict.ReasonCode,
             verdict.SinceUtc, verdict.SinceBasis, verdict.EvaluatedAtUtc, verdict.RulesVersion, verdict.AlsoMatched,

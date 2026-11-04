@@ -39,8 +39,9 @@ public sealed partial class LedgerRules {
             Safety = item.Safety is { } safety && LedgerScope.SameTask(safety.Scope, scope) ? safety : null,
             ImplicitReviewWait = item.ImplicitReviewWait is { } inferred &&
                 (inferred.Scope is null || Current(inferred.Scope)) && work?.OwnedPullRequests.Contains(inferred.ConditionId) == true ? inferred : null,
-            Declarations = item.Declarations.Where(d => Current(d.Value.Fact.Scope) &&
-                (d.Value.Fact.CandidateRef is null || item.CandidateRef is null || d.Value.Fact.CandidateRef == item.CandidateRef)).ToDictionary(d => d.Key, d => d.Value),
+            Declarations = LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(d => Current(d.Fact.Scope) &&
+                (d.Fact.CandidateRef is null || item.CandidateRef is null || d.Fact.CandidateRef == item.CandidateRef)))
+                .ToDictionary(d => LedgerScope.DeclarationCondition(d.Fact), d => d),
             Deliveries = item.Deliveries.Where(d => d.Value.Scope is null || Current(d.Value.Scope)).ToDictionary(d => d.Key, d => d.Value)
         };
     }

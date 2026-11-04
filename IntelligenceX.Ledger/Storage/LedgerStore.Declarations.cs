@@ -35,26 +35,32 @@ public sealed partial class LedgerStore {
             }
             await tx.ExecuteNonQueryAsync("INSERT INTO declaration_receipts(item,id,json) VALUES(@item,@id,@json)", parameters, token);
             if (!LedgerScope.SameTask(declaration.Scope, item.Scope)) return item;
-            if (!declaration.Resolved && declaration.CandidateRef is not null && LedgerScope.Applies(declaration.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId)) {
-                if (declaration.RecordedAtUtc == item.CandidateAtUtc && declaration.CandidateRef != item.CandidateRef)
-                    throw new EventConflictException();
-                if (item.CandidateAtUtc is null || declaration.RecordedAtUtc > item.CandidateAtUtc)
-                    item = item with { CandidateRef = declaration.CandidateRef, CandidateAtUtc = declaration.RecordedAtUtc, CandidateEvidence = evidence };
-            }
-            var key = LedgerScope.Id(declaration.Scope.TaskId, declaration.Scope.Generation.ToString(), declaration.Scope.TurnId!,
-                declaration.CandidateRef ?? "", declaration.ConditionRef);
+            var condition = LedgerScope.DeclarationCondition(declaration);
+            // Upgrade a previously persisted single-episode condition without losing its origin.
+            if (item.Declarations.Remove(condition, out var legacy))
+                item.Declarations[LedgerScope.Id(condition, legacy.Fact.EpisodeId)] = legacy;
+            var key = LedgerScope.Id(condition, declaration.EpisodeId);
             item.Declarations.TryGetValue(key, out var previous);
-            if (declaration.Resolved && previous is not null && declaration.EpisodeId != previous.Fact.EpisodeId)
-                return item;
-            if (previous is null ||
-                declaration.RecordedAtUtc > previous.Fact.RecordedAtUtc) {
-                var sameEpisode = previous?.Fact.EpisodeId == declaration.EpisodeId;
-                item.Declarations[key] = new(declaration, evidence,
-                    sameEpisode ? previous!.EpisodeStartedAtUtc ?? previous.Fact.RecordedAtUtc : declaration.RecordedAtUtc,
-                    sameEpisode ? previous!.EpisodeEvidence ?? previous.Evidence : evidence);
-            } else if (declaration.RecordedAtUtc == previous.Fact.RecordedAtUtc && declaration != previous.Fact) {
+            if (previous is not null && declaration.RecordedAtUtc == previous.Fact.RecordedAtUtc && declaration != previous.Fact) {
                 // Two different facts cannot establish an ordering by their arrival or arbitrary identifiers.
                 throw new EventConflictException();
+            }
+            var origin = previous?.EpisodeStartedAtUtc ?? previous?.Fact.RecordedAtUtc;
+            var earlier = origin is null || declaration.RecordedAtUtc < origin;
+            // Resolution is terminal for this occurrence, even when an older opening/checkpoint arrives later.
+            var replace = previous is null || declaration.Resolved && !previous.Fact.Resolved ||
+                declaration.Resolved == previous.Fact.Resolved && declaration.RecordedAtUtc > previous.Fact.RecordedAtUtc;
+            item.Declarations[key] = new(replace ? declaration : previous!.Fact, replace ? evidence : previous!.Evidence,
+                earlier ? declaration.RecordedAtUtc : origin, earlier ? evidence : previous!.EpisodeEvidence ?? previous.Evidence);
+            var candidates = LedgerScope.CurrentDeclarations(item.Declarations.Values).Where(d => d.Fact.CandidateRef is not null &&
+                LedgerScope.Applies(d.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId)).ToArray();
+            var candidate = candidates.MaxBy(d => d.EpisodeStartedAtUtc ?? d.Fact.RecordedAtUtc);
+            if (candidate is not null) {
+                var started = candidate.EpisodeStartedAtUtc ?? candidate.Fact.RecordedAtUtc;
+                if (candidates.Any(d => (d.EpisodeStartedAtUtc ?? d.Fact.RecordedAtUtc) == started &&
+                    d.Fact.CandidateRef != candidate.Fact.CandidateRef)) throw new EventConflictException();
+                item = item with { CandidateRef = candidate.Fact.CandidateRef, CandidateAtUtc = started,
+                    CandidateEvidence = candidate.EpisodeEvidence ?? candidate.Evidence };
             }
         }
         if (observation.Control is { } control && LedgerScope.SameTask(control.Scope, item.Scope)) {

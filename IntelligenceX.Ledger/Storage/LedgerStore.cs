@@ -327,15 +327,15 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
             prsKnown ? [] : item.Work?.OpenPullRequests ?? work.OpenPullRequests;
         effectiveOpen = effectiveOpen.Concat(linked.Where(id => envelope.Proofs.TryGetValue(id, out var proof) && proof.Fact.State == "open" &&
             (!localComplete || proof.Fact.CheckedAtUtc > work.PullRequestsAtUtc))).Distinct(StringComparer.Ordinal).ToArray();
-        // Exact terminal proof retires stale positive search entries and their implicit waits.
-        effectiveOpen = effectiveOpen.Where(id => !envelope.Proofs.TryGetValue(id, out var proof) ||
-            proof.Fact.State == "open" || proof.Fact.State != "merged" && PositiveAt(id) is { } positiveAt && proof.Fact.CheckedAtUtc < positiveAt).ToArray();
         if (item.Scope is not null) {
             var taskPr = TaskPullRequests(item, work, envelope, declared, owned, positives, positive, now);
             prsKnown = taskPr.Known;
             effectiveOpen = taskPr.Open;
             hadPrs = work.HadPullRequests || owned.Length > 0;
         }
+        // Exact terminal proof retires stale positive search entries and their implicit waits in both projections.
+        effectiveOpen = effectiveOpen.Where(id => !envelope.Proofs.TryGetValue(id, out var proof) ||
+            proof.Fact.State == "open" || proof.Fact.State != "merged" && PositiveAt(id) is { } positiveAt && proof.Fact.CheckedAtUtc < positiveAt).ToArray();
         static EvidenceRef? Evidence(GlobalObservation? observation) => observation is null ? null : new(observation.Event.EventId,
             observation.Event.Source, observation.Event.SourceVersion, observation.Event.ObservedAtUtc, observation.Received);
         return item with { ReportedWork = item.ReportedWork ?? work, LinkedPullRequestIds = linked, LinkedEvidenceChangedAtUtc = relationAt, PositivePullRequests = positives,
@@ -368,7 +368,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
         var inferred = item.Session?.Outcome == "completed" && item.Work?.Wait is null ? owned.Select(id => waits[id]).FirstOrDefault() : null;
         item = item with { InferredReviewWaits = waits, ImplicitReviewWait = inferred };
         var verdict = rules.Evaluate(item, now, silent);
-        if (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode || item.Current.EpisodeId != verdict.EpisodeId) {
+        if (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode || item.Current.EpisodeId != verdict.EpisodeId ||
+            item.Current.SinceUtc != verdict.SinceUtc) {
             var transition = new { item.Id, item.MachineId, item.Provider, verdict,
                 evidence = item.Evidence() };
             await tx.ExecuteNonQueryAsync("INSERT INTO transitions(item,recorded,json) VALUES(@item,@recorded,@json)",

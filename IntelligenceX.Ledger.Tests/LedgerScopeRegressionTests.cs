@@ -50,6 +50,75 @@ public sealed class LedgerScopeRegressionTests : IDisposable {
         Assert.Contains(retained.Declarations.Values, d => d.Fact == checkpoint);
     }
 
+    [Theory]
+    [InlineData("resolution-first")]
+    [InlineData("superseded-checkpoint")]
+    public async Task RetryResolutionSurvivesReorderedDeliveryAndOlderEpisodeUpdates(string order) {
+        using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
+        await store.InitializeAsync();
+        var first = Declaration("synthetic-first", "synthetic-candidate", 0);
+        var retry = Declaration("synthetic-retry", "synthetic-candidate", 2);
+        var resolution = retry with { Id = "synthetic-resolution", Resolved = true, RecordedAtUtc = Now.AddMinutes(3) };
+        await store.IngestAsync([Event() with { Session = new() { Scope = Scope, TurnId = Scope.TurnId,
+            TurnOpen = true, TurnStartedAtUtc = Now.AddMinutes(-5), LastActivityAtUtc = Now } },
+            Event() with { Declaration = first }], Now);
+        var oldUpdate = first with { Id = "synthetic-old-update", RecordedAtUtc = Now.AddMinutes(4) };
+        var facts = order == "resolution-first" ? new[] { resolution, retry } : new[] { retry, resolution, oldUpdate };
+        foreach (var fact in facts)
+            await store.IngestAsync([Event(minutes: 5) with { Declaration = fact }], Now.AddMinutes(5));
+        await store.IngestAsync([Event(minutes: 6) with { Declaration = resolution }], Now.AddMinutes(6));
+        var current = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(6)));
+        Assert.Equal("active", current.Current!.ReasonCode);
+        Assert.DoesNotContain(current.Current.Matches, match => match.ReasonCode == "waiting-task");
+        Assert.Equal(resolution, current.Declarations.Values.Single(d => d.Fact.EpisodeId == retry.EpisodeId).Fact);
+    }
+
+    [Fact]
+    public async Task ReorderedCheckpointKeepsLatestStateAndRepairsOriginalEpisodeEvidence() {
+        var path = Path.Combine(_directory, "ledger.sqlite");
+        var opening = Event() with { Declaration = Declaration("synthetic-opening", "synthetic-candidate", 0) };
+        var checkpoint = opening.Declaration! with { Id = "synthetic-checkpoint", RecordedAtUtc = Now.AddMinutes(2),
+            ReviewAfterUtc = Now.AddHours(2) };
+        using (var store = new LedgerStore(path, new(new()))) {
+            await store.InitializeAsync();
+            await store.IngestAsync([Event() with { Session = new() { Scope = Scope, TurnId = Scope.TurnId,
+                TurnOpen = true, TurnStartedAtUtc = Now.AddMinutes(-5), LastActivityAtUtc = Now } },
+                Event(minutes: 2) with { Declaration = checkpoint }, opening], Now.AddMinutes(3));
+        }
+        using var restarted = new LedgerStore(path, new(new()));
+        await restarted.InitializeAsync();
+        var current = Assert.Single(await restarted.EvaluateAllAsync(Now.AddMinutes(3)));
+        Assert.Equal("waiting-task", current.Current!.ReasonCode);
+        Assert.Equal(Now, current.Current.SinceUtc);
+        var declaration = Assert.Single(current.Declarations.Values);
+        Assert.Equal(checkpoint, declaration.Fact);
+        Assert.Equal(opening.EventId, declaration.EpisodeEvidence!.EventId);
+        Assert.Contains(Assert.Single(current.Current.Matches).Evidence, e => e.EventId == opening.EventId);
+    }
+
+    [Theory]
+    [InlineData("merged")]
+    [InlineData("closed")]
+    public async Task QualifiedLocalOpenPrRetiresOnNewerExactTerminalProof(string terminal) {
+        using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
+        await store.InitializeAsync();
+        await store.IngestAsync([Event() with { Session = new() { Scope = Scope, TurnId = Scope.TurnId,
+            TurnOpen = false, Outcome = "completed", TurnStartedAtUtc = Now.AddMinutes(-5), TurnEndedAtUtc = Now } },
+            Event() with { Work = new() { Scope = Scope, ActiveClaim = false, ClaimsAtUtc = Now,
+                OwnedPullRequests = ["synthetic-pr"], OpenPullRequests = ["synthetic-pr"],
+                PullRequestsKnown = true, PullRequestsAtUtc = Now } }], Now);
+        Assert.Equal("waiting-review", Assert.Single(await store.EvaluateAllAsync(Now)).Current!.ReasonCode);
+        await store.IngestAsync([Event("project-evidence", 1) with {
+            GlobalWork = new(Now.AddMinutes(1), [], Now.AddMinutes(1), [],
+                [new("synthetic-pr", terminal, Now.AddMinutes(1))])
+        }], Now.AddMinutes(1));
+        var current = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(1)));
+        Assert.Empty(current.Work!.OpenPullRequests);
+        Assert.Empty(current.InferredReviewWaits);
+        Assert.Equal("done", current.Current!.Value);
+        Assert.Equal(terminal == "closed" ? "cancelled" : "complete", current.Current.ReasonCode);
+    }
+
     [Fact]
     public async Task SessionAssociationsCannotBecomeOwnershipForAnotherTaskGeneration() {
         using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
