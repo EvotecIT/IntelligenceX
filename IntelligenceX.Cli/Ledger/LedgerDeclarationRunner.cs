@@ -10,9 +10,10 @@ namespace IntelligenceX.Cli.Ledger;
 /// <summary>Explicit worker boundary declarations use the reporter's durable outbox and its configured identity.</summary>
 internal static class LedgerDeclarationRunner {
     internal static int Run(string[] args) {
-        if (args.Length != 6 || args[4] != "--config" || args[1] is not ("codex" or "claude") ||
+        var validateOnly = args.Length == 7 && args[6] == "--validate";
+        if ((args.Length != 6 && !validateOnly) || args[4] != "--config" || args[1] is not ("codex" or "claude") ||
             !Guid.TryParse(args[2], out var sessionId)) {
-            Console.Error.WriteLine("ix ledger declare <codex|claude> <source-session-id> <declaration-json> --config <reporter-json>");
+            Console.Error.WriteLine("ix ledger declare <codex|claude> <source-session-id> <declaration-json> --config <reporter-json> [--validate]");
             return 2;
         }
         try {
@@ -20,6 +21,10 @@ internal static class LedgerDeclarationRunner {
             var declaration = JsonSerializer.Deserialize<WorkerDeclaration>(File.ReadAllText(args[3]), LedgerJson.Options);
             if (declaration is null || declaration.Scope is null || declaration.Scope.TurnId is null || !DeclarationValidation.Valid(declaration, DateTimeOffset.UtcNow))
                 throw new InvalidDataException();
+            if (validateOnly) {
+                Console.WriteLine("Declaration is valid.");
+                return 0;
+            }
             using var document = JsonDocument.Parse(File.ReadAllText(args[5]));
             var root = document.RootElement;
             var machine = root.GetProperty("machineId").GetString();

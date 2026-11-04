@@ -27,9 +27,14 @@ public sealed class LedgerDeclarationTests : IDisposable {
     }
 
     [Fact]
-    public async Task DeclarationCommandRetriesOneDurableEventAndRejectsChangedIdentityContent() {
+    public async Task DeclarationCommandValidatesBeforeAdmissionAndRetriesOneImmutableDurableEvent() {
         var declaration = Declaration();
         var args = Arguments(declaration);
+        Assert.Equal(0, await LedgerRunner.RunAsync([.. args, "--validate"]));
+        Assert.False(Directory.Exists(Path.Combine(_directory, "outbox")));
+        Assert.Equal(2, await LedgerRunner.RunAsync([.. Arguments(declaration with { NextActor = "synthetic actor" }), "--validate"]));
+        Assert.False(Directory.Exists(Path.Combine(_directory, "outbox")));
+        args = Arguments(declaration);
         Assert.Equal(0, await LedgerRunner.RunAsync(args));
         Assert.Equal(0, await LedgerRunner.RunAsync(args));
         using var spool = new ReporterSpool(Path.Combine(_directory, "outbox"), 64 * 1024 * 1024, ownsDelivery: false);

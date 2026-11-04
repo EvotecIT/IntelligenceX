@@ -69,6 +69,8 @@ ix ledger declare codex <source-session-id> /absolute/path/declaration.json --co
 
 The command requires an explicit native session UUID and observed turn identity. It derives the same session key as the watcher and appends a deterministic event without opening a connection. Repeating the same declaration preserves its receipt and review time. Changed content requires a new fact ID. Checkpoint updates and resolution retain the original episode ID. A new retry uses a new episode ID. Resolutions target their exact task, turn, candidate and condition occurrence. A late resolution for an older occurrence leaves the current occurrence intact. An optional question is stored under its own input key, leaving the parent's work state independent.
 
+Append `--validate` to check a declaration through the shared contract validator before outbox admission. This supports producers that retain immutable retry inputs after validation.
+
 Task generations increase only at a verified task boundary. Reporter epochs describe transport sessions. Native controls arrive as separate observations. Automatic producers can submit the same declaration envelope through their existing supported wait or handoff integration.
 
 ## Project evidence and source coverage
