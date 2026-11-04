@@ -211,13 +211,15 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                             state.LastStage is "submitted" or "started" or "terminal" or "accepted" or "held" or "uncertain";
                         var unprovenRecovery = (state.LastStage is "held" or "uncertain") && delivery.Stage is not ("held" or "uncertain" or "terminal" or "accepted") &&
                             (delivery.Stage != "started" || delivery.AtUtc is null || delivery.AtUtc <= state.LastStageOrderAtUtc);
+                        var knownStageTime = state.Stages[delivery.Stage].AtUtc;
+                        var refineCurrentTime = state.LastStage == delivery.Stage && state.LastStageTimeIsInferred && knownStageTime.HasValue;
                         if (!historicalAdmission && !unprovenRecovery && (state.LastStageOrderAtUtc is null || orderAt >= state.LastStageOrderAtUtc ||
-                            state.LastStageTimeIsInferred && state.LastStage is "requested" or "admitted" && observation.ObservedAtUtc >= state.DispositionObservedAtUtc)) {
-                            decisionChanged |= state.LastStage != delivery.Stage;
-                            state.LastStage = delivery.Stage; state.LastStageAtUtc = delivery.AtUtc ?? received;
-                            state.LastStageTimeIsInferred = delivery.AtUtc is null;
+                            refineCurrentTime || state.LastStageTimeIsInferred && state.LastStage is "requested" or "admitted" && observation.ObservedAtUtc >= state.DispositionObservedAtUtc)) {
+                            decisionChanged |= state.LastStage != delivery.Stage || refineCurrentTime;
+                            state.LastStage = delivery.Stage; state.LastStageAtUtc = refineCurrentTime ? knownStageTime : delivery.AtUtc ?? received;
+                            state.LastStageTimeIsInferred = !refineCurrentTime && delivery.AtUtc is null;
                             state.DispositionObservedAtUtc = observation.ObservedAtUtc;
-                            state.LastStageOrderAtUtc = orderAt;
+                            state.LastStageOrderAtUtc = refineCurrentTime ? knownStageTime : orderAt;
                         }
                     }
                     if (observation.Coverage is not null) item = item with { Coverage = observation.Coverage };

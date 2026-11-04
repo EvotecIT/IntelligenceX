@@ -185,12 +185,20 @@ public sealed class LedgerPersistenceTests : IDisposable {
         var row = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(1)));
         Assert.Equal("delivery-uncertain", row.Current!.ReasonCode);
         Assert.Equal(Now.AddMinutes(-11), row.Current.SinceUtc);
+        Assert.Equal(Now.AddMinutes(-11), row.Deliveries["synthetic-delivery"].LastStageAtUtc);
+        Assert.False(row.Deliveries["synthetic-delivery"].LastStageTimeIsInferred);
         var stages = row.Deliveries["synthetic-delivery"].Stages;
         Assert.Equal(first.EventId, stages["submitted"].EventId);
         Assert.Equal(timed.EventId, stages["submitted"].TimeEvidence!.EventId);
         Assert.Equal("unknown", stages["admitted"].Knowledge);
         Assert.Equal("unknown", stages["requested"].Knowledge);
         Assert.Equal(2, (await store.HistoryAsync(row.Id, 0, 100, default)).Length);
+        await store.IngestAsync([Event(3) with { Delivery = new("synthetic-delivery", "started", Now.AddMinutes(-10)) }], Now.AddMinutes(2));
+        var advanced = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(2))).Deliveries["synthetic-delivery"];
+        Assert.Equal("started", advanced.LastStage);
+        Assert.Equal(Now.AddMinutes(-10), advanced.LastStageAtUtc);
+        Assert.Equal("unknown", advanced.Stages["terminal"].Knowledge);
+        Assert.Equal("unknown", advanced.Stages["accepted"].Knowledge);
     }
 
     [Theory]
