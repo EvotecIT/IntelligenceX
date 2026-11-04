@@ -15,6 +15,25 @@ namespace IntelligenceX.Codex;
 /// <summary>Reads Codex Desktop's thread metadata through DbaClientX in read-only mode.</summary>
 /// <remarks>Does not select messages, instructions, tool arguments or credentials. The core log collector does not require SQLite.</remarks>
 public static class CodexAgentSessionMetadataReader {
+    /// <summary>Collects available roots independently and reports failures for their exact source identity.</summary>
+    /// <param name="roots">Codex roots whose optional Desktop metadata should be read.</param>
+    /// <param name="cancellationToken">Cancels the entire collection.</param>
+    public static async Task<(IReadOnlyList<AgentSessionState> Sessions, IReadOnlyList<AgentSourceDiagnostic> Diagnostics)> ReadAvailableAsync(
+        IEnumerable<SourceRootRecord> roots, CancellationToken cancellationToken = default) {
+        if (roots is null) throw new ArgumentNullException(nameof(roots));
+        var sessions = new List<AgentSessionState>();
+        var diagnostics = new List<AgentSourceDiagnostic>();
+        foreach (var root in roots) {
+            cancellationToken.ThrowIfCancellationRequested();
+            try { sessions.AddRange(await ReadAsync(root, cancellationToken).ConfigureAwait(false)); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception) {
+                diagnostics.Add(new AgentSourceDiagnostic { Provider = "codex", SourceRootId = root.Id, Code = "unreadable-metadata" });
+            }
+        }
+        return (sessions, diagnostics);
+    }
+
     /// <summary>Reads archive flags, workspace, branch and timestamps from state_5.sqlite.</summary>
     /// <param name="root">An existing Codex telemetry root.</param>
     /// <param name="cancellationToken">Cancels database operations.</param>

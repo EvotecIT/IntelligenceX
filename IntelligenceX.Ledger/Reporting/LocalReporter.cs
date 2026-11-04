@@ -103,13 +103,14 @@ public static class LocalReporter {
             ? new ProjectClaimReader(projectClient, settings.ProjectClaims) : null;
         var prCatalog = github is null ? null : new PullRequestCatalog(settings.SpoolDirectory, github);
         ClaimSnapshot? claimSnapshot = null;
+        AgentSourceDiagnostic[] metadataDiagnostics = [];
         await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
             readMetadataAsync: async ct => {
-                var records = new List<AgentSessionState>();
-                foreach (var root in LocalAgentWorkStateService.DiscoverRoots().Where(r =>
-                    r.SourceKind == IntelligenceX.Telemetry.Usage.UsageSourceKind.LocalLogs && r.ProviderId == "codex"))
-                    records.AddRange(await IntelligenceX.Codex.CodexAgentSessionMetadataReader.ReadAsync(root, ct));
-                return records;
+                var available = await IntelligenceX.Codex.CodexAgentSessionMetadataReader.ReadAvailableAsync(
+                    LocalAgentWorkStateService.DiscoverRoots().Where(r =>
+                        r.SourceKind == IntelligenceX.Telemetry.Usage.UsageSourceKind.LocalLogs && r.ProviderId == "codex"), ct);
+                Volatile.Write(ref metadataDiagnostics, available.Diagnostics.ToArray());
+                return available.Sessions;
             }, github: settings.GitHub ? github : null);
         var last = new Dictionary<string, string>(StringComparer.Ordinal);
         var lastWork = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -238,6 +239,7 @@ public static class LocalReporter {
                 }
             }
             spool.TryAppend(Event("source-health", "machine", coverage: watcher.CurrentSnapshot.Diagnostics.Select(x => x.Code)
+                .Concat(Volatile.Read(ref metadataDiagnostics).Select(x => x.Code + ":" + x.SourceRootId))
                 .Append("queue-not-visible").Concat(settings.ProjectClaims is not null && claimSnapshot is null ? [claimFailure] : Array.Empty<string>())
                 .Concat(settings.GitHub && watcher.CurrentSnapshot.GitHubCheckedAtUtc is null ? ["pull-requests-unavailable"] : Array.Empty<string>())
                 .Concat(proofGap ? ["pull-request-proof-unavailable"] : Array.Empty<string>())

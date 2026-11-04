@@ -72,11 +72,10 @@ internal static class AgentsRunner {
             var metadata = new List<AgentSessionState>();
             var diagnostics = new List<AgentSourceDiagnostic>();
             using var cache = OpenCache(noCache, cachePath, diagnostics);
-            foreach (var root in selectedRoots.Where(static root => root.Enabled && root.ProviderId == "codex")) {
-                try { metadata.AddRange(await CodexAgentSessionMetadataReader.ReadAsync(root, timeout.Token).ConfigureAwait(false)); }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception) { diagnostics.Add(new AgentSourceDiagnostic { Provider = "codex", Code = "unreadable-metadata" }); }
-            }
+            var available = await CodexAgentSessionMetadataReader.ReadAvailableAsync(
+                selectedRoots.Where(static root => root.Enabled && root.ProviderId == "codex"), timeout.Token).ConfigureAwait(false);
+            metadata.AddRange(available.Sessions);
+            diagnostics.AddRange(available.Diagnostics);
             var local = LocalAgentWorkStateService.ReadLocal(selectedRoots, codexMetadata: metadata, cancellationToken: timeout.Token,
                 options: new AgentWorkOptions { ActiveWithin = activeWithin, Cache = cache });
             diagnostics.AddRange(local.Diagnostics);
