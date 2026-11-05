@@ -40,6 +40,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
               item TEXT NOT NULL, received TEXT NOT NULL, json TEXT NOT NULL,
               UNIQUE(reporter,epoch,sequence));
             CREATE INDEX IF NOT EXISTS events_item ON events(item,ordinal);
+            CREATE INDEX IF NOT EXISTS events_received ON events(received);
             CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS heartbeats (reporter TEXT PRIMARY KEY, machine TEXT NOT NULL, received TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS machines (id TEXT PRIMARY KEY, firstseen TEXT NOT NULL);
