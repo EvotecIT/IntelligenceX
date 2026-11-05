@@ -101,7 +101,7 @@ public static class LocalReporter {
         if (credentials?.HasToken == true) projectClient.DefaultRequestHeaders.Authorization = new("Bearer", credentials.Token);
         var claimReader = settings.ProjectClaims is not null && credentials?.HasToken == true
             ? new ProjectClaimReader(projectClient, settings.ProjectClaims) : null;
-        var prCatalog = github is null ? null : new PullRequestCatalog(settings.SpoolDirectory, github);
+        var prCatalog = github is null || settings.ProjectClaims is null ? null : new PullRequestCatalog(settings.SpoolDirectory, github);
         ClaimSnapshot? claimSnapshot = null;
         AgentSourceDiagnostic[] metadataDiagnostics = [];
         await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
@@ -212,15 +212,7 @@ public static class LocalReporter {
                     Console.Error.WriteLine("pull-request-proof-unavailable");
                 }
             }
-            if (claimReader is not null || settings.GitHub) {
-                var snapshot = watcher.CurrentSnapshot;
-                var global = new GlobalWorkFact(claimSnapshot?.CapturedAtUtc,
-                    claimSnapshot?.ActiveItems.Order(StringComparer.Ordinal).ToArray() ?? [], snapshot.GitHubCheckedAtUtc,
-                    snapshot.PullRequests.Where(pr => pr.HeadRepository is not null).GroupBy(pr =>
-                        ItemId("branch", pr.HeadRepository!.ToLowerInvariant(), pr.Branch)).ToDictionary(g => g.Key,
-                            g => g.Select(pr => ItemId("pr", "github", pr.Url)).Order(StringComparer.Ordinal).ToArray()), proofs,
-                    claimSnapshot?.PullRequestUrlsByItem.ToDictionary(pair => pair.Key, pair => new PullRequestLinks(
-                        pair.Value.Select(url => ItemId("pr", "github", url)).ToArray(), !claimSnapshot.IncompletePullRequestItems.Contains(pair.Key), claimSnapshot.CapturedAtUtc)));
+            if (ProjectEvidence(settings, watcher.CurrentSnapshot, claimSnapshot, proofs) is { } global) {
                 var signature = JsonSerializer.Serialize(global, LedgerJson.Options);
                 if (signature != lastGlobalSignature) {
                     if (spool.TryAppend(Event("project-evidence", "project") with { GlobalWork = global })) {
@@ -255,6 +247,16 @@ public static class LocalReporter {
     }
 
     private sealed record Receipt(Guid[] AcknowledgedEventIds);
+
+    internal static GlobalWorkFact? ProjectEvidence(ReporterSettings settings, AgentWorkSnapshot snapshot, ClaimSnapshot? claims, PullRequestProof[] proofs) {
+        if (settings.ProjectClaims is null) return null;
+        return new(claims?.CapturedAtUtc, claims?.ActiveItems.Order(StringComparer.Ordinal).ToArray() ?? [], snapshot.GitHubCheckedAtUtc,
+            snapshot.PullRequests.Where(pr => pr.HeadRepository is not null).GroupBy(pr =>
+                ItemId("branch", pr.HeadRepository!.ToLowerInvariant(), pr.Branch)).ToDictionary(g => g.Key,
+                    g => g.Select(pr => ItemId("pr", "github", pr.Url)).Order(StringComparer.Ordinal).ToArray()), proofs,
+            claims?.PullRequestUrlsByItem.ToDictionary(pair => pair.Key, pair => new PullRequestLinks(
+                pair.Value.Select(url => ItemId("pr", "github", url)).ToArray(), !claims.IncompletePullRequestItems.Contains(pair.Key), claims.CapturedAtUtc)));
+    }
     internal static async Task DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent heartbeat, CancellationToken token) {
         await FlushAsync(client, spool, token);
         spool.TryAppend(heartbeat);
@@ -278,6 +280,10 @@ public static class LocalReporter {
                 return;
             }
             catch (TaskCanceledException) when (!token.IsCancellationRequested) { return; }
+            catch (IOException) {
+                Console.Error.WriteLine("ledger-spool-delivery-pending");
+                return;
+            }
         }
     }
 

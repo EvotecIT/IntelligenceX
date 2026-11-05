@@ -6,6 +6,27 @@ namespace IntelligenceX.Ledger.Tests;
 
 public sealed class ProjectClaimReaderTests {
     [Theory]
+    [InlineData("AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE")]
+    [InlineData("{aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee}")]
+    public async Task SessionGuidAliasesAttachClaimsAndLinksToTheCanonicalSession(string session) {
+        var json = """
+            [{"node_id":"synthetic-item","fields":[
+             {"id":1,"data_type":"text","value":{"raw":"codex:SESSION"}},
+             {"id":2,"data_type":"single_select","value":{"name":{"raw":"synthetic-host"}}},
+             {"id":3,"data_type":"single_select","value":{"name":{"raw":"Active"}}},
+             {"id":4,"data_type":"text","value":{"raw":"https://github.com/Sample/Project/pull/1"}}]}]
+            """.Replace("SESSION", session);
+        using var client = new HttpClient(new FixtureHandler(json));
+        var reader = new ProjectClaimReader(client, new() { Organization = "synthetic", ProjectNumber = 1,
+            AgentFieldId = 1, MachineFieldId = 2, StatusFieldId = 3, PullRequestFieldId = 4,
+            MachineAliases = new() { ["synthetic-host"] = "machine-a" } });
+        var snapshot = await reader.ReadAsync(default);
+        var id = LocalReporter.ItemId("machine-a", "codex", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+        Assert.Equal(id, Assert.Single(snapshot.ActiveItems));
+        Assert.Equal("https://github.com/Sample/Project/pull/1", Assert.Single(snapshot.PullRequestUrlsByItem[id]));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RepeatedSessionAcrossPagesUnionsLinksAndRetainsAnyIncompleteAssociation(bool invalidEarlierLink) {

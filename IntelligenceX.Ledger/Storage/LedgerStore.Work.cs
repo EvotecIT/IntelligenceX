@@ -3,13 +3,40 @@ using IntelligenceX.Ledger.Contracts;
 namespace IntelligenceX.Ledger.Storage;
 
 public sealed partial class LedgerStore {
+    private static readonly string[] SessionConditions = ["question", "input-unconfirmed", "usage-limit", "complete", "idle", "active", "quiet"];
+
     private static void ObserveCondition(LedgerItem item, string condition, bool present, DateTimeOffset received) {
         if (present) item.ConditionFirstObservedAtUtc.TryAdd(condition, received);
         else item.ConditionFirstObservedAtUtc.Remove(condition);
     }
 
+    private static void ObserveSessionConditions(LedgerItem item, SessionFact session, DateTimeOffset received) {
+        var previous = item.Session;
+        var newTurn = previous is not null &&
+            (previous.TurnId is not null && session.TurnId is not null && previous.TurnId != session.TurnId ||
+             previous.TurnStartedAtUtc.HasValue && session.TurnStartedAtUtc > previous.TurnStartedAtUtc);
+        if (newTurn) {
+            foreach (var condition in SessionConditions) item.ConditionFirstObservedAtUtc.Remove(condition);
+        } else if (previous?.InputId is not null && session.InputId is not null && previous.InputId != session.InputId) {
+            item.ConditionFirstObservedAtUtc.Remove("question");
+            item.ConditionFirstObservedAtUtc.Remove("input-unconfirmed");
+        }
+        if (previous?.AccountId is not null && session.AccountId is not null && previous.AccountId != session.AccountId)
+            item.ConditionFirstObservedAtUtc.Remove("usage-limit");
+        ObserveCondition(item, "question", session.Question, received);
+        ObserveCondition(item, "input-unconfirmed", session.InputUnconfirmed, received);
+        ObserveCondition(item, "usage-limit", session.UsageLimit, received);
+        ObserveCondition(item, "complete", session.Outcome == "completed", received);
+        ObserveCondition(item, "idle", session.Outcome == "completed", received);
+        if (session.TurnOpen.HasValue) {
+            ObserveCondition(item, "active", session.TurnOpen == true, received);
+            ObserveCondition(item, "quiet", session.TurnOpen == true, received);
+        }
+    }
+
     private static LedgerItem MergeWork(LedgerItem item, WorkFact fact, EvidenceRef evidence) {
         var work = item.ReportedWork ?? new WorkFact();
+        var priorWaitScope = work.Wait?.Scope ?? item.WorkDimensionScopes.GetValueOrDefault("wait") ?? work.Scope;
         if (fact.Scope is not null && !LedgerScope.SameTask(fact.Scope, item.Scope)) return item;
         if (fact.Scope is not null) work = work with { Scope = fact.Scope };
         bool New(string dimension, bool supplied, DateTimeOffset? time = null, DateTimeOffset? previousTime = null) {
@@ -50,11 +77,17 @@ public sealed partial class LedgerStore {
             ObserveCondition(item, "queue-behind-stall", fact.QueuedInputs > 0, evidence.ReceivedAtUtc);
         }
         if (New("stall", fact.Stalled.HasValue)) work = work with { Stalled = fact.Stalled };
-        if (fact.Wait is { } wait && (!wait.Resolved || work.Wait is null || wait.ConditionId == work.Wait.ConditionId && wait.Kind == work.Wait.Kind) && New("wait", true)) {
-            work = work with { Wait = wait.Resolved ? null : work.Wait?.ConditionId == wait.ConditionId && work.Wait.Kind == wait.Kind ? work.Wait : wait };
+        if (fact.Wait is { } wait && ((wait.Scope ?? fact.Scope) is null ||
+                LedgerScope.Applies(wait.Scope ?? fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId)) &&
+            (!wait.Resolved || work.Wait is null || SameWait(wait, work.Wait, wait.Scope ?? fact.Scope, priorWaitScope)) && New("wait", true)) {
+            work = work with { Wait = wait.Resolved ? null : work.Wait is { } previous &&
+                SameWait(wait, previous, wait.Scope ?? fact.Scope, priorWaitScope) ? previous : wait };
         }
         work = work with { HadPullRequests = item.Work?.HadPullRequests == true || work.HadPullRequests || qualified && fact.HadPullRequests };
         return item with { Work = work, ReportedWork = work,
             WorkEvidence = item.WorkEvidence is null || evidence.ObservedAtUtc >= item.WorkEvidence.ObservedAtUtc ? evidence : item.WorkEvidence };
     }
+
+    private static bool SameWait(WaitFact left, WaitFact right, TaskScope? leftScope, TaskScope? rightScope) =>
+        left.Kind == right.Kind && left.ConditionId == right.ConditionId && leftScope == rightScope && left.CandidateRef == right.CandidateRef;
 }

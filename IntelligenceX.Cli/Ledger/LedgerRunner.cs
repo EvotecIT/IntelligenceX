@@ -22,13 +22,18 @@ internal static class LedgerRunner {
         string? machine = null, reporter = null;
         string? cursor = null;
         if (args.Length >= 3 && args[^2] == "--config") {
-            using var config = JsonDocument.Parse(File.ReadAllText(args[^1]));
-            var root = config.RootElement;
-            address = root.TryGetProperty("endpoint", out var configuredEndpoint) ? configuredEndpoint.GetString() :
-                "http://127.0.0.1:" + root.GetProperty("port").GetInt32() + "/";
-            token = root.GetProperty(args[0] == "mark" ? "token" : "readToken").GetString();
-            if (args[0] == "mark") { machine = root.GetProperty("machineId").GetString(); reporter = root.GetProperty("reporterId").GetString(); }
-            args = args[..^2];
+            try {
+                using var config = JsonDocument.Parse(File.ReadAllText(args[^1]));
+                var root = config.RootElement;
+                address = root.TryGetProperty("endpoint", out var configuredEndpoint) ? configuredEndpoint.GetString() :
+                    "http://127.0.0.1:" + root.GetProperty("port").GetInt32() + "/";
+                token = root.GetProperty(args[0] == "mark" ? "token" : "readToken").GetString();
+                if (args[0] == "mark") { machine = root.GetProperty("machineId").GetString(); reporter = root.GetProperty("reporterId").GetString(); }
+                args = args[..^2];
+            } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException or ArgumentException or FormatException) {
+                Console.Error.WriteLine("Invalid local Ledger configuration.");
+                return 2;
+            }
         }
         if (args.Length >= 3 && args[^2] == "--cursor") { cursor = args[^1]; args = args[..^2]; }
         if (!Uri.TryCreate(address, UriKind.Absolute, out var endpoint) || string.IsNullOrEmpty(token) ||
@@ -52,9 +57,9 @@ internal static class LedgerRunner {
             return marked.IsSuccessStatusCode ? 0 : 1;
         }
         var route = args[0] switch {
-            "status" => "status",
-            "needs-you" => "items?verdict=needs-you" + (cursor is null ? "" : "&cursor=" + Uri.EscapeDataString(cursor)),
-            "stuck" => "items?verdict=stuck" + (cursor is null ? "" : "&cursor=" + Uri.EscapeDataString(cursor)),
+            "status" when args.Length == 1 => "status",
+            "needs-you" when args.Length == 1 => "items?verdict=needs-you" + (cursor is null ? "" : "&cursor=" + Uri.EscapeDataString(cursor)),
+            "stuck" when args.Length == 1 => "items?verdict=stuck" + (cursor is null ? "" : "&cursor=" + Uri.EscapeDataString(cursor)),
             "item" when args.Length == 2 => "items/" + Uri.EscapeDataString(args[1]),
             "report" when args.Length == 2 => "reports/daily?date=" + Uri.EscapeDataString(args[1]),
             _ => null

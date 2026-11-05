@@ -70,6 +70,33 @@ public sealed class LedgerPersistenceTests : IDisposable {
     }
 
     [Fact]
+    public void BusyOutboxAdmissionDefersObservationWithoutLosingRetainedEvents() {
+        using var spool = new ReporterSpool(_directory, 1024 * 1024);
+        var retained = Event();
+        var deferred = Event(2);
+        spool.Append(retained);
+        using (var admission = new FileStream(Path.Combine(_directory, "admission.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) {
+            Assert.False(spool.TryAppend(deferred));
+            Assert.Equal(retained.EventId, Assert.Single(spool.Pending()).EventId);
+        }
+        Assert.True(spool.TryAppend(deferred));
+        Assert.Equal(2, spool.Pending().Length);
+    }
+
+    [Fact]
+    public void OutboxAcknowledgementRespectsTheAdmissionLeaseAndRetainsEventsUntilReleased() {
+        using var spool = new ReporterSpool(_directory, 1024 * 1024);
+        var retained = Event();
+        spool.Append(retained);
+        using (var admission = new FileStream(Path.Combine(_directory, "admission.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) {
+            Assert.ThrowsAny<IOException>(() => spool.Acknowledge([retained.EventId]));
+            Assert.Equal(retained.EventId, Assert.Single(spool.Pending()).EventId);
+        }
+        spool.Acknowledge([retained.EventId]);
+        Assert.Empty(spool.Pending());
+    }
+
+    [Fact]
     public void OutboxSurvivesRestartAndRetainsUnacknowledgedEventsAtCapacity() {
         var observation = Event();
         using (var spool = new ReporterSpool(_directory, 2048)) spool.Append(observation);
@@ -403,6 +430,19 @@ public sealed class LedgerPersistenceTests : IDisposable {
         await store.IngestAsync([heartbeat], Now);
         await store.IngestAsync([heartbeat with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = Now.AddMinutes(-20) }], Now.AddMinutes(1));
         Assert.Equal(Now, (await store.HeartbeatsAsync(default))[heartbeat.ReporterId]);
+    }
+
+    [Fact]
+    public void ExplicitNullRuleSettingsProduceTheSettingsValidationError() {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "config.json");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(new Hosting.LedgerSettings {
+            DataDirectory = _directory, ReadToken = new('r', 32), WriteToken = new('w', 32),
+            ExpectedReporters = new() { ["synthetic-machine"] = ["synthetic-reporter"] }
+        }, LedgerJson.Options))!;
+        node["rules"] = null;
+        File.WriteAllText(path, node.ToJsonString());
+        Assert.Equal("Invalid ledger settings.", Assert.Throws<InvalidDataException>(() => Hosting.LedgerSettings.Load(path)).Message);
     }
 
     [Fact]

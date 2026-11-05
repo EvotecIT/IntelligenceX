@@ -153,15 +153,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                     if (observation.Session is not null && (observation.Session.Scope is null || LedgerScope.SameTask(observation.Session.Scope, item.Scope)) &&
                         (item.Session?.TurnStartedAtUtc is null || observation.Session.TurnStartedAtUtc is null || observation.Session.TurnStartedAtUtc >= item.Session.TurnStartedAtUtc) &&
                         (item.SessionEvidence is null || observation.ObservedAtUtc >= item.SessionEvidence.ObservedAtUtc)) {
-                        ObserveCondition(item, "question", observation.Session.Question, received);
-                        ObserveCondition(item, "input-unconfirmed", observation.Session.InputUnconfirmed, received);
-                        ObserveCondition(item, "usage-limit", observation.Session.UsageLimit, received);
-                        ObserveCondition(item, "complete", observation.Session.Outcome == "completed", received);
-                        ObserveCondition(item, "idle", observation.Session.Outcome == "completed", received);
-                        if (observation.Session.TurnOpen.HasValue) {
-                            ObserveCondition(item, "active", observation.Session.TurnOpen == true, received);
-                            ObserveCondition(item, "quiet", observation.Session.TurnOpen == true, received);
-                        }
+                        ObserveSessionConditions(item, observation.Session, received);
                         decisionChanged |= Json(item.Session) != Json(observation.Session);
                         item = item with { Session = observation.Session with { AppOwned = item.Session?.AppOwned }, SessionEvidence = evidence };
                         if (observation.Session.RepositoryBranchKey is { } branchKey && !item.RepositoryBranchKeys.Contains(branchKey))

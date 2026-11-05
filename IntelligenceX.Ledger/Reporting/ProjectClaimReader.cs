@@ -56,10 +56,10 @@ internal sealed class ProjectClaimReader(HttpClient client, ProjectClaimsSetting
                         : value.GetProperty("raw").GetString() ?? "";
                 }
                 var actor = Value(settings.AgentFieldId).Split(':');
-                if (actor.Length < 2 || actor[0] is not ("codex" or "claude") || !Guid.TryParse(actor[1], out _)) continue;
+                if (actor.Length < 2 || actor[0] is not ("codex" or "claude") || !Guid.TryParse(actor[1], out var sessionId)) continue;
                 var machineName = Value(settings.MachineFieldId);
                 if (!settings.MachineAliases.TryGetValue(machineName, out var machine)) continue;
-                var id = LocalReporter.ItemId(machine, actor[0], actor[1]);
+                var id = LocalReporter.ItemId(machine, actor[0], sessionId.ToString("D"));
                 if (!settings.InactiveStatuses.Contains(Value(settings.StatusFieldId))) active.Add(id);
                 var link = Value(settings.PullRequestFieldId).Trim();
                 if (link.Length > 0) {

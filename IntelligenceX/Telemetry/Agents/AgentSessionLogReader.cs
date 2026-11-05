@@ -66,7 +66,9 @@ internal static class AgentSessionLogReader {
 
     // Preserve an open-turn observation until all sources have been collected. Never cache clock-derived state.
     internal static AgentSessionState Finish(AgentSessionState session, bool active) {
-        if (!session.IsArchived && session.State != AgentWorkState.Finished && session.PendingInputs.Any(static input => input.IsBlocking))
+        if (!session.IsArchived && session.State != AgentWorkState.Finished && session.PendingInputs.Any(input => input.IsBlocking
+            && (input.TurnId is null || session.TurnId is null || input.TurnId == session.TurnId)
+            && !(input.RequestedAtUtc is { } requested && session.TurnStartedAtUtc is { } started && requested < started)))
             return session with { State = AgentWorkState.WaitingOnPerson, StateIsInferred = false };
         return active ? session with { StateIsInferred = true, LastTurnOutcome = AgentTurnOutcome.Incomplete } : session;
     }

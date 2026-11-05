@@ -32,7 +32,7 @@ public sealed class LedgerHttpTests {
         var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
         try {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/api/ledger/v1/"), Timeout = TimeSpan.FromSeconds(2) };
+            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/api/ledger/v1/"), Timeout = Timeout.InfiniteTimeSpan };
             HttpResponseMessage? ready = null;
             while (ready is null) {
                 if (process.HasExited) throw new InvalidOperationException(await error);

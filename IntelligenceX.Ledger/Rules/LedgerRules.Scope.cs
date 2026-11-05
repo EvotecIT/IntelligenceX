@@ -53,6 +53,7 @@ public sealed partial class LedgerRules {
         var turn = session?.TurnId ?? session?.TurnStartedAtUtc?.ToString("O") ?? session?.TurnEndedAtUtc?.ToString("O") ?? "turn-unknown";
         identity ??= reason switch {
             "question" => session?.InputId,
+            "usage-limit" => LedgerScope.Id(turn, session?.AccountId ?? "account-unknown"),
             "no-progress" => session?.LastActivityAtUtc?.ToString("O"),
             "goal-held" => item.Work?.GoalHeldAtUtc?.ToString("O"),
             "needs-app" => item.Work?.NeedsAppAtUtc?.ToString("O"),
@@ -61,6 +62,7 @@ public sealed partial class LedgerRules {
             _ when reason.StartsWith("waiting-", StringComparison.Ordinal) => wait?.ConditionId + ":" + wait?.RecordedAtUtc.ToString("O"),
             _ => turn
         };
+        if (reason == "question") identity = LedgerScope.Id(turn, identity ?? "input-unknown");
         evidence ??= reason switch {
             "goal-held" => item.WorkDimensionEvidence.GetValueOrDefault("goal") ?? item.WorkEvidence,
             "needs-app" => item.WorkDimensionEvidence.GetValueOrDefault("app") ?? item.WorkEvidence,

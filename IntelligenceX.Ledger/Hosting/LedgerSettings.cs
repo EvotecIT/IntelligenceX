@@ -21,7 +21,9 @@ public sealed record LedgerSettings {
     public static LedgerSettings Load(string file) {
         var settings = JsonSerializer.Deserialize<LedgerSettings>(File.ReadAllText(file), LedgerJson.Options)
             ?? throw new InvalidDataException("Missing settings.");
-        if (!Path.IsPathFullyQualified(settings.DataDirectory) || settings.ReadToken.Length < 32 ||
+        if (settings.DataDirectory is null || settings.ReadToken is null || settings.WriteToken is null ||
+            settings.ExpectedReporters is null || settings.Rules is null ||
+            !Path.IsPathFullyQualified(settings.DataDirectory) || settings.ReadToken.Length < 32 ||
             settings.WriteToken.Length < 32 || settings.ReadToken == settings.WriteToken ||
             settings.Port is < 1024 or > 65535 || settings.ExpectedReporters.Count == 0)
             throw new InvalidDataException("Invalid ledger settings.");

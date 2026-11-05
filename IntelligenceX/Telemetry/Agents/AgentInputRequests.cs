@@ -10,7 +10,7 @@ internal static class AgentInputRequests {
 
     internal static AgentSessionState Add(AgentSessionState session, string? id, AgentInputKind kind,
         bool blocking, DateTimeOffset? timestamp) {
-        if (session.PendingInputs.Any(input => input.Id == id && input.Kind == kind)) return session;
+        if (id is not null && session.PendingInputs.Any(input => input.Id == id && input.Kind == kind)) return session;
         return session with { PendingInputs = session.PendingInputs.Concat(new[] { new AgentPendingInput {
             Id = id, TurnId = session.TurnId, Kind = kind, IsBlocking = blocking, AnswerIsUnconfirmed = !blocking || id is null, RequestedAtUtc = timestamp
         }}).ToArray() };

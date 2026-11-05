@@ -7,6 +7,22 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class LedgerDeclarationTests : IDisposable {
+    [Fact]
+    public async Task MissingClientConfigReturnsUsageErrorWithoutAnUnhandledException() {
+        Assert.Equal(2, await LedgerRunner.RunAsync(["status", "--config", Path.Combine(_directory, "missing.json")]));
+    }
+
+    [Theory]
+    [InlineData("status")]
+    [InlineData("needs-you")]
+    [InlineData("stuck")]
+    public async Task ReadCommandsRejectExtraOperands(string command) {
+        Directory.CreateDirectory(_directory);
+        var config = Path.Combine(_directory, "client.json");
+        File.WriteAllText(config, "{\"endpoint\":\"http://127.0.0.1:0/\",\"readToken\":\"synthetic-read-token\"}");
+        Assert.Equal(2, await LedgerRunner.RunAsync([command, "unexpected", "--config", config]));
+    }
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "ix-ledger-cli", Guid.NewGuid().ToString("N"));
     private static readonly Guid SessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static WorkerDeclaration Declaration() => new() {

@@ -17,6 +17,8 @@ public sealed partial class LedgerStore {
         return item with {
             Scope = scope, ScopeEvidence = evidence, Supersession = null, ReportedWork = null, Work = null, WorkEvidence = null,
             WorkDimensionEvidence = [], WorkDimensionScopes = [], ImplicitReviewWait = null, InferredReviewWaits = [], Declarations = [], Control = null,
+            ConditionFirstObservedAtUtc = item.ConditionFirstObservedAtUtc.Where(pair => sameTurn && SessionConditions.Contains(pair.Key))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             ControlEvidence = null, Safety = null, SafetyEvidence = null,
             LinkedPullRequestIds = [], PositivePullRequests = [], RepositoryBranchKeys = [], CandidateRef = null, CandidateAtUtc = null, CandidateEvidence = null,
             Session = sameTurn ? item.Session : null, SessionEvidence = sameTurn ? item.SessionEvidence : null
@@ -47,6 +49,10 @@ public sealed partial class LedgerStore {
             }
             var origin = previous?.EpisodeStartedAtUtc ?? previous?.Fact.RecordedAtUtc;
             var earlier = origin is null || declaration.RecordedAtUtc < origin;
+            var incomingOrigin = earlier ? declaration.RecordedAtUtc : origin!.Value;
+            if (item.Declarations.Any(pair => pair.Key != key && LedgerScope.DeclarationCondition(pair.Value.Fact) == condition &&
+                (pair.Value.EpisodeStartedAtUtc ?? pair.Value.Fact.RecordedAtUtc) == incomingOrigin))
+                throw new EventConflictException();
             // Resolution is terminal for this occurrence, even when an older opening/checkpoint arrives later.
             var replace = previous is null || declaration.Resolved && !previous.Fact.Resolved ||
                 declaration.Resolved == previous.Fact.Resolved && declaration.RecordedAtUtc > previous.Fact.RecordedAtUtc;

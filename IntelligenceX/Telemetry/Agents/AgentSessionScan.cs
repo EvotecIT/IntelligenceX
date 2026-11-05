@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -67,7 +68,10 @@ internal sealed class AgentSessionScan {
         var before = RawArtifactDescriptor.CreateFile(_root.Id, Adapter, path, ParserVersion);
         var created = File.GetCreationTimeUtc(path);
         var tail = cached is not null && cached.TailSafe && cached.Offset <= descriptor!.SizeBytes
-            && before.SizeBytes > cached.Offset && cached.CreatedAtUtc == created
+            // Unix creation time can be synthesized from ctime and change on every append.
+            // The bounded prefix/boundary anchor remains the cross-platform continuation guard.
+            && before.SizeBytes > cached.Offset
+            && (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || cached.CreatedAtUtc == created)
             && cached.AnchorHash == AnchorHash(path, cached.Offset);
         var diagnostics = tail ? new Dictionary<string, int>(cached!.Diagnostics, StringComparer.Ordinal)
             : new Dictionary<string, int>(StringComparer.Ordinal);

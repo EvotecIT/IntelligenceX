@@ -38,7 +38,8 @@ internal sealed class UsageDirectorySnapshotCache {
         _visited.Add(directory);
         var info = new DirectoryInfo(directory);
         if (!info.Exists) { _entries.Remove(directory); return Entry.Empty; }
-        if (_entries.TryGetValue(directory, out var previous) && previous.Stamp == info.LastWriteTimeUtc) return previous;
+        if (_entries.TryGetValue(directory, out var previous) && previous.Stamp == info.LastWriteTimeUtc
+            && previous.Files.All(File.Exists) && previous.Directories.All(Directory.Exists)) return previous;
         var entry = new Entry(info.LastWriteTimeUtc,
             _readFiles(directory).Select(Path.GetFullPath).ToArray(),
             Directory.GetDirectories(directory).Select(Path.GetFullPath).ToArray());

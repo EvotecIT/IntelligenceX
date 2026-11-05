@@ -20,9 +20,12 @@ internal sealed class LedgerRuntime(LedgerStore store, LedgerSettings settings) 
             var last = times.Where(x => x.HasValue).Select(x => x!.Value).DefaultIfEmpty().Min();
             var state = times.All(x => x is null) ? "not-enrolled" : times.Any(x => x is null || now - x > settings.Rules.ReporterTimeout)
                 ? "reporter-silent" : "healthy";
+            var since = times.Where(time => time is null || now - time > settings.Rules.ReporterTimeout)
+                .Select(time => time ?? enrolled[pair.Key]).DefaultIfEmpty(enrolled[pair.Key]).Min();
+            var basis = times.Any(time => time is null) && since == enrolled[pair.Key] ? "first-observation" : "source-event";
             return new MachineRow(pair.Key, state, last == default ? null : last,
                 state == "healthy" ? null : new("stuck", state == "not-enrolled" ? "unknown" : "reporter-silent",
-                    last == default ? enrolled[pair.Key] : last, last == default ? "first-observation" : "source-event", now, LedgerRules.Version, []), pair.Value);
+                    since, basis, now, LedgerRules.Version, []), pair.Value);
         }).ToArray();
     }
 

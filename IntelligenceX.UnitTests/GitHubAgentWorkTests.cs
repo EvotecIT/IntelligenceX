@@ -21,7 +21,7 @@ public sealed class GitHubAgentWorkTests {
         var requests = 0;
         using var http = new HttpClient(new Handler(_ => Task.FromResult(Interlocked.Increment(ref requests) == 1
             ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledBody(reading)) }
-            : Json("{\"total_count\":0,\"items\":[]}")))) { BaseAddress = new Uri("https://api.github.com/") };
+            : Json("{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}")))) { BaseAddress = new Uri("https://api.github.com/") };
         using var service = new GitHubDashboardService(http, disposeHttpClient: false, clock);
         var fetch = service.FetchAgentPullRequestsAsync("sample");
         await reading.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -120,6 +120,8 @@ public sealed class GitHubAgentWorkTests {
     [Theory]
     [InlineData("{}", false)]
     [InlineData("{\"items\":[],\"total_count\":1001}", false)]
+    [InlineData("{\"items\":[],\"total_count\":0}", false)]
+    [InlineData("{\"items\":[],\"incomplete_results\":false}", false)]
     [InlineData("{\"items\":[],\"total_count\":0,\"incomplete_results\":true}", false)]
     [InlineData("private sentinel", true)]
     public async Task Fetch_ReportsIncompleteSearchAndSanitizesErrors(string response, bool httpFailure) {
@@ -129,6 +131,16 @@ public sealed class GitHubAgentWorkTests {
         using var service = new GitHubDashboardService(http, disposeHttpClient: false);
         var exception = await Assert.ThrowsAnyAsync<Exception>(() => service.FetchAgentPullRequestsAsync("sample"));
         Assert.DoesNotContain("private sentinel", exception.Message);
+    }
+
+    [Fact]
+    public async Task ClosedPullRequestWithoutMergeEvidenceRejectsTheRead() {
+        using var original = Pull("1", "sample", "Sample/Project");
+        var json = System.Text.Json.Nodes.JsonNode.Parse(await original.Content.ReadAsStringAsync())!;
+        json["state"] = "closed";
+        using var http = new HttpClient(new Handler(_ => Task.FromResult(Json(json.ToJsonString())))) { BaseAddress = new Uri("https://api.github.com/") };
+        using var service = new GitHubDashboardService(http, disposeHttpClient: false);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.FetchAgentPullRequestAsync("Sample/Project", 1));
     }
 
     private static HttpResponseMessage Pull(string n, string author, string head) => Json($$$$"""

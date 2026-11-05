@@ -160,12 +160,12 @@ internal sealed class AgentLocalCollection {
 
     private static void ReadTitles(RootState state, CancellationToken token) {
         if (state.Root.ProviderId != "codex" || !Directory.Exists(state.Root.Path)) return;
-        state.Titles.Clear();
         state.IndexDiagnostics.Diagnostics.Clear();
         state.CurrentFile = state.IndexDiagnostics;
         var titles = new List<AgentSessionState>();
         try {
             LocalAgentWorkStateService.ReadCodexTitles(state.Root, titles, 0, (_, code) => state.Report(code), token);
+            state.Titles.Clear();
             foreach (var title in titles) state.Titles[title.Id] = title;
         } catch (IOException) { state.Report("unreadable-source");
         } catch (UnauthorizedAccessException) { state.Report("unreadable-source");

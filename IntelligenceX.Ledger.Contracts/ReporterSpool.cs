@@ -10,6 +10,7 @@ public sealed class ReporterSpool : IDisposable {
     private readonly FileStream? _ownership;
     private readonly object _gate = new();
     private bool _capacityReported;
+    private bool _admissionReported;
 
     public ReporterSpool(string directory, long maximumBytes, bool ownsDelivery = true) {
         _directory = Path.GetFullPath(directory);
@@ -55,7 +56,16 @@ public sealed class ReporterSpool : IDisposable {
     /// <summary>Backpressure rejects new observations while leaving delivery able to drain retained files.</summary>
     public bool TryAppend(LedgerEvent observation) {
         lock (_gate) {
-            try { Append(observation); _capacityReported = false; return true; }
+            FileStream admission;
+            try { admission = Admission(); }
+            catch (IOException) {
+                if (!_admissionReported) Console.Error.WriteLine("ledger-spool-admission-pending");
+                _admissionReported = true;
+                return false;
+            }
+            using var lease = admission;
+            _admissionReported = false;
+            try { AppendAdmitted(observation); _capacityReported = false; return true; }
             catch (SpoolCapacityException) {
                 if (!_capacityReported) Console.Error.WriteLine("ledger-spool-full-reconciliation-pending");
                 _capacityReported = true;
@@ -67,22 +77,26 @@ public sealed class ReporterSpool : IDisposable {
     public void Append(LedgerEvent observation) {
         lock (_gate) {
             using var admission = Admission();
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(observation, LedgerJson.Options);
-            if (bytes.Length + 2 > LedgerJson.MaximumBatchBytes) throw new InvalidDataException("Event exceeds the ingress byte bound; source retained for correction.");
-            var target = Path.Combine(_directory, $"{observation.Sequence:D20}-{observation.EventId:N}.json");
-            if (File.Exists(target)) {
-                var existing = JsonSerializer.Deserialize<LedgerEvent>(File.ReadAllText(target), LedgerJson.Options);
-                if (!JsonSerializer.SerializeToUtf8Bytes(existing, LedgerJson.Options).AsSpan().SequenceEqual(bytes)) throw new InvalidDataException("Conflicting spool event.");
-                return;
-            }
-            if (Directory.EnumerateFiles(_directory, "*.json*").Sum(x => new FileInfo(x).Length) + bytes.Length > _maximumBytes)
-                throw new SpoolCapacityException();
-            var temporary = target + ".tmp";
-            using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None)) {
-                stream.Write(bytes); stream.Flush(true);
-            }
-            File.Move(temporary, target);
+            AppendAdmitted(observation);
         }
+    }
+
+    private void AppendAdmitted(LedgerEvent observation) {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(observation, LedgerJson.Options);
+        if (bytes.Length + 2 > LedgerJson.MaximumBatchBytes) throw new InvalidDataException("Event exceeds the ingress byte bound; source retained for correction.");
+        var target = Path.Combine(_directory, $"{observation.Sequence:D20}-{observation.EventId:N}.json");
+        if (File.Exists(target)) {
+            var existing = JsonSerializer.Deserialize<LedgerEvent>(File.ReadAllText(target), LedgerJson.Options);
+            if (!JsonSerializer.SerializeToUtf8Bytes(existing, LedgerJson.Options).AsSpan().SequenceEqual(bytes)) throw new InvalidDataException("Conflicting spool event.");
+            return;
+        }
+        if (Directory.EnumerateFiles(_directory, "*.json*").Sum(x => new FileInfo(x).Length) + bytes.Length > _maximumBytes)
+            throw new SpoolCapacityException();
+        var temporary = target + ".tmp";
+        using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None)) {
+            stream.Write(bytes); stream.Flush(true);
+        }
+        File.Move(temporary, target);
     }
 
     public LedgerEvent[] Pending(int limit = LedgerJson.MaximumBatchEvents) {
@@ -104,8 +118,13 @@ public sealed class ReporterSpool : IDisposable {
     }
 
     public void Acknowledge(IEnumerable<Guid> ids) {
-        lock (_gate) foreach (var id in ids) {
-            foreach (var file in Directory.EnumerateFiles(_directory, "*-" + id.ToString("N") + ".json")) File.Delete(file);
+        lock (_gate) {
+            using var admission = Admission();
+            var acknowledged = ids.ToHashSet();
+            foreach (var file in Directory.EnumerateFiles(_directory, "*.json")) {
+                var name = Path.GetFileNameWithoutExtension(file);
+                if (Guid.TryParseExact(name[(name.LastIndexOf('-') + 1)..], "N", out var id) && acknowledged.Contains(id)) File.Delete(file);
+            }
         }
     }
 
