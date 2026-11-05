@@ -188,6 +188,7 @@ public sealed class AgentWorkIncrementalTests : IDisposable {
         var nested = Path.Combine(directory, "nested", "child");
         Directory.CreateDirectory(nested);
         File.WriteAllText(Path.Combine(nested, "rollout-added.jsonl"), Meta("added") + Event("task_complete"));
+        Directory.SetLastWriteTimeUtc(directory, stamp.AddSeconds(2)); // This half exercises changed membership; the watcher backstop covers unchanged stamps.
         collection.Reconcile(new[] { Root }, _now, default);
         Assert.Equal(2, collection.Snapshot(Array.Empty<AgentSessionState>(), _now).Sessions.Count);
     }
