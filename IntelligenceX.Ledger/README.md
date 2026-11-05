@@ -87,7 +87,9 @@ The local PR catalog holds up to 1,000 refreshable identities. Saturation report
 
 ## Optional low-latency hints
 
-`hook --config reporter.json` reads one bounded JSON payload from stdin and appends a metadata-only hint. `notify --config chain.json <payload>` first invokes the exact configured incumbent command with the original payload, then appends the hint. Chain configuration contains `incumbent` (an argument array) and `reporterConfig` (the reporter configuration path). The incumbent exit status is preserved. A Stop or tool call is a reconciliation hint and does not establish task completion or a pending question.
+`hook --config reporter.json` reads one bounded JSON payload from stdin and appends a metadata-only hint. An existing notifier can forward its payload as the final argument with `hook --config reporter.json <payload>`. This lets that notifier retain its incumbent callback while Ledger records the hint.
+
+`notify --config chain.json <payload>` first invokes the exact configured incumbent command with the original payload, then appends the hint. Chain configuration contains `incumbent` (an argument array) and `reporterConfig` (the reporter configuration path). The incumbent exit status is preserved. A Stop or tool call is a reconciliation hint and does not establish task completion or a pending question.
 
 Normal service and reporter startup does not register client hooks or change client settings. Review the local configuration merge when adding hint commands. Keep existing hooks and notification behavior intact.
 

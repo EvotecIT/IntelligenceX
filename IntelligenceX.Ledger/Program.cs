@@ -11,6 +11,8 @@ namespace IntelligenceX.Ledger;
 
 public static class Program {
     public static async Task<int> Main(string[] args) {
+        if (args.Length == 4 && args[0] == "hook" && args[1] == "--config")
+            return await LocalReporter.RunAsync(args[2], hook: true, suppliedPayload: args[3]);
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
             return await LocalReporter.RunNotifyChainAsync(args[2], args[3]);
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {
