@@ -24,7 +24,10 @@ internal sealed partial class LedgerRuntime {
                 var items = await ItemsAsync(now, token);
                 var current = items.Where(item => item.Work?.ActiveClaim == true || item.Current?.Hold is { Type: not "observation-gap" } ||
                     item.Session?.Archived != true && (item.Session?.TurnOpen == true ||
-                        item.Declarations.Values.Any(x => !x.Fact.Resolved && LedgerScope.Applies(x.Fact.Scope, item.Scope, item.Session?.TurnId)) ||
+                        LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(x =>
+                            LedgerScope.Applies(x.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
+                            (x.Fact.CandidateRef is null || item.CandidateRef is null || x.Fact.CandidateRef == item.CandidateRef)))
+                            .Any(x => !x.Fact.Resolved) ||
                         item.Session?.LastActivityAtUtc >= now.AddDays(-1) ||
                         item.Deliveries.Values.Any(x => x.LastStageOrderAtUtc >= now.AddDays(-1))))
                     .OrderBy(item => Priority(item.Current!.Value)).ThenByDescending(item => item.Current!.LastProgressAtUtc)

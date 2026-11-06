@@ -7,6 +7,48 @@ using Xunit;
 namespace IntelligenceX.Ledger.Tests;
 
 public sealed class LedgerWorkProjectionTests {
+    [Theory]
+    [InlineData("resolved-retry", false)]
+    [InlineData("resolved-candidate", false)]
+    [InlineData("current-turn", true)]
+    public async Task CurrentWorkUsesTheCurrentScopedDeclarationEpisode(string scenario, bool included) {
+        var root = LedgerTestPaths.NewDirectory("declaration-membership");
+        try {
+            using var store = new LedgerStore(Path.Combine(root, "ledger.sqlite"), new(new()));
+            await store.InitializeAsync();
+            var now = new DateTimeOffset(2026, 1, 12, 12, 0, 0, TimeSpan.Zero);
+            var old = now.AddDays(-4);
+            var scope = new TaskScope("synthetic-task", 1, "synthetic-turn");
+            var opening = new WorkerDeclaration { Id = "synthetic-opening", EpisodeId = "synthetic-first", Scope = scope,
+                CheckpointRef = "synthetic-checkpoint", ConditionRef = "synthetic-condition", Kind = "operation",
+                NextActor = "worker", Blocking = true, RecordedAtUtc = old, ReviewAfterUtc = now.AddHours(1),
+                CandidateRef = scenario == "resolved-candidate" ? "synthetic-old-candidate" : null };
+            var observation = new LedgerEvent { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Sequence = 2,
+                ReporterId = "synthetic-reporter", MachineId = "synthetic-machine", ItemId = "synthetic-item",
+                Provider = "codex", Source = "evidence", ObservedAtUtc = old, Declaration = opening };
+            if (scenario != "current-turn") await store.IngestAsync([observation with { EventId = Guid.NewGuid(), Sequence = 1,
+                Declaration = null, Session = new() { Scope = scope, TurnId = scope.TurnId, TurnOpen = false,
+                    Outcome = "completed", TurnEndedAtUtc = old, LastActivityAtUtc = old } }], old);
+            await store.IngestAsync([observation], old);
+            if (scenario != "current-turn") {
+                await store.IngestAsync([observation with { EventId = Guid.NewGuid(), Sequence = 3,
+                    ObservedAtUtc = old.AddHours(1), Declaration = opening with {
+                        Id = "synthetic-resolution", EpisodeId = "synthetic-second", RecordedAtUtc = old.AddHours(1),
+                        CandidateRef = scenario == "resolved-candidate" ? "synthetic-new-candidate" : null, Resolved = true } }], old.AddHours(1));
+            }
+            await store.IngestAsync([observation with { EventId = Guid.NewGuid(), Sequence = 4, ItemId = "machine",
+                Provider = "machine", Declaration = null, ObservedAtUtc = now, Heartbeat = true }], now);
+            var settings = new LedgerSettings { DataDirectory = root, ReadToken = new('r', 32), WriteToken = new('w', 32),
+                ExpectedReporters = new() { ["synthetic-machine"] = ["synthetic-reporter"] } };
+
+            var view = await new LedgerRuntime(store, settings).WorkAsync(new ProjectContextService(null), now, default);
+
+            Assert.Equal(included ? 1 : 0, view.Items.Length);
+            if (included) Assert.Equal("active", Assert.Single(view.Items).Item.ReasonCode);
+            Assert.Single(await store.EvaluateAllAsync(now));
+        } finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     [Fact]
     public async Task HistoricalObservationGapsStayOutOfCurrentWorkWhileRecentUnknownAndClaimedArchivedWorkRemain() {
         var root = Path.Combine(Path.GetTempPath(), "ledger-work-membership-" + Guid.NewGuid().ToString("N"));
