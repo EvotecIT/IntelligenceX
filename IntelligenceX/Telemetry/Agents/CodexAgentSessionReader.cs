@@ -99,7 +99,7 @@ internal static class CodexAgentSessionReader {
                         case "item_completed":
                             var item = Object(payload, "item");
                             var questionId = Text(item, "id");
-                            var count = CodexQuestionReplies.QuestionCount(item);
+                            var count = CodexQuestionReplies.QuestionCount(item, diagnostic);
                             if (Text(item, "type") == "AgentMessage" && Text(item, "delivery") == "async"
                                 && questionId is not null && count > 0 && !questions.ContainsKey(questionId)) {
                                 questions = new Dictionary<string, bool[]>(questions) { [questionId] = new bool[count] };

@@ -16,6 +16,29 @@ public sealed class AgentWorkEvidenceTests : IDisposable {
     private SourceRootRecord Root(string provider) => new("evidence-" + provider, provider, UsageSourceKind.LocalLogs, _directory);
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OversizedQuestionCounts_ReportTheRecordWithoutRetainingAnswerArrays(bool largeRecord) {
+        Directory.CreateDirectory(Path.GetDirectoryName(CodexLog)!);
+        var questions = largeRecord ? "\"questions\":[" + string.Join(",", Enumerable.Repeat("{}", 65)) + "]"
+            : "\"questionCount\":65";
+        var item = "{\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"item\":{\"type\":\"AgentMessage\",\"id\":\"bad\",\"delivery\":\"async\","
+            + questions + (largeRecord ? ",\"ignored\":\"" + new string('x', 300 * 1024) + "\"" : "") + "}}}\n";
+        File.WriteAllText(CodexLog, Meta + Event("task_started") + Call("bad", "functions.request_user_input_async")
+            + item + Call("good", "functions.request_user_input_async")
+            + "{\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"item\":{\"type\":\"AgentMessage\",\"id\":\"good\",\"delivery\":\"async\",\"questions\":[{}]}}}\n");
+        var cache = new InMemoryRawArtifactStore();
+        var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, _now,
+            options: new AgentWorkOptions { Cache = cache });
+        Assert.Equal(new[] { "bad", "good" }, Assert.Single(snapshot.Sessions).PendingInputs.Select(input => input.Id));
+        Assert.Equal("malformed-record", Assert.Single(snapshot.Diagnostics).Code);
+        using var saved = System.Text.Json.JsonDocument.Parse(Assert.Single(cache.GetAll()).StateJson!);
+        var answers = saved.RootElement.GetProperty("State").GetProperty("AsyncQuestions");
+        Assert.False(answers.TryGetProperty("bad", out _));
+        Assert.Equal(1, answers.GetProperty("good").GetArrayLength());
+    }
+
+    [Theory]
     [InlineData("codex")]
     [InlineData("claude")]
     public void MissingRequestIdentifiers_PreserveEachUnconfirmedQuestion(string provider) {

@@ -10,12 +10,18 @@ namespace IntelligenceX.Telemetry.Agents;
 internal static class CodexQuestionReplies {
     internal const string Opening = "<send_user_message_question_reply>";
     internal const string Closing = "</send_user_message_question_reply>";
+    private const int MaximumQuestionsPerRequest = 64;
 
-    internal static int QuestionCount(JsonElement item) {
+    internal static int QuestionCount(JsonElement item, Action<string> diagnostic) {
         var projected = Object(item, "questionCount");
-        if (projected.ValueKind == JsonValueKind.Number && projected.TryGetInt32(out var count)) return count;
         var questions = Object(item, "questions");
-        return questions.ValueKind == JsonValueKind.Array ? questions.GetArrayLength() : 0;
+        var count = projected.ValueKind == JsonValueKind.Number && projected.TryGetInt32(out var value) ? value
+            : questions.ValueKind == JsonValueKind.Array ? questions.GetArrayLength() : 0;
+        if (count < 0 || count > MaximumQuestionsPerRequest) {
+            diagnostic("malformed-record");
+            return 0;
+        }
+        return count;
     }
 
     internal static IEnumerable<(string CallId, int Index)> Read(JsonElement payload, Action<string> diagnostic) {

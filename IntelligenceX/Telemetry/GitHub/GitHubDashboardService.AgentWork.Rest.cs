@@ -123,6 +123,7 @@ public sealed partial class GitHubDashboardService {
         foreach (var run in runs.EnumerateArray()) {
             var next = ReadString(run, "status") != "completed" ? AgentCheckState.Pending : ReadString(run, "conclusion") switch {
                 "success" or "neutral" or "skipped" => AgentCheckState.Success,
+                "stale" => AgentCheckState.Pending,
                 "failure" or "timed_out" or "cancelled" or "action_required" or "startup_failure" => AgentCheckState.Failure,
                 _ => AgentCheckState.Unknown
             };

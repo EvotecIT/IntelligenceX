@@ -15,23 +15,31 @@ namespace IntelligenceX.UnitTests;
 
 public sealed class GitHubAgentWorkTests {
     [Theory]
-    [InlineData("success", AgentCheckState.Unknown)]
-    [InlineData("failure", AgentCheckState.Failure)]
-    public async Task UnrecognizedCheckConclusions_CannotTurnAPartialRollupGreen(string known, AgentCheckState expected) {
+    [InlineData("success", null, AgentCheckState.Unknown, true)]
+    [InlineData("failure", null, AgentCheckState.Failure, true)]
+    [InlineData("success", "stale", AgentCheckState.Pending, false)]
+    [InlineData("failure", "stale", AgentCheckState.Failure, false)]
+    public async Task CheckConclusions_DistinguishStaleFromUnavailableResults(string known, string? conclusion, AgentCheckState expected, bool unavailable) {
         using var http = new HttpClient(new Handler(request => {
             var path = request.RequestUri!.AbsolutePath;
             return Task.FromResult(path == "/search/issues" ? Search("1")
                 : path.Contains("/pulls/", StringComparison.Ordinal) ? Pull("1", "sample", "Sample/Project")
                 : path.EndsWith("/status", StringComparison.Ordinal) ? Json("{\"total_count\":0}")
-                : Json("{\"check_runs\":[{\"status\":\"completed\",\"conclusion\":\"" + known + "\"},{\"status\":\"completed\",\"conclusion\":null}]}"));
+                : Json("{\"check_runs\":[{\"status\":\"completed\",\"conclusion\":\"" + known + "\"},{\"status\":\"completed\",\"conclusion\":"
+                    + JsonSerializer.Serialize(conclusion) + "}]}"));
         })) { BaseAddress = new Uri("https://api.github.com/") };
         using var service = new GitHubDashboardService(http, disposeHttpClient: false);
         var snapshot = await service.EnrichAgentWorkAsync(new AgentWorkSnapshot(), "sample");
         var pr = Assert.Single(snapshot.PullRequests);
         Assert.Equal(expected, pr.Checks);
-        Assert.True(pr.ChecksUnavailable);
-        Assert.Equal("checks-unavailable", Assert.Single(snapshot.Diagnostics).Code);
-        Assert.Null(snapshot.GitHubCheckedAtUtc);
+        Assert.Equal(unavailable, pr.ChecksUnavailable);
+        if (unavailable) {
+            Assert.Equal("checks-unavailable", Assert.Single(snapshot.Diagnostics).Code);
+            Assert.Null(snapshot.GitHubCheckedAtUtc);
+        } else {
+            Assert.Empty(snapshot.Diagnostics);
+            Assert.NotNull(snapshot.GitHubCheckedAtUtc);
+        }
     }
     [Theory]
     [InlineData(false)]
