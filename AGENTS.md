@@ -114,6 +114,7 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 - When proactive behavior is needed, use structured prompt markers (for example `ix:proactive-mode:v1` with `enabled: true|false`) instead of lexical intent detection.
 
 **Testing**
+- Before adding or changing tests, read the shared [test-audit authoring gate](https://github.com/EvotecIT/CodexProfile/blob/main/skills/test-audit/SKILL.md#authoring-gate) and [contract-focused tests](https://github.com/EvotecIT/CodexProfile/blob/main/skills/contract-focused-tests/SKILL.md).
 - Run targeted `dotnet build` or tests if a change touches runtime behavior.
 - Note any skipped tests and why.
 - For Chat routing tests, prefer direct calls to `internal` helpers (via existing `InternalsVisibleTo`) instead of reflection against private methods.

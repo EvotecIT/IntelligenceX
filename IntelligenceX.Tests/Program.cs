@@ -55,6 +55,10 @@ internal static partial class Program {
         failed += Run("EasySession forwards native media and auth settings", TestEasySessionBuildClientOptionsCarriesNativeMediaAndAuthSettings);
         failed += Run("EasySession forwards usage telemetry settings", TestEasySessionBuildClientOptionsCarriesUsageTelemetrySettings);
         failed += Run("Usage telemetry stable source root id normalizes paths", TestUsageTelemetryStableSourceRootIdNormalizesPaths);
+        failed += Run("Codex work metadata reads only declared fields without changing the database", TestCodexAgentWorkMetadataReadOnly);
+#if !NET472
+        failed += Run("Agent status CLI returns metadata JSON and validates options", TestAgentStatusCliJson);
+#endif
         failed += Run("Usage telemetry dedupe prefers account session turn", TestUsageTelemetryDedupePrefersAccountSessionTurn);
         failed += Run("Usage conversation summary builder groups raw conversation rows",
             TestUsageConversationSummaryBuilderGroupsRawConversationRows);

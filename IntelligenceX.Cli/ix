@@ -1,0 +1,2 @@
+#!/bin/sh
+exec dotnet "$(dirname "$0")/IntelligenceX.Cli.dll" "$@"

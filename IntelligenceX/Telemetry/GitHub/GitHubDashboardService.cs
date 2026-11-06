@@ -15,7 +15,7 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// <summary>
 /// Native GitHub dashboard service for shared observability scenarios.
 /// </summary>
-public sealed class GitHubDashboardService : IDisposable {
+public sealed partial class GitHubDashboardService : IDisposable {
     private const int MaxDashboardCacheEntries = 32;
     private static readonly object DashboardCacheGate = new();
     private static readonly Dictionary<string, DashboardCacheEntry> DashboardCache = new(StringComparer.Ordinal);
