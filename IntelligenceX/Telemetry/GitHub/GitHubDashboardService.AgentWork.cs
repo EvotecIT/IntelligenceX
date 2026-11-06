@@ -22,31 +22,27 @@ public sealed partial class GitHubDashboardService {
         TimeSpan? staleAfter = null, CancellationToken cancellationToken = default) {
         if (local is null) throw new ArgumentNullException(nameof(local));
         if (staleAfter.HasValue && staleAfter.Value <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(staleAfter));
-        IReadOnlyList<AgentPullRequestState> prs;
+        IReadOnlyList<AgentPullRequestState> prs = local.PullRequests;
         string? diagnostic = null;
         try {
             prs = await FetchAgentPullRequestsAsync(login, cancellationToken).ConfigureAwait(false);
         } catch (OperationCanceledException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-timeout";
         } catch (HttpRequestException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-failed";
         } catch (IOException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-failed";
         } catch (InvalidOperationException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-failed";
         } catch (JsonException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-failed";
         }
         var diagnostics = diagnostic is null ? local.Diagnostics : local.Diagnostics.Concat(new[] {
             new AgentSourceDiagnostic { Provider = "github", Code = diagnostic }
         }).ToArray();
+        if (diagnostic is not null) return local with { Diagnostics = diagnostics };
         return AgentWorkStateRules.Evaluate(local.Sessions, prs, local.CapturedAtUtc, staleAfter, diagnostics) with {
-            Scan = local.Scan, GitHubCheckedAtUtc = diagnostic is null ? DateTimeOffset.UtcNow : local.GitHubCheckedAtUtc
+            Scan = local.Scan, MetadataCheckedAtUtc = local.MetadataCheckedAtUtc, GitHubCheckedAtUtc = DateTimeOffset.UtcNow
         };
     }
 

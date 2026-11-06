@@ -15,6 +15,54 @@ public sealed class AgentWorkEvidenceTests : IDisposable {
     private string CodexLog => Path.Combine(_directory, "sessions", "rollout-fake.jsonl");
     private SourceRootRecord Root(string provider) => new("evidence-" + provider, provider, UsageSourceKind.LocalLogs, _directory);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Codex_DesktopRepliesResolveOnlyFullyAnsweredMatchingCallsAcrossCacheTails(bool largeAnswer) {
+        Directory.CreateDirectory(Path.GetDirectoryName(CodexLog)!);
+        string Completed(string id, int count) => System.Text.Json.JsonSerializer.Serialize(new {
+            type = "event_msg", payload = new { type = "item_completed", item = new {
+                type = "AgentMessage", id, delivery = "async",
+                questions = Enumerable.Range(0, count).Select(_ => new { title = "private sentinel" }).ToArray()
+            }}
+        }) + "\n";
+        string Reply(string id, int index) {
+            var body = System.Text.Json.JsonSerializer.Serialize(new[] { new {
+                questionItemId = System.Text.Json.JsonSerializer.Serialize(new object[] { "request_user_input_async", id, index }),
+                question = "private sentinel", answer = largeAnswer ? new string('x', 4 * 1024 * 1024) + "private sentinel 中文 🚀" : "private sentinel"
+            }});
+            return System.Text.Json.JsonSerializer.Serialize(new {
+                type = "response_item", payload = new { type = "message", role = "user", content = new[] {
+                    new { type = "input_text", text = "<send_user_message_question_reply>\n" + body + "\n</send_user_message_question_reply>" }
+                }}
+            }) + "\n";
+        }
+        File.WriteAllText(CodexLog, Meta + Event("task_started")
+            + Call("pair", "functions.request_user_input_async") + Completed("pair", 2) + Output("pair")
+            + Call("other", "functions.request_user_input_async") + Completed("other", 1));
+        var cache = new InMemoryRawArtifactStore();
+        AgentWorkSnapshot Read() => LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, _now,
+            options: new AgentWorkOptions { Cache = cache });
+        Assert.Equal(2, Assert.Single(Read().Sessions).PendingInputs.Count);
+        File.AppendAllText(CodexLog, Reply("unknown", 0) + Reply("pair", 1) + Reply("pair", 1));
+        var partial = Read();
+        Assert.Equal(2, Assert.Single(partial.Sessions).PendingInputs.Count);
+        Assert.Equal(1, partial.Scan!.FilesTailed);
+        File.AppendAllText(CodexLog, Reply("pair", 0));
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var resolved = Read();
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal("other", Assert.Single(Assert.Single(resolved.Sessions).PendingInputs).Id);
+        Assert.Equal("other", Assert.Single(resolved.NeedsAttention).InputId);
+        Assert.Equal(AgentWorkState.Running, resolved.Sessions[0].State);
+        Assert.Equal(1, resolved.Scan!.FilesTailed);
+        Assert.Empty(resolved.Diagnostics);
+        Assert.True(allocated < 1024 * 1024, "Reply bodies must not be materialized while extracting identities.");
+        Assert.DoesNotContain("private sentinel", AgentWorkJson.Serialize(resolved));
+        Assert.DoesNotContain("private sentinel", Assert.Single(cache.GetAll()).StateJson!);
+        Assert.Equal("other", Assert.Single(Assert.Single(Read().Sessions).PendingInputs).Id);
+    }
+
     [Fact]
     public void Codex_AsyncAcknowledgementAndUnrelatedActivityDoNotAnswerQuestions() {
         Directory.CreateDirectory(Path.GetDirectoryName(CodexLog)!);

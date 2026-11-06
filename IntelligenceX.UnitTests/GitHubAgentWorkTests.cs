@@ -36,20 +36,38 @@ public sealed class GitHubAgentWorkTests {
     [Theory]
     [InlineData(true, "request-timeout")]
     [InlineData(false, "request-failed")]
-    public async Task OptionalEnrichment_PreservesLocalJsonWhenRemoteSourceFails(bool timeout, string diagnostic) {
+    [InlineData(false, null)]
+    public async Task OptionalEnrichment_PreservesObservedWorkOnFailureAndMetadataFreshnessOnSuccess(bool timeout, string? diagnostic) {
         var local = AgentWorkStateRules.Evaluate(new[] {
-            new AgentSessionState { Provider = "codex", Id = "local-session", Title = "Local work", State = AgentWorkState.WaitingOnPerson }
-        }, Array.Empty<AgentPullRequestState>(), DateTimeOffset.Parse("2026-11-01T12:00:00Z"));
+            new AgentSessionState { Provider = "codex", Id = "local-session", Title = "Local work", State = AgentWorkState.WaitingOnPerson,
+                Repository = "Sample/Project", Branch = "feature/work" }
+        }, new[] { new AgentPullRequestState { Url = "https://github.com/Sample/Project/pull/1", HeadRepository = "Sample/Project",
+            Branch = "feature/work", Checks = AgentCheckState.Failure, ReviewRequested = true, IsAuthor = true } }, DateTimeOffset.Parse("2026-11-01T12:00:00Z"))
+            with { MetadataCheckedAtUtc = DateTimeOffset.Parse("2026-11-01T11:59:00Z"), GitHubCheckedAtUtc = DateTimeOffset.Parse("2026-11-01T11:58:00Z") };
         using var http = new HttpClient(new Handler(_ => timeout
             ? Task.FromException<HttpResponseMessage>(new TaskCanceledException("private sentinel"))
-            : Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = new StringContent("private sentinel") }))) {
+            : Task.FromResult(diagnostic is null ? Search(null)
+                : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { Content = new StringContent("private sentinel") }))) {
             BaseAddress = new Uri("https://api.github.com/")
         };
         using var service = new GitHubDashboardService(http, disposeHttpClient: false);
         var partial = await service.EnrichAgentWorkAsync(local, "sample");
         Assert.Equal("local-session", Assert.Single(partial.Sessions).Id);
-        Assert.Equal(AgentAttentionKind.WaitingOnPerson, Assert.Single(partial.NeedsAttention).Kind);
-        Assert.Equal(diagnostic, Assert.Single(partial.Diagnostics).Code);
+        Assert.Equal(local.MetadataCheckedAtUtc, partial.MetadataCheckedAtUtc);
+        if (diagnostic is null) {
+            Assert.Equal(AgentAttentionKind.WaitingOnPerson, Assert.Single(partial.NeedsAttention).Kind);
+            Assert.Empty(partial.Diagnostics);
+            Assert.Empty(partial.PullRequests);
+            Assert.True(partial.GitHubCheckedAtUtc > local.GitHubCheckedAtUtc);
+        } else {
+            Assert.Equal(local.GitHubCheckedAtUtc, partial.GitHubCheckedAtUtc);
+            Assert.Same(local.PullRequests, partial.PullRequests);
+            Assert.Same(local.Sessions, partial.Sessions);
+            Assert.Same(local.NeedsAttention, partial.NeedsAttention);
+            Assert.Contains(partial.NeedsAttention, item => item.Kind == AgentAttentionKind.FailedChecks);
+            Assert.Contains(partial.NeedsAttention, item => item.Kind == AgentAttentionKind.ReviewRequested);
+            Assert.Equal(diagnostic, Assert.Single(partial.Diagnostics).Code);
+        }
         var json = AgentWorkJson.Serialize(partial);
         var decoded = JsonSerializer.Deserialize(json, AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
         Assert.Equal("local-session", Assert.Single(decoded.Sessions).Id);

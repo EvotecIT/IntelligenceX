@@ -20,6 +20,7 @@ internal static class CodexAgentSessionReader {
         };
         var active = previous?.Active ?? false;
         var hasSessionMetadata = previous?.HasSessionMetadata ?? false;
+        var questions = previous?.AsyncQuestions ?? new Dictionary<string, bool[]>();
         window ??= new AgentSessionReadWindow();
         window.Checkpoint = previous ?? new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata };
         foreach (var document in AgentSessionMetadataProjection.Read(path, diagnostic, cancellationToken, window)) {
@@ -89,6 +90,15 @@ internal static class CodexAgentSessionReader {
                             active = false;
                             session = session with { State = AgentWorkState.Finished };
                             break;
+                        case "item_completed":
+                            var item = Object(payload, "item");
+                            var questionId = Text(item, "id");
+                            var count = CodexQuestionReplies.QuestionCount(item);
+                            if (Text(item, "type") == "AgentMessage" && Text(item, "delivery") == "async"
+                                && questionId is not null && count > 0 && !questions.ContainsKey(questionId)) {
+                                questions = new Dictionary<string, bool[]>(questions) { [questionId] = new bool[count] };
+                            }
+                            break;
                     }
                 } else if (type == "response_item") {
                     var itemType = Text(payload, "type");
@@ -101,12 +111,23 @@ internal static class CodexAgentSessionReader {
                     } else if (itemType is "function_call_output" or "custom_tool_call_output") {
                         var updated = AgentInputRequests.CompleteBlocking(session, Text(payload, "call_id"));
                         if (!ReferenceEquals(updated, session)) { session = updated; active = true; }
+                    } else if (itemType == "message" && Text(payload, "role") == "user") {
+                        foreach (var reply in CodexQuestionReplies.Read(payload)) {
+                            if (!questions.TryGetValue(reply.CallId, out var answered) || reply.Index < 0 || reply.Index >= answered.Length) continue;
+                            var updatedAnswers = (bool[])answered.Clone();
+                            updatedAnswers[reply.Index] = true;
+                            questions = new Dictionary<string, bool[]>(questions) { [reply.CallId] = updatedAnswers };
+                            if (Array.TrueForAll(updatedAnswers, static value => value)) {
+                                session = AgentInputRequests.CompleteAsync(session, reply.CallId);
+                                questions.Remove(reply.CallId);
+                            }
+                        }
                     }
                 }
             }
-            if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata };
+            if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, AsyncQuestions = questions };
         }
-        return new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata };
+        return new AgentSessionParserState { Session = session, Active = active, HasSessionMetadata = hasSessionMetadata, AsyncQuestions = questions };
     }
 
     private static bool IsArchivedPath(string path) {

@@ -45,7 +45,8 @@ internal static partial class Program {
             AssertEqual(false, json.Contains("private sentinel"), "no message projection");
             AssertEqual(false, json.Contains("private-sentinel"), "no remote credentials");
             File.WriteAllText(Path.Combine(directory, "session_index.jsonl"), """{"id":"fake","thread_name":"Explicit name"}""");
-            var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { root }, codexMetadata: sessions);
+            var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { root },
+                nowUtc: DateTimeOffset.FromUnixTimeSeconds(1793527260), codexMetadata: sessions);
             AssertEqual("Explicit name", snapshot.Sessions.Single().Title, "explicit name survives database enrichment");
         } finally {
             Directory.Delete(directory, recursive: true);

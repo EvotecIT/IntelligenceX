@@ -21,4 +21,7 @@ internal static class AgentInputRequests {
         return session with { State = AgentWorkState.Idle,
             PendingInputs = session.PendingInputs.Where(input => input.Id != id || !input.IsBlocking).ToArray() };
     }
+
+    internal static AgentSessionState CompleteAsync(AgentSessionState session, string id) =>
+        session with { PendingInputs = session.PendingInputs.Where(input => input.Id != id || input.IsBlocking).ToArray() };
 }
