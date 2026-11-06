@@ -42,6 +42,7 @@ internal sealed class UsageDirectorySnapshotCache {
         if (!info.Exists) { _entries.Remove(directory); return Entry.Empty; }
         var now = _scanAtUtc ?? DateTimeOffset.UtcNow;
         if (_entries.TryGetValue(directory, out var previous) && previous.Stamp == info.LastWriteTimeUtc
+            && previous.Files.All(File.Exists) && previous.Directories.All(Directory.Exists)
             && now >= previous.ListedAtUtc && now - previous.ListedAtUtc < MaximumMembershipAge) return previous;
         var entry = new Entry(info.LastWriteTimeUtc, now,
             _readFiles(directory).Select(Path.GetFullPath).ToArray(),

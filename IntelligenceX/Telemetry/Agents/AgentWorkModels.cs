@@ -73,18 +73,38 @@ public sealed record AgentSessionState {
     public DateTimeOffset? LastActivityAtUtc { get; init; }
     /// <summary>Outcome of the latest turn, distinct from the session lifecycle.</summary>
     public AgentTurnOutcome LastTurnOutcome { get; init; }
+    /// <summary>Whether a provider turn is known to be open; null before any turn evidence.</summary>
+    public bool? TurnOpen { get; init; }
+    /// <summary>Provider turn identity or its first structured record identity. Null when the source does not expose either.</summary>
+    public string? TurnId { get; init; }
+    /// <summary>Start of the most recently observed turn, independent of session creation.</summary>
+    public DateTimeOffset? TurnStartedAtUtc { get; init; }
+    /// <summary>Explicit terminal timestamp of the latest turn; null while it is open.</summary>
+    public DateTimeOffset? TurnEndedAtUtc { get; init; }
+    /// <summary>Latest provider turn activity, excluding Desktop/title metadata refreshes.</summary>
+    public DateTimeOffset? LastTurnActivityAtUtc { get; init; }
     /// <summary>Controlled cause for the latest failure/interruption; never derived from prose.</summary>
     public AgentFailureCause FailureCause { get; init; }
     /// <summary>Evidence supporting FailureCause, including an unknown terminal failure.</summary>
     public AgentFailureEvidence FailureEvidence { get; init; }
     /// <summary>Unresolved questions/approvals, including nonblocking requests during running work.</summary>
     public IReadOnlyList<AgentPendingInput> PendingInputs { get; init; } = Array.Empty<AgentPendingInput>();
+    /// <summary>Explicit provider answers correlated to known requests; absence from PendingInputs alone is not a resolution.</summary>
+    public IReadOnlyList<AgentInputResolution> ResolvedInputs { get; init; } = Array.Empty<AgentInputResolution>();
     /// <summary>Sources contributing state/activity metadata; title-only records do not establish liveness.</summary>
     public AgentObservationSources ObservationSources { get; init; }
     /// <summary>When session-log state was last parsed; cache reuse does not advance it. Desktop refresh time is on the snapshot.</summary>
     public DateTimeOffset? ObservedAtUtc { get; init; }
     /// <summary>Matching open pull requests, linked only by repository and exact head branch.</summary>
     public IReadOnlyList<AgentPullRequestState> PullRequests { get; init; } = Array.Empty<AgentPullRequestState>();
+}
+
+/// <summary>Identity of a request answered through its matching provider response.</summary>
+public sealed record AgentInputResolution {
+    /// <summary>Provider request identifier within this session.</summary>
+    public string Id { get; init; } = string.Empty;
+    /// <summary>Original request turn, when available.</summary>
+    public string? TurnId { get; init; }
 }
 
 /// <summary>Open GitHub work authored by, or requesting review from, the selected user.</summary>
@@ -101,6 +121,8 @@ public sealed record AgentPullRequestState {
     public string Branch { get; init; } = string.Empty;
     /// <summary>Whether the request remains open.</summary>
     public bool IsOpen { get; init; } = true;
+    /// <summary>Whether GitHub reports the request as merged; merged requests cannot reopen.</summary>
+    public bool IsMerged { get; init; }
     /// <summary>Whether the selected user authored this request.</summary>
     public bool IsAuthor { get; init; }
     /// <summary>Whether review is requested from the selected user, not merely from someone else.</summary>

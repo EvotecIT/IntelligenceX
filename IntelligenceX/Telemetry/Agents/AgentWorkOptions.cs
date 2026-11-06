@@ -5,6 +5,8 @@ namespace IntelligenceX.Telemetry.Agents;
 
 /// <summary>Controls local history selection and optional reuse of parsed, content-free observations.</summary>
 public sealed class AgentWorkOptions {
+    /// <summary>Limits watcher discovery to local logs, so a machine reporter cannot relabel recovered history.</summary>
+    public bool LocalSourcesOnly { get; init; }
     /// <summary>Recent activity window; defaults to two days. Null explicitly requests full history.</summary>
     public TimeSpan? ActiveWithin { get; init; } = TimeSpan.FromDays(2);
     /// <summary>Reconciles missed filesystem events and clock-based state changes; defaults to thirty seconds.</summary>

@@ -195,10 +195,10 @@ Shape it like the telemetry layer: a provider-neutral "agent session state" mode
 Consumers:
 
 - the IX tray dashboard (a "needs you" list next to the provider cards)
-- [Marquee](https://github.com/EvotecIT/Marquee), the touch strip host, which plans an agents tile and ambient-mode cards on top of this library rather than its own copy
+- native application views built on the shared library
 - digests and notifications (milestone 4) for "waiting on you" and "stale"
 
-Making the library usable from Marquee also means trimming and Native AOT compatibility for the parts it consumes.
+Native application integration also requires trimming and Native AOT compatibility for the consumed APIs.
 
 The read-only implementation is described in [Local work state and live updates](../agent-work-state.md): shared session metadata, Codex/Claude readers, GitHub PR and review signals, attention rules, generated JSON, and the in-process `AgentWorkWatcher`. Native consumers use a two-day default, safe JSONL append checkpoints and independent conditional GitHub refresh; the CLI remains a diagnostic surface. The 0.1.2 package candidate has a .NET 10 Native AOT consumer. Tray UI, package publication and cross-machine transport remain separate work.
 

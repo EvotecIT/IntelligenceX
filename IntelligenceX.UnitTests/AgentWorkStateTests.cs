@@ -71,7 +71,7 @@ public sealed class AgentWorkStateTests : IDisposable {
     [InlineData("request_user_input", "2026-11-01T11:59:00Z", AgentWorkState.WaitingOnPerson, AgentTurnOutcome.Unknown, false)]
     public void Codex_UsesStructuredLifecycle(string type, string timestamp, AgentWorkState state, AgentTurnOutcome outcome, bool inferred) {
         Write("sessions/rollout-fake.jsonl", CodexMeta + "\n" +
-            $$$"""{"timestamp":"{{{timestamp}}}","type":"event_msg","payload":{"type":"{{{type}}}","message":"private sentinel"}}""");
+            $$$"""{"timestamp":"{{{timestamp}}}","type":"event_msg","payload":{"type":"{{{type}}}","turn_id":"synthetic-turn","message":"private sentinel"}}""");
         var session = Assert.Single(Read("codex").Sessions);
         Assert.Equal("fake-session", session.Id);
         Assert.Equal("Sample/Project", session.Repository);
@@ -79,6 +79,7 @@ public sealed class AgentWorkStateTests : IDisposable {
         Assert.Equal(state, session.State);
         Assert.Equal(outcome, session.LastTurnOutcome);
         Assert.Equal(inferred, session.StateIsInferred);
+        if (type == "task_started") Assert.Equal("synthetic-turn", session.TurnId);
         Assert.DoesNotContain("private sentinel", AgentWorkJson.Serialize(Read("codex")));
     }
 
@@ -87,12 +88,14 @@ public sealed class AgentWorkStateTests : IDisposable {
         var path = "sessions/rollout-fake.jsonl";
         var prefix = CodexMeta + "\n" + """
             {"timestamp":"2026-11-01T11:58:00Z","type":"event_msg","payload":{"type":"turn_aborted"}}
-            {"timestamp":"2026-11-01T11:59:00Z","type":"event_msg","payload":{"type":"task_started"}}
+            {"timestamp":"2026-11-01T11:59:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"synthetic-input-turn"}}
             {"timestamp":"2026-11-01T11:59:01Z","type":"response_item","payload":{"type":"function_call","name":"functions.request_user_input","call_id":"ask","arguments":"private sentinel"}}
             {"timestamp":"2026-11-01T11:59:02Z","type":"response_item","payload":{"type":"function_call_output","call_id":"other","output":"private sentinel"}}
             """;
         Write(path, prefix);
-        Assert.Equal(AgentWorkState.WaitingOnPerson, Assert.Single(Read("codex").Sessions).State);
+        var waiting = Assert.Single(Read("codex").Sessions);
+        Assert.Equal(AgentWorkState.WaitingOnPerson, waiting.State);
+        Assert.Equal("synthetic-input-turn", Assert.Single(waiting.PendingInputs).TurnId);
         Write(path, prefix + "\n" + """
             {"timestamp":"2026-11-01T11:59:03Z","type":"response_item","payload":{"type":"function_call_output","call_id":"ask","output":"private sentinel"}}
             """);
@@ -148,16 +151,19 @@ public sealed class AgentWorkStateTests : IDisposable {
     public void Claude_UsesStopReasonsWithoutReadingText(string stop, AgentWorkState state, AgentTurnOutcome outcome) {
         Write("projects/sample/fake.jsonl", $$$"""
             {"type":"custom-title","sessionId":"claude-fake","customTitle":"Sample title"}
-            {"type":"user","sessionId":"claude-fake","cwd":"/unavailable/sample","gitBranch":"feature/work","timestamp":"2026-11-01T11:58:00Z","message":{"content":"private sentinel"}}
+            {"type":"user","uuid":"synthetic-first-record","sessionId":"claude-fake","cwd":"/unavailable/sample","gitBranch":"feature/work","timestamp":"2026-11-01T11:58:00Z","message":{"content":"private sentinel"}}
             {"type":"assistant","sessionId":"claude-fake","timestamp":"2026-11-01T11:59:00Z","message":{"stop_reason":"{{{stop}}}","content":[{"type":"text","text":"private sentinel"}]}}
             """);
         var snapshot = Read("claude");
         var session = Assert.Single(snapshot.Sessions);
         Assert.Equal("claude-fake", session.Id);
+        Assert.Equal("synthetic-first-record", session.TurnId);
         Assert.Equal("Sample title", session.Title);
         Assert.Equal("feature/work", session.Branch);
         Assert.Equal(state, session.State);
         Assert.Equal(outcome, session.LastTurnOutcome);
+        Assert.Equal(stop is not ("end_turn" or "stop_sequence" or "max_tokens"), session.TurnOpen);
+        if (session.TurnOpen == false) Assert.Equal(DateTimeOffset.Parse("2026-11-01T11:59:00Z"), session.TurnEndedAtUtc);
         Assert.DoesNotContain(snapshot.NeedsAttention, static item => item.Kind == AgentAttentionKind.WaitingOnPerson);
         Assert.DoesNotContain("private sentinel", AgentWorkJson.Serialize(snapshot));
     }

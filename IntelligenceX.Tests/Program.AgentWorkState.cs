@@ -45,9 +45,21 @@ internal static partial class Program {
             AssertEqual(false, json.Contains("private sentinel"), "no message projection");
             AssertEqual(false, json.Contains("private-sentinel"), "no remote credentials");
             File.WriteAllText(Path.Combine(directory, "session_index.jsonl"), """{"id":"fake","thread_name":"Explicit name"}""");
-            var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { root },
-                nowUtc: DateTimeOffset.FromUnixTimeSeconds(1793527260), codexMetadata: sessions);
+            var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { root }, nowUtc: DateTimeOffset.FromUnixTimeMilliseconds(1793527260123), codexMetadata: sessions);
             AssertEqual("Explicit name", snapshot.Sessions.Single().Title, "explicit name survives database enrichment");
+            var brokenDirectory = Path.Combine(directory, "synthetic-broken-root");
+            Directory.CreateDirectory(brokenDirectory);
+            File.WriteAllText(Path.Combine(brokenDirectory, "state_5.sqlite"), "synthetic invalid SQLite");
+            var broken = new SourceRootRecord("synthetic-broken", "codex", UsageSourceKind.LocalLogs, brokenDirectory);
+            var available = CodexAgentSessionMetadataReader.ReadAvailableAsync(new[] { broken, root }).GetAwaiter().GetResult();
+            AssertEqual(1, available.Sessions.Count, "readable root survives an unavailable sibling");
+            AssertEqual("fake", available.Sessions[0].Id, "available root identity");
+            AssertEqual(1, available.Diagnostics.Count, "one unavailable root diagnostic");
+            AssertEqual("synthetic-broken", available.Diagnostics[0].SourceRootId, "failure identifies its own root");
+            AssertEqual("unreadable-metadata", available.Diagnostics[0].Code, "controlled metadata failure");
+            AssertEqual<bool?>(null, available.Sessions[0].TurnOpen, "metadata alone leaves turn state unknown");
+            AssertEqual(AgentTurnOutcome.Unknown, available.Sessions[0].LastTurnOutcome, "archive state does not invent turn success");
+            AssertEqual(true, before.SequenceEqual(File.ReadAllBytes(path)), "partial collection preserves readable database bytes");
         } finally {
             Directory.Delete(directory, recursive: true);
         }

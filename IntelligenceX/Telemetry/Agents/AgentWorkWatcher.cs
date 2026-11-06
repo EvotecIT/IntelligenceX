@@ -48,6 +48,8 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
     private bool _disposed;
     private int _reconcileRequested;
     private int _rearmRequested;
+    private DateTimeOffset _membershipRefreshedAtUtc = DateTimeOffset.MinValue;
+    private static readonly TimeSpan FullMembershipInterval = TimeSpan.FromMinutes(5);
 
     /// <summary>Creates a recent-work watcher. Null roots reuse telemetry discovery; an empty list watches nothing.</summary>
     /// <param name="roots">Local or recovered telemetry roots.</param>
@@ -67,8 +69,10 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         Func<string, string, FileSystemWatcher> createWatcher) {
         _options = options ?? new AgentWorkOptions();
         _options.Validate();
-        _discoverRoots = roots is null ? discoverRoots : null;
-        _roots = roots?.ToArray() ?? Array.Empty<SourceRootRecord>();
+        SourceRootRecord[] SelectRoots(IEnumerable<SourceRootRecord> candidates) => candidates
+            .Where(root => !_options.LocalSourcesOnly || root.SourceKind == UsageSourceKind.LocalLogs).ToArray();
+        _discoverRoots = roots is null ? () => SelectRoots(discoverRoots()) : null;
+        _roots = roots is null ? Array.Empty<SourceRootRecord>() : SelectRoots(roots);
         _createWatcher = createWatcher;
         _diagnostics = new AgentWorkDiagnostics(Signal);
         _cache = _options.Cache ?? new InMemoryRawArtifactStore();
@@ -164,8 +168,17 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
         }
         var local = await Task.Run(() => {
             _local.ResetStatistics();
-            if (reconcile) _local.Reconcile(_roots, null, cancellationToken, forceMembership);
-            else {
+            if (reconcile) {
+                var now =
+#if NET8_0_OR_GREATER
+                    _timeProvider.GetUtcNow();
+#else
+                    DateTimeOffset.UtcNow;
+#endif
+                forceMembership |= now - _membershipRefreshedAtUtc >= FullMembershipInterval;
+                if (forceMembership) _membershipRefreshedAtUtc = now;
+                _local.Reconcile(_roots, null, cancellationToken, forceMembership);
+            } else {
                 var discover = false;
                 foreach (var file in changed) discover |= !_local.Update(file.RootId, file.Path, cancellationToken);
                 if (discover) _local.Reconcile(_roots, null, cancellationToken);
@@ -192,7 +205,8 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
             var left = current.Sessions[i];
             var right = previous.Sessions[i];
             if (!left.PullRequests.SequenceEqual(right.PullRequests) || !left.PendingInputs.SequenceEqual(right.PendingInputs)
-                || left with { PullRequests = right.PullRequests, PendingInputs = right.PendingInputs } != right) return false;
+                || !left.ResolvedInputs.SequenceEqual(right.ResolvedInputs)
+                || left with { PullRequests = right.PullRequests, PendingInputs = right.PendingInputs, ResolvedInputs = right.ResolvedInputs } != right) return false;
         }
         return true;
     }

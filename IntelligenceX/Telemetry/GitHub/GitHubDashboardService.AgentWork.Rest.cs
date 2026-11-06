@@ -49,7 +49,9 @@ public sealed partial class GitHubDashboardService {
     }
 
     private AgentSearchPage ParseAgentSearch(JsonElement root, HttpResponseMessage response) {
-        if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+        if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array ||
+            !root.TryGetProperty("total_count", out var total) || !total.TryGetInt32(out var count) || count < 0 ||
+            !root.TryGetProperty("incomplete_results", out var incomplete) || incomplete.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             throw new InvalidOperationException("GitHub returned an incomplete pull request search.");
         var paths = new List<string>();
         foreach (var item in items.EnumerateArray()) {
@@ -59,7 +61,7 @@ public sealed partial class GitHubDashboardService {
                 throw new InvalidOperationException("GitHub returned an invalid pull request endpoint.");
             paths.Add(uri.PathAndQuery);
         }
-        return new AgentSearchPage(paths, ReadInt(root, "total_count"), ReadBool(root, "incomplete_results"), AgentHasNext(response));
+        return new AgentSearchPage(paths, count, incomplete.GetBoolean(), AgentHasNext(response));
     }
 
     private async Task<AgentPullRequestState> ReadAgentPullRequestAsync(string path, bool review, string user, CancellationToken cancellationToken) {
@@ -102,6 +104,10 @@ public sealed partial class GitHubDashboardService {
     }
 
     private static AgentPullRequestDetail ParseAgentPullRequest(JsonElement json, HttpResponseMessage _) {
+        if (ReadString(json, "state") is not ("open" or "closed")) throw new InvalidOperationException("GitHub returned an unknown pull request state.");
+        if (ReadString(json, "state") == "closed" && (!json.TryGetProperty("merged", out var merged) ||
+            merged.ValueKind is not (JsonValueKind.True or JsonValueKind.False)))
+            throw new InvalidOperationException("GitHub returned a closed pull request without merge state.");
         var head = AgentSessionLogReader.Object(json, "head");
         var repo = NormalizeOptional(ReadStringFromNested(AgentSessionLogReader.Object(json, "base"), "repo", "full_name"));
         var sha = NormalizeOptional(ReadString(head, "sha"));
@@ -110,7 +116,7 @@ public sealed partial class GitHubDashboardService {
             throw new InvalidOperationException("GitHub returned incomplete pull request metadata.");
         return new AgentPullRequestDetail(new AgentPullRequestState { Url = url, Title = ReadString(json, "title"), Repository = repo,
             HeadRepository = NormalizeOptional(ReadStringFromNested(head, "repo", "full_name")), Branch = ReadString(head, "ref"),
-            IsOpen = ReadString(json, "state") == "open",
+            IsOpen = ReadString(json, "state") == "open", IsMerged = ReadBool(json, "merged"),
             ChecksUrl = sha is null ? null : new Uri(uri, "/" + repo + "/commit/" + sha + "/checks").AbsoluteUri
         }, sha, ReadStringFromNested(json, "user", "login"));
     }

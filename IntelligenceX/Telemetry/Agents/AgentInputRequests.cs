@@ -11,17 +11,28 @@ internal static class AgentInputRequests {
     internal static AgentSessionState Add(AgentSessionState session, string? id, AgentInputKind kind,
         bool blocking, DateTimeOffset? timestamp) {
         if (id is not null && session.PendingInputs.Any(input => input.Id == id && input.Kind == kind)) return session;
-        return session with { PendingInputs = session.PendingInputs.Concat(new[] { new AgentPendingInput {
-            Id = id, Kind = kind, IsBlocking = blocking, AnswerIsUnconfirmed = !blocking || id is null, RequestedAtUtc = timestamp
+        return session with { ResolvedInputs = session.ResolvedInputs.Where(input => input.Id != id).ToArray(),
+            PendingInputs = session.PendingInputs.Concat(new[] { new AgentPendingInput {
+            Id = id, TurnId = session.TurnId, Kind = kind, IsBlocking = blocking, AnswerIsUnconfirmed = !blocking || id is null, RequestedAtUtc = timestamp
         }}).ToArray() };
     }
 
     internal static AgentSessionState CompleteBlocking(AgentSessionState session, string? id) {
         if (id is null || !session.PendingInputs.Any(input => input.Id == id && input.IsBlocking)) return session;
+        session = Resolve(session, session.PendingInputs.First(input => input.Id == id && input.IsBlocking));
         return session with { State = AgentWorkState.Idle,
             PendingInputs = session.PendingInputs.Where(input => input.Id != id || !input.IsBlocking).ToArray() };
     }
 
-    internal static AgentSessionState CompleteAsync(AgentSessionState session, string id) =>
-        session with { PendingInputs = session.PendingInputs.Where(input => input.Id != id || input.IsBlocking).ToArray() };
+    internal static AgentSessionState CompleteAsync(AgentSessionState session, string id) {
+        if (!session.PendingInputs.Any(input => input.Id == id && !input.IsBlocking)) return session;
+        session = Resolve(session, session.PendingInputs.First(input => input.Id == id && !input.IsBlocking));
+        return session with { PendingInputs = session.PendingInputs.Where(input => input.Id != id || input.IsBlocking).ToArray() };
+    }
+
+    private static AgentSessionState Resolve(AgentSessionState session, AgentPendingInput request) => session with {
+        ResolvedInputs = session.ResolvedInputs.Where(input => input.Id != request.Id).Concat(new[] {
+            new AgentInputResolution { Id = request.Id!, TurnId = request.TurnId }
+        }).ToArray()
+    };
 }

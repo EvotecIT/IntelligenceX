@@ -11,11 +11,14 @@ internal sealed class UsageTelemetryExternalProfileDiscovery {
     private const int WslListTimeoutMs = 1500;
 
     private readonly Func<IReadOnlyList<UsageTelemetryExternalProfile>>? _profilesFactory;
+    private readonly bool _runningWslOnly;
 
     public static UsageTelemetryExternalProfileDiscovery Default { get; } = new();
+    internal static UsageTelemetryExternalProfileDiscovery RunningWslOnly { get; } = new(runningWslOnly: true);
 
-    internal UsageTelemetryExternalProfileDiscovery(Func<IReadOnlyList<UsageTelemetryExternalProfile>>? profilesFactory = null) {
+    internal UsageTelemetryExternalProfileDiscovery(Func<IReadOnlyList<UsageTelemetryExternalProfile>>? profilesFactory = null, bool runningWslOnly = false) {
         _profilesFactory = profilesFactory;
+        _runningWslOnly = runningWslOnly;
     }
 
     public IReadOnlyList<UsageTelemetryExternalProfile> DiscoverProfiles() {
@@ -29,7 +32,7 @@ internal sealed class UsageTelemetryExternalProfileDiscovery {
             .ToArray();
     }
 
-    private static IReadOnlyList<UsageTelemetryExternalProfile> DiscoverDefaultProfiles() {
+    private IReadOnlyList<UsageTelemetryExternalProfile> DiscoverDefaultProfiles() {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
             return Array.Empty<UsageTelemetryExternalProfile>();
         }
@@ -56,7 +59,7 @@ internal sealed class UsageTelemetryExternalProfileDiscovery {
         }
     }
 
-    private static void AddWslProfiles(ICollection<UsageTelemetryExternalProfile> profiles) {
+    private void AddWslProfiles(ICollection<UsageTelemetryExternalProfile> profiles) {
         foreach (var distro in EnumerateWslDistros()) {
             var shareRoot = ResolveWslShareRoot(distro);
             if (string.IsNullOrWhiteSpace(shareRoot)) {
@@ -82,13 +85,13 @@ internal sealed class UsageTelemetryExternalProfileDiscovery {
         }
     }
 
-    private static IEnumerable<string> EnumerateWslDistros() {
+    private IEnumerable<string> EnumerateWslDistros() {
         Process? process = null;
         try {
             process = new Process {
                 StartInfo = new ProcessStartInfo {
                     FileName = "wsl.exe",
-                    Arguments = "--list --quiet",
+                    Arguments = _runningWslOnly ? "--list --running --quiet" : "--list --quiet",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -112,11 +115,11 @@ internal sealed class UsageTelemetryExternalProfileDiscovery {
                 return Array.Empty<string>();
             }
 
-            if (process.ExitCode != 0 && string.IsNullOrWhiteSpace(output)) {
+            if (process.ExitCode != 0 && (_runningWslOnly || string.IsNullOrWhiteSpace(output))) {
                 return Array.Empty<string>();
             }
 
-            return (output + Environment.NewLine + error)
+            return (_runningWslOnly ? output : output + Environment.NewLine + error)
                 .Replace("\0", string.Empty)
                 .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(static line => line.Trim().Trim('\uFEFF'))

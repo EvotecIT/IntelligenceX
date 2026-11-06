@@ -33,9 +33,14 @@ internal static class ClaudeAgentSessionReader {
                 };
                 var type = Text(entry, "type");
                 var message = Object(entry, "message");
+                if (type is "user" or "assistant" or "result" or "error" && timestamp.HasValue)
+                    session = session with { LastTurnActivityAtUtc = timestamp > session.LastTurnActivityAtUtc || session.LastTurnActivityAtUtc is null
+                        ? timestamp : session.LastTurnActivityAtUtc };
                 if (type == "custom-title") {
                     session = session with { Title = Text(entry, "customTitle") ?? session.Title };
                 } else if (type == "user") {
+                    if (session.TurnOpen != true)
+                        session = session with { TurnOpen = true, TurnId = Text(entry, "uuid"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null };
                     active = true;
                     session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
                         FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
@@ -45,6 +50,8 @@ internal static class ClaudeAgentSessionReader {
                             if (Text(block, "type") == "tool_result")
                                 session = AgentInputRequests.CompleteBlocking(session, Text(block, "tool_use_id"));
                 } else if (type == "assistant") {
+                    if (session.TurnOpen != true)
+                        session = session with { TurnOpen = true, TurnId = Text(entry, "uuid"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null };
                     active = true;
                     session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
                         FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
@@ -84,6 +91,8 @@ internal static class ClaudeAgentSessionReader {
                     active = false;
                     session = AgentFailureClassifier.Failed(session, Object(entry, "error"), codex: false);
                 }
+                if (!active && session.LastTurnOutcome is AgentTurnOutcome.Completed or AgentTurnOutcome.Failed or AgentTurnOutcome.Interrupted or AgentTurnOutcome.Incomplete)
+                    session = session with { TurnOpen = false, TurnEndedAtUtc = session.TurnEndedAtUtc ?? timestamp };
             }
             if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
         }

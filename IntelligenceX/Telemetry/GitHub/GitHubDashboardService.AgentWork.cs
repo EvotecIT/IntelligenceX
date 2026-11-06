@@ -12,6 +12,19 @@ using IntelligenceX.Telemetry.Agents;
 namespace IntelligenceX.Telemetry.GitHub;
 
 public sealed partial class GitHubDashboardService {
+    /// <summary>Reads exact PR lifecycle metadata, including requests outside the authored/review-requested search.</summary>
+    /// <remarks>Uses the existing conditional metadata cache. Missing or invalid state is unavailable, never closed.</remarks>
+    /// <param name="repository">Target repository in owner/name form.</param>
+    /// <param name="number">Positive pull request number.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    public async Task<AgentPullRequestState> FetchAgentPullRequestAsync(string repository, int number, CancellationToken cancellationToken = default) {
+        if (number < 1) throw new ArgumentOutOfRangeException(nameof(number));
+        var parts = SplitRepositoryNameWithOwner(repository);
+        var detail = await GetAgentJsonAsync("/repos/" + Uri.EscapeDataString(parts.Owner) + "/" + Uri.EscapeDataString(parts.Repository) + "/pulls/" + number,
+            ParseAgentPullRequest, cancellationToken).ConfigureAwait(false);
+        return detail.PullRequest;
+    }
+
     /// <summary>Enriches a completed local snapshot while preserving it if the optional GitHub source fails or times out.</summary>
     /// <remarks>Cancellation during optional remote enrichment returns a partial snapshot with a timeout diagnostic.</remarks>
     /// <param name="local">Already collected local work and source diagnostics.</param>

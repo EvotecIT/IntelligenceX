@@ -33,6 +33,9 @@ internal static class CodexAgentSessionReader {
                 };
                 var type = Text(entry, "type");
                 var payload = Object(entry, "payload");
+                if ((type == "response_item" || type == "event_msg" && Text(payload, "type") != "thread_name_updated") &&
+                    timestamp.HasValue)
+                    session = session with { LastTurnActivityAtUtc = Later(session.LastTurnActivityAtUtc, timestamp) };
                 if (type == "session_meta") {
                     // A fork can embed its parent's metadata after its own canonical first record.
                     if (!hasSessionMetadata) {
@@ -57,11 +60,13 @@ internal static class CodexAgentSessionReader {
                     switch (Text(payload, "type")) {
                         case "task_started": case "turn_started":
                             active = true;
-                            session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
+                            session = session with { TurnOpen = true, TurnId = Text(payload, "turn_id") ?? Text(payload, "turnId"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null,
+                                State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
                                 FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };
                             break;
                         case "task_complete": case "task_completed": case "turn_complete": case "turn_completed":
                             active = false;
+                            session = session with { TurnOpen = false, TurnEndedAtUtc = timestamp };
                             var error = Object(payload, "error");
                             session = error.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
                                 ? session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Completed,
@@ -70,15 +75,18 @@ internal static class CodexAgentSessionReader {
                             break;
                         case "turn_aborted": case "task_aborted": case "turn_interrupted":
                             active = false;
+                            session = session with { TurnOpen = false, TurnEndedAtUtc = timestamp };
                             session = AgentFailureClassifier.Failed(session, payload, codex: true, AgentTurnOutcome.Interrupted);
                             break;
                         case "turn_failed": case "task_failed":
                             active = false;
+                            session = session with { TurnOpen = false, TurnEndedAtUtc = timestamp };
                             session = AgentFailureClassifier.Failed(session, payload, codex: true);
                             break;
                         case "error":
                             if (AgentFailureClassifier.IsNonTurnCodexError(payload)) break;
                             active = false;
+                            session = session with { TurnOpen = false, TurnEndedAtUtc = timestamp };
                             session = AgentFailureClassifier.Failed(session, payload, codex: true);
                             break;
                         case "request_user_input": case "approval_requested":

@@ -10,6 +10,35 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class AgentWorkEvidenceTests : IDisposable {
+    [Fact]
+    public void UnidentifiedQuestionOccurrencesRemainSeparateWhileKnownIdsDeduplicate() {
+        Directory.CreateDirectory(Path.GetDirectoryName(CodexLog)!);
+        var unidentified = "{\"type\":\"event_msg\",\"payload\":{\"type\":\"request_user_input\"}}\n";
+        File.WriteAllText(CodexLog, Meta + Event("task_started") + unidentified + unidentified
+            + Call("synthetic-known", "functions.request_user_input") + Call("synthetic-known", "functions.request_user_input"));
+        var session = Assert.Single(LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, _now).Sessions);
+        Assert.Equal(3, session.PendingInputs.Count);
+        Assert.Equal(2, session.PendingInputs.Count(input => input.Id is null));
+        Assert.Single(session.PendingInputs, input => input.Id == "synthetic-known");
+    }
+
+    [Fact]
+    public void PriorTurnBlockingQuestionRemainsAttentionWithoutBlockingItsSuccessor() {
+        Directory.CreateDirectory(Path.GetDirectoryName(CodexLog)!);
+        var first = Event("task_started").Replace("\"task_started\"", "\"task_started\",\"turn_id\":\"synthetic-first-turn\"");
+        var next = Event("task_started").Replace("\"task_started\"", "\"task_started\",\"turn_id\":\"synthetic-next-turn\"");
+        File.WriteAllText(CodexLog, Meta + first + Call("synthetic-question", "functions.request_user_input") + Event("turn_aborted") + next);
+        var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, _now);
+        var session = Assert.Single(snapshot.Sessions);
+        Assert.Equal("synthetic-next-turn", session.TurnId);
+        Assert.True(session.TurnOpen);
+        Assert.Equal(AgentWorkState.Running, session.State);
+        var pending = Assert.Single(session.PendingInputs);
+        Assert.True(pending.IsBlocking);
+        Assert.Equal("synthetic-first-turn", pending.TurnId);
+        Assert.Contains(snapshot.NeedsAttention, input => input.InputId == "synthetic-question");
+    }
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "ix-work-evidence", Guid.NewGuid().ToString("N"));
     private readonly DateTimeOffset _now = DateTimeOffset.UtcNow;
     private string CodexLog => Path.Combine(_directory, "sessions", "rollout-fake.jsonl");
@@ -98,12 +127,14 @@ public sealed class AgentWorkEvidenceTests : IDisposable {
         File.AppendAllText(CodexLog, Reply("unknown", 0) + Reply("pair", 1) + Reply("pair", 1));
         var partial = Read();
         Assert.Equal(2, Assert.Single(partial.Sessions).PendingInputs.Count);
+        Assert.Empty(partial.Sessions[0].ResolvedInputs);
         Assert.Equal(1, partial.Scan!.FilesTailed);
         File.AppendAllText(CodexLog, Reply("pair", 0));
         var before = GC.GetAllocatedBytesForCurrentThread();
         var resolved = Read();
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal("other", Assert.Single(Assert.Single(resolved.Sessions).PendingInputs).Id);
+        Assert.Equal("pair", Assert.Single(resolved.Sessions[0].ResolvedInputs).Id);
         Assert.Equal("other", Assert.Single(resolved.NeedsAttention).InputId);
         Assert.Equal(AgentWorkState.Running, resolved.Sessions[0].State);
         Assert.Equal(1, resolved.Scan!.FilesTailed);
@@ -112,6 +143,7 @@ public sealed class AgentWorkEvidenceTests : IDisposable {
         Assert.DoesNotContain("private sentinel", AgentWorkJson.Serialize(resolved));
         Assert.DoesNotContain("private sentinel", Assert.Single(cache.GetAll()).StateJson!);
         Assert.Equal("other", Assert.Single(Assert.Single(Read().Sessions).PendingInputs).Id);
+        Assert.Equal("pair", Assert.Single(Assert.Single(Read().Sessions).ResolvedInputs).Id);
     }
 
     [Fact]
@@ -191,6 +223,9 @@ public sealed class AgentWorkEvidenceTests : IDisposable {
         var session = Assert.Single(snapshot.Sessions);
         Assert.Equal(AgentWorkState.Idle, session.State);
         Assert.Equal(AgentTurnOutcome.Failed, session.LastTurnOutcome);
+        Assert.False(session.TurnOpen);
+        Assert.Equal(_now, session.TurnEndedAtUtc);
+        Assert.Equal(_now, session.LastTurnActivityAtUtc);
         Assert.Equal(cause, session.FailureCause);
         Assert.Equal(cause == AgentFailureCause.Unknown ? AgentFailureEvidence.TerminalEvent : AgentFailureEvidence.ProviderCode, session.FailureEvidence);
         Assert.Equal(AgentAttentionKind.FailedTurn, Assert.Single(snapshot.NeedsAttention).Kind);
@@ -200,6 +235,9 @@ public sealed class AgentWorkEvidenceTests : IDisposable {
             File.AppendAllText(path, Event("task_started"));
             var resumed = Assert.Single(LocalAgentWorkStateService.ReadLocal(new[] { Root(provider) }, _now, options: options).Sessions);
             Assert.Equal(AgentWorkState.Running, resumed.State);
+            Assert.True(resumed.TurnOpen);
+            Assert.Equal(_now, resumed.TurnStartedAtUtc);
+            Assert.Null(resumed.TurnEndedAtUtc);
             Assert.Equal(AgentFailureEvidence.None, resumed.FailureEvidence);
             Assert.Equal(AgentFailureCause.Unknown, resumed.FailureCause);
         }

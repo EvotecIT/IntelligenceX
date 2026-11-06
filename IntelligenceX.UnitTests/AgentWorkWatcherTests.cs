@@ -13,6 +13,50 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class AgentWorkWatcherTests : IDisposable {
+    [Fact]
+    public void UnreadableTitleIndexRetainsPriorExplicitTitlesUntilRecovery() {
+        Write(Meta + Event("task_started"));
+        var index = Path.Combine(_root, "session_index.jsonl");
+        File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"Synthetic first title\"}\n");
+        var collection = new AgentLocalCollection(new AgentWorkOptions());
+        collection.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("Synthetic first title", Assert.Single(collection.Snapshot(Array.Empty<AgentSessionState>()).Sessions).Title);
+        File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"Synthetic next title\"}\n");
+        using (var locked = new FileStream(index, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) {
+            collection.Update(Root.Id, index, default);
+            var unavailable = collection.Snapshot(Array.Empty<AgentSessionState>());
+            Assert.Equal("Synthetic first title", Assert.Single(unavailable.Sessions).Title);
+            Assert.Contains(unavailable.Diagnostics, diagnostic => diagnostic.Code == "unreadable-source");
+        }
+        collection.Update(Root.Id, index, default);
+        Assert.Equal("Synthetic next title", Assert.Single(collection.Snapshot(Array.Empty<AgentSessionState>()).Sessions).Title);
+    }
+
+    [Fact]
+    public async Task FullMembershipBackstopFindsNewNestedLogsWithAnUnchangedParentTimestamp() {
+        Write(Meta + Event("task_started"));
+        var clock = new AgentWorkTestClock();
+        var quiet = Path.Combine(_root, "no-notifications");
+        Directory.CreateDirectory(quiet);
+        await using var watcher = new AgentWorkWatcher(new[] { Root }, new AgentWorkOptions(), null, null, null,
+            () => new[] { Root }, (_, filter) => new FileSystemWatcher(quiet, filter), clock);
+        await watcher.StartAsync();
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(30)));
+        var parent = Path.GetDirectoryName(PathToLog)!;
+        var stamp = Directory.GetLastWriteTimeUtc(parent);
+        var nested = Path.Combine(parent, "nested");
+        Directory.CreateDirectory(nested);
+        File.WriteAllText(Path.Combine(nested, "rollout-added.jsonl"), Meta.Replace("fake-live", "synthetic-added") + Event("task_started"));
+        Directory.SetLastWriteTimeUtc(parent, stamp);
+        var updated = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        watcher.SnapshotChanged += (_, args) => { if (args.Snapshot.Sessions.Count == 2) updated.TrySetResult(true); };
+        clock.Advance(TimeSpan.FromMinutes(5));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1)));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await Within(updated.Task);
+        Assert.Contains(watcher.CurrentSnapshot.Sessions, row => row.Id == "synthetic-added");
+    }
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ix-live-fixtures", Guid.NewGuid().ToString("N"));
     private SourceRootRecord Root => new("live-fixture", "codex", UsageSourceKind.LocalLogs, _root);
     private string PathToLog => Path.Combine(_root, "sessions", "rollout-fake.jsonl");
@@ -121,7 +165,7 @@ public sealed class AgentWorkWatcherTests : IDisposable {
 
     private sealed class EmptySearchHandler : HttpMessageHandler {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"total_count\":0,\"items\":[]}") });
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}") });
     }
 
     [Fact]
@@ -185,15 +229,18 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         internal void Fail() => OnError(new ErrorEventArgs(new System.ComponentModel.Win32Exception(1)));
     }
 
-    [Fact]
-    public async Task AutomaticDiscovery_IsRefreshedOnTheIndependentReconcileCadence() {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AutomaticDiscovery_IsRefreshedOnTheIndependentReconcileCadence(bool localOnly) {
         var clock = new AgentWorkTestClock();
         var discoveries = 0;
         System.Collections.Generic.IReadOnlyList<SourceRootRecord> Discover() {
             Interlocked.Increment(ref discoveries);
-            return Directory.Exists(_root) ? new[] { Root } : Array.Empty<SourceRootRecord>();
+            var recovered = new SourceRootRecord("recovered-fixture", "codex", UsageSourceKind.RecoveredFolder, _root) { MachineLabel = "synthetic-recovered" };
+            return Directory.Exists(_root) ? new[] { Root, recovered } : Array.Empty<SourceRootRecord>();
         }
-        await using var watcher = new AgentWorkWatcher(null, new AgentWorkOptions { ReconcileInterval = TimeSpan.FromSeconds(5) },
+        await using var watcher = new AgentWorkWatcher(null, new AgentWorkOptions { ReconcileInterval = TimeSpan.FromSeconds(5), LocalSourcesOnly = localOnly },
             null, null, null, Discover, static (directory, filter) => new FileSystemWatcher(directory, filter), clock);
         var found = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         watcher.SnapshotChanged += (_, e) => { if (e.Snapshot.Sessions.Any()) found.TrySetResult(true); };
@@ -205,7 +252,8 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         clock.Advance(TimeSpan.FromSeconds(1));
         await Within(found.Task);
         Assert.True(discoveries >= 2);
-        Assert.Equal(AgentWorkState.Running, Assert.Single(watcher.CurrentSnapshot.Sessions).State);
+        Assert.Equal(localOnly ? 1 : 2, watcher.CurrentSnapshot.Sessions.Count);
+        Assert.Equal(AgentWorkState.Running, Assert.Single(watcher.CurrentSnapshot.Sessions, s => s.SourceRootId == Root.Id).State);
     }
 
     [Fact]

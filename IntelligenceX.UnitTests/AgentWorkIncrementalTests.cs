@@ -159,6 +159,20 @@ public sealed class AgentWorkIncrementalTests : IDisposable {
     }
 
     [Fact]
+    public void DirectoryMembership_ReloadsRenamedFilesWithAnUnchangedDirectoryTimestamp() {
+        Directory.CreateDirectory(_directory);
+        var first = Path.Combine(_directory, "one.jsonl");
+        var second = Path.Combine(_directory, "two.jsonl");
+        File.WriteAllText(first, "");
+        var cache = new UsageDirectorySnapshotCache();
+        Assert.Equal(first, Assert.Single(cache.Files(_directory, "*.jsonl", SearchOption.TopDirectoryOnly)));
+        var stamp = Directory.GetLastWriteTimeUtc(_directory);
+        File.Move(first, second);
+        Directory.SetLastWriteTimeUtc(_directory, stamp);
+        Assert.Equal(second, Assert.Single(cache.Files(_directory, "*.jsonl", SearchOption.TopDirectoryOnly)));
+    }
+
+    [Fact]
     public void DirectoryMembership_RetriesAFailedListingWithoutAnotherTimestampChange() {
         Directory.CreateDirectory(_directory);
         var first = Path.Combine(_directory, "one.jsonl");

@@ -13,9 +13,10 @@ namespace IntelligenceX.Telemetry.Agents;
 
 /// <summary>Reads provider metadata locally without launching clients, opening messages, or modifying provider state.</summary>
 public static class LocalAgentWorkStateService {
-    /// <summary>Reuses telemetry discovery, including configured profiles and recovered roots.</summary>
+    /// <summary>Discovers provider profiles and recovered roots, considering only running WSL distributions for observation.</summary>
     public static IReadOnlyList<SourceRootRecord> DiscoverRoots() =>
-        new CodexDefaultSourceRootDiscovery().DiscoverRoots().Concat(new ClaudeDefaultSourceRootDiscovery().DiscoverRoots()).ToArray();
+        new CodexDefaultSourceRootDiscovery(UsageTelemetryExternalProfileDiscovery.RunningWslOnly).DiscoverRoots()
+            .Concat(new ClaudeDefaultSourceRootDiscovery(UsageTelemetryExternalProfileDiscovery.RunningWslOnly).DiscoverRoots()).ToArray();
 
     /// <summary>Reads local logs and title indexes. Explicit roots replace automatic discovery.</summary>
     /// <param name="roots">Optional telemetry source roots. An empty list reads nothing.</param>

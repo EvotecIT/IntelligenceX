@@ -13,7 +13,7 @@ namespace IntelligenceX.Telemetry.Agents;
 
 // Cache only parser observations. Clock aging, title indexes, Desktop metadata, Git and PRs are reapplied each scan.
 internal sealed class AgentSessionScan {
-    private const string ParserVersion = "8";
+    private const string ParserVersion = "9";
     private readonly SourceRootRecord _root;
     private readonly Action<string> _report;
     private readonly IRawArtifactStore? _store;
@@ -69,10 +69,10 @@ internal sealed class AgentSessionScan {
         }
         var before = RawArtifactDescriptor.CreateFile(_root.Id, Adapter, path, ParserVersion);
         var tail = cached is not null && cached.TailSafe && cached.Offset <= descriptor!.SizeBytes
+            // Unix creation time can be synthesized from ctime and change on every append.
+            // The bounded prefix/boundary anchor remains the cross-platform continuation guard.
             && before.SizeBytes > cached.Offset
-            // Linux filesystems without birth time report ctime, which advances on every append.
-            // Prefix/boundary anchors still guard tailing there; creation identity is an extra guard elsewhere.
-            && (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || cached.CreatedAtUtc == created)
+            && (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || cached.CreatedAtUtc == created)
             && cached.AnchorHash == AnchorHash(path, cached.Offset);
         var diagnostics = tail ? new Dictionary<string, int>(cached!.Diagnostics, StringComparer.Ordinal)
             : new Dictionary<string, int>(StringComparer.Ordinal);

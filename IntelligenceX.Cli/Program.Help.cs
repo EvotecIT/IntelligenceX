@@ -25,6 +25,7 @@ internal static partial class Program {
         Console.WriteLine("  intelligencex todo <command>");
         Console.WriteLine("  intelligencex telemetry <command>");
         Console.WriteLine("  intelligencex agents status [--json] [--github] [--stale-days N]");
+        Console.WriteLine("  intelligencex ledger status|needs-you|stuck|item <id> [--config <file>]");
         Console.WriteLine("  intelligencex release <command>");
         Console.WriteLine("  intelligencex models <command>");
         Console.WriteLine("  intelligencex usage [options]");
