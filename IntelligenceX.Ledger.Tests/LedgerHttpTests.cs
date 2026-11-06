@@ -16,7 +16,7 @@ namespace IntelligenceX.Ledger.Tests;
 public sealed class LedgerHttpTests {
     [Fact]
     public async Task RealHostEnforcesTokenCapabilitiesAndRejectsPayloadFieldsBeforePersistence() {
-        var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-http", Guid.NewGuid().ToString("N"));
+        var directory = LedgerTestPaths.NewDirectory("http");
         Directory.CreateDirectory(directory);
         var socket = new TcpListener(IPAddress.Loopback, 0);
         socket.Start(); var port = ((IPEndPoint)socket.LocalEndpoint).Port; socket.Stop();

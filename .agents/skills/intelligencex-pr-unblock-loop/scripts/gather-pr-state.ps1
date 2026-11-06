@@ -18,6 +18,6 @@ try {
     # Keep snapshot flow resilient, matching the shell script behavior.
 }
 
-gh pr view $PrNumber --repo $repo --comments --json comments | Set-Content -Path (Join-Path $artifactDir "comments.json") -Encoding UTF8
+gh pr view $PrNumber --repo $repo --json comments | Set-Content -Path (Join-Path $artifactDir "comments.json") -Encoding UTF8
 
 Write-Host "Saved PR snapshot to: $artifactDir"

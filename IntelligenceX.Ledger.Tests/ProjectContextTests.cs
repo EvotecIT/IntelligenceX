@@ -6,7 +6,7 @@ using Xunit;
 namespace IntelligenceX.Ledger.Tests;
 
 public sealed class ProjectContextTests : IDisposable {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "ledger-context-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = LedgerTestPaths.NewDirectory("context");
     private readonly Clock _clock = new();
     private string CatalogPath => Path.Combine(_root, "catalog.json");
 
