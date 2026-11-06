@@ -64,6 +64,7 @@ public sealed class ProjectContextService(string? catalogPath, TimeProvider? tim
         var notes = snapshot.Coverage.Where(x => !x.Contains(':') || x.StartsWith(project + ":", StringComparison.Ordinal)).ToList();
         if (_time.GetUtcNow() - snapshot.Catalog.ObservedAtUtc > DirectoryFreshness) notes.Add("directory-source-stale");
         var definition = snapshot.Catalog.Projects.First(x => x.Id == project);
+        notes.AddRange(definition.Coverage);
         if (definition.Responsibilities.Any(x => _time.GetUtcNow() - x.ObservedAtUtc > DirectoryFreshness))
             notes.Add("responsibility-evidence-stale");
         return notes.ToArray();
@@ -113,7 +114,7 @@ public sealed class ProjectContextService(string? catalogPath, TimeProvider? tim
         await _gate.WaitAsync(token);
         try {
             var now = _time.GetUtcNow();
-            if (_snapshot is { } cached && now - cached.LoadedAt < RefreshInterval) return cached;
+            if (_snapshot is { } cached && now >= cached.LoadedAt && now - cached.LoadedAt < RefreshInterval) return cached;
             if (catalogPath is null) return _snapshot = new(now, new(), [], ["project-directory-not-enrolled"]);
             ProjectCatalog catalog;
             try {
@@ -179,7 +180,8 @@ public sealed class ProjectContextService(string? catalogPath, TimeProvider? tim
             catalog.WorkLabels.Length > 20_000 || catalog.ObservedAtUtc == default || catalog.ObservedAtUtc > now.AddMinutes(2) ||
             catalog.Projects.Any(x => x is null || !DeclarationValidation.Identifier(x.Id) || string.IsNullOrWhiteSpace(x.Name) || x.Name.Length > 160 ||
                 !Text(x.Repository, 200) || !Text(x.Revision, 160) || x.Responsibilities is null || x.Responsibilities.Length > 64 ||
-                x.Dependencies is null || x.Dependencies.Length > 128 || x.Sources is null || x.Sources.Length > 64) ||
+                x.Dependencies is null || x.Dependencies.Length > 128 || x.Sources is null || x.Sources.Length > 64 ||
+                x.Coverage is null || x.Coverage.Length > 32 || x.Coverage.Any(note => !Text(note, 160))) ||
             catalog.Projects.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != catalog.Projects.Length ||
             catalog.WorkLabels.Any(x => x is null || !Text(x.ItemId, 256) || !Text(x.Label, 160) ||
                 x.ProjectId is not null && !catalog.Projects.Any(project => project.Id == x.ProjectId)) ||

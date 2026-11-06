@@ -60,6 +60,7 @@ public static class LocalAgentWorkStateService {
                 Title = log.Title ?? metadata.Title, WorkingDirectory = metadata.WorkingDirectory ?? log.WorkingDirectory,
                 Repository = metadata.Repository ?? log.Repository, Branch = metadata.Branch ?? log.Branch,
                 IsArchived = metadata.IsArchived,
+                ArchiveStateKnown = metadata.ArchiveStateKnown,
                 State = metadata.IsArchived ? AgentWorkState.Finished
                     : log.IsArchived && log.State == AgentWorkState.Finished ? AgentWorkState.Idle : log.State,
                 StateIsInferred = !metadata.IsArchived && log.StateIsInferred,

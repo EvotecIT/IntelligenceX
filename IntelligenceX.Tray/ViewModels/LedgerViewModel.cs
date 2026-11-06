@@ -32,6 +32,12 @@ public sealed class LedgerViewModel : ViewModelBase, IDisposable {
         ? row.Label + Environment.NewLine + row.Verdict + " · " + row.Item.Provider + " · " + row.Item.MachineId +
             Environment.NewLine + row.Item.ReasonCode + " · since " + row.Since +
             Environment.NewLine + "Next actor: " + (row.Item.NextActor ?? "unknown") +
+            Environment.NewLine + (row.Item.Availability is { } availability
+                ? "Availability: " + availability.State + " · archived " + (availability.Archived?.ToString().ToLowerInvariant() ?? "unknown") +
+                    " · archive observed " + (availability.ArchiveObservedAtUtc?.ToLocalTime().ToString("g") ?? "unknown") +
+                    " · usage limited " + availability.UsageLimited.ToString().ToLowerInvariant() +
+                    " · application " + availability.ApplicationState
+                : "Availability: unknown") +
             Environment.NewLine + "Missing facts: " + string.Join(", ", row.Item.MissingFacts) +
             Environment.NewLine + "Coverage: " + string.Join(", ", row.Item.Coverage.Concat(row.Item.Availability?.Coverage ?? [])) +
             Environment.NewLine + string.Join(Environment.NewLine, row.Item.Evidence.Select(evidence =>

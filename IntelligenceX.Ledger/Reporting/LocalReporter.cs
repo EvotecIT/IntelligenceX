@@ -114,7 +114,7 @@ public static class LocalReporter {
                 Volatile.Write(ref metadataDiagnostics, available.Diagnostics.ToArray());
                 var archiveObserved = DateTimeOffset.UtcNow;
                 var priorArchives = Volatile.Read(ref archives);
-                Volatile.Write(ref archives, available.Sessions.GroupBy(x => x.Id, StringComparer.Ordinal)
+                Volatile.Write(ref archives, available.Sessions.Where(x => x.ArchiveStateKnown).GroupBy(x => x.Id, StringComparer.Ordinal)
                     .ToDictionary(x => x.Key, x => (x.First().IsArchived,
                         priorArchives.TryGetValue(x.Key, out var prior) && prior.Archived == x.First().IsArchived
                             ? prior.Observed : archiveObserved), StringComparer.Ordinal));

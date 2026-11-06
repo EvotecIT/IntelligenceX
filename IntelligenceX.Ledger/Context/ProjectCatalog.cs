@@ -19,6 +19,7 @@ public sealed record ProjectDefinition {
     public ResponsibilityView[] Responsibilities { get; init; } = [];
     public DependencyView[] Dependencies { get; init; } = [];
     public KnowledgeSource[] Sources { get; init; } = [];
+    public string[] Coverage { get; init; } = [];
 }
 
 /// <summary>A single reviewed file, with local access and public/private source references kept separate.</summary>

@@ -8,13 +8,25 @@ namespace IntelligenceX.Ledger.Mcp;
 [McpServerToolType]
 public sealed class LedgerTools(LedgerReadClient client) {
     [McpServerTool(Name = "project_context", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Read enrolled project responsibility, dependency evidence and optional relevant maintained knowledge. Returns freshness and source references.")]
+    [Description("Read project responsibility/dependency evidence and optional maintained knowledge. Omit project for compact discovery. Shows up to three claims by default; request a larger maxResponsibilities when needed. Coverage identifies omitted facts.")]
     public async Task<ProjectDirectoryView> ProjectContext(
         [Description("Exact enrolled project identifier; omit to discover enrolled projects.")] string? project = null,
         [Description("Optional topic to retrieve from this project's maintained sources.")] string? query = null,
+        [Description("Maximum observed claims to return, from 1 to 64; defaults to 3.")] int maxResponsibilities = 3,
         CancellationToken cancellationToken = default) {
-        if (project is null) return await client.ProjectsAsync(cancellationToken);
+        if (maxResponsibilities is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(maxResponsibilities));
+        if (project is null) {
+            var directory = await client.ProjectsAsync(cancellationToken);
+            return directory with { Projects = directory.Projects.Select(entry => entry with {
+                Responsibilities = [], Dependencies = [], Knowledge = [],
+                Coverage = entry.Coverage.Append("directory-discovery:request-exact-project-for-facts").ToArray()
+            }).ToArray() };
+        }
         var context = await client.ProjectAsync(project, query, cancellationToken);
+        if (context.Responsibilities.Length > maxResponsibilities) context = context with {
+            Coverage = context.Coverage.Append("responsibilities:showing-" + maxResponsibilities + "-of-" + context.Responsibilities.Length).ToArray(),
+            Responsibilities = context.Responsibilities.Take(maxResponsibilities).ToArray()
+        };
         return new(context.AsOfUtc, [context], context.Coverage);
     }
 
@@ -42,6 +54,8 @@ public sealed class LedgerTools(LedgerReadClient client) {
 /// <summary>Compact tool output; verdicts and counts are copied from the service.</summary>
 public sealed record WorkSummary(DateTimeOffset AsOfUtc, Dictionary<string, int> Counts, MachineSummary[] Machines,
     WorkSummaryRow[] Items, string[] Coverage, bool Truncated);
+/// <summary>Machine coverage copied without repeating per-item evidence.</summary>
 public sealed record MachineSummary(string Id, string State);
+/// <summary>Compact item identity and service verdict for optional evidence drill-down.</summary>
 public sealed record WorkSummaryRow(string Id, string Label, string Provider, string MachineId, string Verdict,
     string ReasonCode, DateTimeOffset SinceUtc, string? NextActor, bool LastKnown);

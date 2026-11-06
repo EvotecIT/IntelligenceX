@@ -57,7 +57,10 @@ declarations, and activity or deliveries within the last day. Archived sessions
 with active claims remain visible. The list contains up to 200 rows, with full
 current-work counts and a `truncated` flag. `verdict` filters returned rows;
 `limit` bounds their number from 1 to 200. Counts retain the full current scope.
-Verdicts come from the existing rules engine. The view retains its `asOfUtc`
+Verdicts come from the existing rules engine. The view interleaves verdict
+groups so a large backlog cannot hide every working
+item from a bounded list. Counts describe the full scope, not just visible rows.
+The view retains its `asOfUtc`
 while cached for at most ten seconds; admitted events invalidate that cache.
 
 Marquee's Agents settings accept a path to the local read configuration. When
@@ -113,6 +116,9 @@ dotnet IntelligenceX.Ledger.Mcp.dll --config /absolute/path/client.json
 
 Its read-only tools are `project_context`, `knowledge_search`, `work_status`, and
 `work_item`. Omit the project in `project_context` to discover enrolled projects.
+Discovery omits detailed facts. Exact context returns at most three observed
+claims by default and identifies truncation in coverage; `maxResponsibilities`
+can request up to 64. The HTTP and CLI project views retain the complete facts.
 `work_status` returns counts, machine coverage and at most eight compact rows;
 an optional verdict selects a state. Use `work_item` for full evidence. Retrieval
 and state evaluation remain service-owned and make no model calls. These tools

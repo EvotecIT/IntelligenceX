@@ -45,7 +45,7 @@ public sealed class ProjectContextTests : IDisposable {
     }
 
     [Fact]
-    public async Task SourceChangesDeletionAndSupersessionReplaceCachedSearchEvidence() {
+    public async Task SourceChangesDeletionAndSupersessionRefreshAcrossClockCorrection() {
         var source = Source("current", "# Trial\nFirst algorithm retained the original result.");
         var superseded = Source("old", "# Trial\nFirst algorithm should be retried.") with { SupersededBy = "current" };
         Save(Project("first", source, superseded));
@@ -59,7 +59,7 @@ public sealed class ProjectContextTests : IDisposable {
         Assert.NotEqual(first.Revision, corrected.Revision);
         Assert.Contains("corrected result", corrected.Excerpt);
         File.Delete(source.Path);
-        _clock.Now += TimeSpan.FromSeconds(31);
+        _clock.Now -= TimeSpan.FromMinutes(1);
         var unavailable = await service.SearchAsync("first", "algorithm");
         Assert.Empty(unavailable!.Hits);
         Assert.Contains("first:source-unavailable:current", unavailable.Coverage);

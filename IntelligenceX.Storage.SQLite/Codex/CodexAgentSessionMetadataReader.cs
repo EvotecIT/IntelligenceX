@@ -62,7 +62,8 @@ public static class CodexAgentSessionMetadataReader {
                 Repository = AgentRepositoryIdentity.FromRemote(ReadText(row, 3)),
                 StartedAtUtc = ReadTime(row, 7, milliseconds: true) ?? ReadTime(row, 4),
                 LastActivityAtUtc = ReadTime(row, 8, milliseconds: true) ?? ReadTime(row, 5),
-                IsArchived = archived, State = archived ? AgentWorkState.Finished : AgentWorkState.Idle
+                IsArchived = archived, ArchiveStateKnown = !row.IsDBNull(6),
+                State = archived ? AgentWorkState.Finished : AgentWorkState.Idle
             };
         }, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
