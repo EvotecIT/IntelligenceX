@@ -9,6 +9,21 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class AgentWorkStateTests : IDisposable {
+    [Theory]
+    [InlineData("C:\\Synthetic\\Project", "c:/synthetic/project", true)]
+    [InlineData("\\\\server\\Synthetic\\Project", "\\\\SERVER/Synthetic/Project", true)]
+    [InlineData("C:\\Synthetic\\Project", "C:\\Synthetic\\Other", false)]
+    [InlineData("/synthetic/Project", "/synthetic/project", false)]
+    public void MetadataUsesWorkspacePathSemanticsWithoutChangingPosixIdentity(string logPath, string metadataPath, bool equivalent) {
+        var log = new AgentSessionState { Provider = "codex", Id = "synthetic", SourceRootId = "synthetic-root", WorkingDirectory = logPath };
+        var metadata = log with { WorkingDirectory = metadataPath, Repository = "Sample/Project", Branch = "feature/synthetic" };
+        var snapshot = LocalAgentWorkStateService.BuildSnapshot(new[] { log }, new[] { metadata }, new(), Now,
+            null, TimeSpan.FromMinutes(5), TimeSpan.FromDays(5), Array.Empty<AgentSourceDiagnostic>(), Array.Empty<AgentPullRequestState>(), new());
+        var session = Assert.Single(snapshot.Sessions);
+        Assert.Equal(logPath, session.WorkingDirectory);
+        Assert.Equal(equivalent ? "Sample/Project" : null, session.Repository);
+        Assert.Equal(equivalent ? "feature/synthetic" : null, session.Branch);
+    }
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ix-agent-fixtures", Guid.NewGuid().ToString("N"));
 

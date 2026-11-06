@@ -61,20 +61,31 @@ public sealed class AgentWorkWatcherTests : IDisposable {
     private SourceRootRecord Root => new("live-fixture", "codex", UsageSourceKind.LocalLogs, _root);
     private string PathToLog => Path.Combine(_root, "sessions", "rollout-fake.jsonl");
 
-    [Fact]
-    public void LiveCollection_RetainsTheLastSuccessfulTitleIndexWhenAReadFails() {
+    [Theory]
+    [InlineData("\0{\"id\":\"fake-live\",\"thread_name\":\"Uncommitted\"}\n")]
+    [InlineData("{\"id\":\"fake-live\",\"thread_name\":\"Uncommitted\"")]
+    public void LiveCollection_RetainsTitlesDuringTransientWritesWithoutThrowingJsonExceptions(string incomplete) {
         Write(Meta + Event("task_started"));
         var index = Path.Combine(_root, "session_index.jsonl");
         File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"Known title\"}\n");
         var collection = new AgentLocalCollection(new AgentWorkOptions());
         collection.Reconcile(new[] { Root }, null, default);
         Assert.Equal("Known title", Assert.Single(collection.Snapshot(Array.Empty<AgentSessionState>()).Sessions).Title);
-        using (var blocked = new FileStream(index, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) {
+        File.WriteAllText(index, incomplete);
+        var jsonExceptions = 0;
+        var thread = Environment.CurrentManagedThreadId;
+        EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> observe = (_, args) => {
+            if (Environment.CurrentManagedThreadId == thread && args.Exception is System.Text.Json.JsonException) jsonExceptions++;
+        };
+        AppDomain.CurrentDomain.FirstChanceException += observe;
+        try {
+            Assert.True(collection.Update(Root.Id, index, default));
             Assert.True(collection.Update(Root.Id, index, default));
             var partial = collection.Snapshot(Array.Empty<AgentSessionState>());
             Assert.Equal("Known title", Assert.Single(partial.Sessions).Title);
-            Assert.Contains(partial.Diagnostics, item => item.Code == "unreadable-source");
-        }
+            Assert.Equal(0, jsonExceptions);
+            Assert.Contains(partial.Diagnostics, item => item.Code == "transient-index");
+        } finally { AppDomain.CurrentDomain.FirstChanceException -= observe; }
         File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"New title\"}\n");
         Assert.True(collection.Update(Root.Id, index, default));
         var recovered = collection.Snapshot(Array.Empty<AgentSessionState>());

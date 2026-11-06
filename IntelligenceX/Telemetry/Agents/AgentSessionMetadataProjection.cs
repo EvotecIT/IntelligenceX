@@ -102,7 +102,7 @@ internal static class AgentSessionMetadataProjection {
         if (input.Peek() != '}') while (true) {
             var rawName = input.String();
             using var nameDocument = JsonDocument.Parse(rawName);
-            var name = nameDocument.RootElement.GetString()!;
+            var name = DecodeString(nameDocument.RootElement);
             input.Space(); input.Expect(':'); input.Space();
             var nested = context == Context.Root && name == "payload" ? Context.Payload
                 : context == Context.Root && name == "message" ? Context.Message
@@ -192,9 +192,9 @@ internal static class AgentSessionMetadataProjection {
                 if (body.Peek() != '}') while (true) {
                     using var key = JsonDocument.Parse(body.String());
                     body.Space(); body.Expect(':'); body.Space();
-                    if (key.RootElement.GetString() == "questionItemId" && body.Peek() == '"') {
+                    if (DecodeString(key.RootElement) == "questionItemId" && body.Peek() == '"') {
                         using var id = JsonDocument.Parse(body.String());
-                        ids.Add(id.RootElement.GetString()!);
+                        ids.Add(DecodeString(id.RootElement));
                         identityCharacters += ids[ids.Count - 1].Length;
                         if (ids.Count > 1024 || identityCharacters > 64 * 1024) throw new JsonException();
                     } else body.Skip(depth + 1);
@@ -216,6 +216,15 @@ internal static class AgentSessionMetadataProjection {
             writer.WriteEndArray();
         } catch (JsonException) { /* Ignore an invalid reply; retain the pending question. */ }
         text.Drain();
+    }
+
+    private static string DecodeString(JsonElement value) {
+        try { return value.GetString()!; }
+        catch (InvalidOperationException error) {
+            // JsonDocument accepts escaped unpaired surrogates until string decoding.
+            // Classify them with other invalid record data at the per-record boundary.
+            throw new JsonException("Invalid Unicode in session metadata.", error);
+        }
     }
 
     // Expose one JSON string as decoded UTF-8 for the existing streaming framer.
@@ -246,7 +255,7 @@ internal static class AgentSessionMetadataProjection {
             }
             encoded.Add((byte)'"');
             using var decoded = JsonDocument.Parse(encoded.ToArray());
-            _escaped = System.Text.Encoding.UTF8.GetBytes(decoded.RootElement.GetString()!); _index = 0;
+            _escaped = System.Text.Encoding.UTF8.GetBytes(DecodeString(decoded.RootElement)); _index = 0;
             return _escaped[_index++];
         }
         internal void Drain() { if (!_ended) { _input.SkipStringRemainder(); _ended = true; } }

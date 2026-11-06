@@ -83,11 +83,20 @@ public sealed class AgentWorkEvidenceTests : IDisposable {
         Assert.All(snapshot.NeedsAttention, item => Assert.Equal(AgentAttentionKind.UnconfirmedInput, item.Kind));
     }
 
-    [Fact]
-    public void InvalidProjectedReplyIdentity_ReportsTheRecordAndKeepsOtherSessionsAvailable() {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("\\udc00")]
+    [InlineData("\\ud800\\u0041")]
+    public void InvalidProjectedReplyIdentity_ReportsTheRecordAndKeepsOtherSessionsAvailable(string? invalidEscape) {
         Directory.CreateDirectory(Path.GetDirectoryName(CodexLog)!);
+        var invalid = invalidEscape is null
+            ? "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"questionReplyIds\":[42]}]}}\n"
+            : System.Text.Json.JsonSerializer.Serialize(new { type = "response_item", payload = new {
+                type = "message", role = "user", content = new[] { new { type = "input_text",
+                    text = "<send_user_message_question_reply>bad-surrogate" + new string('x', 300 * 1024) + "</send_user_message_question_reply>" } }
+            }}).Replace("bad-surrogate", invalidEscape) + "\n";
         File.WriteAllText(CodexLog, Meta + Event("task_started") + Call("question", "functions.request_user_input_async")
-            + "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"questionReplyIds\":[42]}]}}\n");
+            + invalid);
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(CodexLog)!, "rollout-other.jsonl"), Meta.Replace("fake", "other") + Event("task_complete"));
         var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, _now);
         Assert.Equal(2, snapshot.Sessions.Count);

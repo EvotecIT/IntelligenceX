@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using IntelligenceX.Telemetry.Usage;
@@ -57,7 +58,7 @@ public static class LocalAgentWorkStateService {
             }
             metadataKeys.Add(key);
             var sameWorkspace = log.WorkingDirectory is null || metadata.WorkingDirectory is null
-                || string.Equals(log.WorkingDirectory, metadata.WorkingDirectory, StringComparison.Ordinal);
+                || SameWorkspace(log.WorkingDirectory, metadata.WorkingDirectory);
             observations[key] = log with {
                 Title = log.Title ?? metadata.Title, WorkingDirectory = log.WorkingDirectory ?? metadata.WorkingDirectory,
                 Repository = sameWorkspace ? metadata.Repository ?? log.Repository : log.Repository,
@@ -103,6 +104,15 @@ public static class LocalAgentWorkStateService {
     private static string Key(AgentSessionState session) => session.Provider + "\0" + session.Machine + "\0" + session.Id;
     private static string OriginKey(AgentSessionState session) => Key(session) + "\0" + session.SourceRootId;
 
+    private static bool SameWorkspace(string left, string right) {
+        static bool WindowsAbsolute(string path) => path.Length >= 3
+            && ((char.IsLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/')
+                || (path[0] is '\\' or '/' && path[1] is '\\' or '/'));
+        return WindowsAbsolute(left) && WindowsAbsolute(right)
+            ? string.Equals(left.Replace('/', '\\'), right.Replace('/', '\\'), StringComparison.OrdinalIgnoreCase)
+            : string.Equals(left, right, StringComparison.Ordinal);
+    }
+
     internal static bool IsSubagentPath(string path) => path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
         .Any(static part => part == "subagents") || Path.GetFileName(path).StartsWith("agent-", StringComparison.Ordinal);
 
@@ -113,11 +123,24 @@ public static class LocalAgentWorkStateService {
         if (File.Exists(indexPath)) {
             foreach (var line in ReadLines(indexPath, cancellationToken)) {
                 try {
-                    using var document = JsonDocument.Parse(line);
-                    var entry = document.RootElement;
-                    var id = Text(entry, "id");
-                    var title = Text(entry, "thread_name");
-                    if (id is not null && title is not null) titles[id] = title;
+                    // A rewrite may expose padding or an unfinished final record. Neither is
+                    // a malformed completed index; keep the collection's last good titles.
+                    if (line.IndexOf('\0') >= 0) { report("codex", "transient-index"); continue; }
+                    var bytes = Encoding.UTF8.GetBytes(line);
+                    var reader = new Utf8JsonReader(bytes, isFinalBlock: false, state: default);
+                    if (!JsonDocument.TryParseValue(ref reader, out var document)) {
+                        report("codex", "transient-index"); continue;
+                    }
+                    using (document) {
+                        var consumed = checked((int)reader.BytesConsumed);
+                        if (!string.IsNullOrWhiteSpace(Encoding.UTF8.GetString(bytes, consumed, bytes.Length - consumed))) {
+                            report("codex", "malformed-index"); continue;
+                        }
+                        var entry = document.RootElement;
+                        var id = Text(entry, "id");
+                        var title = Text(entry, "thread_name");
+                        if (id is not null && title is not null) titles[id] = title;
+                    }
                 } catch (JsonException) { report("codex", "malformed-index"); }
             }
         }
