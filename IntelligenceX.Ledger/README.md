@@ -49,6 +49,100 @@ All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET route
 
 Requested, admitted, submitted, started, terminal and accepted stages are independent. A terminal result does not fill missing admission or requester-acceptance evidence. Unknown timestamps remain null. A delivery's target links back to its session item when known.
 
+## Shared views and project context
+
+`GET /api/ledger/v1/work` returns current work, separate from all-history counts.
+Current work includes claims, explicit holds, open unarchived turns, current
+declarations, and activity or deliveries within the last day. Archived sessions
+with active claims remain visible. The list contains up to 200 rows, with full
+current-work counts and a `truncated` flag. `verdict` filters returned rows;
+`limit` bounds their number from 1 to 200. Counts retain the full current scope.
+Verdicts come from the existing rules engine. The view retains its `asOfUtc`
+while cached for at most ten seconds; admitted events invalidate that cache.
+
+Marquee's Agents settings accept a path to the local read configuration. When
+configured, the view reads this projection, including machine coverage and item
+evidence. The IX tray's Work button opens the same projection. The tray uses
+`IX_LEDGER_READ_CONFIG` or the user's local application-data
+`IntelligenceX/Ledger/client.json`; its Read settings button chooses another file.
+An unavailable service is displayed explicitly alongside any retained observation.
+Archive observations and usage limits do not establish application responsiveness;
+unobserved health remains unknown.
+
+Set `projectCatalogPath` in the service configuration to an absolute path to a
+private JSON catalog. The catalog's `schemaVersion` is 1 and `observedAtUtc`
+records the directory source observation. Each `projects` entry contains `id`,
+`name`, `repository`, `revision`, `responsibilities`, `dependencies`, and `sources`.
+Responsibility and dependency facts carry their own observation times and HTTPS
+`sourceRef` links. A source contains `id`, `title`, an absolute local `path`, an
+HTTPS `sourceRef`, and an `outcome` of `reference`, `accepted`, `rejected`, or
+`superseded`. Optional `verifiedAtUtc` and `supersededBy` preserve review history.
+Sources with `supersededBy` are excluded from search. Optional `workLabels` map
+exact Ledger item IDs to display labels and enrolled project IDs.
+
+Enrollment grants the read-token audience access to the selected sources. Keep
+the catalog, private documents and credentials outside the repository. Use
+project-owned maintained documents; do not enroll raw transcripts or credential
+files. Linked source paths require separate enrollment and are refused. Catalogs
+are bounded to 1 MiB; sources to 1 MiB each and 16 MiB in total. Refresh occurs
+on demand after thirty seconds. Removed or unavailable sources stop contributing
+hits, with explicit coverage. A failed directory load remains visible in discovery;
+exact reads return 503 until the service can establish project membership.
+
+```text
+ix ledger work --config /absolute/path/client.json
+ix ledger projects --config /absolute/path/client.json
+ix ledger context sample-project "export allocation" --config /absolute/path/client.json
+ix ledger search sample-project "rejected experiment" --config /absolute/path/client.json
+```
+
+Authenticated reads use `GET /api/coordination/v1/projects`,
+`GET /api/coordination/v1/projects/{id}?query=topic`, and
+`GET /api/coordination/v1/knowledge?project=id&query=topic`. Discovery returns a
+directory envelope with `asOfUtc`, `projects`, and `coverage`. Exact project
+context includes up to two excerpts; search returns up to five. Every excerpt
+includes a source link, content SHA-256 revision, section, line and outcome.
+These are historical source facts, not proof of a current release or deployment.
+Responsibility evidence older than ten minutes is identified as stale.
+
+The .NET 10 `IntelligenceX.Ledger.Mcp` stdio host uses the official MCP SDK:
+
+```text
+dotnet IntelligenceX.Ledger.Mcp.dll --config /absolute/path/client.json
+```
+
+Its read-only tools are `project_context`, `knowledge_search`, `work_status`, and
+`work_item`. Omit the project in `project_context` to discover enrolled projects.
+`work_status` returns counts, machine coverage and at most eight compact rows;
+an optional verdict selects a state. Use `work_item` for full evidence. Retrieval
+and state evaluation remain service-owned and make no model calls. These tools
+grant no execution or publication authority. Register the host through the
+client's supported MCP settings after reviewing the exact configuration change.
+
+## Online backup and restore
+
+An operator can request a DbaClientX online snapshot while the service runs:
+
+```text
+dotnet IntelligenceX.Ledger.dll backup --config /absolute/path/service.json --out /absolute/path/backups/ledger.sqlite
+```
+
+The destination directory must exist and both the destination and its `.json`
+manifest must be new. A unique staging copy is integrity-checked and hashed,
+then promoted without overwriting an existing destination. The manifest records
+the included event ordinal, event/item counts, SHA-256, size and measured time.
+A database without its matching manifest is incomplete; verify the hash before
+using a backup. Do not treat manifest publication as an atomic two-file operation.
+
+Retain the protected local configuration, certificate references, catalog and
+source enrollment needed to rebuild the service separately. For a restore drill,
+copy the verified database into a fresh data directory, configure a separate
+loopback port, and inspect its reads before switching any reporter. A real host
+migration requires stopping and verifying the old writer before activating the
+new writer, then reconciling reporter spools and external receipts. A restored
+ordinal is a recovery point; later events require reconciliation. Never run two
+service writers against one database or put the SQLite file on network storage.
+
 Work observations update independent dimensions. Null leaves a dimension unobserved. Use false or zero to clear an observed hold or queue. Resolve an explicit wait with `resolved: true` and its matching kind/condition identity. Re-observing the same wait preserves its original boundary. Later direct evidence can fill an unknown field of the same delivery stage. The first receipt and supplementary evidence remain linked.
 
 Rules version 2 applies task generation, turn/condition scope, supersession and native controls before evaluating Needs you, Stuck, Waiting, Working and Done. Each match carries its own episode, scope and evidence. `sinceUtc` follows that episode, including a new occurrence of the same reason. `lastProgressAtUtc` retains observed work activity independently. `alsoMatched` keeps the compact reason list, and `matches` supplies the corresponding details.

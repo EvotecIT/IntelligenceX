@@ -12,6 +12,7 @@
       "IntelligenceX.UnitTests\\IntelligenceX.UnitTests.csproj",
       "IntelligenceX.Ledger\\IntelligenceX.Ledger.csproj",
       "IntelligenceX.Ledger.Contracts\\IntelligenceX.Ledger.Contracts.csproj",
+      "IntelligenceX.Ledger.Mcp\\IntelligenceX.Ledger.Mcp.csproj",
       "IntelligenceX.Ledger.Tests\\IntelligenceX.Ledger.Tests.csproj"
     ]
   }

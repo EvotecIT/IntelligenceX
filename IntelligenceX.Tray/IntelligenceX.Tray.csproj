@@ -25,5 +25,6 @@
     <ItemGroup>
         <ProjectReference Include="..\IntelligenceX\IntelligenceX.csproj" />
         <ProjectReference Include="..\IntelligenceX.Storage.SQLite\IntelligenceX.Storage.SQLite.csproj" />
+        <ProjectReference Include="..\IntelligenceX.Ledger.Contracts\IntelligenceX.Ledger.Contracts.csproj" />
     </ItemGroup>
 </Project>

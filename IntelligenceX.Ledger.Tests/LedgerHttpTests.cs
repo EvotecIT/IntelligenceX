@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Context;
 using IntelligenceX.Ledger.Hosting;
 using IntelligenceX.Ledger.Reporting;
 using Xunit;
@@ -19,7 +20,17 @@ public sealed class LedgerHttpTests {
         Directory.CreateDirectory(directory);
         var socket = new TcpListener(IPAddress.Loopback, 0);
         socket.Start(); var port = ((IPEndPoint)socket.LocalEndpoint).Port; socket.Stop();
+        var source = Path.Combine(directory, "experiment.md");
+        await File.WriteAllTextAsync(source, "# Rejected experiment\nBuffered encoding increased allocations and was rejected.");
+        var catalog = Path.Combine(directory, "catalog.json");
+        await File.WriteAllTextAsync(catalog, JsonSerializer.Serialize(new ProjectCatalog {
+            ObservedAtUtc = DateTimeOffset.UtcNow,
+            Projects = [new() { Id = "synthetic-project", Name = "Synthetic project", Repository = "example/project",
+                Sources = [new() { Id = "synthetic-experiment", Title = "Synthetic experiment", Path = source,
+                    SourceRef = "https://example.test/experiment", Outcome = "rejected" }] }]
+        }, LedgerJson.Options));
         var settings = new LedgerSettings { DataDirectory = directory, Port = port,
+            ProjectCatalogPath = catalog,
             ReadToken = new('r', 32), WriteToken = new('w', 32), ProjectEvidenceReporterId = "synthetic-reporter",
             ExpectedReporters = new() { ["synthetic-machine"] = ["synthetic-reporter"] } };
         var config = Path.Combine(directory, "settings.json");
@@ -68,6 +79,18 @@ public sealed class LedgerHttpTests {
             using (var conflict = await client.PostAsJsonAsync("events", new[] { observation with { Sequence = 2 } }, LedgerJson.Options, timeout.Token))
                 Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ReadToken);
+            using var reader = new LedgerReadClient(new() { Endpoint = $"http://127.0.0.1:{port}/", ReadToken = settings.ReadToken });
+            var project = await reader.ProjectAsync("synthetic-project", "buffered encoding", timeout.Token);
+            var evidence = Assert.Single(project.Knowledge);
+            Assert.Equal("rejected", evidence.Outcome);
+            Assert.Equal("https://example.test/experiment", evidence.SourceRef);
+            Assert.Contains("increased allocations", evidence.Excerpt);
+            using (var denied = await client.PostAsJsonAsync("events", new[] { observation }, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var invalidQuery = await client.GetAsync("/api/coordination/v1/knowledge?project=synthetic-project&query=%3F%3F", timeout.Token))
+                Assert.Equal(HttpStatusCode.BadRequest, invalidQuery.StatusCode);
+            var work = await reader.WorkAsync(timeout.Token);
+            Assert.Equal("synthetic-item", Assert.Single(work.Items).Item.Id);
             using var itemResponse = await client.GetAsync("items/synthetic-item", timeout.Token);
             itemResponse.EnsureSuccessStatusCode();
             using var item = JsonDocument.Parse(await itemResponse.Content.ReadAsStringAsync(timeout.Token));
@@ -99,6 +122,11 @@ public sealed class LedgerHttpTests {
                 Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
             using (var status = await client.GetFromJsonAsync<JsonDocument>("status", timeout.Token))
                 Assert.Equal(1, status!.RootElement.GetProperty("pausedCount").GetInt32());
+            var refreshedWork = await reader.WorkAsync(timeout.Token);
+            Assert.Contains(refreshedWork.Items, row => row.Item.Id == "synthetic-budget-item");
+            var workingOnly = await reader.WorkAsync(timeout.Token, "working", 1);
+            Assert.Empty(workingOnly.Items);
+            Assert.Equal(refreshedWork.Counts, workingOnly.Counts);
             var queued = budget with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Control = null,
                 Work = new() { Scope = budgetScope, QueuedInputs = 1, OldestQueuedAtUtc = DateTimeOffset.UtcNow } };
             using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/events", new[] { queued }, LedgerJson.Options, timeout.Token))

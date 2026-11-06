@@ -7,7 +7,7 @@ using IntelligenceX.Ledger.Storage;
 
 namespace IntelligenceX.Ledger.Hosting;
 
-internal sealed class LedgerRuntime(LedgerStore store, LedgerSettings settings) {
+internal sealed partial class LedgerRuntime(LedgerStore store, LedgerSettings settings) {
     private readonly ConcurrentDictionary<string, (DateTimeOffset Time, LedgerItem[] Items)> _snapshots = new();
     internal static bool TokenEquals(string supplied, string expected) => CryptographicOperations.FixedTimeEquals(
         SHA256.HashData(Encoding.UTF8.GetBytes(supplied)), SHA256.HashData(Encoding.UTF8.GetBytes(expected)));

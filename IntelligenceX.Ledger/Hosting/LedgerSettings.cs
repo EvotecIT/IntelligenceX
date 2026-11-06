@@ -17,6 +17,7 @@ public sealed record LedgerSettings {
     public Dictionary<string, string[]> ExpectedReporters { get; init; } = [];
     public RuleSettings Rules { get; init; } = new();
     public string? ProjectEvidenceReporterId { get; init; }
+    public string? ProjectCatalogPath { get; init; }
 
     public static LedgerSettings Load(string file) {
         var settings = JsonSerializer.Deserialize<LedgerSettings>(File.ReadAllText(file), LedgerJson.Options)
