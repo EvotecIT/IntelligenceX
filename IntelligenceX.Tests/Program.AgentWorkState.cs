@@ -72,6 +72,7 @@ internal static partial class Program {
             var json = capture.ToString();
             var snapshot = JsonSerializer.Deserialize(json, AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
             AssertEqual(1, snapshot.Sessions.Count, "explicit root isolation");
+            AssertEqual(true, snapshot.MetadataCheckedAtUtc.HasValue, "successful optional metadata check time");
             AssertEqual("fake-cli", snapshot.Sessions[0].Id, "CLI session");
             AssertEqual(AgentAttentionKind.InterruptedTurn, snapshot.NeedsAttention[0].Kind, "CLI attention rule");
             AssertEqual(false, json.Contains("private sentinel"), "CLI privacy");
@@ -91,6 +92,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "recent CLI snapshot exit");
             AssertEqual(0, recent.Sessions.Count, "CLI since filter");
             AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--since", "7" }).GetAwaiter().GetResult(), "invalid age");
+            AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--github", "--login", " " }).GetAwaiter().GetResult(), "blank explicit login");
             AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--no-cache", "--cache-path", "unused" }).GetAwaiter().GetResult(), "conflicting cache flags");
             AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--stale-days", "0" }).GetAwaiter().GetResult(), "invalid threshold");
         } finally {

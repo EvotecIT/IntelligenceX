@@ -16,6 +16,34 @@ public sealed class AgentWorkEvidenceTests : IDisposable {
     private SourceRootRecord Root(string provider) => new("evidence-" + provider, provider, UsageSourceKind.LocalLogs, _directory);
 
     [Theory]
+    [InlineData("codex")]
+    [InlineData("claude")]
+    public void MissingRequestIdentifiers_PreserveEachUnconfirmedQuestion(string provider) {
+        Directory.CreateDirectory(Path.GetDirectoryName(CodexLog)!);
+        var call = provider == "codex"
+            ? Call("unused", "functions.request_user_input_async").Replace(",\"call_id\":\"unused\"", "")
+            : "{\"type\":\"assistant\",\"sessionId\":\"fake\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"AskUserQuestion\"}]}}\n";
+        File.WriteAllText(provider == "codex" ? CodexLog : Path.Combine(_directory, "fake.jsonl"),
+            (provider == "codex" ? Meta + Event("task_started") : "") + call + call);
+        var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { Root(provider) }, _now, options: new AgentWorkOptions { ActiveWithin = null });
+        Assert.Equal(2, Assert.Single(snapshot.Sessions).PendingInputs.Count);
+        Assert.Equal(2, snapshot.NeedsAttention.Count);
+        Assert.All(snapshot.NeedsAttention, item => Assert.Equal(AgentAttentionKind.UnconfirmedInput, item.Kind));
+    }
+
+    [Fact]
+    public void InvalidProjectedReplyIdentity_ReportsTheRecordAndKeepsOtherSessionsAvailable() {
+        Directory.CreateDirectory(Path.GetDirectoryName(CodexLog)!);
+        File.WriteAllText(CodexLog, Meta + Event("task_started") + Call("question", "functions.request_user_input_async")
+            + "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"questionReplyIds\":[42]}]}}\n");
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(CodexLog)!, "rollout-other.jsonl"), Meta.Replace("fake", "other") + Event("task_complete"));
+        var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { Root("codex") }, _now);
+        Assert.Equal(2, snapshot.Sessions.Count);
+        Assert.Equal("question", Assert.Single(snapshot.Sessions.Single(session => session.Id == "fake").PendingInputs).Id);
+        Assert.Equal("malformed-record", Assert.Single(snapshot.Diagnostics).Code);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void Codex_DesktopRepliesResolveOnlyFullyAnsweredMatchingCallsAcrossCacheTails(bool largeAnswer) {

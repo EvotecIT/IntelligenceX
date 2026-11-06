@@ -46,7 +46,13 @@ internal static class CodexAgentSessionReader {
                     };
                     }
                 } else if (type == "turn_context") {
-                    session = session with { WorkingDirectory = session.WorkingDirectory ?? Text(payload, "cwd") };
+                    var cwd = Text(payload, "cwd");
+                    // Forks may replay contexts older than their own canonical session metadata.
+                    if (cwd is not null && (session.WorkingDirectory is null
+                        || (timestamp.HasValue && session.StartedAtUtc.HasValue && timestamp >= session.StartedAtUtc))
+                        && cwd != session.WorkingDirectory) {
+                        session = session with { WorkingDirectory = cwd, Repository = null, Branch = null };
+                    }
                 } else if (type == "event_msg") {
                     switch (Text(payload, "type")) {
                         case "task_started": case "turn_started":
@@ -112,7 +118,7 @@ internal static class CodexAgentSessionReader {
                         var updated = AgentInputRequests.CompleteBlocking(session, Text(payload, "call_id"));
                         if (!ReferenceEquals(updated, session)) { session = updated; active = true; }
                     } else if (itemType == "message" && Text(payload, "role") == "user") {
-                        foreach (var reply in CodexQuestionReplies.Read(payload)) {
+                        foreach (var reply in CodexQuestionReplies.Read(payload, diagnostic)) {
                             if (!questions.TryGetValue(reply.CallId, out var answered) || reply.Index < 0 || reply.Index >= answered.Length) continue;
                             var updatedAnswers = (bool[])answered.Clone();
                             updatedAnswers[reply.Index] = true;

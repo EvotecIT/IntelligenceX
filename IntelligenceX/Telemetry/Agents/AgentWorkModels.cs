@@ -107,6 +107,8 @@ public sealed record AgentPullRequestState {
     public bool ReviewRequested { get; init; }
     /// <summary>Current head-commit check rollup.</summary>
     public AgentCheckState Checks { get; init; }
+    /// <summary>Check sources could not be fully revalidated; Checks may retain a prior observation for the same head.</summary>
+    public bool ChecksUnavailable { get; init; }
     /// <summary>Link to the head commit's checks.</summary>
     public string? ChecksUrl { get; init; }
 }

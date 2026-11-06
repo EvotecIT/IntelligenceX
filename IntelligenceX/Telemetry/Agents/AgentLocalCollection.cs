@@ -35,7 +35,7 @@ internal sealed class AgentLocalCollection {
             }
             state.Scan.ResetStatistics();
             if (forceMembership) state.Directories.Clear();
-            state.Directories.BeginScan();
+            state.Directories.BeginScan(now);
             state.RootDiagnostics.Clear();
             if (!Directory.Exists(root.Path) && !File.Exists(root.Path)) {
                 state.Clear();
@@ -82,6 +82,10 @@ internal sealed class AgentLocalCollection {
             if (state.Root.ProviderId == "claude" && LocalAgentWorkStateService.IsSubagentPath(path)) return true;
             if (state.Root.ProviderId == "codex" && !string.Equals(path, state.Root.Path, StringComparison.OrdinalIgnoreCase)
                 && !Path.GetFileName(path).StartsWith("rollout-", StringComparison.OrdinalIgnoreCase)) return true;
+            if (!string.Equals(path, state.Root.Path, StringComparison.OrdinalIgnoreCase)
+                && !(state.Root.ProviderId == "codex"
+                    ? CodexSessionImportSupport.IsCandidateDirectory(state.Root.Path, Path.GetDirectoryName(path)!)
+                    : ClaudeSessionImportSupport.IsCandidateDirectory(state.Root.Path, Path.GetDirectoryName(path)!))) return true;
             if (!File.Exists(path)) return true; // A deleted unknown file needs no discovery.
             state.Directories.Invalidate(Path.GetDirectoryName(path)!);
             return false;
@@ -113,7 +117,9 @@ internal sealed class AgentLocalCollection {
                     file.Enriched = local ? _repositories.Enrich(observation) : observation;
                 }
                 var session = file.Enriched;
-                if (state.Titles.TryGetValue(session.Id, out var title) && session.Title != title.Title) session = session with { Title = title.Title };
+                if (state.Titles.TryGetValue(session.Id, out var title)
+                    && (session.Title != title.Title || (session.ObservationSources & AgentObservationSources.TitleIndex) == 0))
+                    session = session with { Title = title.Title, ObservationSources = session.ObservationSources | AgentObservationSources.TitleIndex };
                 sessions.Add(session);
             }
             sessions.AddRange(state.Titles.Values);
@@ -135,8 +141,7 @@ internal sealed class AgentLocalCollection {
             statistics);
     }
 
-    private DateTimeOffset? Since(DateTimeOffset? now) => _options.ActiveWithin.HasValue
-        ? (now ?? DateTimeOffset.UtcNow) - _options.ActiveWithin.Value : null;
+    private DateTimeOffset? Since(DateTimeOffset? now) => _options.Since(now ?? DateTimeOffset.UtcNow);
 
     private static void ReadFile(RootState state, string path, DateTimeOffset? since, CancellationToken token, bool persist = true) {
         var file = new FileState();
@@ -160,13 +165,15 @@ internal sealed class AgentLocalCollection {
 
     private static void ReadTitles(RootState state, CancellationToken token) {
         if (state.Root.ProviderId != "codex" || !Directory.Exists(state.Root.Path)) return;
-        state.Titles.Clear();
         state.IndexDiagnostics.Diagnostics.Clear();
         state.CurrentFile = state.IndexDiagnostics;
         var titles = new List<AgentSessionState>();
         try {
             LocalAgentWorkStateService.ReadCodexTitles(state.Root, titles, 0, (_, code) => state.Report(code), token);
-            foreach (var title in titles) state.Titles[title.Id] = title;
+            if (state.IndexDiagnostics.Diagnostics.Count == 0) {
+                state.Titles.Clear();
+                foreach (var title in titles) state.Titles[title.Id] = title;
+            }
         } catch (IOException) { state.Report("unreadable-source");
         } catch (UnauthorizedAccessException) { state.Report("unreadable-source");
         } finally { state.CurrentFile = null; }

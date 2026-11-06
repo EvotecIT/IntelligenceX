@@ -18,6 +18,113 @@ public sealed class AgentWorkWatcherTests : IDisposable {
     private string PathToLog => Path.Combine(_root, "sessions", "rollout-fake.jsonl");
 
     [Fact]
+    public void LiveCollection_RetainsTheLastSuccessfulTitleIndexWhenAReadFails() {
+        Write(Meta + Event("task_started"));
+        var index = Path.Combine(_root, "session_index.jsonl");
+        File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"Known title\"}\n");
+        var collection = new AgentLocalCollection(new AgentWorkOptions());
+        collection.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("Known title", Assert.Single(collection.Snapshot(Array.Empty<AgentSessionState>()).Sessions).Title);
+        using (var blocked = new FileStream(index, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) {
+            Assert.True(collection.Update(Root.Id, index, default));
+            var partial = collection.Snapshot(Array.Empty<AgentSessionState>());
+            Assert.Equal("Known title", Assert.Single(partial.Sessions).Title);
+            Assert.Contains(partial.Diagnostics, item => item.Code == "unreadable-source");
+        }
+        File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"New title\"}\n");
+        Assert.True(collection.Update(Root.Id, index, default));
+        var recovered = collection.Snapshot(Array.Empty<AgentSessionState>());
+        Assert.Equal("New title", Assert.Single(recovered.Sessions).Title);
+        Assert.Empty(recovered.Diagnostics);
+    }
+
+    [Theory]
+    [InlineData("codex", "sessions")]
+    [InlineData("claude", "projects")]
+    public void LiveCollection_IgnoresNonCandidateFilesAndDiscoversExplicitFileRoots(string provider, string folder) {
+        var candidate = Path.Combine(_root, folder);
+        Directory.CreateDirectory(candidate);
+        var source = new SourceRootRecord("candidate", provider, UsageSourceKind.LocalLogs, _root);
+        var collection = new AgentLocalCollection(new AgentWorkOptions());
+        collection.Reconcile(new[] { source }, null, default);
+        var unrelated = Path.Combine(_root, "rollout-history.jsonl");
+        File.WriteAllText(unrelated, "");
+        Assert.True(collection.Update(source.Id, unrelated, default)); // Handled without requesting discovery.
+        var added = Path.Combine(candidate, "rollout-new.jsonl");
+        File.WriteAllText(added, "");
+        Assert.False(collection.Update(source.Id, added, default));
+        var explicitPath = Path.Combine(_root, "explicit.jsonl");
+        var explicitRoot = new SourceRootRecord("explicit", provider, UsageSourceKind.LocalLogs, explicitPath);
+        collection.Reconcile(new[] { explicitRoot }, null, default);
+        File.WriteAllText(explicitPath, "");
+        Assert.False(collection.Update(explicitRoot.Id, explicitPath, default));
+    }
+
+    [Fact]
+    public void IncrementalReader_DetectsSameLengthReplacementWithPreservedModificationTime() {
+        Write(Meta + Event("task_started"));
+        // Keep mtime later than ctime so Unix birth-time fallback can identify the replacement too.
+        File.SetLastWriteTimeUtc(PathToLog, DateTime.UtcNow.AddMinutes(5));
+        var options = new AgentWorkOptions { Cache = new InMemoryRawArtifactStore() };
+        AgentWorkSnapshot Read() => LocalAgentWorkStateService.ReadLocal(new[] { Root }, options: options);
+        Assert.Equal(AgentWorkState.Running, Assert.Single(Read().Sessions).State);
+        var modified = File.GetLastWriteTimeUtc(PathToLog);
+        var created = File.GetCreationTimeUtc(PathToLog);
+        var length = new FileInfo(PathToLog).Length;
+        Write(Meta + Event("turn_aborted"));
+        File.SetCreationTimeUtc(PathToLog, created.AddMinutes(1));
+        File.SetLastWriteTimeUtc(PathToLog, modified);
+        Assert.NotEqual(created, File.GetCreationTimeUtc(PathToLog));
+        Assert.Equal(length, new FileInfo(PathToLog).Length);
+        var replaced = Read();
+        Assert.Equal(AgentTurnOutcome.Interrupted, Assert.Single(replaced.Sessions).LastTurnOutcome);
+        Assert.Equal(1, replaced.Scan!.FilesRead);
+        Assert.Equal(0, replaced.Scan.FilesReused);
+        Assert.Equal(0, replaced.Scan.FilesTailed);
+    }
+
+    [Fact]
+    public async Task Watcher_RefreshesRemoteFreshnessWithoutPublishingTimestampOnlyChanges() {
+        var clock = new AgentWorkTestClock();
+        using var http = new HttpClient(new EmptySearchHandler()) { BaseAddress = new Uri("https://api.github.com/") };
+        using var github = new GitHubDashboardService(http, disposeHttpClient: false);
+        var events = 0;
+        var control = new TaskCompletionSource<System.Collections.Generic.IReadOnlyList<AgentSessionState>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delivered = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var watcher = new AgentWorkWatcher(Array.Empty<SourceRootRecord>(), new AgentWorkOptions {
+            GitHubRefreshInterval = TimeSpan.FromSeconds(10), ReconcileInterval = TimeSpan.FromHours(1)
+        }, token => control.Task.WaitAsync(token), github, "sample", static () => Array.Empty<SourceRootRecord>(),
+            static (directory, filter) => new FileSystemWatcher(directory, filter), clock);
+        watcher.SnapshotChanged += (_, change) => {
+            var count = Interlocked.Increment(ref events);
+            if (change.Snapshot.Sessions.Any(session => session.Id == "control")) delivered.TrySetResult(count);
+        };
+        await watcher.StartAsync();
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(10)));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1)));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (watcher.CurrentSnapshot.GitHubCheckedAtUtc is null) await Task.Delay(10, deadline.Token);
+        var first = watcher.CurrentSnapshot.GitHubCheckedAtUtc;
+        Assert.NotNull(first);
+        clock.Advance(TimeSpan.FromSeconds(9));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(10), 2));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1), 2));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        while (watcher.CurrentSnapshot.GitHubCheckedAtUtc <= first) await Task.Delay(10, deadline.Token);
+        Assert.True(watcher.CurrentSnapshot.GitHubCheckedAtUtc > first);
+        control.SetResult(new[] { new AgentSessionState { Provider = "codex", Id = "control", LastActivityAtUtc = DateTimeOffset.UtcNow } });
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1), 3));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(2, await Within(delivered.Task)); // Initial snapshot, then a real content change after both refreshes.
+    }
+
+    private sealed class EmptySearchHandler : HttpMessageHandler {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"total_count\":0,\"items\":[]}") });
+    }
+
+    [Fact]
     public void Diagnostics_QueueOnlyTransitionsAndKeepRootFailuresSeparate() {
         var signals = 0;
         var diagnostics = new AgentWorkDiagnostics(() => signals++);
@@ -284,6 +391,8 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         File.AppendAllText(PathToLog, Event("turn_aborted"));
         Assert.True(collection.Update(Root.Id, PathToLog, default));
         Assert.Equal("first", Assert.Single(Snapshot().Sessions).Branch);
+        collection.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("second", Assert.Single(Snapshot().Sessions).Branch);
         var index = Path.Combine(_root, "session_index.jsonl");
         File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"Renamed title\"}\n");
         Assert.True(collection.Update(Root.Id, index, default));
@@ -298,7 +407,9 @@ public sealed class AgentWorkWatcherTests : IDisposable {
         collection.Reconcile(new[] { Root }, null, default);
         Assert.Equal("added", Assert.Single(Snapshot().Sessions).Id);
         // Restore the cwd observation so the next reconcile must invalidate the cached HEAD.
+        var membershipStamp = Directory.GetLastWriteTimeUtc(Path.GetDirectoryName(PathToLog)!);
         Write(Meta.Replace("\"id\":\"fake-live\"", "\"id\":\"fake-live\",\"cwd\":\"" + cwd.Replace("\\", "\\\\") + "\"") + Event("task_started"));
+        Directory.SetLastWriteTimeUtc(Path.GetDirectoryName(PathToLog)!, membershipStamp.AddSeconds(2));
         collection.Reconcile(new[] { Root }, null, default);
         Assert.Equal("second", Assert.Single(Snapshot().Sessions).Branch);
         Assert.Equal("example/work", Snapshot().Sessions[0].Repository);

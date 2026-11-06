@@ -14,8 +14,78 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class GitHubAgentWorkTests {
-    [Fact]
-    public async Task BodyDeadline_CancelsAStalledResponseAndReleasesTheFetchGate() {
+    [Theory]
+    [InlineData("success", AgentCheckState.Unknown)]
+    [InlineData("failure", AgentCheckState.Failure)]
+    public async Task UnrecognizedCheckConclusions_CannotTurnAPartialRollupGreen(string known, AgentCheckState expected) {
+        using var http = new HttpClient(new Handler(request => {
+            var path = request.RequestUri!.AbsolutePath;
+            return Task.FromResult(path == "/search/issues" ? Search("1")
+                : path.Contains("/pulls/", StringComparison.Ordinal) ? Pull("1", "sample", "Sample/Project")
+                : path.EndsWith("/status", StringComparison.Ordinal) ? Json("{\"total_count\":0}")
+                : Json("{\"check_runs\":[{\"status\":\"completed\",\"conclusion\":\"" + known + "\"},{\"status\":\"completed\",\"conclusion\":null}]}"));
+        })) { BaseAddress = new Uri("https://api.github.com/") };
+        using var service = new GitHubDashboardService(http, disposeHttpClient: false);
+        var snapshot = await service.EnrichAgentWorkAsync(new AgentWorkSnapshot(), "sample");
+        var pr = Assert.Single(snapshot.PullRequests);
+        Assert.Equal(expected, pr.Checks);
+        Assert.True(pr.ChecksUnavailable);
+        Assert.Equal("checks-unavailable", Assert.Single(snapshot.Diagnostics).Code);
+        Assert.Null(snapshot.GitHubCheckedAtUtc);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PartialCheckFailure_PreservesSameHeadEvidenceAndNewReviewsWithoutClaimingRevalidation(bool newService) {
+        var phase = 0;
+        using var http = new HttpClient(new Handler(request => {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/search/issues") return Task.FromResult(Search(
+                request.RequestUri.Query.Contains("review-requested", StringComparison.Ordinal) && phase > 0 ? "2" : "1"));
+            if (path.Contains("/pulls/", StringComparison.Ordinal)) {
+                var number = path.Split('/').Last();
+                return Task.FromResult(Pull(number, number == "1" ? "sample" : "other", "Sample/Project",
+                    number == "1" && phase >= 2 ? "new-head" : null));
+            }
+            var first = path.Contains("sha-1", StringComparison.Ordinal) || path.Contains("new-head", StringComparison.Ordinal);
+            if (first && phase is 1 or 2) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
+            if (path.EndsWith("/status", StringComparison.Ordinal))
+                return Task.FromResult(Json("{\"total_count\":1,\"state\":\"" + (first && phase == 0 ? "failure" : "success") + "\"}"));
+            return Task.FromResult(Checks(first && phase == 0 ? "failure" : "success"));
+        })) { BaseAddress = new Uri("https://api.github.com/") };
+        using var original = new GitHubDashboardService(http, disposeHttpClient: false);
+        var local = new AgentWorkSnapshot { CapturedAtUtc = DateTimeOffset.UtcNow };
+        var firstSnapshot = await original.EnrichAgentWorkAsync(local, "sample");
+        Assert.Equal(AgentCheckState.Failure, Assert.Single(firstSnapshot.PullRequests).Checks);
+        Assert.False(firstSnapshot.PullRequests[0].ChecksUnavailable);
+        Assert.NotNull(firstSnapshot.GitHubCheckedAtUtc);
+        using var replacement = newService ? new GitHubDashboardService(http, disposeHttpClient: false) : null;
+        var service = replacement ?? original;
+        phase = 1;
+        var partial = await service.EnrichAgentWorkAsync(firstSnapshot, "sample");
+        Assert.Equal(2, partial.PullRequests.Count);
+        Assert.Equal(AgentCheckState.Failure, partial.PullRequests[0].Checks);
+        Assert.True(partial.PullRequests[0].ChecksUnavailable);
+        Assert.True(partial.PullRequests[1].ReviewRequested);
+        Assert.Equal("checks-unavailable", Assert.Single(partial.Diagnostics).Code);
+        Assert.Equal(firstSnapshot.GitHubCheckedAtUtc, partial.GitHubCheckedAtUtc);
+        Assert.Contains(partial.NeedsAttention, item => item.Kind == AgentAttentionKind.FailedChecks);
+        Assert.Contains(partial.NeedsAttention, item => item.Kind == AgentAttentionKind.ReviewRequested);
+        phase = 2;
+        var newHead = await service.EnrichAgentWorkAsync(partial, "sample");
+        Assert.Equal(AgentCheckState.Unknown, newHead.PullRequests[0].Checks);
+        Assert.NotEqual(partial.PullRequests[0].ChecksUrl, newHead.PullRequests[0].ChecksUrl);
+        Assert.DoesNotContain(newHead.NeedsAttention, item => item.Kind == AgentAttentionKind.FailedChecks);
+        phase = 3;
+        var recovered = await service.EnrichAgentWorkAsync(newHead, "sample");
+        Assert.Empty(recovered.Diagnostics);
+        Assert.All(recovered.PullRequests, pr => Assert.False(pr.ChecksUnavailable));
+        Assert.True(recovered.GitHubCheckedAtUtc > firstSnapshot.GitHubCheckedAtUtc);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BodyDeadline_CancelsAStalledResponseAndReleasesTheFetchGate(bool resolveLogin) {
         var clock = new AgentWorkTestClock();
         var reading = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var requests = 0;
@@ -23,7 +93,7 @@ public sealed class GitHubAgentWorkTests {
             ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledBody(reading)) }
             : Json("{\"total_count\":0,\"items\":[]}")))) { BaseAddress = new Uri("https://api.github.com/") };
         using var service = new GitHubDashboardService(http, disposeHttpClient: false, clock);
-        var fetch = service.FetchAgentPullRequestsAsync("sample");
+        var fetch = service.FetchAgentPullRequestsAsync(resolveLogin ? null : "sample");
         await reading.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await clock.Scheduled(TimeSpan.FromSeconds(30)).WaitAsync(TimeSpan.FromSeconds(10));
         clock.Advance(TimeSpan.FromSeconds(29));
@@ -43,7 +113,9 @@ public sealed class GitHubAgentWorkTests {
                 Repository = "Sample/Project", Branch = "feature/work" }
         }, new[] { new AgentPullRequestState { Url = "https://github.com/Sample/Project/pull/1", HeadRepository = "Sample/Project",
             Branch = "feature/work", Checks = AgentCheckState.Failure, ReviewRequested = true, IsAuthor = true } }, DateTimeOffset.Parse("2026-11-01T12:00:00Z"))
-            with { MetadataCheckedAtUtc = DateTimeOffset.Parse("2026-11-01T11:59:00Z"), GitHubCheckedAtUtc = DateTimeOffset.Parse("2026-11-01T11:58:00Z") };
+            with { MetadataCheckedAtUtc = DateTimeOffset.Parse("2026-11-01T11:59:00Z"), GitHubCheckedAtUtc = DateTimeOffset.Parse("2026-11-01T11:58:00Z"),
+                Diagnostics = new[] { new AgentSourceDiagnostic { Provider = "github", Code = "request-failed" },
+                    new AgentSourceDiagnostic { Provider = "claude", Code = "unreadable-source" } } };
         using var http = new HttpClient(new Handler(_ => timeout
             ? Task.FromException<HttpResponseMessage>(new TaskCanceledException("private sentinel"))
             : Task.FromResult(diagnostic is null ? Search(null)
@@ -56,7 +128,7 @@ public sealed class GitHubAgentWorkTests {
         Assert.Equal(local.MetadataCheckedAtUtc, partial.MetadataCheckedAtUtc);
         if (diagnostic is null) {
             Assert.Equal(AgentAttentionKind.WaitingOnPerson, Assert.Single(partial.NeedsAttention).Kind);
-            Assert.Empty(partial.Diagnostics);
+            Assert.Equal("claude", Assert.Single(partial.Diagnostics).Provider);
             Assert.Empty(partial.PullRequests);
             Assert.True(partial.GitHubCheckedAtUtc > local.GitHubCheckedAtUtc);
         } else {
@@ -66,8 +138,11 @@ public sealed class GitHubAgentWorkTests {
             Assert.Same(local.NeedsAttention, partial.NeedsAttention);
             Assert.Contains(partial.NeedsAttention, item => item.Kind == AgentAttentionKind.FailedChecks);
             Assert.Contains(partial.NeedsAttention, item => item.Kind == AgentAttentionKind.ReviewRequested);
-            Assert.Equal(diagnostic, Assert.Single(partial.Diagnostics).Code);
+            Assert.Equal(diagnostic, Assert.Single(partial.Diagnostics, item => item.Provider == "github").Code);
+            Assert.Contains(partial.Diagnostics, item => item.Provider == "claude" && item.Code == "unreadable-source");
         }
+        var repeated = await service.EnrichAgentWorkAsync(partial, "sample");
+        Assert.Equal(partial.Diagnostics, repeated.Diagnostics);
         var json = AgentWorkJson.Serialize(partial);
         var decoded = JsonSerializer.Deserialize(json, AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
         Assert.Equal("local-session", Assert.Single(decoded.Sessions).Id);
@@ -149,10 +224,10 @@ public sealed class GitHubAgentWorkTests {
         Assert.DoesNotContain("private sentinel", exception.Message);
     }
 
-    private static HttpResponseMessage Pull(string n, string author, string head) => Json($$$$"""
+    private static HttpResponseMessage Pull(string n, string author, string head, string? sha = null) => Json($$$$"""
         {"state":"open","html_url":"https://github.com/Sample/Project/pull/{{{{n}}}}","title":"Sample PR","body":"private sentinel",
         "user":{"login":"{{{{author}}}}"},"base":{"repo":{"full_name":"Sample/Project"}},
-        "head":{"sha":"sha-{{{{n}}}}","ref":"feature/work","repo":{"full_name":"{{{{head}}}}"}}}
+        "head":{"sha":"{{{{sha ?? "sha-" + n}}}}","ref":"feature/work","repo":{"full_name":"{{{{head}}}}"}}}
         """);
     private static HttpResponseMessage Search(string? n, bool more = false) {
         var response = Json("{\"total_count\":2,\"incomplete_results\":false,\"items\":[" +

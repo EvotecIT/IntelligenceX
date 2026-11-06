@@ -20,31 +20,36 @@ public static class AgentWorkStateRules {
         var threshold = staleAfter ?? TimeSpan.FromDays(7);
         if (threshold <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(staleAfter));
         var prs = pullRequests.Where(static pr => pr.IsOpen)
-            .GroupBy(static pr => pr.Url, StringComparer.OrdinalIgnoreCase).Select(static group => group.First())
+            .GroupBy(static pr => pr.Url, StringComparer.OrdinalIgnoreCase).Select(static group => group.Aggregate(static (left, right) => left with {
+                ReviewRequested = left.ReviewRequested || right.ReviewRequested, IsAuthor = left.IsAuthor || right.IsAuthor,
+                Checks = MergeChecks(left.Checks, right.Checks), ChecksUrl = left.ChecksUrl ?? right.ChecksUrl,
+                ChecksUnavailable = left.ChecksUnavailable || right.ChecksUnavailable
+            }))
             .OrderBy(static pr => pr.Url, StringComparer.Ordinal).ToArray();
         var attention = new List<AgentAttentionItem>();
         var linked = new List<AgentSessionState>();
         foreach (var session in sessions) {
-            var baseState = session.State == AgentWorkState.Stale ? AgentWorkState.Idle : session.State;
+            var state = session.IsArchived ? AgentWorkState.Finished : session.State;
+            var baseState = state == AgentWorkState.Stale ? AgentWorkState.Idle : state;
             var matches = prs.Length == 0 ? Array.Empty<AgentPullRequestState>() : prs.Where(pr => !string.IsNullOrEmpty(session.Repository) && !string.IsNullOrEmpty(session.Branch)
                 && string.Equals(pr.HeadRepository, session.Repository, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(pr.Branch, session.Branch, StringComparison.Ordinal)).ToArray();
-            var stale = session.State != AgentWorkState.Running && session.State != AgentWorkState.Finished
+            var stale = state != AgentWorkState.Running && state != AgentWorkState.Finished
                 && matches.Length > 0 && session.LastActivityAtUtc.HasValue
                 && nowUtc - session.LastActivityAtUtc.Value >= threshold;
             linked.Add(session with { PullRequests = matches, State = stale && baseState == AgentWorkState.Idle
-                ? AgentWorkState.Stale : baseState });
+                ? AgentWorkState.Stale : baseState, StateIsInferred = !session.IsArchived && session.StateIsInferred });
             void Add(AgentAttentionKind kind, string? inputId = null) => attention.Add(new AgentAttentionItem {
                 Kind = kind, Provider = session.Provider, SessionId = session.Id, Title = session.Title,
                 Machine = session.Machine, SourceRootId = session.SourceRootId, InputId = inputId,
                 Url = matches.FirstOrDefault()?.Url
             });
-            if (session.State != AgentWorkState.Finished && !session.IsArchived && session.PendingInputs.Count > 0) {
+            if (state != AgentWorkState.Finished && session.PendingInputs.Count > 0) {
                 foreach (var input in session.PendingInputs)
                     Add(input.AnswerIsUnconfirmed ? AgentAttentionKind.UnconfirmedInput : AgentAttentionKind.WaitingOnPerson, input.Id);
-            } else if (session.State == AgentWorkState.WaitingOnPerson) Add(AgentAttentionKind.WaitingOnPerson);
+            } else if (state == AgentWorkState.WaitingOnPerson) Add(AgentAttentionKind.WaitingOnPerson);
             if (stale) Add(AgentAttentionKind.Stale);
-            if (session.State != AgentWorkState.Finished) {
+            if (state != AgentWorkState.Finished) {
                 switch (session.LastTurnOutcome) {
                     case AgentTurnOutcome.Failed: Add(AgentAttentionKind.FailedTurn); break;
                     case AgentTurnOutcome.Interrupted: Add(AgentAttentionKind.InterruptedTurn); break;
@@ -66,4 +71,9 @@ public static class AgentWorkStateRules {
             PullRequests = prs, NeedsAttention = attention, Diagnostics = diagnostics ?? Array.Empty<AgentSourceDiagnostic>()
         };
     }
+
+    internal static AgentCheckState MergeChecks(AgentCheckState left, AgentCheckState right) =>
+        left == AgentCheckState.Failure || right == AgentCheckState.Failure ? AgentCheckState.Failure
+        : left == AgentCheckState.Pending || right == AgentCheckState.Pending ? AgentCheckState.Pending
+        : left == AgentCheckState.Success || right == AgentCheckState.Success ? AgentCheckState.Success : AgentCheckState.Unknown;
 }

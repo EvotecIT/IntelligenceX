@@ -18,13 +18,16 @@ internal static class CodexQuestionReplies {
         return questions.ValueKind == JsonValueKind.Array ? questions.GetArrayLength() : 0;
     }
 
-    internal static IEnumerable<(string CallId, int Index)> Read(JsonElement payload) {
+    internal static IEnumerable<(string CallId, int Index)> Read(JsonElement payload, Action<string> diagnostic) {
         var content = Object(payload, "content");
         if (content.ValueKind != JsonValueKind.Array) yield break;
         foreach (var block in content.EnumerateArray()) {
             var ids = Object(block, "questionReplyIds");
             if (ids.ValueKind == JsonValueKind.Array) {
-                foreach (var id in ids.EnumerateArray()) if (TryIdentity(id.GetString(), out var reply)) yield return reply;
+                foreach (var id in ids.EnumerateArray()) {
+                    if (id.ValueKind != JsonValueKind.String) { diagnostic("malformed-record"); continue; }
+                    if (TryIdentity(id.GetString(), out var reply)) yield return reply;
+                }
             } else {
                 var text = Text(block, "text")?.Trim();
                 if (text is null || !text.StartsWith(Opening, StringComparison.Ordinal) || !text.EndsWith(Closing, StringComparison.Ordinal)) continue;

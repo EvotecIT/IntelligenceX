@@ -55,9 +55,12 @@ public static class LocalAgentWorkStateService {
                 continue;
             }
             metadataKeys.Add(key);
+            var sameWorkspace = log.WorkingDirectory is null || metadata.WorkingDirectory is null
+                || string.Equals(log.WorkingDirectory, metadata.WorkingDirectory, StringComparison.Ordinal);
             observations[key] = log with {
-                Title = log.Title ?? metadata.Title, WorkingDirectory = metadata.WorkingDirectory ?? log.WorkingDirectory,
-                Repository = metadata.Repository ?? log.Repository, Branch = metadata.Branch ?? log.Branch,
+                Title = log.Title ?? metadata.Title, WorkingDirectory = log.WorkingDirectory ?? metadata.WorkingDirectory,
+                Repository = sameWorkspace ? metadata.Repository ?? log.Repository : log.Repository,
+                Branch = sameWorkspace ? metadata.Branch ?? log.Branch : log.Branch,
                 IsArchived = metadata.IsArchived,
                 State = metadata.IsArchived ? AgentWorkState.Finished
                     : log.IsArchived && log.State == AgentWorkState.Finished ? AgentWorkState.Idle : log.State,
@@ -122,7 +125,7 @@ public static class LocalAgentWorkStateService {
         for (var i = firstSession; i < sessions.Count; i++) {
             var session = sessions[i];
             if (session.Provider == "codex" && session.Machine == machine && titles.TryGetValue(session.Id, out var title)) {
-                sessions[i] = session with { Title = title };
+                sessions[i] = session with { Title = title, ObservationSources = session.ObservationSources | AgentObservationSources.TitleIndex };
             }
         }
         foreach (var title in titles) sessions.Add(new AgentSessionState {
