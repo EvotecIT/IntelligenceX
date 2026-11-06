@@ -151,13 +151,6 @@ jobs:
               with:
                   name: test-results-ubuntu
                   path: '**/*.trx'
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-              if: ${{ runner.os == 'Linux' && hashFiles('**/coverage.cobertura.xml') != '' }}
-              with:
-                  files: '**/coverage.cobertura.xml'
-                  fail_ci_if_error: false
-                  verbose: true
 
     test-macos:
         name: 'macOS'
