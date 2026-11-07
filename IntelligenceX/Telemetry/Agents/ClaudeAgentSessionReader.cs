@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Globalization;
 using System.Linq;
@@ -19,25 +20,35 @@ internal static class ClaudeAgentSessionReader {
         };
         var active = previous?.Active ?? false;
         var sidechain = previous?.Sidechain ?? false;
+        var associations = previous?.ProviderPullRequestUrlsBySession ?? new Dictionary<string, string[]>(StringComparer.Ordinal);
         window ??= new AgentSessionReadWindow();
-        window.Checkpoint = previous ?? new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
+        window.Checkpoint = previous ?? new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain,
+            ProviderPullRequestUrlsBySession = associations };
         foreach (var document in AgentSessionMetadataProjection.Read(path, diagnostic, cancellationToken, window)) {
             using (document) {
                 var entry = document.RootElement;
                 var type = Text(entry, "type");
                 if (type == "pr-link") {
                     // Provider association is separate from conversation activity and the
-                    // primary checkout's branch. A link for another session is not ours.
-                    if (Text(entry, "sessionId") == session.Id && ProviderPullRequestUrl(entry) is { } url
-                        && !session.ProviderPullRequestUrls.Contains(url, StringComparer.OrdinalIgnoreCase))
-                        session = session with { ProviderPullRequestUrls = session.ProviderPullRequestUrls.Concat(new[] { url }).ToArray() };
-                    if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
+                    // primary checkout's branch. Recovered filenames are only provisional
+                    // identities: keep the recorded owner through cache/tail continuation.
+                    var owner = Text(entry, "sessionId");
+                    if (!string.IsNullOrEmpty(owner) && ProviderPullRequestUrl(entry) is { } url) {
+                        associations.TryGetValue(owner!, out var urls);
+                        if (urls is null || !urls.Contains(url, StringComparer.OrdinalIgnoreCase))
+                            associations = new Dictionary<string, string[]>(associations, StringComparer.Ordinal) {
+                                [owner!] = (urls ?? Array.Empty<string>()).Concat(new[] { url }).ToArray()
+                            };
+                    }
+                    session = session with { ProviderPullRequestUrls = AssociationsFor(session.Id) };
+                    if (window.RecordIsComplete) window.Checkpoint = Checkpoint();
                     continue;
                 }
                 sidechain |= Object(entry, "isSidechain").ValueKind == JsonValueKind.True;
                 var timestamp = Timestamp(entry);
                 session = session with {
                     Id = Text(entry, "sessionId") ?? session.Id,
+                    ProviderPullRequestUrls = AssociationsFor(Text(entry, "sessionId") ?? session.Id),
                     WorkingDirectory = Text(entry, "cwd") ?? session.WorkingDirectory,
                     Branch = Text(entry, "gitBranch") ?? session.Branch,
                     StartedAtUtc = session.StartedAtUtc is null || timestamp < session.StartedAtUtc ? timestamp : session.StartedAtUtc,
@@ -105,10 +116,14 @@ internal static class ClaudeAgentSessionReader {
                 if (!active && session.LastTurnOutcome is AgentTurnOutcome.Completed or AgentTurnOutcome.Failed or AgentTurnOutcome.Interrupted or AgentTurnOutcome.Incomplete)
                     session = session with { TurnOpen = false, TurnEndedAtUtc = session.TurnEndedAtUtc ?? timestamp };
             }
-            if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
+            if (window.RecordIsComplete) window.Checkpoint = Checkpoint();
         }
         // Subagents share the parent sessionId. They must not replace its state during deduplication.
-        return new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
+        return Checkpoint();
+
+        AgentSessionParserState Checkpoint() => new() { Session = session, Active = active, Sidechain = sidechain,
+            ProviderPullRequestUrlsBySession = associations };
+        string[] AssociationsFor(string id) => associations.TryGetValue(id, out var urls) ? urls : Array.Empty<string>();
     }
 
     private static string? ProviderPullRequestUrl(JsonElement entry) {

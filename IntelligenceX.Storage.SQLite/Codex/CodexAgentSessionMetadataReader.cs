@@ -4,6 +4,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DBAClientX;
@@ -25,6 +26,10 @@ public static class CodexAgentSessionMetadataReader {
         var diagnostics = new List<AgentSourceDiagnostic>();
         foreach (var root in roots) {
             cancellationToken.ThrowIfCancellationRequested();
+            if (IsUnsupportedWslRoot(root)) {
+                diagnostics.Add(new AgentSourceDiagnostic { Provider = "codex", SourceRootId = root.Id, Code = "unsupported-metadata-source" });
+                continue;
+            }
             try { sessions.AddRange(await ReadAsync(root, cancellationToken).ConfigureAwait(false)); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception) {
@@ -37,10 +42,12 @@ public static class CodexAgentSessionMetadataReader {
     /// <summary>Reads archive flags, workspace, branch and timestamps from state_5.sqlite.</summary>
     /// <param name="root">An existing Codex telemetry root.</param>
     /// <param name="cancellationToken">Cancels database operations.</param>
+    /// <remarks>Windows cannot safely use Linux SQLite locking through a WSL UNC share. Those optional roots return no Desktop rows; ReadAvailableAsync reports the skipped source.</remarks>
     public static async Task<IReadOnlyList<AgentSessionState>> ReadAsync(SourceRootRecord root,
         CancellationToken cancellationToken = default) {
         if (root is null) throw new ArgumentNullException(nameof(root));
         if (root.ProviderId != "codex") throw new ArgumentException("A Codex source root is required.", nameof(root));
+        if (IsUnsupportedWslRoot(root)) return Array.Empty<AgentSessionState>();
         var database = Path.Combine(root.Path, "state_5.sqlite");
         if (!File.Exists(database)) return Array.Empty<AgentSessionState>();
         // Read-only connections can still encounter a brief schema/checkpoint lock. Allow the
@@ -68,6 +75,12 @@ public static class CodexAgentSessionMetadataReader {
             };
         }, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
+
+    private static bool IsUnsupportedWslRoot(SourceRootRecord root) => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        && root.ProviderId == "codex" && (root.SourceKind == UsageSourceKind.LocalLogs
+            && string.Equals(root.PlatformHint, "wsl", StringComparison.OrdinalIgnoreCase)
+            || root.Path.StartsWith("\\\\wsl$\\", StringComparison.OrdinalIgnoreCase)
+            || root.Path.StartsWith("\\\\wsl.localhost\\", StringComparison.OrdinalIgnoreCase));
 
     private static string? ReadText(DbDataReader row, int ordinal) => row.IsDBNull(ordinal)
         ? null : Convert.ToString(row.GetValue(ordinal), CultureInfo.InvariantCulture);

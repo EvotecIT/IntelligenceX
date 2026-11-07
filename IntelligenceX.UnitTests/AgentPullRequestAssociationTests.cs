@@ -74,5 +74,42 @@ public sealed class AgentPullRequestAssociationTests : IDisposable {
         new[] { new AgentPullRequestState { Url = Target, HeadRepository = "Sample/Project", Branch = "feature/worktree" },
             new AgentPullRequestState { Url = "https://github.com/Sample/Project/pull/99", HeadRepository = "Sample/Project", Branch = "unrelated" } }, Now);
 
+    [Theory]
+    [InlineData("synthetic", true)]
+    [InlineData("other-session", false)]
+    public void EarlyProviderAssociation_UsesRecordedSessionIdentityAcrossRenamedFileAndCachedTail(string recordedId, bool matches) {
+        Directory.CreateDirectory(_directory);
+        var renamed = Path.Combine(_directory, "other-session.jsonl");
+        var link = JsonSerializer.Serialize(new { type = "pr-link", sessionId = recordedId, prNumber = 17,
+            prRepository = "Sample/Project", prUrl = Target });
+        File.WriteAllText(renamed, link + "\n");
+        var options = new AgentWorkOptions { Cache = new InMemoryRawArtifactStore(), ActiveWithin = null };
+        LocalAgentWorkStateService.ReadLocal(new[] { Root }, Now, options: options);
+        File.AppendAllText(renamed, Initial + "\n");
+        var tailed = LocalAgentWorkStateService.ReadLocal(new[] { Root }, Now, options: options);
+        Assert.Equal(1, tailed.Scan!.FilesTailed);
+        var session = Assert.Single(tailed.Sessions);
+        Assert.Equal("synthetic", session.Id);
+        Assert.Equal(matches ? new[] { Target } : Array.Empty<string>(), session.ProviderPullRequestUrls);
+        Assert.Equal(matches ? 1 : 0, Assert.Single(Link(session).Sessions).PullRequests.Count);
+        var cold = LocalAgentWorkStateService.ReadLocal(new[] { Root }, Now);
+        Assert.Equal(session.ProviderPullRequestUrls, Assert.Single(cold.Sessions).ProviderPullRequestUrls);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(",\"providerPullRequestUrls\":null")]
+    public void OlderSnapshotWithoutProviderAssociations_StillLinksByBranch(string optionalProperty) {
+        var json = "{\"sessions\":[{\"provider\":\"codex\",\"id\":\"synthetic\",\"repository\":\"Sample/Project\",\"branch\":\"feature/worktree\""
+            + optionalProperty + "}]}";
+        var snapshot = JsonSerializer.Deserialize(json, AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
+        var session = Assert.Single(snapshot.Sessions);
+        Assert.Empty(session.ProviderPullRequestUrls);
+        Assert.Empty(session.PendingInputs);
+        Assert.Empty(session.ResolvedInputs);
+        Assert.Empty(session.PullRequests);
+        Assert.Equal(Target, Assert.Single(Assert.Single(Link(session).Sessions).PullRequests).Url);
+    }
+
     public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true); }
 }
