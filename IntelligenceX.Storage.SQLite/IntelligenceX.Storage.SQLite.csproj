@@ -1,5 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="PublishAot">
   <PropertyGroup>
+    <!-- Keep the library out of executable-only native restore and publish settings. -->
+    <PublishAot>false</PublishAot>
     <AssemblyName>IntelligenceX.Storage.SQLite</AssemblyName>
     <AssemblyTitle>IntelligenceX SQLite Storage</AssemblyTitle>
     <Title>IntelligenceX SQLite Storage</Title>

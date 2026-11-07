@@ -14,6 +14,25 @@ public sealed class AgentWorkIncrementalTests : IDisposable {
     private string Log => Path.Combine(_directory, "sessions", "rollout-fixture.jsonl");
     private SourceRootRecord Root => new("projection-fixture", "codex", UsageSourceKind.LocalLogs, _directory);
 
+    [Fact]
+    public void DirectorySnapshot_RefreshesFrozenMembershipAtTheBoundedAge() {
+        Directory.CreateDirectory(_directory);
+        var first = Path.Combine(_directory, "first.jsonl");
+        File.WriteAllText(first, "");
+        var cache = new UsageDirectorySnapshotCache();
+        cache.BeginScan(_now);
+        Assert.Equal(first, Assert.Single(cache.Files(_directory, "*.jsonl", SearchOption.AllDirectories)));
+        var stamp = Directory.GetLastWriteTimeUtc(_directory);
+        var child = Path.Combine(_directory, "nested");
+        Directory.CreateDirectory(child);
+        File.WriteAllText(Path.Combine(child, "new.jsonl"), "");
+        Directory.SetLastWriteTimeUtc(_directory, stamp);
+        cache.BeginScan(_now.AddMinutes(1));
+        Assert.Single(cache.Files(_directory, "*.jsonl", SearchOption.AllDirectories));
+        cache.BeginScan(_now.AddMinutes(5));
+        Assert.Equal(2, cache.Files(_directory, "*.jsonl", SearchOption.AllDirectories).Count());
+    }
+
     [Theory]
     [InlineData("codex")]
     [InlineData("claude")]
@@ -188,7 +207,8 @@ public sealed class AgentWorkIncrementalTests : IDisposable {
         var nested = Path.Combine(directory, "nested", "child");
         Directory.CreateDirectory(nested);
         File.WriteAllText(Path.Combine(nested, "rollout-added.jsonl"), Meta("added") + Event("task_complete"));
-        Directory.SetLastWriteTimeUtc(directory, stamp.AddSeconds(2)); // This half exercises changed membership; the watcher backstop covers unchanged stamps.
+        // Membership invalidation depends on the directory stamp, not the host clock's write resolution.
+        Directory.SetLastWriteTimeUtc(directory, stamp.AddSeconds(2));
         collection.Reconcile(new[] { Root }, _now, default);
         Assert.Equal(2, collection.Snapshot(Array.Empty<AgentSessionState>(), _now).Sessions.Count);
     }

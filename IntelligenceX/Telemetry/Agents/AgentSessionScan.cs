@@ -13,7 +13,7 @@ namespace IntelligenceX.Telemetry.Agents;
 
 // Cache only parser observations. Clock aging, title indexes, Desktop metadata, Git and PRs are reapplied each scan.
 internal sealed class AgentSessionScan {
-    private const string ParserVersion = "8";
+    private const string ParserVersion = "9";
     private readonly SourceRootRecord _root;
     private readonly Action<string> _report;
     private readonly IRawArtifactStore? _store;
@@ -59,14 +59,15 @@ internal sealed class AgentSessionScan {
             }
             catch (JsonException) { /* Cache damage falls back to source. */ }
         }
-        if (cached is not null && info.Exists && descriptor!.SizeBytes == info.Length && descriptor.LastWriteTimeUtc?.UtcDateTime == info.LastWriteTimeUtc) {
+        var created = info.CreationTimeUtc;
+        if (cached is not null && info.Exists && cached.CreatedAtUtc == created
+            && descriptor!.SizeBytes == info.Length && descriptor.LastWriteTimeUtc?.UtcDateTime == info.LastWriteTimeUtc) {
             FilesReused++;
             Replay(cached.Diagnostics);
             if (cached.IncompleteRecord) _report("malformed-record");
             return cached.Session;
         }
         var before = RawArtifactDescriptor.CreateFile(_root.Id, Adapter, path, ParserVersion);
-        var created = File.GetCreationTimeUtc(path);
         var tail = cached is not null && cached.TailSafe && cached.Offset <= descriptor!.SizeBytes
             // Unix creation time can be synthesized from ctime and change on every append.
             // The bounded prefix/boundary anchor remains the cross-platform continuation guard.
@@ -190,6 +191,7 @@ internal sealed record AgentSessionParserState {
     public bool Active { get; init; }
     public bool HasSessionMetadata { get; init; }
     public bool Sidechain { get; init; }
+    public Dictionary<string, bool[]> AsyncQuestions { get; init; } = new();
 }
 
 [JsonSourceGenerationOptions(UseStringEnumConverter = true)]

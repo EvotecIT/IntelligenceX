@@ -1,5 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="PublishAot">
     <PropertyGroup>
+        <!-- Native publishing belongs to the executable, including during project-reference restore. -->
+        <PublishAot>false</PublishAot>
         <Title>IntelligenceX</Title>
         <Description>Reusable IntelligenceX SDK for AI clients, Codex app-server integration, GitHub monitoring, provider limits, and usage telemetry.</Description>
         <AssemblyName>IntelligenceX</AssemblyName>

@@ -48,7 +48,10 @@ internal static class AgentsRunner {
                     windowSpecified = true;
                     activeWithin = age;
                     break;
-                case "--login" when i + 1 < args.Length: login = args[++i]; break;
+                case "--login" when i + 1 < args.Length:
+                    login = args[++i];
+                    if (string.IsNullOrWhiteSpace(login)) return UsageError();
+                    break;
                 case "--stale-days" when i + 1 < args.Length:
                     if (!int.TryParse(args[++i], NumberStyles.None, CultureInfo.InvariantCulture, out days) || days <= 0 || days > 36500) return UsageError();
                     break;
@@ -70,17 +73,20 @@ internal static class AgentsRunner {
         try {
             var selectedRoots = roots.Count == 0 ? LocalAgentWorkStateService.DiscoverRoots() : roots;
             var metadata = new List<AgentSessionState>();
+            DateTimeOffset? metadataChecked = null;
             var diagnostics = new List<AgentSourceDiagnostic>();
             using var cache = OpenCache(noCache, cachePath, diagnostics);
-            var available = await CodexAgentSessionMetadataReader.ReadAvailableAsync(
-                selectedRoots.Where(static root => root.Enabled && root.ProviderId == "codex"), timeout.Token).ConfigureAwait(false);
+            var codexRoots = selectedRoots.Where(static root => root.Enabled && root.ProviderId == "codex").ToArray();
+            var available = await CodexAgentSessionMetadataReader.ReadAvailableAsync(codexRoots, timeout.Token).ConfigureAwait(false);
             metadata.AddRange(available.Sessions);
             diagnostics.AddRange(available.Diagnostics);
+            if (codexRoots.Any(root => !available.Diagnostics.Any(item => item.SourceRootId == root.Id)))
+                metadataChecked = DateTimeOffset.UtcNow;
             var local = LocalAgentWorkStateService.ReadLocal(selectedRoots, codexMetadata: metadata, cancellationToken: timeout.Token,
                 options: new AgentWorkOptions { ActiveWithin = activeWithin, Cache = cache });
             diagnostics.AddRange(local.Diagnostics);
             var snapshot = AgentWorkStateRules.Evaluate(local.Sessions, Array.Empty<AgentPullRequestState>(), local.CapturedAtUtc,
-                TimeSpan.FromDays(days), diagnostics) with { Scan = local.Scan };
+                TimeSpan.FromDays(days), diagnostics) with { Scan = local.Scan, MetadataCheckedAtUtc = metadataChecked };
             if (github) {
                 try {
                     var credentials = await GitHubCredentialResolver.ResolveAsync(timeout.Token).ConfigureAwait(false);

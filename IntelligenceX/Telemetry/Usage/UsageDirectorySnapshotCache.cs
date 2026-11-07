@@ -9,6 +9,8 @@ namespace IntelligenceX.Telemetry.Usage;
 // Membership cache for long-lived local collectors. Directory timestamps establish membership,
 // never file content: callers still check known files for missed append notifications.
 internal sealed class UsageDirectorySnapshotCache {
+    private static readonly TimeSpan MaximumMembershipAge = TimeSpan.FromMinutes(5);
+    private DateTimeOffset? _scanAtUtc;
     private readonly Dictionary<string, Entry> _entries = new(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private readonly HashSet<string> _visited = new(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private readonly Func<string, string[]> _readFiles;
@@ -29,7 +31,7 @@ internal sealed class UsageDirectorySnapshotCache {
     internal IEnumerable<string> Directories(string directory) => Get(directory).Directories;
     internal void Invalidate(string directory) => _entries.Remove(directory);
     internal void Clear() { _entries.Clear(); _visited.Clear(); }
-    internal void BeginScan() => _visited.Clear();
+    internal void BeginScan(DateTimeOffset? nowUtc = null) { _visited.Clear(); _scanAtUtc = nowUtc ?? DateTimeOffset.UtcNow; }
     internal void CompleteScan() {
         foreach (var directory in _entries.Keys.Where(directory => !_visited.Contains(directory)).ToArray()) _entries.Remove(directory);
     }
@@ -38,9 +40,11 @@ internal sealed class UsageDirectorySnapshotCache {
         _visited.Add(directory);
         var info = new DirectoryInfo(directory);
         if (!info.Exists) { _entries.Remove(directory); return Entry.Empty; }
+        var now = _scanAtUtc ?? DateTimeOffset.UtcNow;
         if (_entries.TryGetValue(directory, out var previous) && previous.Stamp == info.LastWriteTimeUtc
-            && previous.Files.All(File.Exists) && previous.Directories.All(Directory.Exists)) return previous;
-        var entry = new Entry(info.LastWriteTimeUtc,
+            && previous.Files.All(File.Exists) && previous.Directories.All(Directory.Exists)
+            && now >= previous.ListedAtUtc && now - previous.ListedAtUtc < MaximumMembershipAge) return previous;
+        var entry = new Entry(info.LastWriteTimeUtc, now,
             _readFiles(directory).Select(Path.GetFullPath).ToArray(),
             Directory.GetDirectories(directory).Select(Path.GetFullPath).ToArray());
         // Listing exceptions propagate to the root diagnostic. Never cache a failed listing
@@ -50,7 +54,7 @@ internal sealed class UsageDirectorySnapshotCache {
         return entry;
     }
 
-    private sealed record Entry(DateTime Stamp, string[] Files, string[] Directories) {
-        internal static readonly Entry Empty = new(default, Array.Empty<string>(), Array.Empty<string>());
+    private sealed record Entry(DateTime Stamp, DateTimeOffset ListedAtUtc, string[] Files, string[] Directories) {
+        internal static readonly Entry Empty = new(default, default, Array.Empty<string>(), Array.Empty<string>());
     }
 }

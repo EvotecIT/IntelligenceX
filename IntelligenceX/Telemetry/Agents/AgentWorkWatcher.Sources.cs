@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Usage.Claude;
 using IntelligenceX.Telemetry.Usage.Codex;
 
@@ -135,7 +136,12 @@ public sealed partial class AgentWorkWatcher {
             while (true) {
                 try {
                     var prs = await _github.FetchAgentPullRequestsAsync(_login, _stop.Token).ConfigureAwait(false);
-                    lock (_gate) { _pullRequests = prs; _gitHubCheckedAtUtc = DateTimeOffset.UtcNow; SetDiagnostic("github", null); }
+                    lock (_gate) {
+                        _pullRequests = GitHubDashboardService.RetainUnavailableAgentChecks(prs, _pullRequests);
+                        var unavailable = prs.Any(static pr => pr.ChecksUnavailable);
+                        if (!unavailable) _gitHubCheckedAtUtc = DateTimeOffset.UtcNow;
+                        SetDiagnostic("github", unavailable ? "checks-unavailable" : null);
+                    }
                     Signal();
                 } catch (OperationCanceledException) when (_stop.IsCancellationRequested) { throw;
                 } catch (Exception) { SetDiagnostic("github", "request-failed"); }

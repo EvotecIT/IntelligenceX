@@ -14,6 +14,52 @@ public sealed class LedgerPersistenceTests : IDisposable {
         Source = "evidence", ObservedAtUtc = Now, Delivery = new("synthetic-delivery", "submitted", Now) };
 
     [Fact]
+    public async Task MatchedInputResolutionRetiresPersistedChildWithoutCompletingParent() {
+        var path = Path.Combine(_directory, "resolved-input.sqlite");
+        var session = new IntelligenceX.Telemetry.Agents.AgentSessionState {
+            Id = Guid.NewGuid().ToString(), TurnId = "synthetic-turn", TurnOpen = true,
+            PendingInputs = [new() { Id = "synthetic-question", TurnId = "synthetic-turn", AnswerIsUnconfirmed = true }]
+        };
+        var pending = Assert.Single(LocalReporter.InputFacts(session));
+        var parentId = LocalReporter.ItemId("synthetic-machine", "codex", session.Id);
+        var childId = LedgerScope.InputItemId(parentId, pending.Id);
+        var parent = Event() with { ItemId = parentId, Delivery = null, Session = new() {
+            TurnOpen = true, TurnId = pending.Fact.TurnId, TurnStartedAtUtc = Now.AddMinutes(-1), LastActivityAtUtc = Now
+        }};
+        var child = Event(2) with { ItemId = childId, ParentItemId = parentId, ItemKind = "input", Delivery = null, Session = pending.Fact };
+        using (var first = new LedgerStore(path, new(new()))) {
+            await first.InitializeAsync();
+            Assert.Equal(2, (await first.IngestAsync([parent, child], Now)).Length);
+            var before = (await first.EvaluateAllAsync(Now)).Single(row => row.Id == childId);
+            Assert.Equal("input-status", Assert.Single(before.Current!.MissingFacts!));
+        }
+        // Missing/filtered observations must not resolve an input. Only a matched answer carries a child update.
+        var missing = session with { PendingInputs = [] };
+        Assert.Empty(LocalReporter.InputFacts(missing));
+        var answered = missing with { ResolvedInputs = [new() { Id = "synthetic-question", TurnId = "synthetic-turn" }] };
+        var resolution = Assert.Single(LocalReporter.InputFacts(answered));
+        Assert.Equal(pending.Id, resolution.Id);
+        using var restarted = new LedgerStore(path, new(new()));
+        await restarted.InitializeAsync();
+        var update = Event(3) with { ItemId = childId, ParentItemId = parentId, ItemKind = "input", Delivery = null,
+            ObservedAtUtc = Now.AddMinutes(1), Session = resolution.Fact };
+        Assert.Single(await restarted.IngestAsync([update], Now.AddMinutes(1)));
+        var rows = await restarted.EvaluateAllAsync(Now.AddMinutes(1));
+        Assert.Equal("working", rows.Single(row => row.Id == parentId).Current!.Value);
+        var done = rows.Single(row => row.Id == childId).Current!;
+        Assert.Equal("done", done.Value);
+        Assert.Equal("complete", done.ReasonCode);
+        Assert.Empty(done.MissingFacts!);
+        var next = session with { PendingInputs = [session.PendingInputs[0] with { RequestedAtUtc = Now.AddMinutes(2) }] };
+        var reopened = update with { EventId = Guid.NewGuid(), Sequence = 4, ObservedAtUtc = Now.AddMinutes(2),
+            Session = Assert.Single(LocalReporter.InputFacts(next)).Fact };
+        Assert.Single(await restarted.IngestAsync([reopened], Now.AddMinutes(2)));
+        var pendingAgain = (await restarted.EvaluateAllAsync(Now.AddMinutes(2))).Single(row => row.Id == childId).Current!;
+        Assert.Equal("stuck", pendingAgain.Value);
+        Assert.Equal("input-status", Assert.Single(pendingAgain.MissingFacts!));
+    }
+
+    [Fact]
     public async Task ReceiptsAreIdempotentAcrossRestartAndDoNotInventStages() {
         var observation = Event();
         var path = Path.Combine(_directory, "ledger.sqlite");

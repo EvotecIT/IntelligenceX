@@ -9,8 +9,72 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class AgentWorkStateTests : IDisposable {
+    [Theory]
+    [InlineData("C:\\Synthetic\\Project", "c:/synthetic/project", true)]
+    [InlineData("\\\\server\\Synthetic\\Project", "\\\\SERVER/Synthetic/Project", true)]
+    [InlineData("C:\\Synthetic\\Project", "C:\\Synthetic\\Other", false)]
+    [InlineData("/synthetic/Project", "/synthetic/project", false)]
+    public void MetadataUsesWorkspacePathSemanticsWithoutChangingPosixIdentity(string logPath, string metadataPath, bool equivalent) {
+        var log = new AgentSessionState { Provider = "codex", Id = "synthetic", SourceRootId = "synthetic-root", WorkingDirectory = logPath };
+        var metadata = log with { WorkingDirectory = metadataPath, Repository = "Sample/Project", Branch = "feature/synthetic" };
+        var snapshot = LocalAgentWorkStateService.BuildSnapshot(new[] { log }, new[] { metadata }, new(), Now,
+            null, TimeSpan.FromMinutes(5), TimeSpan.FromDays(5), Array.Empty<AgentSourceDiagnostic>(), Array.Empty<AgentPullRequestState>(), new());
+        var session = Assert.Single(snapshot.Sessions);
+        Assert.Equal(logPath, session.WorkingDirectory);
+        Assert.Equal(equivalent ? "Sample/Project" : null, session.Repository);
+        Assert.Equal(equivalent ? "feature/synthetic" : null, session.Branch);
+    }
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-11-01T12:00:00Z");
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ix-agent-fixtures", Guid.NewGuid().ToString("N"));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void VeryLargeActivityWindow_CollectsWithoutCutoffUnderflow(bool incremental) {
+        Write("sessions/rollout-fake.jsonl", CodexMeta);
+        var collection = new AgentLocalCollection(new AgentWorkOptions { ActiveWithin = TimeSpan.MaxValue }, incremental);
+        collection.Reconcile(new[] { Root("codex") }, Now, default);
+        Assert.Equal("fake-session", Assert.Single(collection.Snapshot(Array.Empty<AgentSessionState>(), Now).Sessions).Id);
+    }
+
+    [Fact]
+    public void Rules_MergeDuplicatePullRequestAttentionAndExcludeArchivedSessionAttention() {
+        var pr = new AgentPullRequestState { Url = "https://github.com/Sample/Project/pull/1", Checks = AgentCheckState.Success };
+        var snapshot = AgentWorkStateRules.Evaluate(new[] {
+            new AgentSessionState { Id = "archived", IsArchived = true, State = AgentWorkState.WaitingOnPerson,
+                StateIsInferred = true, LastTurnOutcome = AgentTurnOutcome.Failed }
+        }, new[] { pr, pr with { Checks = AgentCheckState.Failure, IsAuthor = true, ReviewRequested = true } }, Now);
+        Assert.Equal(AgentCheckState.Failure, Assert.Single(snapshot.PullRequests).Checks);
+        Assert.True(snapshot.PullRequests[0].ReviewRequested);
+        Assert.Equal(AgentWorkState.Finished, Assert.Single(snapshot.Sessions).State);
+        Assert.False(snapshot.Sessions[0].StateIsInferred);
+        Assert.Equal(new[] { AgentAttentionKind.FailedChecks, AgentAttentionKind.ReviewRequested }, snapshot.NeedsAttention.Select(item => item.Kind));
+    }
+
+    [Fact]
+    public void Codex_CurrentTurnWorkspaceOverridesOriginMetadataWithoutUsingInheritedContexts() {
+        Write("sessions/rollout-fake.jsonl", """
+            {"timestamp":"2026-11-01T10:00:00Z","type":"session_meta","payload":{"id":"fake-session","cwd":"/missing/origin","git":{"repository_url":"https://github.com/Sample/Origin.git","branch":"origin"}}}
+            {"timestamp":"2026-10-01T10:00:00Z","type":"turn_context","payload":{"cwd":"/missing/inherited"}}
+            {"timestamp":"2026-11-01T11:00:00Z","type":"turn_context","payload":{"cwd":"/missing/current"}}
+            """);
+        var metadata = new AgentSessionState { Provider = "codex", Id = "fake-session", SourceRootId = "fixture-codex",
+            Machine = Environment.MachineName, WorkingDirectory = "/missing/origin", Repository = "Sample/Origin", Branch = "origin",
+            LastActivityAtUtc = Now };
+        // Use the same actual source identity as the local observation.
+        var root = Root("codex");
+        metadata = metadata with { SourceRootId = root.Id };
+        var snapshot = LocalAgentWorkStateService.ReadLocal(new[] { root }, Now, codexMetadata: new[] { metadata },
+            options: new AgentWorkOptions { ActiveWithin = null });
+        var current = Assert.Single(snapshot.Sessions);
+        Assert.Equal("/missing/current", current.WorkingDirectory);
+        Assert.Null(current.Repository);
+        Assert.Null(current.Branch);
+        var linked = AgentWorkStateRules.Evaluate(snapshot.Sessions, new[] { new AgentPullRequestState {
+            Url = "https://github.com/Sample/Origin/pull/1", HeadRepository = "Sample/Origin", Branch = "origin"
+        } }, Now);
+        Assert.Empty(Assert.Single(linked.Sessions).PullRequests);
+    }
 
     [Theory]
     [InlineData("task_started", "2026-11-01T11:59:00Z", AgentWorkState.Running, AgentTurnOutcome.Unknown, true)]
@@ -55,11 +119,14 @@ public sealed class AgentWorkStateTests : IDisposable {
         Assert.Equal(AgentTurnOutcome.Unknown, session.LastTurnOutcome);
     }
 
-    [Fact]
-    public void Codex_DeduplicatesArchivesAndUsesExplicitTitleIndexesWithoutFileTimes() {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Codex_DeduplicatesArchivesAndUsesExplicitTitleIndexesWithoutFileTimes(bool matchingLogTitle) {
         var content = CodexMeta + "\n" + """
             {"timestamp":"2026-10-01T12:00:00Z","type":"event_msg","payload":{"type":"task_complete"}}
             """;
+        if (matchingLogTitle) content += "\n" + """{"type":"event_msg","payload":{"type":"thread_name_updated","thread_name":"Index title"}}""";
         Write("sessions/rollout-fake.jsonl", content);
         Write("archived_sessions/rollout-fake.jsonl", content);
         Write("session_index.jsonl", """{"id":"fake-session","thread_name":"Index title","updated_at":"2026-11-01T11:00:00Z"}""");
@@ -67,6 +134,7 @@ public sealed class AgentWorkStateTests : IDisposable {
         var snapshot = Read("codex");
         var session = Assert.Single(snapshot.Sessions);
         Assert.Equal("Index title", session.Title);
+        Assert.Equal(AgentObservationSources.SessionLog | AgentObservationSources.TitleIndex, session.ObservationSources);
         Assert.False(session.IsArchived);
         Assert.Equal(DateTimeOffset.Parse("2026-10-01T12:00:00Z"), session.LastActivityAtUtc);
         Assert.DoesNotContain("private sentinel", AgentWorkJson.Serialize(snapshot));

@@ -67,22 +67,40 @@ public sealed partial class GitHubDashboardService {
     private async Task<AgentPullRequestState> ReadAgentPullRequestAsync(string path, bool review, string user, CancellationToken cancellationToken) {
         var detail = await GetAgentJsonAsync(path, ParseAgentPullRequest, cancellationToken).ConfigureAwait(false);
         var pr = detail.PullRequest with { IsAuthor = string.Equals(detail.Author, user, StringComparison.OrdinalIgnoreCase), ReviewRequested = review };
-        if (!pr.IsOpen || detail.Sha is null || pr.Repository is null) return pr;
+        if (!pr.IsOpen) return pr;
+        if (detail.Sha is null || pr.Repository is null) return pr with { ChecksUnavailable = true };
         var parts = SplitRepositoryNameWithOwner(pr.Repository);
         var commitPath = "/repos/" + Uri.EscapeDataString(parts.Owner) + "/" + Uri.EscapeDataString(parts.Repository)
             + "/commits/" + Uri.EscapeDataString(detail.Sha);
-        var status = await GetAgentJsonAsync(commitPath + "/status", static (json, _) => {
-            var count = ReadInt(json, "total_count");
-            return new AgentStatus(count == 0 ? AgentCheckState.Unknown : ReadAgentStatus(ReadString(json, "state")));
-        }, cancellationToken).ConfigureAwait(false);
-        var checks = AgentCheckState.Unknown;
-        for (var page = 1; ; page++) {
-            var runs = await GetAgentJsonAsync(commitPath + "/check-runs?per_page=100&page=" + page, ParseAgentChecks, cancellationToken).ConfigureAwait(false);
-            checks = MergeAgentChecks(checks, runs.State);
-            if (!runs.HasNext) break;
-            if (page >= 100) throw new InvalidOperationException("GitHub check pagination exceeds 10,000 results.");
+        var knownChecks = AgentCheckState.Unknown;
+        try {
+            var status = await GetAgentJsonAsync(commitPath + "/status", static (json, _) => {
+                var count = ReadInt(json, "total_count");
+                var state = count == 0 ? AgentCheckState.Unknown : ReadAgentStatus(ReadString(json, "state"));
+                return new AgentStatus(state, count > 0 && state == AgentCheckState.Unknown);
+            }, cancellationToken).ConfigureAwait(false);
+            knownChecks = status.State;
+            var incomplete = status.Incomplete;
+            for (var page = 1; ; page++) {
+                var runs = await GetAgentJsonAsync(commitPath + "/check-runs?per_page=100&page=" + page, ParseAgentChecks, cancellationToken).ConfigureAwait(false);
+                knownChecks = AgentWorkStateRules.MergeChecks(knownChecks, runs.State);
+                incomplete |= runs.Incomplete;
+                if (!runs.HasNext) break;
+                if (page >= 100) throw new InvalidOperationException("GitHub check pagination exceeds 10,000 results.");
+            }
+            return incomplete ? UnavailableChecks() : pr with { Checks = knownChecks };
+        } catch (HttpRequestException) { return UnavailableChecks();
+        } catch (System.IO.IOException) { return UnavailableChecks();
+        } catch (JsonException) { return UnavailableChecks();
+        } catch (InvalidOperationException) { return UnavailableChecks();
+        } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return UnavailableChecks(); }
+        AgentPullRequestState UnavailableChecks() {
+            return pr with {
+                Checks = knownChecks is AgentCheckState.Failure or AgentCheckState.Pending ? knownChecks
+                    : AgentCheckState.Unknown,
+                ChecksUnavailable = true
+            };
         }
-        return pr with { Checks = MergeAgentChecks(status.State, checks) };
     }
 
     private static AgentPullRequestDetail ParseAgentPullRequest(JsonElement json, HttpResponseMessage _) {
@@ -107,31 +125,30 @@ public sealed partial class GitHubDashboardService {
         if (!json.TryGetProperty("check_runs", out var runs) || runs.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException("GitHub returned incomplete check metadata.");
         var state = AgentCheckState.Unknown;
+        var incomplete = false;
         foreach (var run in runs.EnumerateArray()) {
             var next = ReadString(run, "status") != "completed" ? AgentCheckState.Pending : ReadString(run, "conclusion") switch {
                 "success" or "neutral" or "skipped" => AgentCheckState.Success,
+                "stale" => AgentCheckState.Pending,
                 "failure" or "timed_out" or "cancelled" or "action_required" or "startup_failure" => AgentCheckState.Failure,
                 _ => AgentCheckState.Unknown
             };
-            state = MergeAgentChecks(state, next);
+            state = AgentWorkStateRules.MergeChecks(state, next);
+            incomplete |= next == AgentCheckState.Unknown;
         }
-        return new AgentCheckPage(state, AgentHasNext(response));
+        return new AgentCheckPage(state, AgentHasNext(response), incomplete);
     }
 
     private static AgentCheckState ReadAgentStatus(string? state) => state switch {
         "success" => AgentCheckState.Success, "failure" or "error" => AgentCheckState.Failure,
         "pending" => AgentCheckState.Pending, _ => AgentCheckState.Unknown
     };
-    private static AgentCheckState MergeAgentChecks(AgentCheckState left, AgentCheckState right) =>
-        left == AgentCheckState.Failure || right == AgentCheckState.Failure ? AgentCheckState.Failure
-        : left == AgentCheckState.Pending || right == AgentCheckState.Pending ? AgentCheckState.Pending
-        : left == AgentCheckState.Success || right == AgentCheckState.Success ? AgentCheckState.Success : AgentCheckState.Unknown;
     private static bool AgentHasNext(HttpResponseMessage response) => response.Headers.TryGetValues("Link", out var links)
         && links.Any(static link => link.IndexOf("rel=\"next\"", StringComparison.OrdinalIgnoreCase) >= 0);
 
     private sealed record AgentConditionalResponse(string? ETag, object Value);
     private sealed record AgentSearchPage(IReadOnlyList<string> Paths, int Total, bool Incomplete, bool HasNext);
     private sealed record AgentPullRequestDetail(AgentPullRequestState PullRequest, string? Sha, string? Author);
-    private sealed record AgentCheckPage(AgentCheckState State, bool HasNext);
-    private sealed record AgentStatus(AgentCheckState State);
+    private sealed record AgentCheckPage(AgentCheckState State, bool HasNext, bool Incomplete);
+    private sealed record AgentStatus(AgentCheckState State, bool Incomplete);
 }

@@ -92,7 +92,7 @@ internal static class AgentSessionMetadataProjection {
         window.TailSafe = true; // EndOffset is the last complete newline, not an in-flight suffix.
     }
 
-    private enum Context { Root, Payload, Git, Message, Block, Error, Code }
+    private enum Context { Root, Payload, Git, Message, Block, Error, Code, Item }
 
     private static void ProjectObject(Cursor input, Utf8JsonWriter writer, Context context, int depth) {
         if (depth > 64) throw new JsonException();
@@ -102,19 +102,31 @@ internal static class AgentSessionMetadataProjection {
         if (input.Peek() != '}') while (true) {
             var rawName = input.String();
             using var nameDocument = JsonDocument.Parse(rawName);
-            var name = nameDocument.RootElement.GetString()!;
+            var name = DecodeString(nameDocument.RootElement);
             input.Space(); input.Expect(':'); input.Space();
             var nested = context == Context.Root && name == "payload" ? Context.Payload
                 : context == Context.Root && name == "message" ? Context.Message
                 : (context == Context.Root || context == Context.Payload) && name == "error" ? Context.Error
                 : (context == Context.Payload || context == Context.Error) && name == "codex_error_info" ? Context.Code
                 : context == Context.Payload && name == "git" ? Context.Git : (Context?)null;
+            if (context == Context.Payload && name == "item") nested = Context.Item;
             if (nested.HasValue && input.Peek() == '{') {
                 writer.WritePropertyName(name);
                 ProjectObject(input, writer, nested.Value, depth + 1);
-            } else if (context == Context.Message && name == "content" && input.Peek() == '[') {
+            } else if ((context == Context.Message || context == Context.Payload) && name == "content" && input.Peek() == '[') {
                 writer.WritePropertyName(name);
                 ProjectBlocks(input, writer, depth + 1);
+            } else if (context == Context.Block && name == "text" && input.Peek() == '"') {
+                ProjectQuestionReply(input, writer, depth + 1);
+            } else if (context == Context.Item && name == "questions" && input.Peek() == '[') {
+                input.Expect('['); input.Space();
+                var count = 0;
+                if (input.Peek() != ']') while (true) {
+                    input.Skip(depth + 1); count++; input.Space();
+                    if (input.Peek() != ',') break;
+                    input.Take(); input.Space();
+                }
+                input.Expect(']'); writer.WriteNumber("questionCount", count);
             } else if (context == Context.Code) {
                 writer.WriteNull(name);
                 input.Skip(depth + 1);
@@ -151,15 +163,125 @@ internal static class AgentSessionMetadataProjection {
 
     private static bool Keep(Context context, string name) => context switch {
         Context.Root => name is "type" or "uuid" or "timestamp" or "sessionId" or "cwd" or "gitBranch" or "isSidechain" or "isApiErrorMessage" or "is_error" or "customTitle" or "subtype",
-        Context.Payload => name is "type" or "turn_id" or "turnId" or "id" or "session_id" or "cwd" or "thread_id" or "threadId" or "thread_name" or "title" or "name" or "call_id" or "codex_error_info",
+        Context.Payload => name is "type" or "role" or "turn_id" or "turnId" or "id" or "session_id" or "cwd" or "thread_id" or "threadId" or "thread_name" or "title" or "name" or "call_id" or "codex_error_info",
         Context.Git => name is "branch" or "repository_url",
         Context.Message => name == "stop_reason",
         Context.Block => name is "type" or "name" or "id" or "tool_use_id",
         Context.Error => name is "type" or "codex_error_info",
+        Context.Item => name is "type" or "id" or "delivery",
         _ => false
     };
 
-    private sealed class Cursor(Stream stream, CancellationToken token) {
+    // Only the native reply wrapper is decoded. Ordinary messages and large answers are
+    // skipped in the stream; the projection retains question identities, never text.
+    private static void ProjectQuestionReply(Cursor input, Utf8JsonWriter writer, int depth) {
+        using var text = new JsonStringStream(input);
+        foreach (var expected in CodexQuestionReplies.Opening) {
+            if (text.ReadByte() != expected) { text.Drain(); return; }
+        }
+        var body = new Cursor(text, default, allowNewlines: true);
+        var ids = new List<string>();
+        var identityCharacters = 0;
+        body.Space();
+        while (body.Peek() is '\n' or '\r' or ' ' or '\t') body.Take();
+        // Untrusted user text that resembles a wrapper is not a malformed session record.
+        try {
+            body.Expect('['); body.Space();
+            if (body.Peek() != ']') while (true) {
+                body.Expect('{'); body.Space();
+                if (body.Peek() != '}') while (true) {
+                    using var key = JsonDocument.Parse(body.String());
+                    body.Space(); body.Expect(':'); body.Space();
+                    if (DecodeString(key.RootElement) == "questionItemId" && body.Peek() == '"') {
+                        using var id = JsonDocument.Parse(body.String());
+                        ids.Add(DecodeString(id.RootElement));
+                        identityCharacters += ids[ids.Count - 1].Length;
+                        if (ids.Count > 1024 || identityCharacters > 64 * 1024) throw new JsonException();
+                    } else body.Skip(depth + 1);
+                    body.Space();
+                    if (body.Peek() != ',') break;
+                    body.Take(); body.Space();
+                }
+                body.Expect('}'); body.Space();
+                if (body.Peek() != ',') break;
+                body.Take(); body.Space();
+            }
+            body.Expect(']');
+            while (body.Peek() is '\n' or '\r' or ' ' or '\t') body.Take();
+            foreach (var expected in CodexQuestionReplies.Closing) body.Expect(expected);
+            while (body.Peek() is '\n' or '\r' or ' ' or '\t') body.Take();
+            if (body.Peek() >= 0) throw new JsonException();
+            writer.WriteStartArray("questionReplyIds");
+            foreach (var id in ids) writer.WriteStringValue(id);
+            writer.WriteEndArray();
+        } catch (JsonException) { /* Ignore an invalid reply; retain the pending question. */ }
+        text.Drain();
+    }
+
+    private static string DecodeString(JsonElement value) {
+        try { return value.GetString()!; }
+        catch (InvalidOperationException error) {
+            // JsonDocument accepts escaped unpaired surrogates until string decoding.
+            // Classify them with other invalid record data at the per-record boundary.
+            throw new JsonException("Invalid Unicode in session metadata.", error);
+        }
+    }
+
+    // Expose one JSON string as decoded UTF-8 for the existing streaming framer.
+    // Escape decoding stays bounded even when an answer contains megabytes of text.
+    private sealed class JsonStringStream : Stream {
+        private readonly Cursor _input;
+        private byte[] _escaped = Array.Empty<byte>();
+        private int _index;
+        private bool _ended;
+        internal JsonStringStream(Cursor input) { _input = input; input.Expect('"'); }
+        public override int ReadByte() {
+            if (_index < _escaped.Length) return _escaped[_index++];
+            if (_ended) return -1;
+            var value = _input.Take();
+            if (value == '"') { _ended = true; return -1; }
+            if (value < 0 || value < 0x20) throw new JsonException();
+            if (value != '\\') return value;
+            var escape = _input.Take();
+            if (escape != 'u') return escape switch {
+                '"' or '\\' or '/' => escape, 'n' => '\n', 'r' => '\r', 't' => '\t', 'b' => '\b', 'f' => '\f', _ => throw new JsonException()
+            };
+            var encoded = new List<byte> { (byte)'"', (byte)'\\', (byte)'u' };
+            for (var i = 0; i < 4; i++) encoded.Add((byte)_input.Take());
+            // A high surrogate must include its paired escape for System.Text.Json.
+            if ((encoded[3] is (byte)'d' or (byte)'D') && encoded[4] is (byte)'8' or (byte)'9' or (byte)'a' or (byte)'A' or (byte)'b' or (byte)'B') {
+                _input.Expect('\\'); _input.Expect('u'); encoded.Add((byte)'\\'); encoded.Add((byte)'u');
+                for (var i = 0; i < 4; i++) encoded.Add((byte)_input.Take());
+            }
+            encoded.Add((byte)'"');
+            using var decoded = JsonDocument.Parse(encoded.ToArray());
+            _escaped = System.Text.Encoding.UTF8.GetBytes(DecodeString(decoded.RootElement)); _index = 0;
+            return _escaped[_index++];
+        }
+        internal void Drain() { if (!_ended) { _input.SkipStringRemainder(); _ended = true; } }
+        public override int Read(byte[] buffer, int offset, int count) {
+            var read = 0;
+            while (read < count) {
+                if (_index >= _escaped.Length && !_ended) {
+                    var copied = _input.CopyStringChunk(buffer, offset + read, count - read);
+                    if (copied > 0) { read += copied; continue; }
+                }
+                var value = ReadByte(); if (value < 0) break; buffer[offset + read++] = (byte)value;
+            }
+            return read;
+        }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private sealed class Cursor(Stream stream, CancellationToken token, bool allowNewlines = false) {
         private readonly byte[] _buffer = new byte[64 * 1024];
         private int _offset, _length;
         internal long Position { get; private set; }
@@ -184,7 +306,16 @@ internal static class AgentSessionMetadataProjection {
         internal void BeginRecord() => EndedAtNewline = false;
         internal int Take() { var value = Peek(); if (value >= 0) { _offset++; Position++; EndedAtNewline = value == '\n'; } return value; }
         internal void Expect(int value) { if (Take() != value) throw new JsonException(); }
-        internal void Space() { while (Peek() is ' ' or '\r' or '\t') Take(); }
+        internal void Space() { while (Peek() is ' ' or '\r' or '\t' || (allowNewlines && Peek() == '\n')) Take(); }
+        internal int CopyStringChunk(byte[] target, int offset, int count) {
+            if (Peek() < 0) return 0;
+            var available = _buffer.AsSpan(_offset, Math.Min(count, _length - _offset));
+            var special = available.IndexOfAny((byte)'"', (byte)'\\', (byte)'\n');
+            var copied = special < 0 ? available.Length : special;
+            available.Slice(0, copied).CopyTo(target.AsSpan(offset, copied));
+            _offset += copied; Position += copied;
+            return copied;
+        }
         internal void ToNewline() {
             if (EndedAtNewline) return;
             while (Peek() >= 0) {
@@ -232,6 +363,9 @@ internal static class AgentSessionMetadataProjection {
         }
         private void SkipString() {
             Expect('"');
+            SkipStringRemainder();
+        }
+        internal void SkipStringRemainder() {
             while (true) {
                 if (Peek() < 0) throw new JsonException();
                 var count = _buffer.AsSpan(_offset, _length - _offset).IndexOfAny((byte)'"', (byte)'\\', (byte)'\n');

@@ -60,6 +60,46 @@ internal static partial class Program {
             AssertEqual<bool?>(null, available.Sessions[0].TurnOpen, "metadata alone leaves turn state unknown");
             AssertEqual(AgentTurnOutcome.Unknown, available.Sessions[0].LastTurnOutcome, "archive state does not invent turn success");
             AssertEqual(true, before.SequenceEqual(File.ReadAllBytes(path)), "partial collection preserves readable database bytes");
+            // Keep the writer open throughout the read, just as Desktop does. A read-only
+            // connection must see committed rows without checkpointing or changing WAL mode.
+            using var writer = new Microsoft.Data.Sqlite.SqliteConnection(SQLite.BuildConnectionString(path));
+            writer.Open();
+            void Execute(string sql) {
+                using var command = writer.CreateCommand();
+                command.CommandText = sql;
+                command.ExecuteNonQuery();
+            }
+            static byte[] ReadShared(string file) {
+                using var source = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var copy = new MemoryStream();
+                source.CopyTo(copy);
+                return copy.ToArray();
+            }
+            Execute("PRAGMA journal_mode=WAL; BEGIN IMMEDIATE; UPDATE threads SET git_branch='uncommitted';");
+            before = ReadShared(path);
+            var wal = ReadShared(path + "-wal");
+            try {
+                sessions = CodexAgentSessionMetadataReader.ReadAsync(root).GetAwaiter().GetResult();
+                AssertEqual("work", sessions.Single().Branch, "concurrent writer exposes only committed metadata");
+                AssertEqual(true, before.SequenceEqual(ReadShared(path)), "concurrent read preserves main database");
+                AssertEqual(true, wal.SequenceEqual(ReadShared(path + "-wal")), "concurrent read preserves WAL");
+            } finally { Execute("ROLLBACK;"); }
+            // Rollback-mode databases can hold a short exclusive writer lock. Release it
+            // independently while the reader waits, without a provider journal-mode change.
+            Execute("PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE; UPDATE threads SET git_branch='committed-next';");
+            var started = new System.Threading.Tasks.TaskCompletionSource<bool>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+            var pending = System.Threading.Tasks.Task.Run(async () => {
+                started.SetResult(true);
+                return await CodexAgentSessionMetadataReader.ReadAsync(root);
+            });
+            try {
+                started.Task.GetAwaiter().GetResult();
+                System.Threading.Tasks.Task.Delay(1500).GetAwaiter().GetResult();
+            } finally { Execute("COMMIT;"); }
+            AssertEqual("committed-next", pending.GetAwaiter().GetResult().Single().Branch, "reader recovers after transient writer lock");
+            using var mode = writer.CreateCommand();
+            mode.CommandText = "PRAGMA journal_mode;";
+            AssertEqual("delete", (string)mode.ExecuteScalar()!, "reader never changes journal mode");
         } finally {
             Directory.Delete(directory, recursive: true);
         }
@@ -84,6 +124,7 @@ internal static partial class Program {
             var json = capture.ToString();
             var snapshot = JsonSerializer.Deserialize(json, AgentWorkJsonContext.Default.AgentWorkSnapshot)!;
             AssertEqual(1, snapshot.Sessions.Count, "explicit root isolation");
+            AssertEqual(true, snapshot.MetadataCheckedAtUtc.HasValue, "successful optional metadata check time");
             AssertEqual("fake-cli", snapshot.Sessions[0].Id, "CLI session");
             AssertEqual(AgentAttentionKind.InterruptedTurn, snapshot.NeedsAttention[0].Kind, "CLI attention rule");
             AssertEqual(false, json.Contains("private sentinel"), "CLI privacy");
@@ -103,6 +144,7 @@ internal static partial class Program {
             AssertEqual(0, exit, "recent CLI snapshot exit");
             AssertEqual(0, recent.Sessions.Count, "CLI since filter");
             AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--since", "7" }).GetAwaiter().GetResult(), "invalid age");
+            AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--github", "--login", " " }).GetAwaiter().GetResult(), "blank explicit login");
             AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--no-cache", "--cache-path", "unused" }).GetAwaiter().GetResult(), "conflicting cache flags");
             AssertEqual(1, IntelligenceX.Cli.Program.DispatchAsync(new[] { "agents", "status", "--stale-days", "0" }).GetAwaiter().GetResult(), "invalid threshold");
         } finally {

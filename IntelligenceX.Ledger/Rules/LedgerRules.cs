@@ -2,9 +2,9 @@ using IntelligenceX.Ledger.Contracts;
 
 namespace IntelligenceX.Ledger.Rules;
 
-/// <summary>Rules version 2. Scope and native controls precede verdict priority. Clock advancement is not progress.</summary>
+/// <summary>Rules version 3. Scope and native controls precede verdict priority. Clock advancement is not progress.</summary>
 public sealed partial class LedgerRules(RuleSettings settings) {
-    public const int Version = 2;
+    public const int Version = 3;
     internal WaitFact ReviewWait(string condition, DateTimeOffset recorded, TaskScope? scope = null) =>
         new("review", condition, recorded, ReviewAfterUtc: recorded + settings.ReviewWait, Inferred: true, Scope: scope);
     internal TimeSpan EvidenceMaxAge => settings.EvidenceMaxAge;
@@ -107,8 +107,10 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         // Missing completion gates decide Done, but cannot suppress a known question/wait/open turn.
         var knownPrimary = matches.Count > 0 || wait is not null || session?.TurnOpen == true || work?.OpenPullRequests.Length > 0;
         var completed = session?.Outcome == "completed";
+        var resolvedInput = item.Kind == "input" && completed && session?.TurnOpen == false && session.InputId is not null
+            && !session.Question && !session.InputUnconfirmed && !session.QuestionBlocking;
         var unknown = heldGoal && !LedgerScope.SameTask(goalScope, item.Scope) || appScopeUnknown || waitScopeUnknown || work?.NeedsApp == true && session?.AppOwned is null && !matches.Any(m => m.Verdict == "needs-you") ||
-            !knownPrimary && !(completed && work?.ActiveClaim is not null && work.PullRequestsKnown == true);
+            !knownPrimary && !resolvedInput && !(completed && work?.ActiveClaim is not null && work.PullRequestsKnown == true);
         Add(unknown, "stuck", "unknown", now, "first-observation", "missing:" + string.Join("-", MissingFacts(item)));
 
         if (wait is not null) Add(!(wait.DueAtUtc is { } deadline && now > deadline) && !(wait.ReviewAfterUtc is { } reviewAt && now > reviewAt),
@@ -117,6 +119,8 @@ public sealed partial class LedgerRules(RuleSettings settings) {
             identity: waitIdentity, evidence: declared?.Evidence);
         if (wait is null && !hasDeclaredCondition && session?.TurnOpen == true && session.LastActivityAtUtc is { } last && now - last < settings.NoProgressAfter)
             Add(true, "working", now - last < settings.RecentActivity ? "active" : "quiet", session.TurnStartedAtUtc);
+        Add(resolvedInput && wait is null && !hasDeclaredCondition && queued == 0 && !item.Deliveries.Values.Any(IsPending),
+            "done", "complete", item.SessionEvidence?.ObservedAtUtc ?? item.FirstObservedAtUtc, identity: session?.InputId, evidence: item.SessionEvidence);
         Add(completed && work?.ActiveClaim == false && work.PullRequestsKnown == true &&
             work.OpenPullRequests.Length == 0 && wait is null && !hasDeclaredCondition && queued == 0 &&
             !item.Deliveries.Values.Any(IsPending), "done", work?.CancelledPullRequests.Length > 0 ? "cancelled" : work?.HadPullRequests == true ? "complete" : "idle", session?.TurnEndedAtUtc);
@@ -128,6 +132,7 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         if (reporterSilent && previous is not null) return LastKnown(previous, now);
         // Done remains sticky until explicit new work appears.
         if (previous?.Value == "done" && previous.RulesVersion == Version &&
+            !(item.Kind == "input" && session?.InputUnconfirmed == true) &&
             (item.Scope is null && previous.Matches.FirstOrDefault()?.Scope is null || LedgerScope.SameTask(item.Scope, previous.Matches.FirstOrDefault()?.Scope)) &&
             session?.TurnOpen != true && work?.ActiveClaim != true &&
             wait is null && queued == 0 && !item.Deliveries.Values.Any(IsPending) &&

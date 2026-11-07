@@ -22,6 +22,12 @@ public sealed class AgentWorkOptions {
     /// <summary>Optional existing telemetry artifact store. The caller owns its lifetime; no transcripts are stored.</summary>
     public IRawArtifactStore? Cache { get; init; }
 
+    internal DateTimeOffset? Since(DateTimeOffset nowUtc) {
+        if (ActiveWithin is not { } window) return null;
+        var now = nowUtc.ToUniversalTime();
+        return window > now - DateTimeOffset.MinValue ? DateTimeOffset.MinValue : now - window;
+    }
+
     internal void Validate() {
         if (ActiveWithin <= TimeSpan.Zero || ActiveTurnWindow <= TimeSpan.Zero || StaleAfter <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(ActiveWithin));

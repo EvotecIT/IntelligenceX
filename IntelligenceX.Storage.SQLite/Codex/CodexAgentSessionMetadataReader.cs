@@ -43,8 +43,10 @@ public static class CodexAgentSessionMetadataReader {
         if (root.ProviderId != "codex") throw new ArgumentException("A Codex source root is required.", nameof(root));
         var database = Path.Combine(root.Path, "state_5.sqlite");
         if (!File.Exists(database)) return Array.Empty<AgentSessionState>();
-        // This optional dashboard source must not stall refreshes by retrying a busy provider database.
-        using var sqlite = new SQLite { CommandTimeout = 1, BusyTimeoutMs = 1000, MaxRetryAttempts = 1 };
+        // Read-only connections can still encounter a brief schema/checkpoint lock. Allow the
+        // provider's normal five-second busy window without adding application-level retries.
+        // Metadata runs independently of local log updates in AgentWorkWatcher.
+        using var sqlite = new SQLite { CommandTimeout = 5, BusyTimeoutMs = 5000, MaxRetryAttempts = 1 };
         var columns = await sqlite.QueryReadOnlyAsListAsync(database, "PRAGMA table_info(threads);",
             static row => row.GetString(1), cancellationToken: cancellationToken).ConfigureAwait(false);
         var names = new HashSet<string>(columns, StringComparer.OrdinalIgnoreCase);

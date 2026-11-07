@@ -139,14 +139,8 @@ public static class LocalReporter {
                     if (!spool.TryAppend(Event(id, session.Provider, fact))) continue;
                     last[id] = signature;
                 }
-                foreach (var input in pending.Where(x => x.Id is not null && (!x.IsBlocking || PriorTurn(x, session)))) {
-                    var childInputId = LedgerScope.Id("input", input.Id!);
+                foreach (var (childInputId, inputFact) in InputFacts(session)) {
                     var childId = LedgerScope.InputItemId(id, childInputId);
-                    var inputFact = new SessionFact {
-                        SourceSessionId = fact.SourceSessionId, InputId = childInputId, TurnId = input.TurnId is null ? null : LedgerScope.Id("turn", input.TurnId),
-                        Question = !input.AnswerIsUnconfirmed,
-                        InputUnconfirmed = input.AnswerIsUnconfirmed, QuestionAtUtc = input.RequestedAtUtc?.ToUniversalTime()
-                    };
                     var inputSignature = JsonSerializer.Serialize(inputFact, LedgerJson.Options);
                     if (last.GetValueOrDefault(childId) == inputSignature) continue;
                     if (spool.TryAppend(Event(childId, session.Provider, inputFact) with { ItemKind = "input", ParentItemId = id }))
@@ -247,6 +241,26 @@ public static class LocalReporter {
     }
 
     private sealed record Receipt(Guid[] AcknowledgedEventIds);
+
+    // Positive answer evidence survives reporter restarts; a missing pending row is never an answer.
+    internal static IEnumerable<(string Id, SessionFact Fact)> InputFacts(AgentSessionState session) {
+        Guid? sourceSession = Guid.TryParse(session.Id, out var parsed) ? parsed : null;
+        foreach (var input in session.PendingInputs.Where(x => x.Id is not null && (!x.IsBlocking || PriorTurn(x, session)))) {
+            var id = LedgerScope.Id("input", input.Id!);
+            yield return (id, new SessionFact {
+                SourceSessionId = sourceSession, InputId = id, TurnId = input.TurnId is null ? null : LedgerScope.Id("turn", input.TurnId),
+                Question = !input.AnswerIsUnconfirmed, QuestionBlocking = input.IsBlocking,
+                InputUnconfirmed = input.AnswerIsUnconfirmed, QuestionAtUtc = input.RequestedAtUtc?.ToUniversalTime()
+            });
+        }
+        foreach (var input in session.ResolvedInputs) {
+            var id = LedgerScope.Id("input", input.Id);
+            yield return (id, new SessionFact {
+                SourceSessionId = sourceSession, InputId = id, TurnId = input.TurnId is null ? null : LedgerScope.Id("turn", input.TurnId),
+                Outcome = "completed", TurnOpen = false, QuestionBlocking = false
+            });
+        }
+    }
 
     internal static GlobalWorkFact? ProjectEvidence(ReporterSettings settings, AgentWorkSnapshot snapshot, ClaimSnapshot? claims, PullRequestProof[] proofs) {
         if (settings.ProjectClaims is null) return null;

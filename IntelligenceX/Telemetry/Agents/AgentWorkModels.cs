@@ -89,12 +89,22 @@ public sealed record AgentSessionState {
     public AgentFailureEvidence FailureEvidence { get; init; }
     /// <summary>Unresolved questions/approvals, including nonblocking requests during running work.</summary>
     public IReadOnlyList<AgentPendingInput> PendingInputs { get; init; } = Array.Empty<AgentPendingInput>();
+    /// <summary>Explicit provider answers correlated to known requests; absence from PendingInputs alone is not a resolution.</summary>
+    public IReadOnlyList<AgentInputResolution> ResolvedInputs { get; init; } = Array.Empty<AgentInputResolution>();
     /// <summary>Sources contributing state/activity metadata; title-only records do not establish liveness.</summary>
     public AgentObservationSources ObservationSources { get; init; }
     /// <summary>When session-log state was last parsed; cache reuse does not advance it. Desktop refresh time is on the snapshot.</summary>
     public DateTimeOffset? ObservedAtUtc { get; init; }
     /// <summary>Matching open pull requests, linked only by repository and exact head branch.</summary>
     public IReadOnlyList<AgentPullRequestState> PullRequests { get; init; } = Array.Empty<AgentPullRequestState>();
+}
+
+/// <summary>Identity of a request answered through its matching provider response.</summary>
+public sealed record AgentInputResolution {
+    /// <summary>Provider request identifier within this session.</summary>
+    public string Id { get; init; } = string.Empty;
+    /// <summary>Original request turn, when available.</summary>
+    public string? TurnId { get; init; }
 }
 
 /// <summary>Open GitHub work authored by, or requesting review from, the selected user.</summary>
@@ -119,6 +129,8 @@ public sealed record AgentPullRequestState {
     public bool ReviewRequested { get; init; }
     /// <summary>Current head-commit check rollup.</summary>
     public AgentCheckState Checks { get; init; }
+    /// <summary>Check sources could not be fully revalidated; Checks may retain a prior observation for the same head.</summary>
+    public bool ChecksUnavailable { get; init; }
     /// <summary>Link to the head commit's checks.</summary>
     public string? ChecksUrl { get; init; }
 }

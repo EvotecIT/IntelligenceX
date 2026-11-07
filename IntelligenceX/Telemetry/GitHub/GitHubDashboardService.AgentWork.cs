@@ -35,33 +35,46 @@ public sealed partial class GitHubDashboardService {
         TimeSpan? staleAfter = null, CancellationToken cancellationToken = default) {
         if (local is null) throw new ArgumentNullException(nameof(local));
         if (staleAfter.HasValue && staleAfter.Value <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(staleAfter));
-        IReadOnlyList<AgentPullRequestState> prs;
+        IReadOnlyList<AgentPullRequestState> prs = local.PullRequests;
         string? diagnostic = null;
+        var fetched = false;
         try {
             prs = await FetchAgentPullRequestsAsync(login, cancellationToken).ConfigureAwait(false);
+            fetched = true;
+            if (prs.Any(static pr => pr.ChecksUnavailable)) {
+                diagnostic = "checks-unavailable";
+                prs = RetainUnavailableAgentChecks(prs, local.PullRequests);
+            }
         } catch (OperationCanceledException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-timeout";
         } catch (HttpRequestException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-failed";
         } catch (IOException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-failed";
         } catch (InvalidOperationException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-failed";
         } catch (JsonException) {
-            prs = Array.Empty<AgentPullRequestState>();
             diagnostic = "request-failed";
         }
-        var diagnostics = diagnostic is null ? local.Diagnostics : local.Diagnostics.Concat(new[] {
+        var retainedDiagnostics = local.Diagnostics.Where(static item => item.Provider != "github" || item.SourceRootId is not null
+            || item.Code is not ("request-timeout" or "request-failed" or "checks-unavailable"));
+        var diagnostics = diagnostic is null ? retainedDiagnostics.ToArray() : retainedDiagnostics.Concat(new[] {
             new AgentSourceDiagnostic { Provider = "github", Code = diagnostic }
         }).ToArray();
+        if (!fetched) return local with { Diagnostics = diagnostics };
         return AgentWorkStateRules.Evaluate(local.Sessions, prs, local.CapturedAtUtc, staleAfter, diagnostics) with {
-            Scan = local.Scan, GitHubCheckedAtUtc = diagnostic is null ? DateTimeOffset.UtcNow : local.GitHubCheckedAtUtc
+            Scan = local.Scan, MetadataCheckedAtUtc = local.MetadataCheckedAtUtc,
+            GitHubCheckedAtUtc = diagnostic is null ? DateTimeOffset.UtcNow : local.GitHubCheckedAtUtc
         };
     }
+
+    // ChecksUrl includes the exact commit SHA. Never carry a previous head's checks into a new head.
+    internal static IReadOnlyList<AgentPullRequestState> RetainUnavailableAgentChecks(IReadOnlyList<AgentPullRequestState> current,
+        IReadOnlyList<AgentPullRequestState> previous) => current.Select(pr => {
+            if (!pr.ChecksUnavailable || pr.ChecksUrl is null) return pr;
+            var known = previous.FirstOrDefault(row => row.Url == pr.Url && row.ChecksUrl == pr.ChecksUrl);
+            return known is null ? pr : pr with { Checks = AgentWorkStateRules.MergeChecks(pr.Checks, known.Checks) };
+        }).ToArray();
 
     /// <summary>Reads open authored PRs and incoming reviews using conditional REST requests scoped to this service instance.</summary>
     /// <remarks>Search and check pages are paginated. ETags cache parsed metadata only, never response bodies.</remarks>
@@ -74,7 +87,8 @@ public sealed partial class GitHubDashboardService {
         cancellationToken = bounded.Token;
         await _agentWorkGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            var user = NormalizeOptional(login) ?? (_agentWorkLogin ??= await GetAuthenticatedLoginAsync(cancellationToken).ConfigureAwait(false));
+            var user = NormalizeOptional(login) ?? (_agentWorkLogin ??= await GetAgentJsonAsync("/user",
+                static (json, _) => ReadString(json, "login") ?? string.Empty, cancellationToken).ConfigureAwait(false));
             if (string.IsNullOrEmpty(user) || user!.Any(static c => !char.IsLetterOrDigit(c) && c != '-'))
                 throw new ArgumentException("A GitHub login is required.", nameof(login));
             var paths = new Dictionary<string, bool>(StringComparer.Ordinal);

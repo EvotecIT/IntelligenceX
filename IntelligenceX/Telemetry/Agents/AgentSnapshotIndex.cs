@@ -35,7 +35,7 @@ internal sealed class AgentSnapshotIndex {
             _buckets.Remove(key);
             changed = true;
         }
-        var since = _options.ActiveWithin.HasValue ? now - _options.ActiveWithin.Value : (DateTimeOffset?)null;
+        var since = _options.Since(now);
         foreach (var pair in _buckets) {
             var bucket = pair.Value;
             if (!bucket.Dirty && !(bucket.Deadline <= now)) continue;

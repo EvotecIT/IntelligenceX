@@ -5,6 +5,8 @@ using IntelligenceX.Telemetry.Agents;
 using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Usage;
 
+if (JsonSerializer.IsReflectionEnabledByDefault) throw new InvalidOperationException("JSON reflection must remain disabled.");
+
 // Create and retire only our unique synthetic fixture, under a caller-supplied scratch directory.
 if (args.Length != 1) throw new ArgumentException("Supply a scratch directory.");
 var fixture = Path.Combine(Path.GetFullPath(args[0]), "ix-aot-fixture-" + Guid.NewGuid().ToString("N"));

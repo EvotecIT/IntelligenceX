@@ -199,14 +199,14 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
 
     // Compare typed metadata instead of serializing the entire history to JSON on every tick.
     private static bool SameContent(AgentWorkSnapshot current, AgentWorkSnapshot? previous) {
-        if (previous is null || current.GitHubCheckedAtUtc != previous.GitHubCheckedAtUtc
-            || current.Sessions.Count != previous.Sessions.Count || !current.PullRequests.SequenceEqual(previous.PullRequests)
+        if (previous is null || current.Sessions.Count != previous.Sessions.Count || !current.PullRequests.SequenceEqual(previous.PullRequests)
             || !current.NeedsAttention.SequenceEqual(previous.NeedsAttention) || !current.Diagnostics.SequenceEqual(previous.Diagnostics)) return false;
         for (var i = 0; i < current.Sessions.Count; i++) {
             var left = current.Sessions[i];
             var right = previous.Sessions[i];
             if (!left.PullRequests.SequenceEqual(right.PullRequests) || !left.PendingInputs.SequenceEqual(right.PendingInputs)
-                || left with { PullRequests = right.PullRequests, PendingInputs = right.PendingInputs } != right) return false;
+                || !left.ResolvedInputs.SequenceEqual(right.ResolvedInputs)
+                || left with { PullRequests = right.PullRequests, PendingInputs = right.PendingInputs, ResolvedInputs = right.ResolvedInputs } != right) return false;
         }
         return true;
     }
