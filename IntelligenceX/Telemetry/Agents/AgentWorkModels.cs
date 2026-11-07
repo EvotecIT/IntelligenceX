@@ -88,15 +88,33 @@ public sealed record AgentSessionState {
     /// <summary>Evidence supporting FailureCause, including an unknown terminal failure.</summary>
     public AgentFailureEvidence FailureEvidence { get; init; }
     /// <summary>Unresolved questions/approvals, including nonblocking requests during running work.</summary>
-    public IReadOnlyList<AgentPendingInput> PendingInputs { get; init; } = Array.Empty<AgentPendingInput>();
+    public IReadOnlyList<AgentPendingInput> PendingInputs {
+        get => _pendingInputs;
+        init => _pendingInputs = value ?? Array.Empty<AgentPendingInput>();
+    }
+    private readonly IReadOnlyList<AgentPendingInput> _pendingInputs = Array.Empty<AgentPendingInput>();
     /// <summary>Explicit provider answers correlated to known requests; absence from PendingInputs alone is not a resolution.</summary>
-    public IReadOnlyList<AgentInputResolution> ResolvedInputs { get; init; } = Array.Empty<AgentInputResolution>();
+    public IReadOnlyList<AgentInputResolution> ResolvedInputs {
+        get => _resolvedInputs;
+        init => _resolvedInputs = value ?? Array.Empty<AgentInputResolution>();
+    }
+    private readonly IReadOnlyList<AgentInputResolution> _resolvedInputs = Array.Empty<AgentInputResolution>();
     /// <summary>Sources contributing state/activity metadata; title-only records do not establish liveness.</summary>
     public AgentObservationSources ObservationSources { get; init; }
     /// <summary>When session-log state was last parsed; cache reuse does not advance it. Desktop refresh time is on the snapshot.</summary>
     public DateTimeOffset? ObservedAtUtc { get; init; }
-    /// <summary>Matching open pull requests, linked only by repository and exact head branch.</summary>
-    public IReadOnlyList<AgentPullRequestState> PullRequests { get; init; } = Array.Empty<AgentPullRequestState>();
+    /// <summary>Canonical GitHub URLs explicitly associated by a structured provider record, never extracted from message text.</summary>
+    public IReadOnlyList<string> ProviderPullRequestUrls {
+        get => _providerPullRequestUrls;
+        init => _providerPullRequestUrls = value ?? Array.Empty<string>();
+    }
+    private readonly IReadOnlyList<string> _providerPullRequestUrls = Array.Empty<string>();
+    /// <summary>Matching open pull requests, linked by provider association or repository and exact head branch.</summary>
+    public IReadOnlyList<AgentPullRequestState> PullRequests {
+        get => _pullRequests;
+        init => _pullRequests = value ?? Array.Empty<AgentPullRequestState>();
+    }
+    private readonly IReadOnlyList<AgentPullRequestState> _pullRequests = Array.Empty<AgentPullRequestState>();
 }
 
 /// <summary>Identity of a request answered through its matching provider response.</summary>

@@ -57,6 +57,18 @@ internal static partial class Program {
             AssertEqual(1, available.Diagnostics.Count, "one unavailable root diagnostic");
             AssertEqual("synthetic-broken", available.Diagnostics[0].SourceRootId, "failure identifies its own root");
             AssertEqual("unreadable-metadata", available.Diagnostics[0].Code, "controlled metadata failure");
+            var wsl = new SourceRootRecord("synthetic-wsl", "codex", UsageSourceKind.LocalLogs, brokenDirectory) { PlatformHint = "wsl" };
+            var mixed = CodexAgentSessionMetadataReader.ReadAvailableAsync(new[] { wsl, root }).GetAwaiter().GetResult();
+            AssertEqual(1, mixed.Sessions.Count, "unsupported WSL root cannot discard healthy native metadata");
+            AssertEqual("synthetic-wsl", mixed.Diagnostics.Single().SourceRootId, "skipped source diagnostic identity");
+            var windows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+            AssertEqual(windows ? "unsupported-metadata-source" : "unreadable-metadata", mixed.Diagnostics.Single().Code,
+                "only Windows skips cross-filesystem SQLite locking");
+            if (windows) AssertEqual(0, CodexAgentSessionMetadataReader.ReadAsync(wsl).GetAwaiter().GetResult().Count,
+                "single-root caller skips WSL without opening its database");
+            var recovered = new SourceRootRecord("synthetic-recovered", "codex", UsageSourceKind.RecoveredFolder, directory) { PlatformHint = "wsl" };
+            AssertEqual(1, CodexAgentSessionMetadataReader.ReadAsync(recovered).GetAwaiter().GetResult().Count,
+                "local recovered Linux database remains readable without cross-filesystem locking");
             AssertEqual<bool?>(null, available.Sessions[0].TurnOpen, "metadata alone leaves turn state unknown");
             AssertEqual(AgentTurnOutcome.Unknown, available.Sessions[0].LastTurnOutcome, "archive state does not invent turn success");
             AssertEqual(true, before.SequenceEqual(File.ReadAllBytes(path)), "partial collection preserves readable database bytes");

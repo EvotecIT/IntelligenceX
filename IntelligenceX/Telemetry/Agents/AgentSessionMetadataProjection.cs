@@ -162,7 +162,7 @@ internal static class AgentSessionMetadataProjection {
     }
 
     private static bool Keep(Context context, string name) => context switch {
-        Context.Root => name is "type" or "uuid" or "timestamp" or "sessionId" or "cwd" or "gitBranch" or "isSidechain" or "isApiErrorMessage" or "is_error" or "customTitle" or "subtype",
+        Context.Root => name is "type" or "uuid" or "timestamp" or "sessionId" or "cwd" or "gitBranch" or "isSidechain" or "isApiErrorMessage" or "is_error" or "customTitle" or "subtype" or "prNumber" or "prUrl" or "prRepository",
         Context.Payload => name is "type" or "role" or "turn_id" or "turnId" or "id" or "session_id" or "cwd" or "thread_id" or "threadId" or "thread_name" or "title" or "name" or "call_id" or "codex_error_info",
         Context.Git => name is "branch" or "repository_url",
         Context.Message => name == "stop_reason",

@@ -20,7 +20,8 @@ try {
         {"timestamp":"2026-11-01T10:01:00Z","type":"event_msg","payload":{"type":"turn_aborted","message":"private sentinel"}}
         """);
     File.WriteAllText(Path.Combine(fixture, "claude", "projects", "sample", "sample.jsonl"), """
-        {"timestamp":"2026-11-01T10:00:00Z","type":"assistant","sessionId":"fake-claude","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"private sentinel"}]}}
+        {"timestamp":"2026-11-01T10:00:00Z","type":"assistant","sessionId":"fake-claude","gitBranch":"main","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"private sentinel"}]}}
+        {"type":"pr-link","sessionId":"fake-claude","prNumber":1,"prRepository":"Sample/Project","prUrl":"https://github.com/Sample/Project/pull/1"}
         """);
     using (var sqlite = new SQLite()) {
         sqlite.ExecuteNonQuery(Path.Combine(fixture, "codex", "state_5.sqlite"), """
@@ -58,6 +59,9 @@ try {
         || decoded.NeedsAttention.Any(static item => item.Provider == "claude" && item.Kind == AgentAttentionKind.WaitingOnPerson)) {
         throw new InvalidOperationException("Expected fixture sessions, database metadata and attention.");
     }
+    var claude = decoded.Sessions.Single(static session => session.Id == "fake-claude");
+    if (claude.Branch != "main" || claude.ProviderPullRequestUrls.Count != 1 || claude.PullRequests.Count != 1)
+        throw new InvalidOperationException("Native provider PR association did not survive cache and generated JSON.");
     var codexObservation = decoded.Sessions.Single(static session => session.Id == "fake-codex");
     if (codexObservation.PendingInputs.Single().Id != "fake-question" || !codexObservation.PendingInputs[0].AnswerIsUnconfirmed
         || codexObservation.FailureEvidence != AgentFailureEvidence.TerminalEvent
