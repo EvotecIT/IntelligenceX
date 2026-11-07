@@ -18,7 +18,8 @@ internal static class EventAdmission {
         if (e.Session is { } s && (s.Outcome is not ("unknown" or "completed" or "interrupted" or "failed" or "incomplete") ||
             !DeclarationValidation.ValidScope(s.Scope) || s.TurnId is not null && !Id(s.TurnId) || s.InputId is not null && !Id(s.InputId) ||
             s.AccountId is not null && !Id(s.AccountId) || s.RepositoryBranchKey is not null && !Id(s.RepositoryBranchKey) ||
-            !Time(s.LastActivityAtUtc) || !Time(s.TurnStartedAtUtc) || !Time(s.TurnEndedAtUtc) || !Time(s.QuestionAtUtc))) return false;
+            !Time(s.LastActivityAtUtc) || !Time(s.TurnStartedAtUtc) || !Time(s.TurnEndedAtUtc) || !Time(s.QuestionAtUtc) ||
+            !Time(s.ArchiveObservedAtUtc) || (s.Archived is null) != (s.ArchiveObservedAtUtc is null))) return false;
         if (e.Work is { } w && (!DeclarationValidation.ValidScope(w.Scope) || w.QueuedInputs is < 0 or > 10000 || w.OpenPullRequests is null || w.OpenPullRequests.Length > 100 ||
             w.OwnedPullRequests is null || w.OwnedPullRequests.Length > 100 || w.OwnedPullRequests.Any(x => !Id(x)) ||
             w.CancelledPullRequests is null || w.CancelledPullRequests.Length > 100 || w.CancelledPullRequests.Any(x => !Id(x)) ||

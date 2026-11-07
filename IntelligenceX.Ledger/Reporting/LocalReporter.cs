@@ -104,12 +104,14 @@ public static class LocalReporter {
         var prCatalog = github is null || settings.ProjectClaims is null ? null : new PullRequestCatalog(settings.SpoolDirectory, github);
         ClaimSnapshot? claimSnapshot = null;
         AgentSourceDiagnostic[] metadataDiagnostics = [];
+        var archives = new SessionArchiveCache();
         await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
             readMetadataAsync: async ct => {
                 var available = await IntelligenceX.Codex.CodexAgentSessionMetadataReader.ReadAvailableAsync(
                     LocalAgentWorkStateService.DiscoverRoots().Where(r =>
                         r.SourceKind == IntelligenceX.Telemetry.Usage.UsageSourceKind.LocalLogs && r.ProviderId == "codex"), ct);
                 Volatile.Write(ref metadataDiagnostics, available.Diagnostics.ToArray());
+                archives.Observe(available.Sessions, DateTimeOffset.UtcNow);
                 return available.Sessions;
             }, github: settings.GitHub ? github : null);
         var last = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -121,10 +123,13 @@ public static class LocalReporter {
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
                 var pending = session.PendingInputs;
                 var blocking = pending.FirstOrDefault(x => x.IsBlocking && x.Id is not null && !x.AnswerIsUnconfirmed && !PriorTurn(x, session));
+                var archive = archives.For(session);
                 var fact = new SessionFact {
                     TurnId = session.TurnId is null ? null : LedgerScope.Id("turn", session.TurnId),
                     InputId = blocking?.Id is { } inputId ? LedgerScope.Id("input", inputId) : null,
                     SourceSessionId = Guid.TryParse(session.Id, out var sourceId) ? sourceId : null,
+                    Archived = archive?.Archived,
+                    ArchiveObservedAtUtc = archive?.ObservedAtUtc,
                     TurnOpen = session.TurnOpen, TurnStartedAtUtc = session.TurnStartedAtUtc?.ToUniversalTime(), TurnEndedAtUtc = session.TurnEndedAtUtc?.ToUniversalTime(),
                     LastActivityAtUtc = session.LastTurnActivityAtUtc?.ToUniversalTime(), Outcome = session.LastTurnOutcome.ToString().ToLowerInvariant(),
                     Question = blocking is not null, InputUnconfirmed = pending.Any(x => x.AnswerIsUnconfirmed),
@@ -147,9 +152,9 @@ public static class LocalReporter {
                         last[childId] = inputSignature;
                 }
                 var claims = Volatile.Read(ref claimSnapshot);
-                var work = new WorkFact { ActiveClaim = claims is null ? null : claims.ActiveItems.Contains(id),
-                    ClaimsAtUtc = claims?.CapturedAtUtc,
-                    HadPullRequests = session.PullRequests.Count > 0 || claims?.ItemsWithPullRequests.Contains(id) == true };
+                // Claim membership and its freshness are published once in ProjectEvidence.
+                // Repeating its check time for every historical session creates a full fan-out each refresh.
+                var work = new WorkFact { HadPullRequests = session.PullRequests.Count > 0 || claims?.ItemsWithPullRequests.Contains(id) == true };
                 var workSignature = JsonSerializer.Serialize(work, LedgerJson.Options);
                 if (!lastWork.TryGetValue(id, out var previousWork) || previousWork != workSignature) {
                     if (spool.TryAppend(Event(id, session.Provider) with { Work = work })) lastWork[id] = workSignature;

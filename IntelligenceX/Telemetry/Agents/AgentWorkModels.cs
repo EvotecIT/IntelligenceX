@@ -67,6 +67,8 @@ public sealed record AgentSessionState {
     public bool StateIsInferred { get; init; }
     /// <summary>Whether the local provider archived the thread.</summary>
     public bool IsArchived { get; init; }
+    /// <summary>Whether the archive flag was explicitly observed, rather than defaulted for a missing field.</summary>
+    public bool ArchiveStateKnown { get; init; }
     /// <summary>First provider timestamp, when available.</summary>
     public DateTimeOffset? StartedAtUtc { get; init; }
     /// <summary>Latest valid provider event timestamp, rather than copied-file modification time.</summary>

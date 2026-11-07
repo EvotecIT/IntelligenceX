@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Context;
 using IntelligenceX.Ledger.Hosting;
 using IntelligenceX.Ledger.Reporting;
 using IntelligenceX.Ledger.Rules;
@@ -11,6 +12,12 @@ namespace IntelligenceX.Ledger;
 
 public static class Program {
     public static async Task<int> Main(string[] args) {
+        if (args.Length == 5 && args[0] == "backup" && args[1] == "--config" && args[3] == "--out") {
+            var configuration = LedgerSettings.Load(args[2]);
+            var manifest = await LedgerBackup.CreateAsync(Path.Combine(configuration.DataDirectory, "ledger.sqlite"), args[4]);
+            Console.WriteLine(JsonSerializer.Serialize(manifest, LedgerJson.Options));
+            return 0;
+        }
         if (args.Length == 4 && args[0] == "hook" && args[1] == "--config")
             return await LocalReporter.RunAsync(args[2], hook: true, suppliedPayload: args[3]);
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
@@ -46,6 +53,7 @@ public static class Program {
         builder.Services.AddHostedService<ShadowReportWorker>();
         var app = builder.Build();
         var runtime = new LedgerRuntime(store, settings);
+        var contextService = new ProjectContextService(settings.ProjectCatalogPath);
         app.Use(async (context, next) => {
             context.Response.Headers.CacheControl = "no-store";
             var header = context.Request.Headers.Authorization.ToString();
@@ -57,11 +65,13 @@ public static class Program {
             catch (JsonException) { context.Response.StatusCode = 400; }
         });
         const string prefix = "/api/ledger/v1";
+        ProjectContextEndpoints.Map(app, contextService, runtime);
         app.MapPost(prefix + "/events", async (LedgerEvent[] events, CancellationToken ct) => {
             var now = DateTimeOffset.UtcNow;
             if (events.Length is 0 or > LedgerJson.MaximumBatchEvents || events.Any(e => !EventAdmission.Valid(e, settings, now)))
                 return Results.BadRequest(new { error = "invalid-events" });
             var ids = await store.IngestAsync(events, now, ct);
+            runtime.InvalidateWork();
             return Results.Ok(new { acknowledgedEventIds = ids, receivedAtUtc = now });
         });
         app.MapGet(prefix + "/status", async (CancellationToken ct) => {

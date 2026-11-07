@@ -20,6 +20,7 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
     public SafetyFact? Safety { get; init; }
     public string? CandidateRef { get; init; }
     public SupersessionFact? Supersession { get; init; }
+    public WorkerAvailabilityView? Availability { get; init; }
     public static LedgerItemView From(LedgerItem item) {
         var verdict = item.Current ?? throw new InvalidOperationException("Unevaluated item.");
         var declaration = LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(d => LedgerScope.Applies(d.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
@@ -35,7 +36,12 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
                 AcceptanceBy = verdict.Hold?.AcceptanceBy ?? declaration?.AcceptanceBy ?? delivery?.AcceptanceBy,
                 ResultRef = verdict.Hold?.ResultRef ?? declaration?.ResultRef ?? delivery?.ResultRef,
                 ParentItemId = item.ParentItemId, TurnId = item.Session?.TurnId, Safety = item.Safety, CandidateRef = item.CandidateRef,
-                Supersession = item.Supersession
+                Supersession = item.Supersession,
+                Availability = new(verdict.LastKnown || item.Session is null ? "unknown" : item.Session?.Archived == true ? "archived" :
+                    item.Session?.UsageLimit == true ? "usage-limited" : "observed",
+                    item.Session?.Archived, item.Session?.ArchiveObservedAtUtc, item.Session?.UsageLimit == true,
+                    "unknown", item.Session?.Archived is null ? ["archive-state-unobserved", "application-responsiveness-unobserved"] :
+                        ["application-responsiveness-unobserved"])
             };
     }
 }

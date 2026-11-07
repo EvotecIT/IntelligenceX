@@ -37,6 +37,8 @@ public sealed record SessionFact {
     public string? InputId { get; init; }
     public bool QuestionBlocking { get; init; } = true;
     public Guid? SourceSessionId { get; init; }
+    public bool? Archived { get; init; }
+    public DateTimeOffset? ArchiveObservedAtUtc { get; init; }
     public bool? TurnOpen { get; init; }
     public DateTimeOffset? TurnStartedAtUtc { get; init; }
     public DateTimeOffset? TurnEndedAtUtc { get; init; }
