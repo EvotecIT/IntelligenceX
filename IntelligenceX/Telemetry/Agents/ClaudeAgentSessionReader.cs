@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using IntelligenceX.Telemetry.Usage;
@@ -22,6 +24,16 @@ internal static class ClaudeAgentSessionReader {
         foreach (var document in AgentSessionMetadataProjection.Read(path, diagnostic, cancellationToken, window)) {
             using (document) {
                 var entry = document.RootElement;
+                var type = Text(entry, "type");
+                if (type == "pr-link") {
+                    // Provider association is separate from conversation activity and the
+                    // primary checkout's branch. A link for another session is not ours.
+                    if (Text(entry, "sessionId") == session.Id && ProviderPullRequestUrl(entry) is { } url
+                        && !session.ProviderPullRequestUrls.Contains(url, StringComparer.OrdinalIgnoreCase))
+                        session = session with { ProviderPullRequestUrls = session.ProviderPullRequestUrls.Concat(new[] { url }).ToArray() };
+                    if (window.RecordIsComplete) window.Checkpoint = new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
+                    continue;
+                }
                 sidechain |= Object(entry, "isSidechain").ValueKind == JsonValueKind.True;
                 var timestamp = Timestamp(entry);
                 session = session with {
@@ -31,7 +43,6 @@ internal static class ClaudeAgentSessionReader {
                     StartedAtUtc = session.StartedAtUtc is null || timestamp < session.StartedAtUtc ? timestamp : session.StartedAtUtc,
                     LastActivityAtUtc = session.LastActivityAtUtc is null || timestamp > session.LastActivityAtUtc ? timestamp : session.LastActivityAtUtc
                 };
-                var type = Text(entry, "type");
                 var message = Object(entry, "message");
                 if (type is "user" or "assistant" or "result" or "error" && timestamp.HasValue)
                     session = session with { LastTurnActivityAtUtc = timestamp > session.LastTurnActivityAtUtc || session.LastTurnActivityAtUtc is null
@@ -98,5 +109,14 @@ internal static class ClaudeAgentSessionReader {
         }
         // Subagents share the parent sessionId. They must not replace its state during deduplication.
         return new AgentSessionParserState { Session = session, Active = active, Sidechain = sidechain };
+    }
+
+    private static string? ProviderPullRequestUrl(JsonElement entry) {
+        var repository = Text(entry, "prRepository");
+        var number = Object(entry, "prNumber");
+        if (repository is null || AgentRepositoryIdentity.FromRemote("https://github.com/" + repository) != repository
+            || number.ValueKind != JsonValueKind.Number || !number.TryGetInt32(out var id) || id <= 0) return null;
+        var canonical = "https://github.com/" + repository + "/pull/" + id.ToString(CultureInfo.InvariantCulture);
+        return string.Equals(Text(entry, "prUrl"), canonical, StringComparison.OrdinalIgnoreCase) ? canonical : null;
     }
 }

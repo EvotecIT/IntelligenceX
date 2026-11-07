@@ -95,7 +95,9 @@ public sealed record AgentSessionState {
     public AgentObservationSources ObservationSources { get; init; }
     /// <summary>When session-log state was last parsed; cache reuse does not advance it. Desktop refresh time is on the snapshot.</summary>
     public DateTimeOffset? ObservedAtUtc { get; init; }
-    /// <summary>Matching open pull requests, linked only by repository and exact head branch.</summary>
+    /// <summary>Canonical GitHub URLs explicitly associated by a structured provider record, never extracted from message text.</summary>
+    public IReadOnlyList<string> ProviderPullRequestUrls { get; init; } = Array.Empty<string>();
+    /// <summary>Matching open pull requests, linked by provider association or repository and exact head branch.</summary>
     public IReadOnlyList<AgentPullRequestState> PullRequests { get; init; } = Array.Empty<AgentPullRequestState>();
 }
 

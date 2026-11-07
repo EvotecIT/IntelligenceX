@@ -31,7 +31,8 @@ public static class AgentWorkStateRules {
         foreach (var session in sessions) {
             var state = session.IsArchived ? AgentWorkState.Finished : session.State;
             var baseState = state == AgentWorkState.Stale ? AgentWorkState.Idle : state;
-            var matches = prs.Length == 0 ? Array.Empty<AgentPullRequestState>() : prs.Where(pr => !string.IsNullOrEmpty(session.Repository) && !string.IsNullOrEmpty(session.Branch)
+            var matches = prs.Length == 0 ? Array.Empty<AgentPullRequestState>() : prs.Where(pr => session.ProviderPullRequestUrls.Contains(pr.Url, StringComparer.OrdinalIgnoreCase)
+                || !string.IsNullOrEmpty(session.Repository) && !string.IsNullOrEmpty(session.Branch)
                 && string.Equals(pr.HeadRepository, session.Repository, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(pr.Branch, session.Branch, StringComparison.Ordinal)).ToArray();
             var stale = state != AgentWorkState.Running && state != AgentWorkState.Finished

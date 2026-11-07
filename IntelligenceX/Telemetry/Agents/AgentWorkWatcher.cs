@@ -206,7 +206,9 @@ public sealed partial class AgentWorkWatcher : IDisposable, IAsyncDisposable {
             var right = previous.Sessions[i];
             if (!left.PullRequests.SequenceEqual(right.PullRequests) || !left.PendingInputs.SequenceEqual(right.PendingInputs)
                 || !left.ResolvedInputs.SequenceEqual(right.ResolvedInputs)
-                || left with { PullRequests = right.PullRequests, PendingInputs = right.PendingInputs, ResolvedInputs = right.ResolvedInputs } != right) return false;
+                || !left.ProviderPullRequestUrls.SequenceEqual(right.ProviderPullRequestUrls)
+                || left with { PullRequests = right.PullRequests, PendingInputs = right.PendingInputs, ResolvedInputs = right.ResolvedInputs,
+                    ProviderPullRequestUrls = right.ProviderPullRequestUrls } != right) return false;
         }
         return true;
     }
