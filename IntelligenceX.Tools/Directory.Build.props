@@ -37,10 +37,10 @@
     <IxToolsDomainDetectiveProjectMarker>DomainDetective\\DomainDetective.csproj</IxToolsDomainDetectiveProjectMarker>
 
     <!-- Public package fallbacks for CI/consumers when local engine sources are unavailable. -->
-    <MailozaurrNuGetVersion Condition="'$(MailozaurrNuGetVersion)'==''">3.0.5</MailozaurrNuGetVersion>
+    <MailozaurrNuGetVersion Condition="'$(MailozaurrNuGetVersion)'==''">3.0.6</MailozaurrNuGetVersion>
     <EventViewerXNuGetVersion Condition="'$(EventViewerXNuGetVersion)'==''">4.0.1</EventViewerXNuGetVersion>
     <OfficeImoReaderNuGetVersion Condition="'$(OfficeImoReaderNuGetVersion)'==''">2.0.1</OfficeImoReaderNuGetVersion>
-    <DnsClientXNuGetVersion Condition="'$(DnsClientXNuGetVersion)'==''">2.1.2</DnsClientXNuGetVersion>
+    <DnsClientXNuGetVersion Condition="'$(DnsClientXNuGetVersion)'==''">2.2.0</DnsClientXNuGetVersion>
     <OfficeImoRepoRootInput>$(OfficeImoRepoRoot)</OfficeImoRepoRootInput>
     <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))))</OfficeImoRepoRootInputNormalized>
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRootInputNormalized)OfficeIMO.Reader\\OfficeIMO.Reader.csproj')">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRoot>

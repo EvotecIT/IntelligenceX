@@ -9,7 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageReference Include="ModelContextProtocol" Version="2.3.0" />
     <ProjectReference Include="../IntelligenceX.Ledger.Contracts/IntelligenceX.Ledger.Contracts.csproj" />
   </ItemGroup>
 </Project>
