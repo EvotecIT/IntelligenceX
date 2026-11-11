@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <!-- This tool surface targets the published 3.x API until its v4 contract migration. -->
+    <PackageReference Include="DnsClientX" Version="2.2.0" />
     <PackageReference Include="EventViewerX" Version="$(EventViewerXNuGetVersion)" />
   </ItemGroup>
 
