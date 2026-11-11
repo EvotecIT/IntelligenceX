@@ -39,17 +39,16 @@ public static partial class LedgerBackup {
             var resultDirectory = Path.Combine(dataDirectory, "coordination-results");
             Directory.CreateDirectory(Path.Combine(staging, "coordination-results"));
             if (Directory.Exists(resultDirectory)) {
-                RejectLink(resultDirectory);
-                foreach (var file in Directory.EnumerateFileSystemEntries(resultDirectory)) {
-                    ValidateArtifact(file);
-                    var target = Path.Combine(staging, "coordination-results", Path.GetFileName(file));
-                    File.Copy(file, target, overwrite: false);
-                    artifacts.Add(Path.GetFileName(file), await IdentityAsync(target, token));
+                foreach (var artifact in ArtifactFiles(resultDirectory, allowArchive: true)) {
+                    var target = Path.Combine(staging, "coordination-results", artifact.Key);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.Copy(artifact.Path, target, overwrite: false);
+                    artifacts.Add(artifact.Key, await IdentityAsync(target, token));
                 }
             }
             var state = await ReadCoordinationAsync(copy, token);
             VerifyResults(staging, state);
-            manifest = manifest with { SchemaVersion = 2, CompletedAtUtc = DateTimeOffset.UtcNow,
+            manifest = manifest with { SchemaVersion = 3, CompletedAtUtc = DateTimeOffset.UtcNow,
                 Coordination = new(await IdentityAsync(copy, token), artifacts) };
             await File.WriteAllTextAsync(Path.Combine(staging, "ledger.sqlite.json"),
                 JsonSerializer.Serialize(manifest, LedgerJson.Options), token);
@@ -74,8 +73,8 @@ public static partial class LedgerBackup {
         RejectLink(ledger + ".json");
         var manifest = JsonSerializer.Deserialize<LedgerBackupManifest>(await File.ReadAllTextAsync(ledger + ".json", token),
             LedgerJson.Options) ?? throw new InvalidDataException("Missing backup manifest.");
-        if (manifest.SchemaVersion is not (1 or 2) || (manifest.SchemaVersion == 2) != (manifest.Coordination is not null) ||
-            bundle != (manifest.SchemaVersion == 2))
+        if (manifest.SchemaVersion is not (1 or 2 or 3) || (manifest.SchemaVersion >= 2) != (manifest.Coordination is not null) ||
+            bundle != (manifest.SchemaVersion >= 2))
             throw new InvalidDataException("Unsupported or incomplete backup layout.");
         var staging = destination + "." + Guid.NewGuid().ToString("N") + ".partial";
         Directory.CreateDirectory(staging);
@@ -87,14 +86,15 @@ public static partial class LedgerBackup {
                     coordination.Database, token);
                 await CheckIntegrityAsync(Path.Combine(staging, "coordination.sqlite"), token);
                 var results = Path.Combine(source, "coordination-results");
-                RejectLink(results);
+                var files = ArtifactFiles(results, allowArchive: manifest.SchemaVersion >= 3)
+                    .ToDictionary(artifact => artifact.Key, artifact => artifact.Path, StringComparer.Ordinal);
+                if (files.Count != coordination.Artifacts.Count || !coordination.Artifacts.Keys.All(files.ContainsKey))
+                    throw new InvalidDataException("Backup artifacts do not match the manifest.");
                 Directory.CreateDirectory(Path.Combine(staging, "coordination-results"));
                 foreach (var artifact in coordination.Artifacts) {
-                    if (Path.GetFileName(artifact.Key) != artifact.Key || artifact.Key.Contains('\\') || artifact.Key.Contains('/'))
-                        throw new InvalidDataException("Invalid backup artifact name.");
-                    var file = Path.Combine(results, artifact.Key);
-                    ValidateArtifact(file);
-                    await CopyVerifiedAsync(file, Path.Combine(staging, "coordination-results", artifact.Key), artifact.Value, token);
+                    var target = Path.Combine(staging, "coordination-results", artifact.Key);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    await CopyVerifiedAsync(files[artifact.Key], target, artifact.Value, token);
                 }
                 // This modifies only the verified staging copy, before any service can open the restore.
                 var state = await ReadCoordinationAsync(Path.Combine(staging, "coordination.sqlite"), token);
@@ -139,6 +139,25 @@ public static partial class LedgerBackup {
             name.Length != prefix.Length + 64 + 4 || !name.EndsWith(".txt", StringComparison.Ordinal) ||
             !name.AsSpan(prefix.Length, 64).ToArray().All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f'))
             throw new InvalidDataException("Coordination results contain an unexpected file or directory.");
+    }
+
+    // Only this fixed second tier is part of schema 3. Enumerating one level explicitly rejects
+    // traversal keys, extra directories and links, including files absent from a restore manifest.
+    private static IEnumerable<(string Key, string Path)> ArtifactFiles(string directory, bool allowArchive) {
+        RejectLink(directory);
+        foreach (var entry in Directory.EnumerateFileSystemEntries(directory)) {
+            if (allowArchive && Path.GetFileName(entry) == CoordinationArtifactStore.ArchiveDirectoryName) {
+                RejectLink(entry);
+                if (!Directory.Exists(entry)) throw new InvalidDataException("The result archive must be a directory.");
+                foreach (var file in Directory.EnumerateFileSystemEntries(entry)) {
+                    ValidateArtifact(file);
+                    yield return (CoordinationArtifactStore.ArchiveDirectoryName + "/" + Path.GetFileName(file), file);
+                }
+            } else {
+                ValidateArtifact(entry);
+                yield return (Path.GetFileName(entry), entry);
+            }
+        }
     }
 
     private static async Task<LedgerBackupFile> IdentityAsync(string file, CancellationToken token) {

@@ -336,7 +336,19 @@ nonzero exit code for either outcome. MCP reports them as tool errors.
 
 Result content is immutable for its exact request, generation and grant.
 The local artifact store admits content up to 8 KiB, with a 64-MiB and 4,096-file
-storage bound. At capacity, new content returns `result-store-capacity` while
-existing assignment replays remain readable. Retained result and assignment
-files support recovery and replay for durable requests. Include them in the
-complete coordination backup.
+active storage bound. Capacity pressure moves completed assignments and content
+into the fixed `coordination-results/archive` directory after requester consumption
+and verified temporary-helper retirement. Explicitly reused personal sessions
+qualify after consumption and retain their ordinary session lifecycle. Missing or
+contradictory lifecycle evidence keeps an assignment active. When eligible moves
+cannot free enough capacity, new content returns `result-store-capacity`.
+
+Reads and assignment replays resolve both tiers, including a restart between
+content and binding moves and content shared by active assignments. Archived
+content retains its original reference for the lifetime of the durable request.
+The archive and append-only coordination history grow with retained work and
+require normal disk-capacity monitoring. Complete stopped backups include both
+tiers with size and hash verification. New coordination backups use schema 3
+with canonical `archive/<file>` entries. Restore also accepts the existing schema
+1 observation-only and schema 2 flat coordination backups, rejects additional
+directory levels and links, and preserves the existing recovery controls.

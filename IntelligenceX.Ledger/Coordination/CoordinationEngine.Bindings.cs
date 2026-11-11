@@ -4,7 +4,9 @@ using static IntelligenceX.Ledger.Coordination.CoordinationValidation;
 namespace IntelligenceX.Ledger.Coordination;
 
 public sealed partial class CoordinationEngine {
-    private static bool SameCandidate(WorkCheckpoint a, WorkCheckpoint b) =>
+    /// <summary>Compares project, branch and commit identity across request and host checkpoints.
+    /// Recovery references and pull-request annotations can differ for the same source candidate.</summary>
+    internal static bool SameCandidate(WorkCheckpoint a, WorkCheckpoint b) =>
         a.Project == b.Project && a.Branch == b.Branch && a.Commit == b.Commit;
 
     private bool HasCurrentHostBoot(CoordinationWorker worker) => Id(worker.BootId) &&

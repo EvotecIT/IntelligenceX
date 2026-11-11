@@ -17,7 +17,7 @@ internal static partial class CoordinationEndpoints {
                      work.State == "reconcile" || work.State == "cancelled" && work.Assignee is null && work.ExecutionId is null) &&
                     (work.State is "submitted" or "started" or "reconcile" or "succeeded" or "failed" or "cancelled" ||
                      work.State == "admitted" && binding?.GrantId == command.GrantId), "result-content-owner-conflict");
-                var artifact = artifacts.Put(id, command.Generation, command.GrantId, command.Content);
+                var artifact = artifacts.Put(id, command.Generation, command.GrantId, command.Content, state);
                 CoordinationValidation.Require(work.ResultRef is null || work.ResultRef == artifact.ResultRef, "result-content-identity-conflict");
                 return artifact;
             }, DateTimeOffset.UtcNow, ct)));
