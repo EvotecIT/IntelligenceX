@@ -364,8 +364,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
         var inferred = item.Session?.Outcome == "completed" && item.Work?.Wait is null ? owned.Select(id => waits[id]).FirstOrDefault() : null;
         item = item with { InferredReviewWaits = waits, ImplicitReviewWait = inferred };
         var verdict = rules.Evaluate(item, now, silent);
-        if (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode || item.Current.EpisodeId != verdict.EpisodeId ||
-            item.Current.SinceUtc != verdict.SinceUtc) {
+        if (!item.IsMessageEvidence && (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode || item.Current.EpisodeId != verdict.EpisodeId ||
+            item.Current.SinceUtc != verdict.SinceUtc)) {
             var transition = new { item.Id, item.MachineId, item.Provider, verdict,
                 evidence = item.Evidence() };
             await tx.ExecuteNonQueryAsync("INSERT INTO transitions(item,recorded,json) VALUES(@item,@recorded,@json)",
@@ -421,12 +421,14 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
             await using var db = await _database.OpenSessionAsync(path, token);
             var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
             var rows = await db.QueryAsListAsync("""
-                SELECT t.ordinal,t.json,r.mark FROM transitions t LEFT JOIN reviews r ON r.transition=t.ordinal
+                SELECT t.ordinal,t.json,r.mark,i.json FROM transitions t
+                LEFT JOIN reviews r ON r.transition=t.ordinal LEFT JOIN items i ON i.id=t.item
                 WHERE t.recorded>=@start AND t.recorded<@end ORDER BY t.ordinal
-                """, r => (object)new { transitionId = r.GetInt64(0), transition = JsonSerializer.Deserialize<JsonElement>(r.GetString(1)),
-                    mark = r.IsDBNull(2) ? "unmarked" : r.GetString(2) }, new Dictionary<string, object?> {
+                """, r => (IsMessageEvidence: !r.IsDBNull(3) && Read<LedgerItem>(r.GetString(3)).IsMessageEvidence,
+                    Row: (object)new { transitionId = r.GetInt64(0), transition = JsonSerializer.Deserialize<JsonElement>(r.GetString(1)),
+                        mark = r.IsDBNull(2) ? "unmarked" : r.GetString(2) }), new Dictionary<string, object?> {
                     ["start"] = start.ToString("O"), ["end"] = start.AddDays(1).ToString("O") }, cancellationToken: token);
-            return rows.ToArray();
+            return rows.Where(row => !row.IsMessageEvidence).Select(row => row.Row).ToArray();
         } finally { _gate.Release(); }
     }
 
@@ -442,7 +444,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                 new Dictionary<string, object?> { ["start"] = start.ToString("O"), ["end"] = start.AddDays(1).ToString("O") }, cancellationToken: token);
             var unknowns = await db.QueryAsListAsync("SELECT json FROM items", r => Read<LedgerItem>(r.GetString(0)), cancellationToken: token);
             return new { date, generatedAtUtc = now, coverage = "observed-only", observationCoverage = bounds.Single(),
-                unresolvedUnknownsAsOfUtc = now, unresolvedUnknowns = unknowns.Where(i => i.Current?.ReasonCode == "unknown")
+                unresolvedUnknownsAsOfUtc = now, unresolvedUnknowns = unknowns.Where(i => !i.IsMessageEvidence && i.Current?.ReasonCode == "unknown")
                     .Select(i => new { i.Id, i.MachineId, i.Provider, i.Current!.SinceUtc, i.Current.MissingFacts }).ToArray(), transitions };
         } finally { _gate.Release(); }
     }

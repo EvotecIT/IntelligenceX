@@ -204,6 +204,8 @@ session, turn and independently observed delivery stages. Later personal turns
 preserve those historical failures. The parser retains up to 256 peer-message
 observations per session file and exposes `peer-message-retention-limit` if
 older observations leave that cache. The service retains admitted history.
+Exact item lookup and event history expose peer-message receipts. Normal status,
+work lists and daily shadow reports count sessions and tasks.
 Quota reset time and sharing across accounts or machines require separate evidence.
 
 ## Declare a work boundary
@@ -317,6 +319,9 @@ help/review worker and machine, preserving that session's ordinary lifecycle.
 
 Terminal execution, substantive result consumption and workspace retirement
 have separate receipts. Temporary workers create durable retirement jobs.
+An exact bound host can supply an independently verified terminal answer while
+earlier submission and start receipts remain unknown. Known execution identity,
+grant, generation, boot, binding, source and exclusion checks still apply.
 Personal reused sessions become available for another assignment after their
 terminal result is consumed. Cleanup records require source preservation,
 descendant resolution, process release, native archive and supported workspace

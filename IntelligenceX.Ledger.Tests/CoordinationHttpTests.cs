@@ -241,6 +241,107 @@ public sealed class CoordinationHttpTests {
     }
 
     [Theory]
+    [InlineData("admitted", true)]
+    [InlineData("admitted", false)]
+    [InlineData("reconcile", true)]
+    [InlineData("submitted", true)]
+    public async Task VerifiedTerminalResultPreservesIndependentSubmissionStagesThroughHttp(string priorState, bool succeeded) {
+        var requesterToken = new string('c', 32);
+        var sourceToken = new string('s', 32);
+        var helperToken = new string('h', 32);
+        await WithService(new() {
+            InitialPolicy = CoordinationLifecycleTests.Policy,
+            Principals = [CoordinationLifecycleTests.Requester with { Token = requesterToken },
+                CoordinationLifecycleTests.SourceHost with { Token = sourceToken },
+                CoordinationLifecycleTests.HelperHost with { Token = helperToken }]
+        }, async (endpoint, _, token) => {
+            using var requester = Client(endpoint, requesterToken);
+            using var source = Client(endpoint, sourceToken);
+            using var helper = Client(endpoint, helperToken);
+            async Task Rejected(Func<Task> command, string expected) =>
+                Assert.Equal(expected, (await Assert.ThrowsAsync<CoordinationCommandRejectedException>(command)).ErrorCode);
+
+            var observed = DateTimeOffset.UtcNow;
+            var candidate = CoordinationLifecycleTests.Candidate;
+            await source.HostAsync(new("source-host", "boot", observed, ["review"]), token);
+            await helper.HostAsync(new("helper-host", "boot", observed, ["platform-help", "review"]), token);
+            await source.WorkerAsync(CoordinationLifecycleTests.RequesterWorker with { ObservedAtUtc = observed }, token);
+            await helper.WorkerAsync(new("helper-worker", "helper-host", "provider-a", true, null, observed,
+                "helper-session", "helper-workspace", candidate, "boot", TemporaryWorker: true), token);
+            var goal = await requester.SetGoalAsync(new(new("task", "", 0, false, false, "authorization", ["answer"]), 0), token);
+            var work = await requester.SubmitAsync(CoordinationLifecycleTests.Help() with {
+                Kind = "review", Capability = "review", ReadOnly = true,
+                MachineId = "helper-host", WorkerId = "helper-worker"
+            }, true, token);
+            Assert.Equal("admitted", work.State);
+            Assert.Null(work.ExecutionId);
+            var upload = new CoordinationArtifactCommand(work.Generation, work.GrantId!, "boot",
+                "The exact candidate was reviewed. The answer survived an unknown submission receipt.");
+            var terminal = new ExecutionReceipt(work.GrantId!, work.Generation, "boot", "verified-execution",
+                "result-" + new string('0', 64), succeeded, ExclusionVerified: true);
+            await Rejected(() => helper.PublishResultAsync("help", upload, token), "result-content-owner-conflict");
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal, token), "native-binding-required");
+            var binding = new CoordinationSessionBinding("help", work.Generation, work.GrantId!, work.Assignee!,
+                "helper-host", "provider-a", "helper-session", "helper-workspace", candidate);
+            await helper.BindSessionAsync(binding, token);
+            if (priorState == "submitted")
+                await helper.ReceiptAsync("help", "submitted", terminal with { ResultRef = null, Succeeded = null, ExclusionVerified = false }, token);
+            if (priorState == "reconcile")
+                await requester.SetGoalAsync(new(goal with { Paused = true }, goal.Revision), token);
+
+            await Rejected(() => source.PublishResultAsync("help", upload, token), "result-content-owner-conflict");
+            await Rejected(() => helper.PublishResultAsync("help", upload with { Generation = work.Generation + 1 }, token), "result-content-owner-conflict");
+            await Rejected(() => helper.PublishResultAsync("help", upload with { GrantId = "other-grant" }, token), "result-content-owner-conflict");
+            await Rejected(() => helper.PublishResultAsync("help", upload with { BootId = "other-boot" }, token), "result-content-owner-conflict");
+            await Rejected(() => source.ReceiptAsync("help", "terminal", terminal, token), "stale-or-foreign-grant");
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal with { Generation = work.Generation + 1 }, token), "stale-or-foreign-grant");
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal with { GrantId = "other-grant" }, token), "stale-or-foreign-grant");
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal with { BootId = "other-boot" }, token), "stale-or-foreign-grant");
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal with { ExclusionVerified = false }, token), "terminal-exclusion-required");
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal with { Succeeded = null }, token), "terminal-exclusion-required");
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal with { ResultRef = null }, token), "terminal-exclusion-required");
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal, token), "result-content-required");
+            var pending = await requester.RequestAsync("help", token);
+            Assert.Equal(priorState, pending.Work.State);
+            Assert.Equal(priorState == "submitted" ? terminal.ExecutionId : null, pending.Work.ExecutionId);
+            Assert.Null(pending.Result);
+            Assert.Null(pending.Retirement);
+
+            var artifact = await helper.PublishResultAsync("help", upload, token);
+            Assert.Equal(upload.Content, artifact.Content);
+            Assert.Equal(artifact, await helper.PublishResultAsync("help", upload, token));
+            terminal = terminal with { ResultRef = artifact.ResultRef };
+            if (priorState == "submitted")
+                await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal with { ExecutionId = "other-execution" }, token), "execution-identity-conflict");
+            var completed = await helper.ReceiptAsync("help", "terminal", terminal, token);
+            Assert.Equal(succeeded ? "succeeded" : "failed", completed.State);
+            Assert.Equal(terminal.ExecutionId, completed.ExecutionId);
+            Assert.Equal(work.Generation, completed.Generation);
+            Assert.Equal(work.GrantId, completed.GrantId);
+            Assert.Equal(priorState == "submitted", completed.Stages!.ContainsKey("submitted"));
+            Assert.False(completed.Stages.ContainsKey("started"));
+            Assert.True(completed.Stages.ContainsKey("terminal"));
+            Assert.Null(completed.RenewByUtc);
+            Assert.Equal(artifact, await requester.ResultContentAsync("help", token));
+            var returned = await requester.RequestAsync("help", token);
+            Assert.Equal(terminal.ExecutionId, returned.Work.ExecutionId);
+            Assert.Equal(binding, returned.Attempt);
+            Assert.Equal(artifact.ResultRef, returned.Result!.ResultRef);
+            Assert.Equal("intent", returned.Result.State);
+            Assert.Null(returned.Result.AttemptId);
+            Assert.Null(returned.Result.ConsumedAtUtc);
+            Assert.Equal(binding, returned.Retirement!.Binding);
+            Assert.Empty(returned.Retirement.Evidence);
+            await helper.ReceiptAsync("help", "terminal", terminal, token);
+            await Rejected(() => helper.ReceiptAsync("help", "terminal", terminal with { ExecutionId = "other-execution" }, token), "execution-identity-conflict");
+            var retained = await requester.RequestAsync("help", token);
+            Assert.Equal(priorState == "submitted", retained.Work.Stages!.ContainsKey("submitted"));
+            Assert.False(retained.Work.Stages.ContainsKey("started"));
+            Assert.Empty((await helper.AssignedAsync(token)).Items);
+        });
+    }
+
+    [Theory]
     [InlineData("expiry")]
     [InlineData("boot")]
     [InlineData("stop")]

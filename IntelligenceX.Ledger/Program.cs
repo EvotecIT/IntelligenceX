@@ -118,7 +118,7 @@ public static class Program {
                 page.SnapshotId, page.AsOfUtc, items = page.Items.Select(LedgerItemView.From), page.NextCursor });
         });
         app.MapGet(prefix + "/items/{id}", async (string id, CancellationToken ct) => {
-            var item = (await runtime.ItemsAsync(DateTimeOffset.UtcNow, ct)).FirstOrDefault(i => i.Id == id);
+            var item = (await runtime.ItemsAsync(DateTimeOffset.UtcNow, ct, includeMessageEvidence: true)).FirstOrDefault(i => i.Id == id);
             return item is null ? Results.NotFound() : Results.Ok(LedgerItemView.From(item));
         });
         app.MapGet(prefix + "/items/{id}/events", async (string id, long? cursor, int? limit, CancellationToken ct) =>

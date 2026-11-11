@@ -93,6 +93,8 @@ public sealed partial class CoordinationEngine {
         }
     }
 
+    /// <summary>Records one independently observed execution stage. A verified terminal result can establish
+    /// execution identity while earlier submission and start receipts remain unknown.</summary>
     public CoordinationWork Receipt(string id, string stage, ExecutionReceipt receipt, CoordinationPrincipal caller) {
         Require(state.Work.TryGetValue(id, out var work), "request-not-found");
         Require(caller.Role == "host" && work!.Machine == caller.MachineId && receipt.GrantId == work.GrantId &&
@@ -111,10 +113,10 @@ public sealed partial class CoordinationEngine {
             return work;
         }
         if (stage == "terminal") {
-            Require(work.ExecutionId == receipt.ExecutionId && receipt.Succeeded is not null && receipt.ResultRef is not null &&
+            Require(receipt.Succeeded is not null && receipt.ResultRef is not null &&
                 receipt.ExclusionVerified, "terminal-exclusion-required");
             Put(work with { State = receipt.Succeeded.Value ? "succeeded" : "failed", ResultRef = receipt.ResultRef,
-                RenewByUtc = null, Reason = null }, "terminal", caller.Id, receipt.ResultRef);
+                ExecutionId = receipt.ExecutionId, RenewByUtc = null, Reason = null }, "terminal", caller.Id, receipt.ResultRef);
             PreserveTerminalLifecycle(state.Work[id], caller.Id);
         } else {
             Require(stage is "submitted" or "started" or "renew", "invalid-execution-stage");
