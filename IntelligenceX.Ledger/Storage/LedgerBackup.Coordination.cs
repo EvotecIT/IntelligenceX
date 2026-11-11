@@ -39,7 +39,7 @@ public static partial class LedgerBackup {
             var resultDirectory = Path.Combine(dataDirectory, "coordination-results");
             Directory.CreateDirectory(Path.Combine(staging, "coordination-results"));
             if (Directory.Exists(resultDirectory)) {
-                foreach (var artifact in ArtifactFiles(resultDirectory, allowArchive: true)) {
+                foreach (var artifact in ArtifactFiles(resultDirectory, allowArchive: true, skipAbandonedStaging: true)) {
                     var target = Path.Combine(staging, "coordination-results", artifact.Key);
                     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                     File.Copy(artifact.Path, target, overwrite: false);
@@ -143,9 +143,16 @@ public static partial class LedgerBackup {
 
     // Only this fixed second tier is part of schema 3. Enumerating one level explicitly rejects
     // traversal keys, extra directories and links, including files absent from a restore manifest.
-    private static IEnumerable<(string Key, string Path)> ArtifactFiles(string directory, bool allowArchive) {
+    private static IEnumerable<(string Key, string Path)> ArtifactFiles(string directory, bool allowArchive,
+        bool skipAbandonedStaging = false) {
         RejectLink(directory);
         foreach (var entry in Directory.EnumerateFileSystemEntries(directory)) {
+            var name = Path.GetFileName(entry);
+            // Only the stopped source scan owns both writer leases. An interrupted immutable write
+            // has no committed reference; preserve its local file and verify every committed result below.
+            if (skipAbandonedStaging && name.Length == 41 && name.StartsWith(".partial-", StringComparison.Ordinal) &&
+                Guid.TryParseExact(name.AsSpan(9), "N", out _) &&
+                (File.GetAttributes(entry) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0) continue;
             if (allowArchive && Path.GetFileName(entry) == CoordinationArtifactStore.ArchiveDirectoryName) {
                 RejectLink(entry);
                 if (!Directory.Exists(entry)) throw new InvalidDataException("The result archive must be a directory.");

@@ -352,3 +352,6 @@ tiers with size and hash verification. New coordination backups use schema 3
 with canonical `archive/<file>` entries. Restore also accepts the existing schema
 1 observation-only and schema 2 flat coordination backups, rejects additional
 directory levels and links, and preserves the existing recovery controls.
+After acquiring both writer leases, stopped backups exclude recognized
+uncommitted staging files from interrupted writes and verify every committed
+result. The original staging files can be inspected in the source directory.

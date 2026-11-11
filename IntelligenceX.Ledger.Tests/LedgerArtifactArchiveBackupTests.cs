@@ -129,6 +129,35 @@ public sealed class LedgerArtifactArchiveBackupTests {
         }
     }
 
+    [Fact]
+    public async Task StoppedBackupPreservesAbandonedStagingAndStillRequiresEveryCommittedArtifact() {
+        var root = LedgerTestPaths.NewDirectory("abandoned-artifact-staging");
+        Directory.CreateDirectory(root);
+        try {
+            var source = Path.Combine(root, "source");
+            var completed = await CreateCompletedStore(source);
+            var results = Path.Combine(source, "coordination-results");
+            var staging = Path.Combine(results, ".partial-00000000000040008000000000000001");
+            await File.WriteAllTextAsync(staging, "Interrupted uncommitted write.");
+            var backup = Path.Combine(root, "backup");
+            var manifest = await LedgerBackup.CreateStoppedAsync(source, backup);
+            Assert.DoesNotContain(Path.GetFileName(staging), manifest.Coordination!.Artifacts.Keys);
+            Assert.Equal("Interrupted uncommitted write.", await File.ReadAllTextAsync(staging));
+            Assert.False(File.Exists(Path.Combine(backup, "coordination-results", Path.GetFileName(staging))));
+            var restored = Path.Combine(root, "restored");
+            await LedgerBackup.RestoreAsync(backup, restored);
+            Assert.Equal(completed.Artifact, new CoordinationArtifactStore(Path.Combine(restored, "coordination-results"))
+                .ReadForAssignment("help", completed.Work.Generation, completed.Work.GrantId!, completed.Artifact.ResultRef));
+            var unrecognized = Path.Combine(results, ".partial-invalid");
+            File.Move(staging, unrecognized);
+            await Assert.ThrowsAsync<InvalidDataException>(() => LedgerBackup.CreateStoppedAsync(source, Path.Combine(root, "unknown-staging")));
+            File.Move(unrecognized, staging);
+            File.Move(Path.Combine(results, completed.Artifact.ResultRef + ".txt"), Path.Combine(root, "held-synthetic-content.txt"));
+            await Assert.ThrowsAsync<InvalidDataException>(() => LedgerBackup.CreateStoppedAsync(source, Path.Combine(root, "missing-content")));
+            Assert.True(File.Exists(staging));
+        } finally { Directory.Delete(root, recursive: true); }
+    }
+
     private static async Task<(CoordinationWork Work, CoordinationArtifact Artifact, string Assignment)> CreateCompletedStore(string source) {
         using (var ledger = new LedgerStore(Path.Combine(source, "ledger.sqlite"), new(new())))
             await ledger.InitializeAsync();
