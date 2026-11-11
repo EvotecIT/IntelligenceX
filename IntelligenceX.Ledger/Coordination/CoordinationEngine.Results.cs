@@ -24,6 +24,9 @@ public sealed partial class CoordinationEngine {
         DeliveryHost(result, caller);
         Require(Id(attemptId) && result.ConsumedAtUtc is null && result.State is "intent" or "held" && result.AttemptId != attemptId,
             "delivery-needs-reconciliation");
+        var attempts = state.ResultDeliveryAttempts?.GetValueOrDefault(id);
+        Require(attempts is null || attempts.Generation != generation || !attempts.AttemptIds.Contains(attemptId),
+            "delivery-needs-reconciliation");
         var work = state.Work[id];
         var goal = state.Goals[work.Request.GoalId];
         Require(!goal.Stopped && !goal.Paused && Authorized(work, goal) &&
@@ -33,6 +36,10 @@ public sealed partial class CoordinationEngine {
                 parent.Generation == result.ReturnTo.ParentGeneration && !Terminal.Contains(parent.State) &&
                 SameCandidate(parent.Request.Checkpoint, result.Candidate), "result-parent-held");
         }
+        state.ResultDeliveryAttempts ??= [];
+        if (attempts is null || attempts.Generation != generation)
+            state.ResultDeliveryAttempts[id] = attempts = new(generation, []);
+        attempts.AttemptIds.Add(attemptId);
         result = result with { State = "sending", AttemptId = attemptId, DeliveryHost = caller.Id, EvidenceRef = null, HeldOn = null };
         state.ResultOutbox[id] = result;
         Note(id, "result-sending", caller.Id, generation, attemptId);

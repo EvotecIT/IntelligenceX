@@ -5,10 +5,12 @@ using static IntelligenceX.Ledger.Tests.CoordinationLifecycleTests;
 namespace IntelligenceX.Ledger.Tests;
 
 public sealed class CoordinationHandoffTests {
-    [Fact]
-    public void NestedWriteHelpRequiresSourceHandoffInsteadOfDeadlockingBehindItsParent() {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NestedWriteHelpRequiresSourceHandoffInsteadOfDeadlockingBehindItsParent(bool parentReadOnly) {
         var state = CreateState(); var engine = new CoordinationEngine(state, Now);
-        var parent = engine.Submit(Help(), Requester);
+        var parent = engine.Submit(Help() with { ReadOnly = parentReadOnly }, Requester);
         Start(engine, state, parent);
         engine.ObserveWorker(new("child-worker", "review-host", "provider-b", true, null, Now,
             "child-session", "child-workspace", Candidate, "boot", TemporaryWorker: true), ReviewHost);

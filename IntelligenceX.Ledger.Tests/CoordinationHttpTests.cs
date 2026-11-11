@@ -149,9 +149,9 @@ public sealed class CoordinationHttpTests {
             var artifact = await target.PublishResultAsync("help", upload, token);
             Assert.Equal(answer, artifact.Content);
             Assert.Equal(artifact, await target.PublishResultAsync("help", upload, token));
-            await Assert.ThrowsAsync<HttpRequestException>(() => source.PublishResultAsync("help", upload, token));
-            await Assert.ThrowsAsync<HttpRequestException>(() => target.PublishResultAsync("help", upload with { Generation = work.Generation + 1 }, token));
-            await Assert.ThrowsAsync<HttpRequestException>(() => target.PublishResultAsync("help", upload with { Content = "Changed answer" }, token));
+            await Assert.ThrowsAsync<CoordinationCommandRejectedException>(() => source.PublishResultAsync("help", upload, token));
+            await Assert.ThrowsAsync<CoordinationCommandRejectedException>(() => target.PublishResultAsync("help", upload with { Generation = work.Generation + 1 }, token));
+            await Assert.ThrowsAsync<CoordinationCommandRejectedException>(() => target.PublishResultAsync("help", upload with { Content = "Changed answer" }, token));
             await target.ReceiptAsync("help", "terminal", execution with {
                 ResultRef = artifact.ResultRef, Succeeded = true, ExclusionVerified = true }, token);
 
@@ -167,9 +167,9 @@ public sealed class CoordinationHttpTests {
             Assert.NotNull(returned.Retirement);
             var paused = await control.SetGoalAsync(new(goal with { Paused = true }, goal.Revision), token);
             var resumed = await control.SetGoalAsync(new(paused with { Paused = false }, paused.Revision), token);
-            await Assert.ThrowsAsync<HttpRequestException>(() => source.BeginResultAsync("help", new(work.Generation, "stale-control-attempt"), token));
+            await Assert.ThrowsAsync<CoordinationCommandRejectedException>(() => source.BeginResultAsync("help", new(work.Generation, "stale-control-attempt"), token));
             var authorization = new CoordinationReauthorization("help", work.Generation, goal.ControlRevision, resumed.ControlRevision, "explicit-resume");
-            await Assert.ThrowsAsync<HttpRequestException>(() => requester.ReauthorizeAsync(authorization, token));
+            await Assert.ThrowsAsync<CoordinationCommandRejectedException>(() => requester.ReauthorizeAsync(authorization, token));
             await control.ReauthorizeAsync(authorization, token);
             goal = resumed;
             await source.BeginResultAsync("help", new(work.Generation, "return-attempt"), token);
@@ -208,8 +208,8 @@ public sealed class CoordinationHttpTests {
                 new(pending.Generation, pending.GrantId!, "new-boot", "No native helper was created; the old reservation was reconciled after reboot."), token);
             var proof = new CoordinationReconciliation(pending.Request.Id, pending.Generation, pending.GrantId!,
                 "target-boot", "new-boot", DateTimeOffset.UtcNow, "never-created", "qualified-negative-observation", failureAnswer.ResultRef, true);
-            await Assert.ThrowsAsync<HttpRequestException>(() => source.ReconcileAsync(proof, token));
-            await Assert.ThrowsAsync<HttpRequestException>(() => target.ReconcileAsync(proof with { Generation = pending.Generation + 1 }, token));
+            await Assert.ThrowsAsync<CoordinationCommandRejectedException>(() => source.ReconcileAsync(proof, token));
+            await Assert.ThrowsAsync<CoordinationCommandRejectedException>(() => target.ReconcileAsync(proof with { Generation = pending.Generation + 1 }, token));
             Assert.Equal("cancelled", (await target.ReconcileAsync(proof, token)).State);
             Assert.Equal(failureAnswer, await requester.ResultContentAsync(pending.Request.Id, token));
             Assert.Equal(0, (await requester.CoordinationStatusAsync("sample", token)).Machines.Single(m => m.Id == "target-host").Used.AgentSlots);
@@ -227,7 +227,7 @@ public sealed class CoordinationHttpTests {
             var isolatedExecution = new ExecutionReceipt(isolated.GrantId!, isolated.Generation, "new-boot", "isolated-execution");
             await target.ReceiptAsync(isolated.Request.Id, "submitted", isolatedExecution, token);
             await target.ReceiptAsync(isolated.Request.Id, "started", isolatedExecution, token);
-            await Assert.ThrowsAsync<HttpRequestException>(() => target.ReceiptAsync(isolated.Request.Id, "terminal",
+            await Assert.ThrowsAsync<CoordinationCommandRejectedException>(() => target.ReceiptAsync(isolated.Request.Id, "terminal",
                 isolatedExecution with { ResultRef = artifact.ResultRef, Succeeded = true, ExclusionVerified = true }, token));
             Assert.Equal("started", (await other.RequestAsync(isolated.Request.Id, token)).Work.State);
             await Assert.ThrowsAsync<HttpRequestException>(() => other.ResultContentAsync(isolated.Request.Id, token));
@@ -237,6 +237,106 @@ public sealed class CoordinationHttpTests {
             await target.ReceiptAsync(isolated.Request.Id, "terminal", isolatedExecution with {
                 ResultRef = ownAnswer.ResultRef, Succeeded = true, ExclusionVerified = true }, token);
             Assert.Equal(ownAnswer, await other.ResultContentAsync(isolated.Request.Id, token));
+        });
+    }
+
+    [Theory]
+    [InlineData("expiry")]
+    [InlineData("boot")]
+    [InlineData("stop")]
+    public async Task UnboundNamedAssignmentStagesContentAndRecoversExactBindingThroughHttp(string interruption) {
+        var requesterToken = new string('c', 32);
+        var sourceToken = new string('s', 32);
+        var helperToken = new string('h', 32);
+        await WithService(new() {
+            InitialPolicy = CoordinationLifecycleTests.Policy with { GrantSeconds = 15 },
+            Principals = [CoordinationLifecycleTests.Requester with { Token = requesterToken },
+                CoordinationLifecycleTests.SourceHost with { Token = sourceToken },
+                CoordinationLifecycleTests.HelperHost with { Token = helperToken }]
+        }, async (endpoint, _, token) => {
+            using var requester = Client(endpoint, requesterToken);
+            using var source = Client(endpoint, sourceToken);
+            using var helper = Client(endpoint, helperToken);
+            using var http = new HttpClient { BaseAddress = new(endpoint) };
+            async Task Conflict(string bearer, string route, object command, string expected) {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+                using var response = await http.PostAsJsonAsync("api/coordination/v1/" + route, command, Json, token);
+                Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+                var error = await response.Content.ReadFromJsonAsync<JsonElement>(Json, token);
+                Assert.Equal(expected, error.GetProperty("error").GetString());
+            }
+
+            var observed = DateTimeOffset.UtcNow;
+            await source.HostAsync(new("source-host", "boot", observed, ["review"]), token);
+            await helper.HostAsync(new("helper-host", "boot", observed, ["platform-help", "review"]), token);
+            await source.WorkerAsync(CoordinationLifecycleTests.RequesterWorker with { ObservedAtUtc = observed }, token);
+            await helper.WorkerAsync(new("helper-worker", "helper-host", "provider-a", true, null, observed,
+                "helper-session", "helper-workspace", CoordinationLifecycleTests.Candidate, "boot", TemporaryWorker: true), token);
+            var goal = await requester.SetGoalAsync(new(new("task", "", 0, false, false, "authorization", ["answer"]), 0), token);
+            var work = await requester.SubmitAsync(CoordinationLifecycleTests.Help() with {
+                MachineId = "helper-host", WorkerId = "helper-worker"
+            }, true, token);
+            Assert.Equal("admitted", work.State);
+            Assert.Equal("helper-worker", work.Assignee);
+            var binding = new CoordinationSessionBinding("help", work.Generation, work.GrantId!, work.Assignee!,
+                "helper-host", "provider-a", "helper-session", "helper-workspace", CoordinationLifecycleTests.Candidate);
+            var upload = new CoordinationArtifactCommand(work.Generation, work.GrantId!, "boot", "The assigned session was excluded before binding committed.");
+            await Conflict(helperToken, "requests/help/result/content", upload, "result-content-owner-conflict");
+
+            var currentBoot = "boot";
+            if (interruption == "expiry") {
+                await Task.Delay(work.RenewByUtc!.Value - DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(100), token);
+                await helper.HostAsync(new("helper-host", currentBoot, DateTimeOffset.UtcNow, ["platform-help", "review"]), token);
+            } else if (interruption == "boot") {
+                currentBoot = "next-boot";
+                await helper.HostAsync(new("helper-host", currentBoot, DateTimeOffset.UtcNow, ["platform-help", "review"]), token);
+            } else {
+                await requester.SetGoalAsync(new(goal with { Stopped = true }, goal.Revision), token);
+            }
+            var pending = await requester.RequestAsync("help", token);
+            Assert.Equal("reconcile", pending.Work.State);
+            Assert.Equal(interruption switch { "expiry" => "grant-overdue", "boot" => "boot-changed", _ => "goal-held" }, pending.Work.Reason);
+            Assert.Null(pending.Attempt);
+            Assert.Null(pending.Work.ExecutionId);
+            await Conflict(helperToken, "requests/help/binding", binding, "binding-not-admissible");
+            Assert.Equal(1, (await requester.CoordinationStatusAsync("sample", token)).Machines.Single(m => m.Id == "helper-host").Used.AgentSlots);
+
+            var proof = new CoordinationReconciliation("help", work.Generation, work.GrantId!, "boot", currentBoot,
+                DateTimeOffset.UtcNow, "execution-excluded", "synthetic-session-exclusion", "result-" + new string('0', 64), true, binding);
+            await Conflict(helperToken, "requests/help/reconcile", proof, "result-content-required");
+            Assert.Null((await requester.RequestAsync("help", token)).Attempt);
+            upload = upload with { BootId = currentBoot };
+            await Conflict(sourceToken, "requests/help/result/content", upload, "result-content-owner-conflict");
+            await Conflict(helperToken, "requests/help/result/content", upload with { Generation = work.Generation + 1 }, "result-content-owner-conflict");
+            await Conflict(helperToken, "requests/help/result/content", upload with { GrantId = "foreign-grant" }, "result-content-owner-conflict");
+            await Conflict(helperToken, "requests/help/result/content", upload with { BootId = "stale-boot" }, "result-content-owner-conflict");
+            var artifact = await helper.PublishResultAsync("help", upload, token);
+            Assert.Equal(upload.Content, artifact.Content);
+            Assert.Equal(artifact, await helper.PublishResultAsync("help", upload, token));
+            await Conflict(helperToken, "requests/help/result/content", upload with { Content = new string('x', 8193) }, "invalid-result-content");
+            proof = proof with { ResultRef = artifact.ResultRef, ObservedAtUtc = DateTimeOffset.UtcNow };
+            await Conflict(sourceToken, "requests/help/reconcile", proof, "reconciliation-grant-conflict");
+            await Conflict(helperToken, "requests/help/reconcile", proof with { Generation = work.Generation + 1 }, "reconciliation-grant-conflict");
+            await Conflict(helperToken, "requests/help/reconcile", proof with { CurrentBootId = "stale-boot" }, "reconciliation-host-conflict");
+            await Conflict(helperToken, "requests/help/reconcile", proof with { Binding = binding with { SessionId = "foreign-session" } }, "reconciliation-worker-conflict");
+            await Conflict(helperToken, "requests/help/reconcile", proof with { Binding = binding with { WorkspaceId = "foreign-workspace" } }, "reconciliation-worker-conflict");
+            await Conflict(helperToken, "requests/help/reconcile", proof with {
+                Binding = binding with { Candidate = binding.Candidate with { Commit = new string('b', 40) } }
+            }, "reconciliation-binding-conflict");
+            var rejected = await requester.RequestAsync("help", token);
+            Assert.Equal("reconcile", rejected.Work.State);
+            Assert.Null(rejected.Attempt);
+            Assert.Null(rejected.Result);
+            Assert.Null(rejected.Retirement);
+
+            Assert.Equal("failed", (await helper.ReconcileAsync(proof, token)).State);
+            var recovered = await requester.RequestAsync("help", token);
+            Assert.Equal(binding, recovered.Attempt);
+            Assert.Equal(binding, recovered.Retirement!.Binding);
+            Assert.Empty(recovered.Retirement.Evidence);
+            Assert.Equal(artifact.ResultRef, recovered.Result!.ResultRef);
+            Assert.Equal(artifact, await requester.ResultContentAsync("help", token));
+            Assert.Equal(0, (await requester.CoordinationStatusAsync("sample", token)).Machines.Single(m => m.Id == "helper-host").Used.AgentSlots);
         });
     }
 
@@ -381,7 +481,7 @@ public sealed class CoordinationHttpTests {
         });
     }
 
-    private static async Task WithService(CoordinationConfiguration enrollment,
+    internal static async Task WithService(CoordinationConfiguration enrollment,
         Func<string, LedgerSettings, CancellationToken, Task> run,
         Action<CoordinationEngine, CoordinationState>? initialize = null) {
         var directory = LedgerTestPaths.NewDirectory("coordination-http");

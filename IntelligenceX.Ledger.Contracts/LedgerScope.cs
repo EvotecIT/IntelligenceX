@@ -9,6 +9,10 @@ public static class LedgerScope {
     public static string SessionItemId(string machine, string provider, string session) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(machine + "\n" + provider + "\n" + session))).ToLowerInvariant();
 
+    /// <summary>Canonical peer message key shared by native reporters and delivery evidence readers.</summary>
+    public static string MessageItemId(string machine, string provider, Guid messageId) =>
+        Id(machine, provider, "message", messageId.ToString("D"));
+
     public static string InputItemId(string parentItemId, string conditionRef) => Id(parentItemId, "input", conditionRef);
 
     public static bool SameTask(TaskScope? fact, TaskScope? current) => fact is not null && current is not null &&

@@ -27,7 +27,9 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
             CREATE INDEX IF NOT EXISTS coordination_changes_request ON coordination_changes(request,sequence);
             """, cancellationToken: token);
         await db.ExecuteNonQueryAsync("INSERT OR IGNORE INTO coordination_state(id,json) VALUES(1,@json)",
-            new Dictionary<string, object?> { ["json"] = JsonSerializer.Serialize(new CoordinationState { Policy = initialPolicy }, Json) }, token);
+            new Dictionary<string, object?> { ["json"] = JsonSerializer.Serialize(new CoordinationState {
+                Policy = initialPolicy, ResultDeliveryAttempts = []
+            }, Json) }, token);
     }
 
     public async Task<T> ExecuteAsync<T>(Func<CoordinationEngine, CoordinationState, T> command, DateTimeOffset now,
@@ -39,6 +41,19 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
             return await db.RunInTransactionAsync(async (tx, ct) => {
                 var value = (string)(await tx.ExecuteScalarAsync("SELECT json FROM coordination_state WHERE id=1", cancellationToken: ct))!;
                 var state = JsonSerializer.Deserialize<CoordinationState>(value, Json)!;
+                if (state.ResultDeliveryAttempts is null) {
+                    // Legacy projections retain only the latest attempt. The journal retains every send identity.
+                    var sends = await tx.QueryAsListAsync("SELECT json FROM coordination_changes WHERE stage='result-sending' ORDER BY sequence",
+                        r => JsonSerializer.Deserialize<CoordinationChange>(r.GetString(0), Json)!, cancellationToken: ct);
+                    var sendsByResult = sends.ToLookup(c => (c.RequestId, c.Generation));
+                    state.ResultDeliveryAttempts = [];
+                    foreach (var outbox in state.ResultOutbox.Values) {
+                        var ids = sendsByResult[(outbox.RequestId, outbox.Generation)]
+                            .Select(c => c.EvidenceRef).OfType<string>().ToHashSet(StringComparer.Ordinal);
+                        if (outbox.AttemptId is { } latest) ids.Add(latest);
+                        state.ResultDeliveryAttempts[outbox.RequestId] = new(outbox.Generation, ids);
+                    }
+                }
                 var engine = new CoordinationEngine(state, now);
                 var result = command(engine, state);
                 var updated = JsonSerializer.Serialize(state, Json);

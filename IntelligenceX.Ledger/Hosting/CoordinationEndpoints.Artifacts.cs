@@ -14,7 +14,7 @@ internal static partial class CoordinationEndpoints {
                     work.Machine is not null && state.Hosts.TryGetValue(work.Machine, out var host) && host.BootId == command.BootId &&
                     (work.BootId == command.BootId || work.State is "reconcile" or "cancelled") &&
                     (state.Bindings.TryGetValue(id, out var binding) && binding.Generation == command.Generation ||
-                     work.State is "reconcile" or "cancelled" && work.Assignee is null && work.ExecutionId is null) &&
+                     work.State == "reconcile" || work.State == "cancelled" && work.Assignee is null && work.ExecutionId is null) &&
                     work.State is "submitted" or "started" or "reconcile" or "succeeded" or "failed" or "cancelled", "result-content-owner-conflict");
                 var artifact = artifacts.Put(id, command.Generation, command.GrantId, command.Content);
                 CoordinationValidation.Require(work.ResultRef is null || work.ResultRef == artifact.ResultRef, "result-content-identity-conflict");

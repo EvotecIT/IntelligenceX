@@ -66,8 +66,12 @@ internal static class CoordinationRunner {
             };
             Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
             return 0;
+        } catch (CoordinationCommandRejectedException error) {
+            Console.WriteLine(JsonSerializer.Serialize(new { outcome = "rejected", error = error.ErrorCode }));
+            return 1;
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
             JsonException or ArgumentException or System.Net.Http.HttpRequestException or TaskCanceledException) {
+            Console.WriteLine("{\"outcome\":\"uncertain\"}");
             Console.Error.WriteLine("Coordination command was not acknowledged. Retain its immutable id/body and reconcile request status before retrying.");
             return 1;
         }

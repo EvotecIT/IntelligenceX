@@ -97,13 +97,19 @@ internal static partial class CoordinationEndpoints {
             Results.Ok(await store.ExecuteAsync((e, s) => {
                 var p = Caller(http);
                 CoordinationValidation.Require(p.Role == "operator" || project is not null && p.Projects.Contains(project), "project-required-or-denied");
-                e.Schedule(); return e.Summary(project);
+                e.Schedule(); return e.Summary(project, include: work => Visible(work, p));
             }, DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/changes", async (long? after, HttpContext http, CancellationToken ct) => {
             var changes = await store.ChangesAsync(Math.Max(after ?? 0, 0), 100, ct);
-            var visible = await store.ExecuteAsync((_, s) => changes.Where(c =>
-                Caller(http).Role == "operator" || s.Work.TryGetValue(c.RequestId, out var w) &&
-                    (Visible(w, Caller(http)) || s.ResultOutbox.TryGetValue(c.RequestId, out var result) && ResultVisible(result, w, Caller(http)))).ToArray(), DateTimeOffset.UtcNow, ct);
+            var p = Caller(http);
+            var visible = await store.ExecuteAsync((_, s) => changes.Where(c => {
+                if (p.Role == "operator") return true;
+                if (c.Stage == "policy-updated") return false;
+                if (c.Stage is "goal-updated" or "goal-paused" or "goal-stopped")
+                    return s.Goals.TryGetValue(c.RequestId, out var goal) && goal.Owner == p.Id;
+                return s.Work.TryGetValue(c.RequestId, out var w) &&
+                    (Visible(w, p) || s.ResultOutbox.TryGetValue(c.RequestId, out var result) && ResultVisible(result, w, p));
+            }).ToArray(), DateTimeOffset.UtcNow, ct);
             return Results.Ok(new { nextCursor = changes.LastOrDefault()?.Sequence ?? after ?? 0, changes = visible });
         });
     }

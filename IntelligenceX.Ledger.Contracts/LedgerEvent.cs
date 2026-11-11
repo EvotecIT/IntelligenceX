@@ -37,6 +37,8 @@ public sealed record SessionFact {
     public string? InputId { get; init; }
     public bool QuestionBlocking { get; init; } = true;
     public Guid? SourceSessionId { get; init; }
+    /// <summary>Observed structured peer input identity for the current turn; message content is excluded.</summary>
+    public Guid? SourceMessageId { get; init; }
     public bool? Archived { get; init; }
     public DateTimeOffset? ArchiveObservedAtUtc { get; init; }
     public bool? TurnOpen { get; init; }

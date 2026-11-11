@@ -40,16 +40,16 @@ public sealed partial class CoordinationEngine {
             work.GrantId == reconciliation.GrantId && Id(reconciliation.GrantId) &&
             work.BootId == reconciliation.OriginalBootId && Id(reconciliation.OriginalBootId) &&
             work.ExecutionId == reconciliation.ExecutionId, "reconciliation-grant-conflict");
-        Require(state.Hosts.TryGetValue(work.Machine!, out var host) && Fresh(work.Machine!) &&
-            host.BootId == reconciliation.CurrentBootId && reconciliation.ObservedAtUtc >= host.ObservedAtUtc &&
-            reconciliation.ObservedAtUtc <= now.AddSeconds(10) && now - reconciliation.ObservedAtUtc <= TimeSpan.FromSeconds(30),
-            "reconciliation-host-conflict");
         Require(reconciliation.NativeExclusionVerified && Id(reconciliation.EvidenceRef) && Id(reconciliation.ResultRef) &&
             reconciliation.Disposition is "never-created" or "execution-excluded", "reconciliation-exclusion-required");
         if (state.Reconciliations.TryGetValue(work.Request.Id, out var prior)) {
             Require(Same(prior, reconciliation), "reconciliation-receipt-conflict");
             return work;
         }
+        Require(state.Hosts.TryGetValue(work.Machine!, out var host) && host.BootId == reconciliation.CurrentBootId &&
+            Fresh(work.Machine!) && reconciliation.ObservedAtUtc >= host.ObservedAtUtc &&
+            reconciliation.ObservedAtUtc <= now.AddSeconds(10) && now - reconciliation.ObservedAtUtc <= TimeSpan.FromSeconds(30),
+            "reconciliation-host-conflict");
         var goal = state.Goals[work.Request.GoalId];
         Require(Occupied.Contains(work.State) && (work.State == "reconcile" || now > work.RenewByUtc ||
             host.BootId != work.BootId || goal.Paused || goal.Stopped || !Authorized(work, goal)),

@@ -121,28 +121,18 @@ public static class LocalReporter {
             lock (captureGate) {
             foreach (var session in snapshot.Sessions) {
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
-                var pending = session.PendingInputs;
-                var blocking = pending.FirstOrDefault(x => x.IsBlocking && x.Id is not null && !x.AnswerIsUnconfirmed && !PriorTurn(x, session));
-                var archive = archives.For(session);
-                var fact = new SessionFact {
-                    TurnId = session.TurnId is null ? null : LedgerScope.Id("turn", session.TurnId),
-                    InputId = blocking?.Id is { } inputId ? LedgerScope.Id("input", inputId) : null,
-                    SourceSessionId = Guid.TryParse(session.Id, out var sourceId) ? sourceId : null,
-                    Archived = archive?.Archived,
-                    ArchiveObservedAtUtc = archive?.ObservedAtUtc,
-                    TurnOpen = session.TurnOpen, TurnStartedAtUtc = session.TurnStartedAtUtc?.ToUniversalTime(), TurnEndedAtUtc = session.TurnEndedAtUtc?.ToUniversalTime(),
-                    LastActivityAtUtc = session.LastTurnActivityAtUtc?.ToUniversalTime(), Outcome = session.LastTurnOutcome.ToString().ToLowerInvariant(),
-                    Question = blocking is not null, InputUnconfirmed = pending.Any(x => x.AnswerIsUnconfirmed),
-                    QuestionAtUtc = blocking?.RequestedAtUtc?.ToUniversalTime(),
-                    UsageLimit = session.FailureCause == AgentFailureCause.UsageLimit,
-                    AccountId = session.SourceRootId is { } rootId && settings.AccountByRoot.TryGetValue(rootId, out var account) ? account : null
-                    , RepositoryBranchKey = session.Repository is not null && session.Branch is not null
-                        ? ItemId("branch", session.Repository.ToLowerInvariant(), session.Branch) : null
-                };
+                var fact = SessionEvidence(settings, session, archives.For(session));
                 var signature = JsonSerializer.Serialize(fact, LedgerJson.Options);
                 if (!last.TryGetValue(id, out var previous) || previous != signature) {
                     if (!spool.TryAppend(Event(id, session.Provider, fact))) continue;
                     last[id] = signature;
+                }
+                foreach (var messageEvent in SessionMessageEvents(Event(id, session.Provider, fact), session.PeerMessages)) {
+                    var messageKey = messageEvent.ItemId + ":" + (messageEvent.Delivery?.Stage ?? "session");
+                    var messageSignature = JsonSerializer.Serialize((object?)messageEvent.Delivery ?? messageEvent.Session, LedgerJson.Options);
+                    if (last.GetValueOrDefault(messageKey) == messageSignature) continue;
+                    if (spool.TryAppend(messageEvent with { Sequence = Interlocked.Increment(ref sequence) }))
+                        last[messageKey] = messageSignature;
                 }
                 foreach (var (childInputId, inputFact) in InputFacts(session)) {
                     var childId = LedgerScope.InputItemId(id, childInputId);
@@ -246,6 +236,75 @@ public static class LocalReporter {
     }
 
     private sealed record Receipt(Guid[] AcknowledgedEventIds);
+
+    /// <summary>Projects the selected session's metadata into the fact published by the watcher.</summary>
+    internal static SessionFact SessionEvidence(ReporterSettings settings, AgentSessionState session,
+        SessionArchiveCache.Observation? archive) {
+        var pending = session.PendingInputs;
+        var blocking = pending.FirstOrDefault(x => x.IsBlocking && x.Id is not null && !x.AnswerIsUnconfirmed && !PriorTurn(x, session));
+        return new SessionFact {
+            TurnId = session.TurnId is null ? null : LedgerScope.Id("turn", session.TurnId),
+            InputId = blocking?.Id is { } inputId ? LedgerScope.Id("input", inputId) : null,
+            SourceSessionId = Guid.TryParse(session.Id, out var sourceId) ? sourceId : null,
+            SourceMessageId = session.SourceMessageId,
+            Archived = archive?.Archived,
+            ArchiveObservedAtUtc = archive?.ObservedAtUtc,
+            TurnOpen = session.TurnOpen, TurnStartedAtUtc = session.TurnStartedAtUtc?.ToUniversalTime(), TurnEndedAtUtc = session.TurnEndedAtUtc?.ToUniversalTime(),
+            LastActivityAtUtc = session.LastTurnActivityAtUtc?.ToUniversalTime(), Outcome = session.LastTurnOutcome.ToString().ToLowerInvariant(),
+            Question = blocking is not null, InputUnconfirmed = pending.Any(x => x.AnswerIsUnconfirmed),
+            QuestionAtUtc = blocking?.RequestedAtUtc?.ToUniversalTime(),
+            // The existing limit hold covers both structured usage and rate limits.
+            // Neither code establishes account scope or a reset time.
+            UsageLimit = session.FailureCause is AgentFailureCause.UsageLimit or AgentFailureCause.RateLimit,
+            AccountId = session.SourceRootId is { } rootId && settings.AccountByRoot.TryGetValue(rootId, out var account) ? account : null,
+            RepositoryBranchKey = session.Repository is not null && session.Branch is not null
+                ? ItemId("branch", session.Repository.ToLowerInvariant(), session.Branch) : null
+        };
+    }
+
+    // The same production projection feeds the spool and the reader-to-ingestion regression.
+    // Each fact uses its own envelope because admission permits one fact per event.
+    internal static IEnumerable<LedgerEvent> SessionMessageEvents(LedgerEvent observation,
+        IReadOnlyList<AgentMessageObservation>? peerMessages = null) {
+        if (peerMessages is { Count: > 0 }) {
+            foreach (var peer in peerMessages) {
+                var retained = observation with {
+                    ItemId = ItemId(observation.MachineId, observation.Provider, peer.SessionId),
+                    Session = new SessionFact {
+                        SourceSessionId = Guid.TryParse(peer.SessionId, out var sessionId) ? sessionId : null,
+                        SourceMessageId = peer.SourceMessageId,
+                        TurnId = peer.TurnId is null ? null : LedgerScope.Id("turn", peer.TurnId),
+                        TurnOpen = peer.TurnOpen, TurnStartedAtUtc = peer.TurnStartedAtUtc,
+                        TurnEndedAtUtc = peer.TurnEndedAtUtc, LastActivityAtUtc = peer.LastActivityAtUtc,
+                        Outcome = peer.Outcome.ToString().ToLowerInvariant(),
+                        UsageLimit = peer.FailureCause is AgentFailureCause.RateLimit or AgentFailureCause.UsageLimit
+                    }
+                };
+                foreach (var messageEvent in SessionMessageEvents(retained)) yield return messageEvent;
+            }
+            // Older cache entries can still supply the current peer through the session fact.
+            if (peerMessages.Any(peer => peer.SourceMessageId == observation.Session?.SourceMessageId)) yield break;
+        }
+        if (observation.Session is not { SourceMessageId: { } messageId } session) yield break;
+        var id = LedgerScope.MessageItemId(observation.MachineId, observation.Provider, messageId);
+        var message = observation with {
+            EventId = Guid.NewGuid(), ItemId = id, ItemKind = "delivery", ParentItemId = null,
+            Session = new SessionFact {
+                SourceSessionId = session.SourceSessionId, SourceMessageId = messageId, TurnId = session.TurnId,
+                TurnOpen = session.TurnOpen, TurnStartedAtUtc = session.TurnStartedAtUtc, TurnEndedAtUtc = session.TurnEndedAtUtc,
+                LastActivityAtUtc = session.LastActivityAtUtc, Outcome = session.Outcome, UsageLimit = session.UsageLimit
+            }
+        };
+        yield return message;
+        if (session.TurnStartedAtUtc is { } started)
+            yield return message with { EventId = Guid.NewGuid(), Session = null,
+                Delivery = new(id, "started", started, TargetItemId: observation.ItemId) };
+        if (session.TurnOpen == false && session.Outcome is "completed" or "failed" or "interrupted" or "incomplete")
+            yield return message with { EventId = Guid.NewGuid(), Session = null,
+                Delivery = new(id, "terminal", session.TurnEndedAtUtc,
+                    session.Outcome is "completed" or "failed" ? session.Outcome : null,
+                    observation.ItemId, session.UsageLimit && session.Outcome == "failed" ? "usage-limit" : null) };
+    }
 
     // Positive answer evidence survives reporter restarts; a missing pending row is never an answer.
     internal static IEnumerable<(string Id, SessionFact Fact)> InputFacts(AgentSessionState session) {

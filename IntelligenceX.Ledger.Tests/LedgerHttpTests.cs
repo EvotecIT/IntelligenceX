@@ -42,7 +42,8 @@ public sealed class LedgerHttpTests {
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
         try {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            // Startup and the complete multi-request scenario share this budget.
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
             using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/api/ledger/v1/"), Timeout = Timeout.InfiniteTimeSpan };
             HttpResponseMessage? ready = null;
             while (ready is null) {

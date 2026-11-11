@@ -14,11 +14,17 @@ public sealed record CoordinationState {
     public Dictionary<string, CoordinationSessionBinding> Bindings { get; init; } = [];
     /// <summary>Terminal result intents and independent return receipts, atomically persisted with work.</summary>
     public Dictionary<string, CoordinationResultOutbox> ResultOutbox { get; init; } = [];
+    /// <summary>Used send identities by request and result generation. Null marks a legacy projection
+    /// whose complete history must be recovered from the sending journal before commands run.</summary>
+    public Dictionary<string, CoordinationResultAttempts>? ResultDeliveryAttempts { get; set; }
     /// <summary>Independent terminal-helper cleanup jobs, retained after worker capacity releases.</summary>
     public Dictionary<string, CoordinationRetirement> Retirements { get; init; } = [];
     /// <summary>Exact negative exclusion receipts, retained independently from native retirement evidence.</summary>
     public Dictionary<string, CoordinationReconciliation> Reconciliations { get; init; } = [];
 }
+
+/// <summary>All send identities reserved for one immutable result generation.</summary>
+public sealed record CoordinationResultAttempts(long Generation, HashSet<string> AttemptIds);
 
 /// <summary>An invalid command conflicts with ownership, revision or its immutable intent.</summary>
 public sealed class CoordinationConflictException(string reason) : Exception(reason);

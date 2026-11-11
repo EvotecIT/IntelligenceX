@@ -359,6 +359,35 @@ public sealed class CoordinationRecoveryTests {
             Assert.Equal("admitted", snapshot.Work["next"].State);
             Assert.Equal(1, snapshot.Work["next"].Request.ControlRevision);
             Assert.Equal(3, snapshot.Work["next"].AuthorizedControlRevision);
+            var retryAt = later.AddSeconds(31);
+            await reopened.ExecuteAsync((e, s) => {
+                e.ObserveHost(s.Hosts["helper-host"] with { ObservedAtUtc = retryAt, BootId = "later-boot" }, HelperHost);
+                var receipt = s.Reconciliations["help"];
+                Assert.Same(s.Work["help"], e.Reconcile(receipt, HelperHost));
+                Assert.DoesNotContain(e.Changes, c => c.Stage == "reconciled");
+                Assert.Equal("reconciliation-receipt-conflict", Assert.Throws<CoordinationConflictException>(() =>
+                    e.Reconcile(receipt with { EvidenceRef = "different-evidence" }, HelperHost)).Message);
+                Assert.Equal("reconciliation-grant-conflict", Assert.Throws<CoordinationConflictException>(() =>
+                    e.Reconcile(receipt with { ExecutionId = "other-execution" }, HelperHost)).Message);
+                Assert.Equal("reconciliation-grant-conflict", Assert.Throws<CoordinationConflictException>(() =>
+                    e.Reconcile(receipt, SourceHost)).Message);
+                Assert.Equal("reconciliation-grant-conflict", Assert.Throws<CoordinationConflictException>(() =>
+                    e.Reconcile(receipt with { GrantId = "other-grant" }, HelperHost)).Message);
+                Assert.Equal("reconciliation-grant-conflict", Assert.Throws<CoordinationConflictException>(() =>
+                    e.Reconcile(receipt with { Generation = receipt.Generation + 1 }, HelperHost)).Message);
+                Assert.Equal("reconciliation-grant-conflict", Assert.Throws<CoordinationConflictException>(() =>
+                    e.Reconcile(receipt with { OriginalBootId = "other-boot" }, HelperHost)).Message);
+                Assert.Equal("reconciliation-receipt-conflict", Assert.Throws<CoordinationConflictException>(() =>
+                    e.Reconcile(receipt with { CurrentBootId = "other-boot" }, HelperHost)).Message);
+                Assert.Equal("reconciliation-grant-conflict", Assert.Throws<CoordinationConflictException>(() =>
+                    e.Reconcile(receipt, Operator)).Message);
+                return true;
+            }, retryAt);
+            await reopened.ExecuteAsync((e, s) => {
+                Assert.Same(s.Work["help"], e.Reconcile(s.Reconciliations["help"], HelperHost));
+                Assert.Empty(e.Changes);
+                return true;
+            }, retryAt.AddMinutes(3));
             var journal = await reopened.ChangesAsync(0, 100);
             Assert.Single(journal, c => c.Stage == "reconciled");
             Assert.Single(journal, c => c.Stage == "reauthorized");

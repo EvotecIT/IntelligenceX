@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace IntelligenceX.Ledger.Mcp;
@@ -11,7 +13,7 @@ public sealed class CoordinationTools(LedgerReadClient client) {
     [Description("Cancel an original requester's queued generation-zero intent using its exact expectedGeneration=0 and bounded reasonRef. apply=true is required. Identical retries retain the reason and request body. Admission closes cancellation eligibility.")]
     public Task<CoordinationWork> Cancel(string requestId, CoordinationCancellation command, bool apply = false, CancellationToken token = default) {
         if (!apply) throw new ArgumentException("Set apply=true for explicit queued request cancellation.");
-        return client.CancelAsync(requestId, command, token);
+        return CommandAsync(client.CancelAsync(requestId, command, token));
     }
 
     [McpServerTool(Name = "coordination_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -30,13 +32,13 @@ public sealed class CoordinationTools(LedgerReadClient client) {
     [Description("Record substantive consumption of the exact result and source candidate during this task's normal work. Transport acknowledgements do not consume results. apply=true is required; do not start an ACK-only turn for this call.")]
     public Task<CoordinationResultOutbox> ConsumeResult(string requestId, CoordinationConsumption command, bool apply = false, CancellationToken token = default) {
         if (!apply) throw new ArgumentException("Set apply=true when consuming this exact result.");
-        return client.ConsumeResultAsync(requestId, command, token);
+        return CommandAsync(client.ConsumeResultAsync(requestId, command, token));
     }
 
     [McpServerTool(Name = "request_submit", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Preview by default; apply=true durably submits one authorized request using its immutable id. Use goal.ControlRevision for request authorization. Retries retain the identical body/id. Code queues and schedules the request; do not poll it with repeated model turns. No arbitrary shell command or credential is accepted.")]
     public Task<CoordinationWork> Submit(CoordinationRequest request, bool apply = false, CancellationToken token = default) =>
-        client.SubmitAsync(request, apply, token);
+        CommandAsync(client.SubmitAsync(request, apply, token));
 
     [McpServerTool(Name = "goal_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read durable goal controls and acceptance criteria. Revision is the metadata CAS version; ControlRevision authorizes new requests and changes only with control or authorization changes. Native provider Goals remain a distinct correlated source.")]
@@ -46,13 +48,23 @@ public sealed class CoordinationTools(LedgerReadClient client) {
     [Description("Apply an authorized goal checkpoint with its expected revision. apply=true is required. A stale revision is rejected; Stop/pause changes do not kill existing jobs or release uncertain occupancy.")]
     public Task<CoordinationGoal> GoalCheckpoint(CoordinationGoalCommand command, bool apply = false, CancellationToken token = default) {
         if (!apply) throw new ArgumentException("Set apply=true for the explicit goal mutation.");
-        return client.SetGoalAsync(command, token);
+        return CommandAsync(client.SetGoalAsync(command, token));
     }
 
     [McpServerTool(Name = "request_accept", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Record the original requester's acceptance of the exact terminal result reference. apply=true is required. Acceptance can satisfy dependent requests; job success alone cannot.")]
     public Task<CoordinationWork> Accept(string requestId, string resultRef, bool apply = false, CancellationToken token = default) {
         if (!apply) throw new ArgumentException("Set apply=true for result acceptance.");
-        return client.AcceptAsync(requestId, resultRef, token);
+        return CommandAsync(client.AcceptAsync(requestId, resultRef, token));
+    }
+
+    private static async Task<T> CommandAsync<T>(Task<T> command) {
+        try { return await command.ConfigureAwait(false); }
+        catch (CoordinationCommandRejectedException error) {
+            throw new McpException(JsonSerializer.Serialize(new { outcome = "rejected", error = error.ErrorCode }));
+        } catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
+            JsonException or ArgumentException or HttpRequestException or TaskCanceledException) {
+            throw new McpException("{\"outcome\":\"uncertain\"}");
+        }
     }
 }

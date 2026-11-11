@@ -125,9 +125,9 @@ and state evaluation remain service-owned and make no model calls. These tools
 grant no execution or publication authority. Register the host through the
 client's supported MCP settings after reviewing the exact configuration change.
 
-## Online backup and restore
+## Backup and restore
 
-An operator can request a DbaClientX online snapshot while the service runs:
+An observation-only service supports a DbaClientX online snapshot while it runs.
 
 ```text
 dotnet IntelligenceX.Ledger.dll backup --config /absolute/path/service.json --out /absolute/path/backups/ledger.sqlite
@@ -141,9 +141,48 @@ A database without its matching manifest is incomplete; verify the hash before
 using a backup. Do not treat manifest publication as an atomic two-file operation.
 
 Retain the protected local configuration, certificate references, catalog and
-source enrollment needed to rebuild the service separately. For a restore drill,
-copy the verified database into a fresh data directory, configure a separate
-loopback port, and inspect its reads before switching any reporter. A real host
+source enrollment needed to rebuild the service separately. Reporter spools also
+have a separate recovery lifecycle.
+
+With coordination enrolled, or with a retained `coordination.sqlite` in the data
+directory, stop the service and use a new backup directory as the output.
+Both source databases must exist.
+
+```text
+dotnet IntelligenceX.Ledger.dll backup --config /absolute/path/service.json --out /absolute/path/backups/coordination-backup
+```
+
+The stopped backup holds the service and coordination writer leases while
+snapshotting `ledger.sqlite`, `coordination.sqlite` and the immutable result and
+assignment files in `coordination-results`. It verifies SQLite integrity and
+retained result bindings, records every file's size and SHA-256 in
+`ledger.sqlite.json`, and publishes the directory after all copies complete.
+The service acquires its writer lease at startup with the existing settings
+shape. Verify shutdown of older binaries and any external database writers
+before taking a stopped backup.
+
+Prepare a separate local configuration whose `dataDirectory` names a new,
+absent directory with an existing parent, then restore a backup directory or an
+observation-only database file.
+
+```text
+dotnet IntelligenceX.Ledger.dll restore --config /absolute/path/restore.json --from /absolute/path/backups/coordination-backup
+```
+
+Restore checks hashes, SQLite integrity and retained result bindings before
+publishing the data directory. A coordination restore disables admission,
+pauses active goals through the existing control-revision mechanism and clears
+cached host freshness and worker eligibility. It preserves grants, execution
+identities, result-delivery attempts, journal history and retirement obligations.
+Refresh authenticated host and worker observations, reconcile retained uncertain
+assignments and sends, then explicitly resume policy/goals and reauthorize
+eligible pending requests. Restore supplies recovery state without changing
+local configuration or enabling coordination enrollment. A coordination-enrolled
+restore requires a complete backup directory. Legacy single-database backups
+contain observation history only.
+
+For a restore drill, configure a separate loopback port and inspect reads before
+switching any reporter. A real host
 migration requires stopping and verifying the old writer before activating the
 new writer, then reconciling reporter spools and external receipts. A restored
 ordinal is a recovery point; later events require reconciliation. Never run two
@@ -158,6 +197,14 @@ Undeclared active turns become quiet after ten minutes and no-progress after thi
 Deliberate native Stop, pause and budget controls produce a quiet `paused-by-user` hold. Queued work behind the hold produces a warning and remains included in the paused count. Submission without an observed start becomes Stuck/`delivery-uncertain` after ten minutes. Needs you/`needs-app` requires both app ownership and evidence that human steering is the next step. Unconfirmed input stays explicit. Optional questions have their own item with `parentItemId`. A qualified parent task or turn supersession retires obsolete questions as cancelled while retaining their evidence. Done requires clear delivery and queue gates, and closed unmerged work is `cancelled`.
 
 Items expose `hold`, `nextActor`, `acceptanceBy`, `resultRef` and a read-only `wakeEligibility` explanation. Unavailable metadata remains null or explicitly unknown. Eligibility includes eligible, suppressed or unknown, with its reason, condition and evidence. Versioned urgent-safety facts carry the matching policy, source reference and any required manual action. Phase 1 evaluates and reports these observations.
+
+Structured Claude rate and usage-limit failures produce `needs-you` /
+`usage-limit`. Peer-message observations retain their native message identity,
+session, turn and independently observed delivery stages. Later personal turns
+preserve those historical failures. The parser retains up to 256 peer-message
+observations per session file and exposes `peer-message-retention-limit` if
+older observations leave that cache. The service retains admitted history.
+Quota reset time and sharing across accounts or machines require separate evidence.
 
 ## Declare a work boundary
 
@@ -276,3 +323,15 @@ descendant resolution, process release, native archive and supported workspace
 release evidence. A protected primary checkout retains its named cleanup hold.
 Write-capable nested help requires explicit source handoff and currently returns
 `write-help-source-handoff-required` before queueing.
+
+Command clients preserve a validated service rejection as
+`{"outcome":"rejected","error":"<service-code>"}`. Transport failures and
+unqualified responses produce `{"outcome":"uncertain"}`. The CLI returns a
+nonzero exit code for either outcome. MCP reports them as tool errors.
+
+Result content is immutable for its exact request, generation and grant.
+The local artifact store admits content up to 8 KiB, with a 64-MiB and 4,096-file
+storage bound. At capacity, new content returns `result-store-capacity` while
+existing assignment replays remain readable. Retained result and assignment
+files support recovery and replay for durable requests. Include them in the
+complete coordination backup.

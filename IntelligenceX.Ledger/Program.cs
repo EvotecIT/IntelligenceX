@@ -15,7 +15,19 @@ public static class Program {
     public static async Task<int> Main(string[] args) {
         if (args.Length == 5 && args[0] == "backup" && args[1] == "--config" && args[3] == "--out") {
             var configuration = LedgerSettings.Load(args[2]);
-            var manifest = await LedgerBackup.CreateAsync(Path.Combine(configuration.DataDirectory, "ledger.sqlite"), args[4]);
+            var coordinated = configuration.CoordinationConfigPath is not null ||
+                File.Exists(Path.Combine(configuration.DataDirectory, "coordination.sqlite"));
+            var manifest = coordinated
+                ? await LedgerBackup.CreateStoppedAsync(configuration.DataDirectory, args[4])
+                : await LedgerBackup.CreateAsync(Path.Combine(configuration.DataDirectory, "ledger.sqlite"), args[4]);
+            Console.WriteLine(JsonSerializer.Serialize(manifest, LedgerJson.Options));
+            return 0;
+        }
+        if (args.Length == 5 && args[0] == "restore" && args[1] == "--config" && args[3] == "--from") {
+            var configuration = LedgerSettings.Load(args[2]);
+            if (configuration.CoordinationConfigPath is not null && !Directory.Exists(args[4]))
+                throw new InvalidDataException("Coordination enrollment requires a complete stopped backup directory.");
+            var manifest = await LedgerBackup.RestoreAsync(args[4], configuration.DataDirectory);
             Console.WriteLine(JsonSerializer.Serialize(manifest, LedgerJson.Options));
             return 0;
         }
@@ -24,11 +36,15 @@ public static class Program {
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
             return await LocalReporter.RunNotifyChainAsync(args[2], args[3]);
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {
-            Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>");
+            Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>\n" +
+                "       IntelligenceX.Ledger backup --config <local-json-file> --out <new-backup-path>\n" +
+                "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>");
             return 2;
         }
         if (args[0] is "report" or "hook") return await LocalReporter.RunAsync(args[2], args[0] == "hook");
         var settings = LedgerSettings.Load(args[2]);
+        Directory.CreateDirectory(settings.DataDirectory);
+        using var writerLease = LedgerBackup.AcquireServiceLease(settings.DataDirectory);
         var coordination = settings.CoordinationConfigPath is null ? null : CoordinationEndpoints.Load(settings.CoordinationConfigPath, settings);
         using var coordinationStore = coordination is null ? null : new CoordinationStore(
             Path.Combine(settings.DataDirectory, "coordination.sqlite"), coordination.InitialPolicy);

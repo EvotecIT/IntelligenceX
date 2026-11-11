@@ -66,7 +66,7 @@ public sealed partial class CoordinationEngine {
             binding.WorkerId == recipient.WorkerId && binding.SessionId == recipient.SessionId &&
             parent.Request.GoalId == request.GoalId && parent.State is "submitted" or "started" &&
             SameCandidate(binding.Candidate, request.Checkpoint), "parent-binding-conflict");
-        Require(request.ReadOnly || parent.Request.ReadOnly, "write-help-source-handoff-required");
+        Require(request.ReadOnly, "write-help-source-handoff-required");
     }
 
     /// <summary>Binds an admitted assignment to the exact session enrolled by its authenticated local host.

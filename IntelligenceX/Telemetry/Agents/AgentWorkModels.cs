@@ -79,6 +79,10 @@ public sealed record AgentSessionState {
     public bool? TurnOpen { get; init; }
     /// <summary>Provider turn identity or its first structured record identity. Null when the source does not expose either.</summary>
     public string? TurnId { get; init; }
+    /// <summary>Structured peer message identity that opened this turn, when observed.</summary>
+    public Guid? SourceMessageId { get; init; }
+    /// <summary>Bounded structured peer-message observations retained independently of the latest turn.</summary>
+    public IReadOnlyList<AgentMessageObservation> PeerMessages { get; init; } = Array.Empty<AgentMessageObservation>();
     /// <summary>Start of the most recently observed turn, independent of session creation.</summary>
     public DateTimeOffset? TurnStartedAtUtc { get; init; }
     /// <summary>Explicit terminal timestamp of the latest turn; null while it is open.</summary>
@@ -117,6 +121,28 @@ public sealed record AgentSessionState {
         init => _pullRequests = value ?? Array.Empty<AgentPullRequestState>();
     }
     private readonly IReadOnlyList<AgentPullRequestState> _pullRequests = Array.Empty<AgentPullRequestState>();
+}
+
+/// <summary>Observed native peer-message execution metadata, without conversation content.</summary>
+public sealed record AgentMessageObservation {
+    /// <summary>Native peer message identifier.</summary>
+    public Guid SourceMessageId { get; init; }
+    /// <summary>Native session that observed this message.</summary>
+    public string SessionId { get; init; } = string.Empty;
+    /// <summary>Native turn identifier.</summary>
+    public string? TurnId { get; init; }
+    /// <summary>Whether the observed message turn is still open.</summary>
+    public bool? TurnOpen { get; init; }
+    /// <summary>Observed start time of this message turn.</summary>
+    public DateTimeOffset? TurnStartedAtUtc { get; init; }
+    /// <summary>Observed terminal time of this message turn.</summary>
+    public DateTimeOffset? TurnEndedAtUtc { get; init; }
+    /// <summary>Latest activity correlated with this message turn.</summary>
+    public DateTimeOffset? LastActivityAtUtc { get; init; }
+    /// <summary>Outcome observed for this message turn.</summary>
+    public AgentTurnOutcome Outcome { get; init; }
+    /// <summary>Structured failure cause observed for this message turn.</summary>
+    public AgentFailureCause FailureCause { get; init; }
 }
 
 /// <summary>Identity of a request answered through its matching provider response.</summary>

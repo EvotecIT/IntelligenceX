@@ -46,7 +46,35 @@ public sealed partial class LedgerReadClient {
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         using var message = new HttpRequestMessage(HttpMethod.Post, "api/coordination/v1/" + route) { Content = content };
         using var response = await _client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            await ThrowCommandRejectionAsync(response, deadline.Token).ConfigureAwait(false);
         return await ReadResponseAsync(response, outputType, deadline.Token).ConfigureAwait(false);
+    }
+
+    private static async Task ThrowCommandRejectionAsync(HttpResponseMessage response, CancellationToken token) {
+        const int maximumErrorBytes = 4096;
+        if (response.Content.Headers.ContentLength > maximumErrorBytes) return;
+        await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        var bytes = new byte[maximumErrorBytes + 1];
+        var length = 0;
+        while (length < bytes.Length) {
+            var count = await input.ReadAsync(bytes.AsMemory(length), token).ConfigureAwait(false);
+            if (count == 0) break;
+            length += count;
+        }
+        if (length > maximumErrorBytes) return;
+        string? code;
+        try {
+            using var document = JsonDocument.Parse(bytes.AsMemory(0, length));
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return;
+            var properties = document.RootElement.EnumerateObject().ToArray();
+            if (properties.Length != 1 || properties[0].Name != "error" ||
+                properties[0].Value.ValueKind != JsonValueKind.String) return;
+            code = properties[0].Value.GetString();
+        } catch (JsonException) { return; }
+        if (code is not { Length: > 0 and <= 128 } ||
+            code.Any(c => c is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '-'))) return;
+        throw new CoordinationCommandRejectedException(code);
     }
 }
 

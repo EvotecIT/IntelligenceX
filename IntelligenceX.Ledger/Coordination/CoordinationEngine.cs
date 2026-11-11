@@ -119,8 +119,10 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
         Schedule(); // A reduced ceiling blocks new grants; it never terminates existing work.
     }
 
-    public CoordinationSummary Summary(string? project, int limit = 8) {
-        var work = state.Work.Values.Where(w => project is null || w.Request.Checkpoint.Project == project).OrderBy(w => w.Order).ToArray();
+    /// <summary>Builds one scoped work overview. Machine occupancy retains all admitted reservations.</summary>
+    public CoordinationSummary Summary(string? project, int limit = 8, Func<CoordinationWork, bool>? include = null) {
+        var work = state.Work.Values.Where(w => (project is null || w.Request.Checkpoint.Project == project) &&
+            (include is null || include(w))).OrderBy(w => w.Order).ToArray();
         bool Pending(CoordinationWork w) => !Terminal.Contains(w.State) || w.Stages?.ContainsKey("accepted") != true ||
             state.Retirements.TryGetValue(w.Request.Id, out var retirement) && retirement.CompletedAtUtc is null;
         return new(now, state.Policy.Revision, work.GroupBy(w => w.State).ToDictionary(g => g.Key, g => g.Count()),
