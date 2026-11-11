@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Coordination;
 using IntelligenceX.Ledger.Context;
 using IntelligenceX.Ledger.Hosting;
 using IntelligenceX.Ledger.Reporting;
@@ -28,6 +29,10 @@ public static class Program {
         }
         if (args[0] is "report" or "hook") return await LocalReporter.RunAsync(args[2], args[0] == "hook");
         var settings = LedgerSettings.Load(args[2]);
+        var coordination = settings.CoordinationConfigPath is null ? null : CoordinationEndpoints.Load(settings.CoordinationConfigPath, settings);
+        using var coordinationStore = coordination is null ? null : new CoordinationStore(
+            Path.Combine(settings.DataDirectory, "coordination.sqlite"), coordination.InitialPolicy);
+        if (coordinationStore is not null) await coordinationStore.InitializeAsync();
         using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules));
         await store.InitializeAsync();
         var builder = WebApplication.CreateSlimBuilder();
@@ -58,14 +63,22 @@ public static class Program {
             context.Response.Headers.CacheControl = "no-store";
             var header = context.Request.Headers.Authorization.ToString();
             var bearer = header.StartsWith("Bearer ", StringComparison.Ordinal) ? header[7..] : "";
-            var expected = HttpMethods.IsPost(context.Request.Method) ? settings.WriteToken : settings.ReadToken;
-            if (!LedgerRuntime.TokenEquals(bearer, expected)) { context.Response.StatusCode = 401; return; }
+            if (CoordinationEndpoints.OwnsRoute(context.Request.Path)) {
+                if (coordination is null || !CoordinationEndpoints.Authenticate(context, bearer, coordination)) {
+                    context.Response.StatusCode = 401; return;
+                }
+            } else {
+                var expected = HttpMethods.IsPost(context.Request.Method) ? settings.WriteToken : settings.ReadToken;
+                if (!LedgerRuntime.TokenEquals(bearer, expected)) { context.Response.StatusCode = 401; return; }
+            }
             try { await next(context); }
+            catch (CoordinationConflictException error) { context.Response.StatusCode = 409; await context.Response.WriteAsJsonAsync(new { error = error.Message }); }
             catch (EventConflictException) { context.Response.StatusCode = 409; }
             catch (JsonException) { context.Response.StatusCode = 400; }
         });
         const string prefix = "/api/ledger/v1";
         ProjectContextEndpoints.Map(app, contextService, runtime);
+        if (coordinationStore is not null) CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory);
         app.MapPost(prefix + "/events", async (LedgerEvent[] events, CancellationToken ct) => {
             var now = DateTimeOffset.UtcNow;
             if (events.Length is 0 or > LedgerJson.MaximumBatchEvents || events.Any(e => !EventAdmission.Valid(e, settings, now)))

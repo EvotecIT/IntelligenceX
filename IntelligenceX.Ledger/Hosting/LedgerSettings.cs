@@ -18,6 +18,8 @@ public sealed record LedgerSettings {
     public RuleSettings Rules { get; init; } = new();
     public string? ProjectEvidenceReporterId { get; init; }
     public string? ProjectCatalogPath { get; init; }
+    /// <summary>Optional separate local enrollment for authenticated command principals and initial capacity policy.</summary>
+    public string? CoordinationConfigPath { get; init; }
 
     public static LedgerSettings Load(string file) {
         var settings = JsonSerializer.Deserialize<LedgerSettings>(File.ReadAllText(file), LedgerJson.Options)

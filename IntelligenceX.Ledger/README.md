@@ -208,3 +208,71 @@ This command uses the writer configuration; regenerating a report preserves stor
 For a Mac or Linux reporter, publish for its runtime identifier, copy the output to that user's application-data directory, create a private reporter configuration pointing at the service's HTTPS LAN endpoint, and run `report --config ...`. For example, an Apple Silicon build uses `dotnet publish -c Release -f net10.0 -r osx-arm64 --self-contained false`. Keep the spool on local disk. Verify a fresh machine heartbeat and an acknowledged outbox before treating enrollment as complete. A running process or an open TCP port alone does not establish reporting. Record an unavailable host or launch-mode/network restriction explicitly, with the retained spool and the next supported local launch step.
 
 Matched provider answers close their own input rows, including after reporter or ledger restart. Missing pending inputs alone do not establish an answer, and completing an input does not complete its parent session.
+
+## Coordinate authorized work
+
+Set `coordinationConfigPath` to an absolute, private configuration file to enable
+the coordination API. It owns a separate SQLite store through DbaClientX.SQLite
+and retains an append-only command journal with its current projection. The
+configuration contains `initialPolicy` and `principals`. Each principal has its
+own random `token` and a role of `client`, `host` or `operator`. Client enrollment
+scopes requests to its project IDs and optional machine/worker identity. Host
+enrollment scopes execution evidence to its machine. Operators manage policy
+and explicit recovery. Use separate credentials for observation and coordination.
+
+Policy assigns each machine its capabilities, active-worker and build slots,
+CPU units, memory capacity and optional benchmark processor IDs. Native worker
+creation additionally requires both policy permission and a current eligible
+host observation. Lowering capacity holds new admission while retaining existing
+reservations. These reservations coordinate enrolled participants. Agents keep
+their existing shell commands and build workflows.
+
+A coordination client configuration contains `endpoint`, `token` and optional
+`certificateSha256`. HTTPS and certificate handling follow the read transport.
+Keep enrollment, policy, client configuration, native identities and result data
+outside the repository.
+
+```text
+ix coordination status sample-project --config /absolute/path/scoped-client.json
+ix coordination request sample-help --config /absolute/path/scoped-client.json
+ix coordination submit /absolute/path/request.json --config /absolute/path/scoped-client.json
+ix coordination submit /absolute/path/request.json --config /absolute/path/scoped-client.json --apply
+ix coordination result-content sample-help --config /absolute/path/scoped-client.json
+ix coordination consume sample-help /absolute/path/consumption.json --config /absolute/path/scoped-client.json --apply
+```
+
+Submission previews by default. An applied request has an immutable ID and body,
+goal control revision, source checkpoint, capability and resource demand. Retry
+that same intent after a lost response. `goal_checkpoint` uses the goal metadata
+revision for compare-and-swap. Pausing, stopping or changing authorization advances
+the separate control revision. Resuming requires explicit reauthorization of
+affected pending work.
+
+The HTTP routes under `/api/coordination/v1` expose goals, requests, host and
+worker observations, independent delivery receipts, result content, retirement
+jobs, policy and a bounded change cursor. `GET /requests/{id}` returns execution,
+the exact native binding, result delivery/consumption and cleanup in one answer.
+`GET /summary?project=sample-project` returns queue counts, machine capacity and
+up to eight outstanding requests. Host list pages include only their assignments.
+Retirement pages expose unsafe legacy records as minimal holds for reconciliation.
+
+The stdio MCP host accepts `--coordination-config <scoped-client.json>` to expose
+the same task contract. Mutation tools require explicit `apply=true`. The normal
+`--config` entry point exposes the existing read tools. Enroll command credentials
+for the actual task before registering that command surface in a client.
+
+An enrolled host adapter performs native client operations and waits in code.
+Each operation retains its request, grant, generation, host boot and exact source
+candidate. Unknown submission or surviving execution retains occupancy until
+qualified reconciliation. Original-requester cancellation is available only for
+untouched generation-zero requests. `reuseSession` explicitly names an existing
+help/review worker and machine, preserving that session's ordinary lifecycle.
+
+Terminal execution, substantive result consumption and workspace retirement
+have separate receipts. Temporary workers create durable retirement jobs.
+Personal reused sessions become available for another assignment after their
+terminal result is consumed. Cleanup records require source preservation,
+descendant resolution, process release, native archive and supported workspace
+release evidence. A protected primary checkout retains its named cleanup hold.
+Write-capable nested help requires explicit source handoff and currently returns
+`write-help-source-handoff-required` before queueing.

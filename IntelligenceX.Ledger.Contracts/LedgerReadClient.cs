@@ -6,7 +6,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace IntelligenceX.Ledger.Contracts;
 
 /// <summary>Authenticated read transport with bounded responses and no redirect or proxy credential forwarding.</summary>
-public sealed class LedgerReadClient : IDisposable {
+public sealed partial class LedgerReadClient : IDisposable {
     private const int MaximumResponseBytes = 2 * 1024 * 1024;
     private readonly HttpClient _client;
 
@@ -57,6 +57,10 @@ public sealed class LedgerReadClient : IDisposable {
 
     private async Task<T> ReadAsync<T>(string route, JsonTypeInfo<T> type, CancellationToken token) {
         using var response = await _client.GetAsync(route, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+        return await ReadResponseAsync(response, type, token).ConfigureAwait(false);
+    }
+
+    private static async Task<T> ReadResponseAsync<T>(HttpResponseMessage response, JsonTypeInfo<T> type, CancellationToken token) {
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > MaximumResponseBytes) throw new InvalidDataException("Ledger response exceeds its bound.");
         await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
