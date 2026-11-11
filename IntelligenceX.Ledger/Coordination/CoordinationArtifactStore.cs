@@ -103,8 +103,9 @@ internal sealed class CoordinationArtifactStore(string root) {
             work.GrantId is null || work.ResultRef is null ||
             !state.ResultOutbox.TryGetValue(work.Request.Id, out var result) || result.RequestId != work.Request.Id ||
             result.Generation != work.Generation || result.ResultRef != work.ResultRef || result.ConsumedAtUtc is null ||
-            result.Candidate != work.Request.Checkpoint || result.ReturnTo != work.Request.ReturnTo ||
-            !state.Bindings.TryGetValue(work.Request.Id, out var binding) || binding.RequestId != work.Request.Id ||
+            result.Candidate != work.Request.Checkpoint || result.ReturnTo != work.Request.ReturnTo) return false;
+        if (!state.Bindings.TryGetValue(work.Request.Id, out var binding)) return NeverCreated(work, state);
+        if (binding.RequestId != work.Request.Id ||
             binding.Generation != work.Generation || binding.GrantId != work.GrantId || binding.WorkerId != work.Assignee ||
             binding.MachineId != work.Machine || !CoordinationEngine.SameCandidate(binding.Candidate, work.Request.Checkpoint) ||
             !state.Workers.TryGetValue(binding.WorkerId, out var worker)) return false;
@@ -116,6 +117,16 @@ internal sealed class CoordinationArtifactStore(string root) {
             work.Request.WorkerId == binding.WorkerId && work.Request.MachineId == binding.MachineId &&
             !state.Retirements.ContainsKey(work.Request.Id);
     }
+
+    private static bool NeverCreated(CoordinationWork work, CoordinationState state) =>
+        work.State == "cancelled" && work.Request.Kind is "help" or "review" && work.Request.WorkerId is null &&
+        work.Provider is not null && work.Assignee is null && work.ExecutionId is null &&
+        !state.Retirements.ContainsKey(work.Request.Id) &&
+        state.Reconciliations.TryGetValue(work.Request.Id, out var exclusion) &&
+        exclusion.RequestId == work.Request.Id && exclusion.Generation == work.Generation &&
+        exclusion.GrantId == work.GrantId && exclusion.OriginalBootId == work.BootId &&
+        exclusion.ResultRef == work.ResultRef && exclusion.Disposition == "never-created" &&
+        exclusion.NativeExclusionVerified && exclusion.Binding is null && exclusion.ExecutionId is null;
 
     private static void MoveToArchive(string source, string archive) {
         if (!Path.Exists(source)) return;

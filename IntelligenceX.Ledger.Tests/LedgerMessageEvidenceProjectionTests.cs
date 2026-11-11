@@ -65,6 +65,17 @@ public sealed class LedgerMessageEvidenceProjectionTests {
                 TurnStartedAtUtc = now.AddDays(-2), TurnEndedAtUtc = now.AddDays(-2), LastActivityAtUtc = now.AddDays(-2)
             } };
             var receipts = LocalReporter.SessionMessageEvents(completed).Concat(LocalReporter.SessionMessageEvents(quota)).ToArray();
+            var collisions = new[] { (Stage: "held", ReceiptFirst: true), (Stage: "uncertain", ReceiptFirst: false) }
+                .Select(test => {
+                    var native = LocalReporter.SessionMessageEvents(peer with {
+                        Session = peer.Session with { SourceMessageId = Guid.NewGuid() }
+                    }).ToArray();
+                    var delivery = Observation(native[0].ItemId, now.AddSeconds(1)) with {
+                        Source = "evidence", ItemKind = "delivery",
+                        Delivery = new(native[0].ItemId, test.Stage, now.AddSeconds(1), TargetItemId: peer.ItemId)
+                    };
+                    return (Native: native, Delivery: delivery, test.ReceiptFirst);
+                }).ToArray();
             var events = new[] {
                 peer,
                 Observation("synthetic-held-delivery", now) with { Delivery = new("synthetic-delivery", "held", now) },
@@ -75,7 +86,9 @@ public sealed class LedgerMessageEvidenceProjectionTests {
                     TurnOpen = false, Outcome = "completed", TurnEndedAtUtc = now, LastActivityAtUtc = now
                 } },
                 Observation("machine", now) with { Heartbeat = true }
-            }.Concat(receipts).Select((e, index) => e with { Sequence = index + 1 }).ToArray();
+            }.Concat(receipts).Concat(collisions.SelectMany(test => test.ReceiptFirst
+                ? test.Native.Append(test.Delivery) : test.Native.Prepend(test.Delivery)))
+                .Select((e, index) => e with { Sequence = index + 1 }).ToArray();
             client.DefaultRequestHeaders.Authorization = new("Bearer", settings.WriteToken);
             using (var ingested = await client.PostAsJsonAsync("events", events, LedgerJson.Options, timeout.Token))
                 Assert.Equal(HttpStatusCode.OK, ingested.StatusCode);
@@ -95,16 +108,43 @@ public sealed class LedgerMessageEvidenceProjectionTests {
             }
             using var status = await client.GetFromJsonAsync<JsonDocument>("status", timeout.Token);
             var counts = status!.RootElement.GetProperty("counts");
-            Assert.Equal(4, counts.EnumerateObject().Sum(pair => pair.Value.GetInt32()));
+            Assert.Equal(6, counts.EnumerateObject().Sum(pair => pair.Value.GetInt32()));
             Assert.Equal(1, counts.GetProperty("working").GetInt32());
             Assert.Equal(1, counts.GetProperty("needs-you").GetInt32());
-            Assert.Equal(2, counts.GetProperty("stuck").GetInt32());
+            Assert.Equal(4, counts.GetProperty("stuck").GetInt32());
             var work = await reader.WorkAsync(timeout.Token);
             string[] expected = ["synthetic-held-delivery", "synthetic-input", "synthetic-ordinary-delivery", "synthetic-session"];
+            expected = expected.Concat(collisions.Select(test => test.Delivery.ItemId)).Order(StringComparer.Ordinal).ToArray();
             Assert.Equal(expected, work.Items.Select(row => row.Item.Id).Order(StringComparer.Ordinal));
-            Assert.Equal(4, work.Counts.Values.Sum());
+            Assert.Equal(6, work.Counts.Values.Sum());
             Assert.Equal("working", Assert.Single(work.Items, row => row.Item.Id == peer.ItemId).Item.Verdict);
             Assert.Equal("wake-held", Assert.Single(work.Items, row => row.Item.Id == "synthetic-held-delivery").Item.ReasonCode);
+            foreach (var test in collisions) {
+                var item = Assert.Single(work.Items, row => row.Item.Id == test.Delivery.ItemId).Item;
+                Assert.Equal("wake-held", item.ReasonCode);
+                Assert.Equal("known", item.DeliveryStages[item.Id].Stages[test.Delivery.Delivery!.Stage].Knowledge);
+                Assert.Contains(item.Evidence, evidence => evidence.EventId == test.Delivery.EventId);
+                using var history = await client.GetFromJsonAsync<JsonDocument>("items/" + item.Id + "/events", timeout.Token);
+                Assert.Equal(3, history!.RootElement.GetArrayLength());
+            }
+            using var report = await client.GetFromJsonAsync<JsonDocument>("reports/daily?date=" + now.ToString("yyyy-MM-dd"), timeout.Token);
+            var transitionItems = report!.RootElement.GetProperty("transitions").EnumerateArray()
+                .Select(row => row.GetProperty("transition").GetProperty("id").GetString()).ToArray();
+            Assert.All(collisions, test => Assert.Contains(test.Delivery.ItemId, transitionItems));
+            Assert.All(receipts, receipt => Assert.DoesNotContain(receipt.ItemId, transitionItems));
+            // Native completion changes the last stage while the operational evidence remains retained.
+            var laterReceipts = collisions.SelectMany(test => LocalReporter.SessionMessageEvents(peer with {
+                ObservedAtUtc = now.AddSeconds(2), Session = test.Native[0].Session! with {
+                    TurnOpen = false, Outcome = "completed", TurnEndedAtUtc = now.AddSeconds(2), LastActivityAtUtc = now.AddSeconds(2)
+                }
+            })).Select((e, index) => e with { Sequence = events.Length + index + 1 }).ToArray();
+            client.DefaultRequestHeaders.Authorization = new("Bearer", settings.WriteToken);
+            using (var ingested = await client.PostAsJsonAsync("events", laterReceipts, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.OK, ingested.StatusCode);
+            client.DefaultRequestHeaders.Authorization = new("Bearer", settings.ReadToken);
+            var afterCompletion = await reader.WorkAsync(timeout.Token);
+            Assert.All(collisions, test => Assert.Equal("unknown",
+                Assert.Single(afterCompletion.Items, row => row.Item.Id == test.Delivery.ItemId).Item.ReasonCode));
             var paged = new List<string>();
             string? cursor = null;
             do {
@@ -171,6 +211,13 @@ public sealed class LedgerMessageEvidenceProjectionTests {
             var receiptId = events[1].ItemId;
             using var database = new SQLite();
             await using var db = await database.OpenSessionAsync(path);
+            var receiptJson = (string)(await db.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
+                new Dictionary<string, object?> { ["id"] = receiptId }))!;
+            // Earlier hosts persisted merged delivery stages without a separate classification field.
+            var legacy = JsonSerializer.Deserialize<LedgerItem>(receiptJson, LedgerJson.Options)! with { Id = "synthetic-legacy-delivery" };
+            legacy.Deliveries[receiptId].Stages["submitted"] = new("known", Evidence: legacy.SessionEvidence);
+            await db.ExecuteNonQueryAsync("INSERT INTO items(id,json) VALUES(@id,@json)",
+                new Dictionary<string, object?> { ["id"] = legacy.Id, ["json"] = JsonSerializer.Serialize(legacy, LedgerJson.Options) });
             // Simulate transitions already written by the earlier host, including a row with no current item.
             await db.ExecuteNonQueryAsync("""
                 INSERT INTO transitions(ordinal,item,recorded,json) VALUES
@@ -178,16 +225,18 @@ public sealed class LedgerMessageEvidenceProjectionTests {
                 (10002,'synthetic-orphan','2030-01-02T00:00:00.0000000+00:00','{"id":"synthetic-orphan"}'),
                 (10003,'synthetic-session','2030-01-02T00:00:00.0000000+00:00','{"id":"synthetic-session"}'),
                 (10004,'synthetic-orphan','2030-01-03T00:00:00.0000000+00:00','{"id":"synthetic-next-day"}'),
-                (10005,@receipt,'2030-01-02T23:59:59.0000000+00:00','{"id":"synthetic-old-failure"}');
+                (10005,@receipt,'2030-01-02T23:59:59.0000000+00:00','{"id":"synthetic-old-failure"}'),
+                (10006,'synthetic-legacy-delivery','2030-01-02T23:59:59.0000000+00:00','{"id":"synthetic-legacy-delivery"}');
                 INSERT INTO reviews(transition,mark,recorded) VALUES
                 (10001,'wrong','2030-01-02T00:01:00.0000000+00:00'),
                 (10003,'right','2030-01-02T00:01:00.0000000+00:00');
                 """, new Dictionary<string, object?> { ["receipt"] = receiptId });
             var report = JsonSerializer.SerializeToElement(await store.ReportAsync(new(2030, 1, 2), now, default), LedgerJson.Options);
-            Assert.Equal(completed.ItemId, Assert.Single(report.GetProperty("unresolvedUnknowns").EnumerateArray()).GetProperty("id").GetString());
+            Assert.Equal(new[] { legacy.Id, completed.ItemId }, report.GetProperty("unresolvedUnknowns").EnumerateArray()
+                .Select(row => row.GetProperty("id").GetString()).Order(StringComparer.Ordinal));
             Assert.Equal(4, report.GetProperty("observationCoverage").GetProperty("eventCount").GetInt64());
             var daily = JsonSerializer.SerializeToElement(await store.DailyAsync(new(2030, 1, 2), default), LedgerJson.Options);
-            Assert.Equal(new long[] { 1, 10002, 10003 }, daily.EnumerateArray().Select(row => row.GetProperty("transitionId").GetInt64()));
+            Assert.Equal(new long[] { 1, 10002, 10003, 10006 }, daily.EnumerateArray().Select(row => row.GetProperty("transitionId").GetInt64()));
             Assert.Equal("unmarked", daily[1].GetProperty("mark").GetString());
             Assert.Equal("right", daily[2].GetProperty("mark").GetString());
             Assert.Equal(daily.GetRawText(), report.GetProperty("transitions").GetRawText());

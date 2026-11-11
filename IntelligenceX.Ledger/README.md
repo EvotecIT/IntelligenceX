@@ -342,6 +342,8 @@ and verified temporary-helper retirement. Explicitly reused personal sessions
 qualify after consumption and retain their ordinary session lifecycle. Missing or
 contradictory lifecycle evidence keeps an assignment active. When eligible moves
 cannot free enough capacity, new content returns `result-store-capacity`.
+An unbound request qualifies after its matching, verified `never-created`
+reconciliation and requester consumption establish that no session needs retirement.
 
 Reads and assignment replays resolve both tiers, including a restart between
 content and binding moves and content shared by active assignments. Archived

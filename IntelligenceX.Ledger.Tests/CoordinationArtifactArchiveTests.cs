@@ -91,6 +91,48 @@ public sealed class CoordinationArtifactArchiveTests {
         } finally { Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public void NeverCreatedReconciliationCanArchiveAfterRequesterConsumptionWithoutRetirement() {
+        var root = LedgerTestPaths.NewDirectory("unbound-result-archive");
+        try {
+            var state = CreateState();
+            state.Policy = state.Policy with { Machines = state.Policy.Machines.Select(machine =>
+                machine.Id == "helper-host" ? machine with { AllowedCreateProviders = ["provider-a"] } : machine).ToArray() };
+            state.Workers.Remove("helper-worker");
+            var startedAt = Now.AddSeconds(1);
+            var engine = new CoordinationEngine(state, startedAt);
+            engine.ObserveHost(state.Hosts["helper-host"] with {
+                ObservedAtUtc = startedAt, CreatableProviders = ["provider-a"]
+            }, HelperHost);
+            var work = engine.Submit(Help() with { ReadOnly = true }, Requester);
+            Assert.Equal("admitted", work.State);
+            Assert.Null(work.Assignee);
+            var artifacts = new CoordinationArtifactStore(root);
+            var result = artifacts.Put("help", work.Generation, work.GrantId!, "No native worker was created.");
+            var recoveredAt = startedAt.AddSeconds(state.Policy.GrantSeconds + 1);
+            engine = new CoordinationEngine(state, recoveredAt);
+            engine.ObserveHost(state.Hosts["helper-host"] with { ObservedAtUtc = recoveredAt }, HelperHost);
+            var exclusion = new CoordinationReconciliation("help", work.Generation, work.GrantId!, work.BootId!,
+                work.BootId!, recoveredAt, "never-created", "verified-native-absence", result.ResultRef, NativeExclusionVerified: true);
+            Assert.Equal("cancelled", engine.Reconcile(exclusion, HelperHost).State);
+            Assert.Empty(state.Bindings);
+            Assert.Empty(state.Retirements);
+            FillActiveBudget(root);
+            Assert.Equal("result-store-capacity", Assert.Throws<CoordinationConflictException>(() =>
+                artifacts.Put("next", 1, "next-grant", "Next independent answer.", state)).Message);
+            engine.ConsumeResult("help", work.Generation, result.ResultRef, Candidate, Requester);
+            var reopened = JsonSerializer.Deserialize<CoordinationState>(JsonSerializer.Serialize(state))!;
+            var next = artifacts.Put("next", 1, "next-grant", "Next independent answer.", reopened);
+            Assert.Equal("Next independent answer.", next.Content);
+            Assert.Equal(4096, Directory.GetFiles(root).Length);
+            Assert.Equal(2, Directory.GetFiles(Path.Combine(root, "archive")).Length);
+            Assert.Equal(result, new CoordinationArtifactStore(root).Put("help", work.Generation, work.GrantId!, result.Content));
+            Assert.Empty(reopened.Bindings);
+            Assert.Empty(reopened.Retirements);
+            Assert.Equal(exclusion, reopened.Reconciliations["help"]);
+        } finally { Directory.Delete(root, recursive: true); }
+    }
+
     internal static (CoordinationWork Work, CoordinationArtifact Artifact, string Assignment) Complete(string root,
         CoordinationState state, bool personal = false, bool consumed = true, bool retired = true) {
         var engine = new CoordinationEngine(state, Now);
