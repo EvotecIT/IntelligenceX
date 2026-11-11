@@ -48,6 +48,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
             CREATE TABLE IF NOT EXISTS global_work (id INTEGER PRIMARY KEY CHECK(id=1), json TEXT NOT NULL, received TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS transitions (ordinal INTEGER PRIMARY KEY AUTOINCREMENT,
               item TEXT NOT NULL, recorded TEXT NOT NULL, json TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS transitions_recorded ON transitions(recorded);
             CREATE TABLE IF NOT EXISTS reviews (transition INTEGER PRIMARY KEY, mark TEXT NOT NULL, recorded TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS declaration_receipts (item TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL,
               PRIMARY KEY(item,id));

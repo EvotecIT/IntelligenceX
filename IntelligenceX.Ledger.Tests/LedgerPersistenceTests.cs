@@ -579,5 +579,23 @@ public sealed class LedgerPersistenceTests : IDisposable {
         Assert.Single(await store.HistoryAsync(observation.ItemId, 0, 100, default));
     }
 
+    [Fact]
+    public async Task UnchangedUnknownPollingPreservesMatchSinceWithoutDatabaseWrites() {
+        var path = Path.Combine(_directory, "ledger.sqlite");
+        using var store = new LedgerStore(path, new(new()));
+        await store.InitializeAsync();
+        await store.IngestAsync([Event() with { Delivery = null }], Now);
+        var first = Assert.Single(await store.EvaluateAllAsync(Now));
+        Assert.Equal("unknown", first.Current!.ReasonCode);
+        using var database = new DBAClientX.SQLite();
+        await using var observer = await database.OpenSessionAsync(path);
+        var before = Convert.ToInt64(await observer.ExecuteScalarAsync("PRAGMA data_version"));
+        var later = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(1)));
+        var after = Convert.ToInt64(await observer.ExecuteScalarAsync("PRAGMA data_version"));
+        Assert.Equal(before, after);
+        Assert.Equal(first.Current.SinceUtc, Assert.Single(later.Current!.Matches).SinceUtc);
+        Assert.Equal(Now.AddMinutes(1), later.Current.EvaluatedAtUtc);
+    }
+
     public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
 }
