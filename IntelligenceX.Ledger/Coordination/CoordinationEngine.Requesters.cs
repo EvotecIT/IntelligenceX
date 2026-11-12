@@ -18,9 +18,17 @@ public sealed partial class CoordinationEngine {
         return new(workers.SingleOrDefault());
     }
 
-    /// <summary>Refuses startup or registration when a configured identity would shadow a durable requester.</summary>
-    public void ValidateRequesterPrincipals() => Require(configuredPrincipals is null ||
-        configuredPrincipals.All(p => !state.Requesters.ContainsKey(p.Id)), "requester-static-id-conflict");
+    /// <summary>Refuses startup or registration when a configured identity or credential would shadow a durable requester.</summary>
+    public void ValidateRequesterPrincipals() {
+        if (configuredPrincipals is null) return;
+        var requesterTokens = state.Requesters.Values.Select(r => r.TokenSha256).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var principal in configuredPrincipals) {
+            Require(!state.Requesters.ContainsKey(principal.Id), "requester-static-id-conflict");
+            Require(!requesterTokens.Contains(TokenSha256(principal.Token)), "requester-token-conflict");
+        }
+    }
+
+    private static string TokenSha256(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     /// <summary>Registers a hash-only credential for a native requester observed by its explicitly enabled host.
     /// Exact replays are idempotent. Renewals cannot replace the credential or immutable source/goal binding.</summary>
@@ -39,7 +47,6 @@ public sealed partial class CoordinationEngine {
         var worker = enrollment.WorkerObservation ?? state.Workers.GetValueOrDefault(enrollment.WorkerId);
         Require(worker is not null && worker.Id == enrollment.WorkerId &&
             caller.MachineId == worker.MachineId && Id(worker.SessionId), "requester-worker-conflict");
-        Require(RequesterAssignmentMatches(enrollment, worker), "requester-assignment-conflict");
         if (state.Requesters.TryGetValue(enrollment.Id, out var prior)) {
             Require(prior.WorkerId == enrollment.WorkerId && prior.GoalId == enrollment.GoalId &&
                 prior.SourceRef == enrollment.SourceRef && prior.AuthorizationRef == enrollment.AuthorizationRef &&
@@ -49,12 +56,15 @@ public sealed partial class CoordinationEngine {
             Require(enrollment.ObservedAtUtc > prior.ObservedAtUtc, "requester-observation-out-of-order");
         } else {
             Require(state.Requesters.Count < MaximumRequesters, "requester-registry-full");
+            Require(!state.Work.Values.Any(w => w.Requester == enrollment.Id) &&
+                !state.Goals.Values.Any(g => g.Owner == enrollment.Id), "requester-static-id-conflict");
             Require(!state.Requesters.Values.Any(r => string.Equals(r.TokenSha256, enrollment.TokenSha256,
                 StringComparison.OrdinalIgnoreCase)), "requester-token-conflict");
-            Require(configuredPrincipals?.Any(p => string.Equals(Convert.ToHexString(SHA256.HashData(
-                Encoding.UTF8.GetBytes(p.Token))), enrollment.TokenSha256, StringComparison.OrdinalIgnoreCase)) != true,
+            Require(configuredPrincipals?.Any(p => string.Equals(TokenSha256(p.Token),
+                enrollment.TokenSha256, StringComparison.OrdinalIgnoreCase)) != true,
                 "requester-token-conflict");
         }
+        Require(RequesterAssignmentMatches(enrollment, worker), "requester-assignment-conflict");
         if (enrollment.WorkerObservation is not null) ValidateWorkerObservation(worker, caller, allowDuplicate: true);
         Require(FreshWorker(worker) && (!enrollment.DispatchAllowed || Available(worker)) && enrollment.BootId == worker.BootId &&
             enrollment.ObservedAtUtc <= now.AddSeconds(10) && now - enrollment.ObservedAtUtc <= TimeSpan.FromSeconds(30),

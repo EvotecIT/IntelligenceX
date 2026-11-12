@@ -13,6 +13,71 @@ namespace IntelligenceX.Ledger.Tests;
 public sealed class CoordinationRequesterStoreTests {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    [Theory]
+    [InlineData("goal")]
+    [InlineData("work")]
+    public async Task RetiredStaticIdentityCannotBeAcquiredThroughNewRequesterEnrollment(string ownership) {
+        var root = LedgerTestPaths.NewDirectory("requester-retired-identity");
+        Directory.CreateDirectory(root);
+        try {
+            var path = Path.Combine(root, "coordination.sqlite");
+            var retired = ownership == "goal" ? Requester : new CoordinationPrincipal("retired-child", "client",
+                new('c', 32), ["sample"], "helper-host", "helper-worker");
+            CoordinationPrincipal[] configured = ownership == "goal" ? [Requester] : [Requester, retired];
+            using (var store = new CoordinationStore(path, Policy, configured)) {
+                await store.InitializeAsync();
+                await store.ExecuteAsync((engine, state) => {
+                    Initialize(engine, state);
+                    if (ownership == "work") {
+                        var parent = engine.Submit(Help("parent"), Requester);
+                        Start(engine, state, parent);
+                        var nested = Help("nested") with {
+                            Capability = "review", MachineId = "source-host", WorkerId = RequesterWorker.Id,
+                            ReadOnly = true, ReuseSession = true,
+                            ReturnTo = new("helper-worker", "helper-host", "provider-a", "helper-session", Candidate,
+                                "parent", parent.Generation)
+                        };
+                        engine.Submit(nested, retired);
+                        Assert.Equal(retired.Id, state.Work["nested"].Requester);
+                        Assert.DoesNotContain(state.Goals.Values, goal => goal.Owner == retired.Id);
+                    } else Assert.Contains(state.Goals.Values, goal => goal.Owner == retired.Id);
+                    return true;
+                }, Now);
+            }
+            using var restarted = new CoordinationStore(path, Policy);
+            await restarted.InitializeAsync();
+            var error = await Assert.ThrowsAsync<CoordinationConflictException>(() => restarted.ExecuteAsync((engine, state) => {
+                Assert.Empty(state.Requesters);
+                return engine.EnrollRequester(Enrollment with { Id = retired.Id }, EnrollmentHost);
+            }, Now));
+            Assert.Equal("requester-static-id-conflict", error.Message);
+        } finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData("client")]
+    [InlineData("host")]
+    [InlineData("operator")]
+    public async Task ConfiguredCredentialCannotShadowDurableRequesterAfterRestart(string role) {
+        var root = LedgerTestPaths.NewDirectory("requester-token-collision");
+        Directory.CreateDirectory(root);
+        try {
+            var path = Path.Combine(root, "coordination.sqlite");
+            using (var store = new CoordinationStore(path, Policy)) {
+                await store.InitializeAsync();
+                await store.ExecuteAsync((engine, state) => {
+                    Initialize(engine, state);
+                    engine.EnrollRequester(Enrollment, EnrollmentHost);
+                    return true;
+                }, Now);
+            }
+            using var restarted = new CoordinationStore(path, Policy,
+                [new("configured-principal", role, Token, ["sample"], "source-host")]);
+            var error = await Assert.ThrowsAsync<CoordinationConflictException>(() => restarted.InitializeAsync());
+            Assert.Equal("requester-token-conflict", error.Message);
+        } finally { Directory.Delete(root, recursive: true); }
+    }
+
     [Fact]
     public async Task OldProjectionRestoresAndNewHashEnrollmentSurvivesRestartAndStoppedBackupWithDispatchHeld() {
         var root = LedgerTestPaths.NewDirectory("requester-restore");

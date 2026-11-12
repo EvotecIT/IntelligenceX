@@ -49,6 +49,11 @@ All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET route
 
 Requested, admitted, submitted, started, terminal and accepted stages are independent. A terminal result does not fill missing admission or requester-acceptance evidence. Unknown timestamps remain null. A delivery's target links back to its session item when known.
 
+Item details include the watcher's structured `session` facts and their own
+`sessionEvidence`. Consumers can check the observed turn identity, nullable open
+state and original observation time directly. Claim, control and delivery
+evidence retain their separate timestamps.
+
 ## Shared views and project context
 
 `GET /api/ledger/v1/work` returns current work, separate from all-history counts.
@@ -296,6 +301,8 @@ qualification. Held or stale controls preserve access to existing work and
 results while holding new dispatch. A superseded task generation keeps its
 history and cannot resume its former scope. Existing static principals retain
 their configured behavior.
+Task authority follows the enrolled project/branch scopes. A personal worker's
+recorded execution candidate can belong to a completed borrowed assignment.
 
 ```text
 ix coordination status sample-project --config /absolute/path/scoped-client.json

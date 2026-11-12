@@ -21,6 +21,10 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
     public string? CandidateRef { get; init; }
     public SupersessionFact? Supersession { get; init; }
     public WorkerAvailabilityView? Availability { get; init; }
+    /// <summary>Direct provider metadata from the watcher. Nullable facts retain their unknown state.</summary>
+    public SessionFact? Session { get; init; }
+    /// <summary>Evidence for this session observation, independent of claim, control and delivery observations.</summary>
+    public EvidenceRef? SessionEvidence { get; init; }
     public static LedgerItemView From(LedgerItem item) {
         var verdict = item.Current ?? throw new InvalidOperationException("Unevaluated item.");
         var declaration = LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(d => LedgerScope.Applies(d.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
@@ -37,6 +41,7 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
                 ResultRef = verdict.Hold?.ResultRef ?? declaration?.ResultRef ?? delivery?.ResultRef,
                 ParentItemId = item.ParentItemId, TurnId = item.Session?.TurnId, Safety = item.Safety, CandidateRef = item.CandidateRef,
                 Supersession = item.Supersession,
+                Session = item.Session, SessionEvidence = item.SessionEvidence,
                 Availability = new(verdict.LastKnown || item.Session is null ? "unknown" : item.Session?.Archived == true ? "archived" :
                     item.Session?.UsageLimit == true ? "usage-limited" : "observed",
                     item.Session?.Archived, item.Session?.ArchiveObservedAtUtc, item.Session?.UsageLimit == true,

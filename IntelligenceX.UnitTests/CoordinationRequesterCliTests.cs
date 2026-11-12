@@ -7,7 +7,54 @@ using Xunit;
 
 namespace IntelligenceX.UnitTests;
 
+[Collection("Coordination CLI console")]
 public sealed class CoordinationRequesterCliTests {
+    [Theory]
+    [InlineData("checkpoint", "command.json")]
+    [InlineData("policy-set", "command.json")]
+    [InlineData("accept", "request-id", "result-ref")]
+    [InlineData("cancel", "request-id", "command.json")]
+    [InlineData("host", "command.json")]
+    [InlineData("worker", "command.json")]
+    [InlineData("requester-enroll", "command.json")]
+    [InlineData("receipt", "request-id", "started", "command.json")]
+    [InlineData("bind", "command.json")]
+    [InlineData("retire", "command.json")]
+    [InlineData("delivery-begin", "request-id", "command.json")]
+    [InlineData("delivery-receipt", "request-id", "command.json")]
+    [InlineData("consume", "request-id", "command.json")]
+    [InlineData("reconcile", "command.json")]
+    [InlineData("reauthorize", "command.json")]
+    [InlineData("result-publish", "request-id", "command.json")]
+    public async Task MutatingCommandsWithoutApplyAreRejectedBeforeSending(string verb, params string[] arguments) {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-apply-required-cli-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var reservation = new TcpListener(IPAddress.Loopback, 0);
+        reservation.Start();
+        var port = ((IPEndPoint)reservation.LocalEndpoint).Port;
+        reservation.Stop();
+        var endpoint = $"http://127.0.0.1:{port}/";
+        using var listener = new HttpListener();
+        listener.Prefixes.Add(endpoint);
+        listener.Start();
+        try {
+            var config = Path.Combine(directory, "client.json");
+            await File.WriteAllTextAsync(config, JsonSerializer.Serialize(new CoordinationClientSettings(endpoint, new('h', 32)),
+                LedgerReadJson.Default.CoordinationClientSettings));
+            var pending = listener.GetContextAsync();
+            var result = await RunCapturedAsync([verb, .. arguments, "--config", config]);
+            Assert.Equal(1, result.ExitCode);
+            Assert.False(pending.IsCompleted);
+            using var output = JsonDocument.Parse(result.Output);
+            Assert.Equal("rejected", output.RootElement.GetProperty("outcome").GetString());
+            Assert.Equal("apply-required", output.RootElement.GetProperty("error").GetString());
+            Assert.True(string.IsNullOrWhiteSpace(result.Error));
+        } finally {
+            listener.Stop();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData("{\"worker\":null}", 0)]
     [InlineData("{}", 1)]
@@ -46,7 +93,7 @@ public sealed class CoordinationRequesterCliTests {
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task RequesterEnrollRequiresApplyAndPostsHashOnlyContractThroughTypedClient(bool atomicWorkerObservation) {
+    public async Task RequesterEnrollPostsHashOnlyContractThroughTypedClient(bool atomicWorkerObservation) {
         var directory = Path.Combine(Path.GetTempPath(), "ix-requester-cli-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var reservation = new TcpListener(IPAddress.Loopback, 0);
@@ -68,8 +115,6 @@ public sealed class CoordinationRequesterCliTests {
                 false, "native-turn-held", enrollment.ObservedAtUtc, "session", "workspace", BootId: "boot") };
             await File.WriteAllTextAsync(command, JsonSerializer.Serialize(enrollment, LedgerReadJson.Default.RequesterEnrollment));
             var pending = listener.GetContextAsync();
-            Assert.Equal(1, await CoordinationRunner.RunAsync(["requester-enroll", command, "--config", config]));
-            Assert.False(pending.IsCompleted);
             var applying = CoordinationRunner.RunAsync(["requester-enroll", command, "--config", config, "--apply"]);
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var context = await pending.WaitAsync(deadline.Token);
@@ -94,4 +139,23 @@ public sealed class CoordinationRequesterCliTests {
             Directory.Delete(directory, recursive: true);
         }
     }
+
+    private static async Task<(int ExitCode, string Output, string Error)> RunCapturedAsync(string[] args) {
+        var previousOutput = Console.Out;
+        var previousError = Console.Error;
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        Console.SetOut(output);
+        Console.SetError(error);
+        try {
+            var exitCode = await CoordinationRunner.RunAsync(args);
+            return (exitCode, output.ToString(), error.ToString());
+        } finally {
+            Console.SetOut(previousOutput);
+            Console.SetError(previousError);
+        }
+    }
 }
+
+[CollectionDefinition("Coordination CLI console", DisableParallelization = true)]
+public sealed class CoordinationCliConsoleCollection { }

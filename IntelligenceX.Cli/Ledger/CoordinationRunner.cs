@@ -31,6 +31,12 @@ internal static class CoordinationRunner {
         if (index < 1 || index + 1 >= args.Length) return 2;
         var apply = args.Contains("--apply", StringComparer.Ordinal);
         if (args.Length != index + 2 + (apply ? 1 : 0) || apply && args[^1] != "--apply") return 2;
+        if (!apply && args[0] is "checkpoint" or "policy-set" or "accept" or "cancel" or "host" or "worker" or
+            "requester-enroll" or "receipt" or "bind" or "retire" or "delivery-begin" or "delivery-receipt" or
+            "consume" or "reconcile" or "reauthorize" or "result-publish") {
+            Console.WriteLine(JsonSerializer.Serialize(new { outcome = "rejected", error = "apply-required" }));
+            return 1;
+        }
         try {
             using var client = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(args[index + 1]));
             object result = args[0] switch {

@@ -197,6 +197,26 @@ public sealed class CoordinationRequesterTests {
         Reject("result-recipient-held", () => advanced.BeginResultDelivery("help", 1, "legacy-return", SourceHost));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RootSourceAuthoritySurvivesAnUnrelatedPersonalExecutionCandidate(bool unobserved) {
+        var (state, caller) = Enrolled();
+        var engine = new CoordinationEngine(state, Now.AddSeconds(1));
+        engine.ObserveWorker(RequesterWorker with {
+            Candidate = unobserved ? null : Candidate with { Project = "second-project", Branch = "feature/borrowed" },
+            ObservedAtUtc = Now.AddSeconds(1)
+        }, SourceHost);
+        var work = engine.Submit(ScopedHelp("own-source"), caller);
+        Assert.Equal("admitted", work.State);
+        Start(engine, state, work);
+        engine.Receipt(work.Request.Id, "terminal", Execution(work, "own-source-result"), HelperHost);
+        Assert.Equal("sending", engine.BeginResultDelivery(work.Request.Id, work.Generation, "return-own-source", SourceHost).State);
+        Assert.Equal(Candidate, state.ResultOutbox[work.Request.Id].Candidate);
+        Assert.NotNull(engine.ConsumeResult(work.Request.Id, work.Generation, "own-source-result", Candidate, caller).ConsumedAtUtc);
+        Assert.Equal(Enrollment.Sources, state.Requesters[Enrollment.Id].Sources);
+    }
+
     [Fact]
     public void NewNativeSourceSupersedesOldDispatchWithoutLosingCredentialsHistoryOrOccupiedGrants() {
         var (state, caller) = Enrolled();
@@ -256,6 +276,13 @@ public sealed class CoordinationRequesterTests {
         }, childCaller));
         Assert.Equal("queued", engine.Submit(nested, childCaller).State);
         Assert.Equal(parent.Generation, state.Work["nested"].Request.ReturnTo!.ParentGeneration);
+        engine.Receipt("parent", "terminal", Execution(parent, "parent-result"), HelperHost);
+        var changes = engine.Changes.Count;
+        Assert.Equal(childEnrollment, engine.EnrollRequester(childEnrollment, host));
+        Assert.Equal(changes, engine.Changes.Count);
+        Reject("requester-assignment-conflict", () => engine.EnrollRequester(childEnrollment with {
+            ObservedAtUtc = Now.AddSeconds(1)
+        }, host));
     }
 
     [Fact]

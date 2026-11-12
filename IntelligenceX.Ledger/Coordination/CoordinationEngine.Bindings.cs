@@ -47,10 +47,10 @@ public sealed partial class CoordinationEngine {
     private bool Available(CoordinationWorker worker) => worker.Eligible && worker.UnavailableReason is null && FreshWorker(worker);
 
     private bool MatchesRecipient(CoordinationReturnBinding recipient, out CoordinationWorker worker,
-        bool allowCommitAdvance = false) =>
+        bool enrolledRoot = false) =>
         state.Workers.TryGetValue(recipient.WorkerId, out worker!) && worker.MachineId == recipient.MachineId &&
         worker.Provider == recipient.Provider && worker.SessionId == recipient.SessionId &&
-        (allowCommitAdvance || worker.Candidate is not null && SameCandidate(worker.Candidate, recipient.Candidate));
+        (enrolledRoot || worker.Candidate is not null && SameCandidate(worker.Candidate, recipient.Candidate));
 
     private void ValidateReturnBinding(CoordinationRequest request, CoordinationPrincipal caller) {
         if (request.ReturnTo is not { } recipient) return;
