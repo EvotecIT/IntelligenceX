@@ -18,9 +18,11 @@ public sealed partial class CoordinationEngine {
         Require(state.Workers.TryGetValue(binding.WorkerId, out var worker) && worker.TemporaryWorker,
             "binding-worker-not-temporary");
 
-    private static bool ExplicitlyReusesSession(CoordinationRequest request, CoordinationWorker worker) =>
+    internal static bool ExplicitlyReusesSession(CoordinationRequest request, CoordinationWorker worker) =>
         request.ReuseSession && request.Kind is "help" or "review" &&
-        request.WorkerId == worker.Id && request.MachineId == worker.MachineId;
+        (request.WorkerId is null || request.WorkerId == worker.Id) &&
+        (request.MachineId is null || request.MachineId == worker.MachineId) &&
+        (request.RequiredProvider is null || request.RequiredProvider == worker.Provider);
 
     private static bool CanUseSession(CoordinationRequest request, CoordinationWorker worker) =>
         worker.TemporaryWorker || ExplicitlyReusesSession(request, worker);
@@ -76,7 +78,7 @@ public sealed partial class CoordinationEngine {
     }
 
     /// <summary>Binds an admitted assignment to the exact session enrolled by its authenticated local host.
-    /// Personal sessions require explicit host-qualified ReuseSession help/review and remain exempt from retirement.
+    /// Personal sessions require explicit ReuseSession help/review and remain exempt from retirement.
     /// A creation grant assigns its newly observed worker here without replacing the grant or generation.
     /// Repeating the identical binding is safe; another session, candidate or generation conflicts.</summary>
     public CoordinationSessionBinding BindSession(CoordinationSessionBinding binding, CoordinationPrincipal caller) {

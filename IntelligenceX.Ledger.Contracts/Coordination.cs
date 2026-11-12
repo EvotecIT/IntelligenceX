@@ -18,9 +18,11 @@ public sealed record WorkCheckpoint(string Project, string Branch, string Commit
     string CheckpointRef, string NextActionRef, string? PredecessorRequest = null);
 
 /// <summary>One durable intent with an immutable caller-supplied identity for acknowledgement loss.
-/// ReuseSession explicitly selects an enrolled existing session for help/review and requires WorkerId and MachineId.
-/// It has no creation fallback. Non-temporary sessions keep their ordinary workflow and have no retirement job.
-/// Another named assignment is eligible only after the previous assignment is terminal and its result consumed.
+/// ReuseSession selects an enrolled existing session with no creation fallback. Help requires WorkerId and MachineId.
+/// Read-only review permits optional WorkerId and MachineId selectors; RequiredProvider is mandatory when either is absent.
+/// The admitted Assignee and Machine identify the selected session. Non-temporary sessions keep their ordinary workflow
+/// and have no retirement job.
+/// Another assignment is eligible only after the previous assignment is terminal and its result consumed.
 /// The default false retains disposable-helper assignment and historical ownership safeguards.
 /// TaskBrief optionally supplies plain task instructions for help/review, bounded to 8192 UTF-8 bytes
 /// and containing non-whitespace when supplied. Null preserves legacy requests.</summary>

@@ -77,14 +77,18 @@ public sealed class CoordinationOwnershipTests {
 
     [Theory]
     [InlineData("help", null, "helper-host")]
+    [InlineData("help", "helper-worker", null)]
+    [InlineData("review", null, "helper-host")]
     [InlineData("review", "helper-worker", null)]
+    [InlineData("review", null, null)]
     [InlineData("agent", "helper-worker", "helper-host")]
     [InlineData("handoff", "helper-worker", "helper-host")]
     [InlineData("build", "helper-worker", "helper-host")]
-    public void ExplicitReuseRequiresHostQualifiedHelpOrReview(string kind, string? worker, string? machine) {
+    public void ReuseRequiresNamedHelpOrReviewWithDeliberateProviderSelection(string kind, string? worker, string? machine) {
         var state = CreateState(); var e = new CoordinationEngine(state, Now);
         var request = Help() with {
             Kind = kind, WorkerId = worker, MachineId = machine, ReadOnly = true, ReuseSession = true,
+            RequiredProvider = kind == "review" ? null : "provider-a",
             ReturnTo = kind is "help" or "review" ? Help().ReturnTo : null
         };
         Assert.Equal("named-session-required", Assert.Throws<CoordinationConflictException>(() =>

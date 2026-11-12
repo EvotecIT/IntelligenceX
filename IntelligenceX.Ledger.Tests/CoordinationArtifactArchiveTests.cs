@@ -10,6 +10,110 @@ namespace IntelligenceX.Ledger.Tests;
 
 public sealed class CoordinationArtifactArchiveTests {
     [Theory]
+    [InlineData("busy", null, null)]
+    [InlineData("usage-limit", null, null)]
+    [InlineData("usage-limit", "remote-claude", null)]
+    [InlineData("busy", null, "z-review-host")]
+    public void AutomaticReviewReusesEligibleRemoteSessionAcrossConsumptionAndArchival(
+        string localHold, string? workerSelector, string? machineSelector) {
+        var root = LedgerTestPaths.NewDirectory("automatic-review-archive");
+        try {
+            var state = CreateState();
+            var now = Now.AddSeconds(1);
+            var engine = new CoordinationEngine(state, now);
+            var remoteHost = ReviewHost with { MachineId = "z-review-host" };
+            var machines = Policy.Machines.Append(new("z-review-host", 2, 1, 4, 4096, ["review"]))
+                .Select(machine => machine with { AllowedCreateProviders = ["claude"] }).ToArray();
+            engine.ReplacePolicy(Policy with { Revision = 2, Machines = machines },
+                new("operator", "operator", "unused", []), 1);
+            foreach (var host in new[] { SourceHost, HelperHost, ReviewHost, remoteHost })
+                engine.ObserveHost(new(host.MachineId!, "boot", now,
+                    machines.Single(machine => machine.Id == host.MachineId).Capabilities,
+                    CreatableProviders: ["claude"]), host);
+            var local = new CoordinationWorker("local-claude", "source-host", "claude",
+                localHold == "busy", localHold == "busy" ? null : localHold, now,
+                "local-session", "local-workspace", Candidate, BootId: "boot");
+            var remote = new CoordinationWorker("remote-claude", remoteHost.MachineId!, "claude", true, null,
+                now, "remote-session", "remote-workspace", Candidate, BootId: "boot");
+            engine.ObserveWorker(local, SourceHost);
+            engine.ObserveWorker(remote, remoteHost);
+            if (localHold == "busy") {
+                var busy = engine.Submit(Help("local-work") with {
+                    Kind = "agent", Capability = "review", WorkerId = local.Id, RequiredProvider = "claude",
+                    ReadOnly = true, ReturnTo = null
+                }, Requester);
+                Assert.Equal(local.Id, busy.Assignee);
+            }
+            var request = Help("automatic-review") with {
+                Kind = "review", Capability = "review", ReadOnly = true, ReuseSession = true,
+                RequiredProvider = "claude", WorkerId = workerSelector, MachineId = machineSelector
+            };
+            var first = engine.Submit(request, Requester);
+            Assert.Equal("admitted", first.State);
+            Assert.Equal(remote.Id, first.Assignee);
+            Assert.Equal(remote.MachineId, first.Machine);
+            Assert.Equal("claude", first.Provider);
+            Assert.Equal(request, first.Request);
+            Assert.Throws<CoordinationConflictException>(() => Bind(engine, first, local, SourceHost));
+            var binding = Start(engine, state, first, remoteHost);
+            var artifacts = new CoordinationArtifactStore(root);
+            var answer = artifacts.Put(first.Request.Id, first.Generation, first.GrantId!, "Verified remote review.");
+            engine.Receipt(first.Request.Id, "terminal", Execution(first, answer.ResultRef), remoteHost);
+            var ordinary = Help("ordinary-personal-work") with {
+                Kind = "agent", Capability = "review", WorkerId = remote.Id, RequiredProvider = "claude",
+                ReadOnly = true, ReturnTo = null
+            };
+            Assert.Equal("queued", engine.Submit(ordinary, Requester).State);
+            engine.ConsumeResult(first.Request.Id, first.Generation, answer.ResultRef, Candidate, Requester);
+            var resumed = state.Work[ordinary.Id];
+            Assert.Equal("admitted", resumed.State);
+            Assert.Equal(remote.Id, resumed.Assignee);
+            Assert.Equal(remote.MachineId, resumed.Machine);
+            engine.Receipt(ordinary.Id, "terminal", Execution(resumed, "ordinary-result"), remoteHost);
+            Assert.Equal(binding, state.Bindings[first.Request.Id]);
+            Assert.Equal(remote, state.Workers[remote.Id]);
+            Assert.Empty(state.Retirements);
+
+            engine = new CoordinationEngine(state, now.AddSeconds(1));
+            engine.ObserveWorker(remote with {
+                Eligible = false, UnavailableReason = "usage-limit", ObservedAtUtc = now.AddSeconds(1)
+            }, remoteHost);
+            var waiting = engine.Submit(request with { Id = "next-review" }, Requester);
+            Assert.Equal("queued", waiting.State);
+            Assert.Equal("worker-unavailable", waiting.Reason);
+            Assert.Null(waiting.Assignee);
+            Assert.Null(waiting.Machine);
+            Assert.Null(waiting.Provider);
+            Assert.Null(waiting.GrantId);
+
+            FillActiveBudget(root);
+            artifacts.Put("next-artifact", 1, "next-grant", "Independent answer.", state);
+            Assert.Equal(2, Directory.GetFiles(Path.Combine(root, "archive")).Length);
+            state = JsonSerializer.Deserialize<CoordinationState>(JsonSerializer.Serialize(state))!;
+            artifacts = new CoordinationArtifactStore(root);
+            Assert.Equal(answer, artifacts.ReadForAssignment(first.Request.Id, first.Generation, first.GrantId!, answer.ResultRef));
+            Assert.Equal(answer, artifacts.Put(first.Request.Id, first.Generation, first.GrantId!, answer.Content));
+            Assert.Equal(binding, state.Bindings[first.Request.Id]);
+            Assert.Equal(remote.Id, state.Work[first.Request.Id].Assignee);
+            Assert.Equal(remote.MachineId, state.Work[first.Request.Id].Machine);
+            Assert.Equal("succeeded", state.Work[first.Request.Id].State);
+            Assert.NotNull(state.ResultOutbox[first.Request.Id].ConsumedAtUtc);
+            Assert.Equal(request.ReturnTo, state.ResultOutbox[first.Request.Id].ReturnTo);
+            engine = new CoordinationEngine(state, now.AddSeconds(2));
+            engine.ObserveWorker(remote with { ObservedAtUtc = now.AddSeconds(2) }, remoteHost);
+            var next = state.Work[waiting.Request.Id];
+            Assert.Equal("admitted", next.State);
+            Assert.Equal(remote.Id, next.Assignee);
+            Assert.Equal(remote.MachineId, next.Machine);
+            Assert.NotEqual(first.GrantId, next.GrantId);
+            Assert.Equal(remote.SessionId, Start(engine, state, next, remoteHost).SessionId);
+            Assert.Equal(binding, state.Bindings[first.Request.Id]);
+            Assert.False(state.Workers[remote.Id].TemporaryWorker);
+            Assert.Empty(state.Retirements);
+        } finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void PressureArchivesConsumedCompletedAssignmentsAndRetainsImmutableReplay(bool personal) {

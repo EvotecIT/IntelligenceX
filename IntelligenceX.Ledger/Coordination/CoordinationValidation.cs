@@ -39,7 +39,9 @@ public static class CoordinationValidation {
             r.Dependencies.Distinct().Count() == r.Dependencies.Length, "invalid-dependencies");
         Require(r.Kind is not ("agent" or "handoff") || r.WorkerId is not null && r.Resources.AgentSlots > 0, "worker-required");
         Require(r.Kind is not ("help" or "review") || r.ReturnTo is not null && r.Resources.AgentSlots > 0, "return-binding-required");
-        Require(!r.ReuseSession || r.Kind is "help" or "review" && Id(r.WorkerId) && Id(r.MachineId), "named-session-required");
+        Require(!r.ReuseSession || r.Kind is "help" or "review" &&
+            (Id(r.WorkerId) && Id(r.MachineId) || r.Kind == "review" && r.ReadOnly && Id(r.RequiredProvider)),
+            "named-session-required");
         Require(r.Kind != "review" || r.ReadOnly, "review-must-be-read-only");
         Require(r.Kind != "benchmark" || r.Resources.Exclusive || r.Resources.Processors is { Length: > 0 }, "benchmark-isolation-required");
     }

@@ -24,7 +24,7 @@ public sealed partial class CoordinationEngine {
         work.Request.Kind is "help" or "review" && work.Assignee is null && work.Provider is not null;
 
     private static string? CreationProvider(CoordinationRequest request, MachineCapacity machine, CoordinationHost host) =>
-        request.Kind is "help" or "review" && request.WorkerId is null
+        !request.ReuseSession && request.Kind is "help" or "review" && request.WorkerId is null
             ? (machine.AllowedCreateProviders ?? []).Where(p => host.CreatableProviders?.Contains(p, StringComparer.Ordinal) == true &&
                 (request.RequiredProvider is null || request.RequiredProvider == p)).OrderBy(p => p, StringComparer.Ordinal).FirstOrDefault()
             : null;

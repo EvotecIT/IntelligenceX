@@ -113,8 +113,7 @@ internal sealed class CoordinationArtifactStore(string root) {
             return state.Retirements.TryGetValue(work.Request.Id, out var retirement) && retirement.Binding == binding &&
                 retirement.ResultRef == work.ResultRef && retirement.CompletedAtUtc is not null &&
                 retirement.WaitingOn is null && retirement.Evidence.ContainsKey("verified");
-        return work.Request.ReuseSession && work.Request.Kind is "help" or "review" &&
-            work.Request.WorkerId == binding.WorkerId && work.Request.MachineId == binding.MachineId &&
+        return CoordinationEngine.ExplicitlyReusesSession(work.Request, worker) &&
             !state.Retirements.ContainsKey(work.Request.Id);
     }
 
