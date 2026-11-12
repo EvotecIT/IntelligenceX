@@ -42,7 +42,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="DBAClientX.SQLite" Version="0.8.0" PrivateAssets="compile" />
+    <PackageReference Include="DBAClientX.SQLite" Version="1.0.18" PrivateAssets="compile" />
   </ItemGroup>
 
   <ItemGroup>
