@@ -73,21 +73,24 @@ $manifests = @($packageFiles | ForEach-Object { Get-PackageManifest -PackagePath
 
 $sdk = @($manifests | Where-Object Id -EQ 'IntelligenceX')
 $storage = @($manifests | Where-Object Id -EQ 'IntelligenceX.Storage.SQLite')
-if ($sdk.Count -ne 1 -or $storage.Count -ne 1) {
-    throw "Expected exactly one IntelligenceX and one IntelligenceX.Storage.SQLite package in '$resolvedPackageDirectory'."
+$ledger = @($manifests | Where-Object Id -EQ 'IntelligenceX.Ledger.Contracts')
+if ($sdk.Count -ne 1 -or $storage.Count -ne 1 -or $ledger.Count -ne 1) {
+    throw "Expected one IntelligenceX, storage and Ledger contracts package in '$resolvedPackageDirectory'."
 }
 if ($sdk[0].Version -ne $storage[0].Version) {
     throw "Package versions differ: IntelligenceX $($sdk[0].Version), storage $($storage[0].Version)."
 }
 $sdkSymbolsPath = Join-Path $resolvedPackageDirectory "IntelligenceX.$($sdk[0].Version).snupkg"
 $storageSymbolsPath = Join-Path $resolvedPackageDirectory "IntelligenceX.Storage.SQLite.$($sdk[0].Version).snupkg"
-foreach ($symbolPackage in $sdkSymbolsPath, $storageSymbolsPath) {
+$ledgerSymbolsPath = Join-Path $resolvedPackageDirectory "IntelligenceX.Ledger.Contracts.$($ledger[0].Version).snupkg"
+foreach ($symbolPackage in $sdkSymbolsPath, $storageSymbolsPath, $ledgerSymbolsPath) {
     if (-not (Test-Path -LiteralPath $symbolPackage -PathType Leaf)) {
         throw "Package artifact '$symbolPackage' is missing."
     }
 }
 $sdkSymbols = Get-PackageManifest -PackagePath $sdkSymbolsPath
 $storageSymbols = Get-PackageManifest -PackagePath $storageSymbolsPath
+$ledgerSymbols = Get-PackageManifest -PackagePath $ledgerSymbolsPath
 
 foreach ($framework in 'netstandard2.0', 'net472', 'net8.0', 'net10.0') {
     Assert-PackageEntry -Manifest $sdk[0] -Entry "lib/$framework/IntelligenceX.dll"
@@ -98,6 +101,15 @@ foreach ($framework in 'net8.0', 'net10.0') {
     Assert-PackageEntry -Manifest $storage[0] -Entry "lib/$framework/IntelligenceX.Storage.SQLite.dll"
     Assert-PackageEntry -Manifest $storage[0] -Entry "lib/$framework/IntelligenceX.Storage.SQLite.xml"
     Assert-PackageEntry -Manifest $storageSymbols -Entry "lib/$framework/IntelligenceX.Storage.SQLite.pdb"
+    Assert-PackageEntry -Manifest $ledger[0] -Entry "lib/$framework/IntelligenceX.Ledger.Contracts.dll"
+    Assert-PackageEntry -Manifest $ledgerSymbols -Entry "lib/$framework/IntelligenceX.Ledger.Contracts.pdb"
+}
+Assert-PackageEntry -Manifest $ledger[0] -Entry 'README.md'
+Assert-PackageEntry -Manifest $ledger[0] -Entry 'icon.png'
+Assert-PackageMissingEntry -Manifest $ledger[0] -Entry 'lib/net472/IntelligenceX.Ledger.Contracts.dll'
+if ((@($ledger[0].DependencyFrameworks | Sort-Object -Unique) -join ',') -ne 'net10.0,net8.0' -or
+    @($ledger[0].Dependencies | Where-Object id).Count -ne 0) {
+    throw 'Ledger contracts must retain its two modern targets and platform-only dependency graph.'
 }
 Assert-PackageMissingEntry -Manifest $storage[0] -Entry 'lib/net472/IntelligenceX.Storage.SQLite.dll'
 Assert-PackageMissingEntry -Manifest $storage[0] -Entry 'ref/net472/IntelligenceX.Storage.SQLite.dll'
@@ -158,6 +170,7 @@ try {
     <packageSource key="staged">
       <package pattern="IntelligenceX" />
       <package pattern="IntelligenceX.Storage.SQLite" />
+      <package pattern="IntelligenceX.Ledger.Contracts" />
     </packageSource>
     <packageSource key="nuget.org">
       <package pattern="*" />
@@ -166,7 +179,7 @@ try {
 </configuration>
 "@ | Set-Content -LiteralPath $nugetConfig -Encoding utf8
 
-    & dotnet restore $smokeProject --configfile $nugetConfig --packages $packagesRoot --no-http-cache -p:PackageVersion=$($sdk[0].Version) --nologo
+    & dotnet restore $smokeProject --configfile $nugetConfig --packages $packagesRoot --no-http-cache -p:PackageVersion=$($sdk[0].Version) -p:LedgerPackageVersion=$($ledger[0].Version) --nologo
     if ($LASTEXITCODE -ne 0) {
         throw "Package smoke restore failed with exit code $LASTEXITCODE."
     }
@@ -174,10 +187,12 @@ try {
     $stagedPackages = @{
         IntelligenceX = ($packageFiles | Where-Object Name -EQ "IntelligenceX.$($sdk[0].Version).nupkg" | Select-Object -First 1).FullName
         'IntelligenceX.Storage.SQLite' = ($packageFiles | Where-Object Name -EQ "IntelligenceX.Storage.SQLite.$($sdk[0].Version).nupkg" | Select-Object -First 1).FullName
+        'IntelligenceX.Ledger.Contracts' = ($packageFiles | Where-Object Name -EQ "IntelligenceX.Ledger.Contracts.$($ledger[0].Version).nupkg" | Select-Object -First 1).FullName
     }
     foreach ($packageId in $stagedPackages.Keys) {
         $normalizedId = $packageId.ToLowerInvariant()
-        $restoredPackage = Join-Path $packagesRoot "$normalizedId\$($sdk[0].Version)\$normalizedId.$($sdk[0].Version).nupkg"
+        $version = ($manifests | Where-Object Id -EQ $packageId).Version
+        $restoredPackage = Join-Path $packagesRoot "$normalizedId\$version\$normalizedId.$version.nupkg"
         if (-not (Test-Path -LiteralPath $restoredPackage -PathType Leaf) -or
             (Get-FileHash -LiteralPath $restoredPackage -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $stagedPackages[$packageId] -Algorithm SHA256).Hash) {
             throw "Package smoke did not restore the staged '$packageId' artifact byte-for-byte."
@@ -189,15 +204,22 @@ try {
         $smokeFrameworks += 'net472'
     }
     foreach ($framework in $smokeFrameworks) {
-        & dotnet run --project $smokeProject --framework $framework --configuration Release --no-restore -p:PackageVersion=$($sdk[0].Version) --nologo
+        & dotnet run --project $smokeProject --framework $framework --configuration Release --no-restore -p:PackageVersion=$($sdk[0].Version) -p:LedgerPackageVersion=$($ledger[0].Version) --nologo
         if ($LASTEXITCODE -ne 0) {
             throw "Package smoke run for $framework failed with exit code $LASTEXITCODE."
         }
     }
 } finally {
-    if ($smokeRoot.StartsWith([System.IO.Path]::GetTempPath(), [System.StringComparison]::OrdinalIgnoreCase)) {
-        Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $smokeRoot) {
+        $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\', '/')
+        if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($smokeRoot)) -ine $temporaryRoot) {
+            throw 'Package smoke cleanup escaped its temporary parent.'
+        }
+        foreach ($entry in @(Get-Item -LiteralPath $smokeRoot) + @(Get-ChildItem -LiteralPath $smokeRoot -Recurse -Force)) {
+            if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Package smoke cleanup found a linked entry.' }
+        }
+        Remove-Item -LiteralPath $smokeRoot -Recurse -ErrorAction Stop
     }
 }
 
-Write-Host "Validated IntelligenceX $($sdk[0].Version) and IntelligenceX.Storage.SQLite $($storage[0].Version)." -ForegroundColor Green
+Write-Host "Validated IntelligenceX $($sdk[0].Version), storage $($storage[0].Version) and Ledger contracts $($ledger[0].Version)." -ForegroundColor Green

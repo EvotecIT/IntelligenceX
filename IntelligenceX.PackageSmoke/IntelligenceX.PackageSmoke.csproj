@@ -7,6 +7,7 @@
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
     <PackageVersion Condition="'$(PackageVersion)' == ''">0.1.0</PackageVersion>
+    <LedgerPackageVersion Condition="'$(LedgerPackageVersion)' == ''">0.1.0</LedgerPackageVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
@@ -17,6 +18,8 @@
   <ItemGroup>
     <PackageReference Include="IntelligenceX" Version="$(PackageVersion)" />
     <PackageReference Include="IntelligenceX.Storage.SQLite" Version="$(PackageVersion)"
+                      Condition="'$(TargetFramework)' != 'net472'" />
+    <PackageReference Include="IntelligenceX.Ledger.Contracts" Version="$(LedgerPackageVersion)"
                       Condition="'$(TargetFramework)' != 'net472'" />
   </ItemGroup>
 </Project>

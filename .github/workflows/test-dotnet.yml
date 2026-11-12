@@ -56,6 +56,8 @@ jobs:
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
                   dotnet pack ./IntelligenceX.Storage.SQLite/IntelligenceX.Storage.SQLite.csproj --configuration $env:BUILD_CONFIGURATION --output $packageDirectory --no-restore -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  dotnet pack ./IntelligenceX.Ledger.Contracts/IntelligenceX.Ledger.Contracts.csproj --configuration $env:BUILD_CONFIGURATION --output $packageDirectory --no-restore -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
                   ./Build/Test-Packages.ps1 -PackageDirectory $packageDirectory
 
             - name: Run tests
