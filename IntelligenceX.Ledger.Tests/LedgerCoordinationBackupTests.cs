@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Ledger.Coordination;
@@ -17,6 +18,7 @@ public sealed class LedgerCoordinationBackupTests {
     public async Task NormalStartupWithLegacyConfigExcludesASecondWriterWithoutEnablingRetainedCoordination() {
         var root = LedgerTestPaths.NewDirectory("backup-startup");
         Directory.CreateDirectory(root);
+        Exception? proofFailure = null;
         try {
             var data = Path.Combine(root, "data");
             using (var coordination = new CoordinationStore(Path.Combine(data, "coordination.sqlite"), Policy))
@@ -27,13 +29,14 @@ public sealed class LedgerCoordinationBackupTests {
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
             var config = Path.Combine(root, "settings.json");
+            var readToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             // This is the pre-coordination settings shape, including an existing data directory.
             await File.WriteAllTextAsync(config, JsonSerializer.Serialize(new {
-                dataDirectory = data, readToken = new string('r', 32), writeToken = new string('w', 32), port,
+                dataDirectory = data, readToken, writeToken = new string('w', 32), port,
                 expectedReporters = new Dictionary<string, string[]> { ["source-host"] = ["synthetic-reporter"] }
             }));
             using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", new('r', 32));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", readToken);
             for (var start = 0; start < 2; start++) {
                 var command = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true };
                 command.ArgumentList.Add(typeof(Program).Assembly.Location);
@@ -62,7 +65,15 @@ public sealed class LedgerCoordinationBackupTests {
                 }
             }
             Assert.Equal(before, await File.ReadAllBytesAsync(Path.Combine(data, "coordination.sqlite")));
-        } finally { Directory.Delete(root, recursive: true); }
+        } catch (Exception error) {
+            proofFailure = error;
+            throw;
+        } finally {
+            try { Directory.Delete(root, recursive: true); }
+            catch (Exception cleanupError) when (proofFailure is not null) {
+                throw new AggregateException("Service proof and owned fixture cleanup both failed.", proofFailure, cleanupError);
+            }
+        }
     }
 
     [Fact]
