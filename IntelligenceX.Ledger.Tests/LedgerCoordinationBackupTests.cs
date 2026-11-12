@@ -9,11 +9,12 @@ using IntelligenceX.Ledger.Coordination;
 using IntelligenceX.Ledger.Hosting;
 using IntelligenceX.Ledger.Storage;
 using Xunit;
+using Xunit.Abstractions;
 using static IntelligenceX.Ledger.Tests.CoordinationLifecycleTests;
 
 namespace IntelligenceX.Ledger.Tests;
 
-public sealed class LedgerCoordinationBackupTests {
+public sealed class LedgerCoordinationBackupTests(ITestOutputHelper output) {
     [Fact]
     public async Task NormalStartupWithLegacyConfigExcludesASecondWriterWithoutEnablingRetainedCoordination() {
         var root = LedgerTestPaths.NewDirectory("backup-startup");
@@ -62,6 +63,10 @@ public sealed class LedgerCoordinationBackupTests {
                 } finally {
                     if (!process.HasExited) process.Kill(entireProcessTree: true);
                     await process.WaitForExitAsync();
+                    var nativeTerminationObserved = process.WaitForExit(0);
+                    output.WriteLine($"Service {process.Id}, cycle {start}, native termination after async wait: {nativeTerminationObserved}.");
+                    // The Windows exit code can become available before its process handle signals termination.
+                    Assert.True(process.WaitForExit(10_000), "Synthetic service did not signal native termination before fixture cleanup.");
                 }
             }
             Assert.Equal(before, await File.ReadAllBytesAsync(Path.Combine(data, "coordination.sqlite")));
