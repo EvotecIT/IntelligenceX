@@ -30,6 +30,32 @@ public sealed class CoordinationRequesterTests {
         Assert.Equal(code, Assert.Throws<CoordinationConflictException>(action).Message);
 
     [Fact]
+    public void RenewedRequesterObservationsKeepStartedWorkAndReturnEligibleBeyondTheOriginalGrant() {
+        var (state, caller) = Enrolled();
+        var engine = new CoordinationEngine(state, Now);
+        var work = engine.Submit(ScopedHelp(), caller);
+        Start(engine, state, work);
+        for (var interval = 1; interval <= 3; interval++) {
+            var at = Now.AddSeconds(interval * 90);
+            engine = new CoordinationEngine(state, at);
+            foreach (var host in new[] { SourceHost, HelperHost })
+                engine.ObserveHost(new(host.MachineId!, "boot", at,
+                    state.Policy.Machines.Single(machine => machine.Id == host.MachineId).Capabilities), host);
+            engine.EnrollRequester(Enrollment with { ObservedAtUtc = at,
+                WorkerObservation = RequesterWorker with { ObservedAtUtc = at } }, EnrollmentHost);
+            var renewed = engine.Receipt(work.Request.Id, "renew", Execution(work), HelperHost);
+            Assert.Equal("started", renewed.State);
+            Assert.Equal(work.Generation, renewed.Generation);
+            Assert.Equal(work.GrantId, renewed.GrantId);
+            Assert.True(renewed.RenewByUtc > at);
+        }
+        Assert.True(state.Requesters[Enrollment.Id].ObservedAtUtc > Now.AddSeconds(Policy.GrantSeconds));
+        engine.Receipt(work.Request.Id, "terminal", Execution(work, "long-help-result"), HelperHost);
+        Assert.Equal("sending", engine.BeginResultDelivery(work.Request.Id, work.Generation, "long-help-return", SourceHost).State);
+        Assert.NotNull(engine.ConsumeResult(work.Request.Id, work.Generation, "long-help-result", Candidate, caller).ConsumedAtUtc);
+    }
+
+    [Fact]
     public void RegistrationBindsImmutableIdentityAndRenewsOnlyTrustedSourceScopesWithIncreasingObservation() {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);

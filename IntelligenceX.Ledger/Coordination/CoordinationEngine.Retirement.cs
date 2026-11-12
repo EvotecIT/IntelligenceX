@@ -31,6 +31,8 @@ public sealed partial class CoordinationEngine {
             Require(!receipt.Dirty && !receipt.Unpublished, "retirement-source-unsafe");
         if (job.Evidence.TryGetValue(receipt.Stage, out var evidence) && evidence == receipt.EvidenceRef &&
             receipt.Stage is not ("waiting" or "resume")) return job;
+        Require(receipt.ExpectedRevision is null || receipt.ExpectedRevision == job.Revision,
+            "retirement-revision-conflict");
         Require(job.CompletedAtUtc is null, "retirement-already-complete");
         var steps = new Dictionary<string, string>(job.Evidence);
         if (receipt.Stage == "waiting") {
@@ -53,7 +55,7 @@ public sealed partial class CoordinationEngine {
             }
         }
         steps[receipt.Stage] = receipt.EvidenceRef;
-        job = job with { Evidence = steps };
+        job = job with { Evidence = steps, Revision = job.Revision + 1 };
         state.Retirements[binding.RequestId] = job;
         Note(binding.RequestId, "retirement-" + receipt.Stage, caller.Id, binding.Generation, receipt.EvidenceRef);
         Schedule();

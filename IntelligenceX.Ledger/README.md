@@ -320,6 +320,13 @@ revision for compare-and-swap. Pausing, stopping or changing authorization advan
 the separate control revision. Resuming requires explicit reauthorization of
 affected pending work.
 
+Help and review requests can include optional `taskBrief` plain-text instructions
+alongside the source checkpoint. A supplied brief must contain non-whitespace
+and fit within 8192 UTF-8 bytes. Omitted or null briefs preserve legacy request
+behavior. The brief is part of the immutable request body, so retries retain its
+exact text. Hosts receive it through `work.request.taskBrief` on the existing
+coordination surfaces.
+
 The HTTP routes under `/api/coordination/v1` expose goals, requests, host and
 worker observations, independent delivery receipts, result content, retirement
 jobs, policy and a bounded change cursor. `GET /requests/{id}` returns execution,

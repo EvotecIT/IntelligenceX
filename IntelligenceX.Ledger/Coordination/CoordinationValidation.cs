@@ -1,3 +1,4 @@
+using System.Text;
 using IntelligenceX.Ledger.Contracts;
 
 namespace IntelligenceX.Ledger.Coordination;
@@ -30,6 +31,8 @@ public static class CoordinationValidation {
             r.Kind is "build" or "benchmark" or "agent" or "handoff" or "help" or "review" && Demand(r.Resources) &&
             (r.RequiredProvider is null || Id(r.RequiredProvider)) &&
             (r.MachineId is null || Id(r.MachineId)) && (r.WorkerId is null || Id(r.WorkerId)), "invalid-request");
+        Require(r.TaskBrief is null || !string.IsNullOrWhiteSpace(r.TaskBrief) &&
+            Encoding.UTF8.GetByteCount(r.TaskBrief) <= 8192, "invalid-task-brief");
         Checkpoint(c);
         Require(caller.Projects.Contains(c!.Project, StringComparer.Ordinal), "project-not-authorized");
         Require(r.Dependencies is { Length: <= 64 } && r.Dependencies.All(Id) && !r.Dependencies.Contains(r.Id) &&

@@ -51,7 +51,9 @@ public sealed class LedgerCoordinationBackupTests {
                             break;
                         } catch (HttpRequestException) { await Task.Delay(25, deadline.Token); }
                     }
-                    Assert.Throws<IOException>(() => LedgerBackup.AcquireServiceLease(data));
+                    Assert.Throws<IOException>(() => {
+                        using var unexpectedLease = LedgerBackup.AcquireServiceLease(data);
+                    });
                     using var coordinationRead = await client.GetAsync("/api/coordination/v1/requests");
                     Assert.Equal(HttpStatusCode.Unauthorized, coordinationRead.StatusCode);
                 } finally {

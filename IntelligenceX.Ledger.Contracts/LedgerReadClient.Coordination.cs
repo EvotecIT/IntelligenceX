@@ -85,4 +85,4 @@ public sealed partial class LedgerReadClient {
     }
 }
 
-public sealed record CoordinationAcknowledgement(bool Acknowledged);
+public sealed record CoordinationAcknowledgement(bool Acknowledged, int? GrantSeconds = null);

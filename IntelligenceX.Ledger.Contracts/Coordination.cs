@@ -21,11 +21,14 @@ public sealed record WorkCheckpoint(string Project, string Branch, string Commit
 /// ReuseSession explicitly selects an enrolled existing session for help/review and requires WorkerId and MachineId.
 /// It has no creation fallback. Non-temporary sessions keep their ordinary workflow and have no retirement job.
 /// Another named assignment is eligible only after the previous assignment is terminal and its result consumed.
-/// The default false retains disposable-helper assignment and historical ownership safeguards.</summary>
+/// The default false retains disposable-helper assignment and historical ownership safeguards.
+/// TaskBrief optionally supplies plain task instructions for help/review, bounded to 8192 UTF-8 bytes
+/// and containing non-whitespace when supplied. Null preserves legacy requests.</summary>
 public sealed record CoordinationRequest(string Id, string GoalId, string Kind, string Capability,
     string? MachineId, string? WorkerId, ResourceDemand Resources, WorkCheckpoint Checkpoint,
     string[] Dependencies, long ControlRevision, string AuthorizationRef, string? RequiredProvider = null,
-    bool ReadOnly = false, CoordinationReturnBinding? ReturnTo = null, bool ReuseSession = false);
+    bool ReadOnly = false, CoordinationReturnBinding? ReturnTo = null, bool ReuseSession = false,
+    string? TaskBrief = null);
 
 /// <summary>Service-owned goal controls survive restarts. Revision is the metadata compare-and-swap version;
 /// ControlRevision is the authorization generation used by requests. Ordinary checkpoints do not change it.
@@ -112,14 +115,18 @@ public sealed record CoordinationResultOutbox(string RequestId, long Generation,
 public sealed record CoordinationDeliveryReceipt(string AttemptId, string Stage, string EvidenceRef);
 
 /// <summary>Independent durable cleanup obligation for the exact terminal helper. Completed steps survive holds
-/// and restarts. A protected primary waits on a named condition without retaining an active worker slot.</summary>
+/// and restarts. A protected primary waits on a named condition without retaining an active worker slot.
+/// Revision supports conditional receipts when multiple callers can add or clear a hold.</summary>
 public sealed record CoordinationRetirement(CoordinationSessionBinding Binding, string ResultRef,
-    Dictionary<string, string> Evidence, string? WaitingOn = null, DateTimeOffset? CompletedAtUtc = null);
+    Dictionary<string, string> Evidence, string? WaitingOn = null, DateTimeOffset? CompletedAtUtc = null,
+    long Revision = 0);
 
 /// <summary>Qualified host evidence for one retirement step. Source and final verification fail closed unless
-/// both dirty and unpublished flags are explicitly false. This reports supported adapter operations; it runs none.</summary>
+/// both dirty and unpublished flags are explicitly false. ExpectedRevision conditionally records a new step
+/// against the observed job. An identical stored stage acknowledgement remains replayable.</summary>
 public sealed record CoordinationRetirementReceipt(CoordinationSessionBinding Binding, string Stage,
-    string EvidenceRef, bool Dirty = true, bool Unpublished = true, string? WaitingOn = null);
+    string EvidenceRef, bool Dirty = true, bool Unpublished = true, string? WaitingOn = null,
+    long? ExpectedRevision = null);
 
 public sealed record CoordinationChange(long Sequence, string RequestId, string Stage, DateTimeOffset AtUtc,
     string Principal, long Generation, string? EvidenceRef = null);

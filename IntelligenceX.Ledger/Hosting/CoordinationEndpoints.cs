@@ -92,7 +92,10 @@ internal static partial class CoordinationEndpoints {
         app.MapPost(Prefix + "/requests/{id}/accept", async (string id, CoordinationAcceptance acceptance, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => e.Accept(id, acceptance.ResultRef, Caller(http)), DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/hosts", async (CoordinationHost host, HttpContext http, CancellationToken ct) =>
-            Results.Ok(await store.ExecuteAsync((e, _) => { e.ObserveHost(host, Caller(http)); return new { acknowledged = true }; }, DateTimeOffset.UtcNow, ct)));
+            Results.Ok(await store.ExecuteAsync((e, state) => {
+                e.ObserveHost(host, Caller(http));
+                return new CoordinationAcknowledgement(true, state.Policy.GrantSeconds);
+            }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/workers", async (CoordinationWorker worker, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => { e.ObserveWorker(worker, Caller(http)); return new { acknowledged = true }; }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/policy", async (CoordinationPolicyCommand command, HttpContext http, CancellationToken ct) =>

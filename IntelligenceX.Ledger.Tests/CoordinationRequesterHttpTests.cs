@@ -11,6 +11,22 @@ using Xunit;
 namespace IntelligenceX.Ledger.Tests;
 
 public sealed class CoordinationRequesterHttpTests {
+    [Fact]
+    public async Task HostAcknowledgementReturnsTheActiveGrantWindowThroughTheTypedClient() {
+        var hostToken = new string('h', 32);
+        await CoordinationHttpTests.WithService(new() {
+            InitialPolicy = new(1, [new("synthetic-machine", 2, 1, 4, 4096, ["review"])], GrantSeconds: 37),
+            Principals = [new("host", "host", hostToken, ["sample"], "synthetic-machine")]
+        }, async (endpoint, _, token) => {
+            using var host = LedgerReadClient.ForCoordination(new(endpoint, hostToken));
+            var acknowledged = await host.HostAsync(new("synthetic-machine", "boot", DateTimeOffset.UtcNow, ["review"]), token);
+            Assert.True(acknowledged.Acknowledged);
+            Assert.Equal(37, acknowledged.GrantSeconds);
+            Assert.Equal(HttpStatusCode.Conflict, (await Assert.ThrowsAsync<HttpRequestException>(() =>
+                host.PolicyAsync(token))).StatusCode);
+        });
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
