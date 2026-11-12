@@ -1,11 +1,13 @@
+using System.Diagnostics;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Ledger.Coordination;
 using Xunit;
+using Xunit.Abstractions;
 using static IntelligenceX.Ledger.Tests.CoordinationLifecycleTests;
 
 namespace IntelligenceX.Ledger.Tests;
 
-public sealed class CoordinationArtifactArchiveHttpTests {
+public sealed class CoordinationArtifactArchiveHttpTests(ITestOutputHelper output) {
     [Fact]
     public async Task ResultPublicationUnderPressureArchivesCompletedHelperAndKeepsOldHttpReplays() {
         var requesterToken = new string('c', 32);
@@ -37,7 +39,7 @@ public sealed class CoordinationArtifactArchiveHttpTests {
             await helper.BindSessionAsync(new("next", next.Generation, next.GrantId!, "next-worker", "helper-host",
                 "provider-a", "next-session", "next-workspace", Candidate), token);
             var root = Path.Combine(settings.DataDirectory, "coordination-results");
-            CoordinationArtifactArchiveTests.FillActiveBudget(root);
+            Assert.Equal(4096, Directory.GetFiles(root).Length);
             var published = await helper.PublishResultAsync("next", new(next.Generation, next.GrantId!, "boot", "New HTTP answer."), token);
             Assert.Equal(4096, Directory.GetFiles(root).Length);
             Assert.Equal(2, Directory.GetFiles(Path.Combine(root, "archive")).Length);
@@ -46,6 +48,13 @@ public sealed class CoordinationArtifactArchiveHttpTests {
             Assert.Equal("succeeded", (await helper.ReceiptAsync("help", "terminal", Execution(work, artifact.ResultRef), token)).State);
             await helper.ReceiptAsync("next", "terminal", Execution(next, published.ResultRef), token);
             Assert.Equal(published, await requester.ResultContentAsync("next", token));
-        }, Initialize);
+        }, Initialize, prepare: settings => {
+            var preparation = Stopwatch.StartNew();
+            // Leave capacity for the first artifact pair before testing reclamation at the full file bound.
+            var root = Path.Combine(settings.DataDirectory, "coordination-results");
+            Directory.CreateDirectory(root);
+            CoordinationArtifactArchiveTests.FillActiveBudget(root, 4094);
+            output.WriteLine($"Prepared the pressure fixture before the service deadline in {preparation.ElapsedMilliseconds} ms.");
+        });
     }
 }

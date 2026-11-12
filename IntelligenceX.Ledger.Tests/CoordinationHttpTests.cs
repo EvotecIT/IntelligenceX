@@ -584,7 +584,8 @@ public sealed class CoordinationHttpTests {
 
     internal static async Task WithService(CoordinationConfiguration enrollment,
         Func<string, LedgerSettings, CancellationToken, Task> run,
-        Action<CoordinationEngine, CoordinationState>? initialize = null) {
+        Action<CoordinationEngine, CoordinationState>? initialize = null,
+        Action<LedgerSettings>? prepare = null) {
         var directory = LedgerTestPaths.NewDirectory("coordination-http");
         Directory.CreateDirectory(directory);
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -602,6 +603,7 @@ public sealed class CoordinationHttpTests {
             await store.InitializeAsync();
             await store.ExecuteAsync((engine, state) => { initialize(engine, state); return true; }, CoordinationLifecycleTests.Now);
         }
+        prepare?.Invoke(settings);
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var arg in new[] { typeof(Program).Assembly.Location, "serve", "--config", config }) start.ArgumentList.Add(arg);
