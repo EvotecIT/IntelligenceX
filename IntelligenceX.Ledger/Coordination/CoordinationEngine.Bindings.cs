@@ -41,13 +41,16 @@ public sealed partial class CoordinationEngine {
         state.ResultOutbox.TryGetValue(binding.RequestId, out var result) && result.Generation == binding.Generation &&
         result.ResultRef == previous.ResultRef && result.ConsumedAtUtc is not null;
 
-    private bool Available(CoordinationWorker worker) => worker.Eligible && worker.UnavailableReason is null && HasCurrentHostBoot(worker) &&
+    private bool FreshWorker(CoordinationWorker worker) => HasCurrentHostBoot(worker) &&
         now - worker.ObservedAtUtc <= TimeSpan.FromSeconds(state.Policy.GrantSeconds) && Fresh(worker.MachineId);
 
-    private bool MatchesRecipient(CoordinationReturnBinding recipient, out CoordinationWorker worker) =>
+    private bool Available(CoordinationWorker worker) => worker.Eligible && worker.UnavailableReason is null && FreshWorker(worker);
+
+    private bool MatchesRecipient(CoordinationReturnBinding recipient, out CoordinationWorker worker,
+        bool allowCommitAdvance = false) =>
         state.Workers.TryGetValue(recipient.WorkerId, out worker!) && worker.MachineId == recipient.MachineId &&
-        worker.Provider == recipient.Provider && worker.SessionId == recipient.SessionId && worker.Candidate is not null &&
-        SameCandidate(worker.Candidate, recipient.Candidate);
+        worker.Provider == recipient.Provider && worker.SessionId == recipient.SessionId &&
+        (allowCommitAdvance || worker.Candidate is not null && SameCandidate(worker.Candidate, recipient.Candidate));
 
     private void ValidateReturnBinding(CoordinationRequest request, CoordinationPrincipal caller) {
         if (request.ReturnTo is not { } recipient) return;
@@ -55,7 +58,8 @@ public sealed partial class CoordinationEngine {
             Id(recipient.Provider) && Id(recipient.SessionId) && recipient.Candidate is not null &&
             SameCandidate(recipient.Candidate, request.Checkpoint), "return-candidate-conflict");
         Require(caller.WorkerId == recipient.WorkerId && caller.MachineId == recipient.MachineId &&
-            MatchesRecipient(recipient, out var worker) && Available(worker), "return-requester-conflict");
+            MatchesRecipient(recipient, out var worker, RootRequesterRecipient(caller.Id, recipient)) && Available(worker),
+            "return-requester-conflict");
         if (recipient.ParentRequestId is null) {
             Require(recipient.ParentGeneration == 0 && !state.Bindings.Values.Any(b => b.WorkerId == recipient.WorkerId &&
                 !ReusableAssignmentComplete(b)),
@@ -99,7 +103,7 @@ public sealed partial class CoordinationEngine {
             binding.WorkerId != work.Request.ReturnTo?.WorkerId &&
             (!creating || work.Stages?.TryGetValue("admitted", out var admittedAt) == true && worker.ObservedAtUtc >= admittedAt) &&
             state.Hosts[binding.MachineId].BootId == work.BootId &&
-            !goal.Stopped && !goal.Paused && Authorized(work, goal) &&
+            !goal.Stopped && !goal.Paused && Authorized(work, goal) && RequesterReady(work) &&
             !state.Work.Values.Any(other => other.Request.Id != binding.RequestId && Occupied.Contains(other.State) &&
                 other.Assignee == binding.WorkerId) &&
             !state.Bindings.Values.Any(b => (b.WorkerId == binding.WorkerId ||

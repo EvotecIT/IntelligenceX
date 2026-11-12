@@ -17,6 +17,7 @@ internal static partial class CoordinationEndpoints {
             !CoordinationValidation.Id(p.Id) || p.Role is not ("client" or "host" or "operator") || p.Token is null || p.Token.Length < 32 ||
             p.Token.Any(char.IsWhiteSpace) || p.Token == settings.ReadToken || p.Token == settings.WriteToken ||
             p.Projects is null || !p.Projects.All(CoordinationValidation.Id) ||
+            p.AllowRequesterEnrollment && (p.Role != "host" || p.Projects.Length == 0) ||
             p.Role == "host" && !config.InitialPolicy.Machines.Any(m => m.Id == p.MachineId)) ||
             config.Principals.Select(p => p.Id).Distinct().Count() != config.Principals.Length ||
             config.Principals.Select(p => p.Token).Distinct().Count() != config.Principals.Length)
@@ -25,11 +26,13 @@ internal static partial class CoordinationEndpoints {
     }
 
     private static CoordinationPrincipal Caller(HttpContext context) => (CoordinationPrincipal)context.Items[typeof(CoordinationPrincipal)]!;
-    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/policy", "/summary", "/changes", "/results", "/retirements" }
+    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements" }
         .Any(suffix => path.StartsWithSegments(Prefix + suffix));
 
-    internal static bool Authenticate(HttpContext context, string bearer, CoordinationConfiguration config) {
-        var principal = config.Principals.FirstOrDefault(p => LedgerRuntime.TokenEquals(bearer, p.Token));
+    internal static async Task<bool> AuthenticateAsync(HttpContext context, string bearer, CoordinationConfiguration config,
+        CoordinationStore store) {
+        var principal = config.Principals.FirstOrDefault(p => LedgerRuntime.TokenEquals(bearer, p.Token)) ??
+            await store.ExecuteAsync((engine, _) => engine.AuthenticateRequester(bearer), DateTimeOffset.UtcNow, context.RequestAborted);
         if (principal is null) return false;
         context.Items[typeof(CoordinationPrincipal)] = principal;
         return true;
@@ -38,7 +41,7 @@ internal static partial class CoordinationEndpoints {
     private static bool Visible(CoordinationWork work, CoordinationPrincipal p) => p.Role switch {
         "operator" => true,
         "host" => work.Machine == p.MachineId,
-        _ => work.Requester == p.Id && p.Projects.Contains(work.Request.Checkpoint.Project)
+        _ => work.Requester == p.Id && (p.RequesterId is not null || p.Projects.Contains(work.Request.Checkpoint.Project))
     };
 
     internal static void Map(WebApplication app, CoordinationStore store, string dataDirectory) {
@@ -46,6 +49,11 @@ internal static partial class CoordinationEndpoints {
         MapArtifacts(app, store, artifacts);
         MapRecovery(app, store, artifacts);
         MapLifecycle(app, store);
+        app.MapGet(Prefix + "/workers/{provider}/{sessionId}", async (string provider, string sessionId,
+            HttpContext http, CancellationToken ct) => Results.Ok(await store.ExecuteAsync((e, _) =>
+                e.WorkerStatus(provider, sessionId, Caller(http)), DateTimeOffset.UtcNow, ct)));
+        app.MapPost(Prefix + "/requesters", async (RequesterEnrollment enrollment, HttpContext http, CancellationToken ct) =>
+            Results.Ok(await store.ExecuteAsync((e, _) => e.EnrollRequester(enrollment, Caller(http)), DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/goals", async (CoordinationGoalCommand command, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => e.SetGoal(command.Goal, Caller(http), command.ExpectedRevision), DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/goals/{id}", async (string id, HttpContext http, CancellationToken ct) =>
@@ -96,7 +104,9 @@ internal static partial class CoordinationEndpoints {
         app.MapGet(Prefix + "/summary", async (string? project, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, s) => {
                 var p = Caller(http);
-                CoordinationValidation.Require(p.Role == "operator" || project is not null && p.Projects.Contains(project), "project-required-or-denied");
+                CoordinationValidation.Require(p.Role == "operator" || project is not null &&
+                    (p.Projects.Contains(project) || p.RequesterId is not null &&
+                        s.Work.Values.Any(w => w.Requester == p.Id && w.Request.Checkpoint.Project == project)), "project-required-or-denied");
                 e.Schedule(); return e.Summary(project, include: work => Visible(work, p));
             }, DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/changes", async (long? after, HttpContext http, CancellationToken ct) => {

@@ -35,6 +35,13 @@ public sealed partial class LedgerReadClient {
         PostAsync("hosts", host, LedgerReadJson.Default.CoordinationHost, LedgerReadJson.Default.CoordinationAcknowledgement, token);
     public Task<CoordinationAcknowledgement> WorkerAsync(CoordinationWorker worker, CancellationToken token = default) =>
         PostAsync("workers", worker, LedgerReadJson.Default.CoordinationWorker, LedgerReadJson.Default.CoordinationAcknowledgement, token);
+    /// <summary>Registers or renews a hash-only requester through its explicitly enabled authenticated host.</summary>
+    public Task<RequesterEnrollment> EnrollRequesterAsync(RequesterEnrollment enrollment, CancellationToken token = default) =>
+        PostAsync("requesters", enrollment, LedgerReadJson.Default.RequesterEnrollment, LedgerReadJson.Default.RequesterEnrollment, token);
+    /// <summary>Looks up a native session on the caller host. Only an explicit successful null denotes absence.</summary>
+    public Task<CoordinationWorkerStatus> WorkerStatusAsync(string provider, string sessionId, CancellationToken token = default) =>
+        GetAsync("api/coordination/v1/workers/" + Uri.EscapeDataString(provider) + "/" + Uri.EscapeDataString(sessionId),
+            LedgerReadJson.Default.CoordinationWorkerStatus, token);
 
     private async Task<TResult> PostAsync<T, TResult>(string route, T value, JsonTypeInfo<T> inputType,
         JsonTypeInfo<TResult> outputType, CancellationToken token) {

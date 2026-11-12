@@ -18,6 +18,8 @@ internal static class CoordinationRunner {
             Console.WriteLine("ix coordination assigned|results|retirements [after-order] --config <scoped-client.json>");
             Console.WriteLine("ix coordination changes <cursor> --config <host-client.json>");
             Console.WriteLine("ix coordination host <observation.json>|worker <observation.json>|receipt <request-id> <stage> <receipt.json> --config <host-client.json> --apply");
+            Console.WriteLine("ix coordination requester-enroll <enrollment.json> --config <host-client.json> --apply");
+            Console.WriteLine("ix coordination worker-status <provider> <session-id> --config <host-client.json>");
             Console.WriteLine("ix coordination results|retirements|result <request-id>|retirement <request-id> --config <scoped-client.json>");
             Console.WriteLine("ix coordination result-content <request-id>|result-publish <request-id> <content.json> --config <scoped-client.json> [--apply]");
             Console.WriteLine("ix coordination reconcile <proof.json>|reauthorize <authorization.json> --config <scoped-client.json> --apply");
@@ -36,6 +38,7 @@ internal static class CoordinationRunner {
                 "request" when index == 2 => await client.RequestAsync(args[1]).ConfigureAwait(false),
                 "goal" when index == 2 => await client.GoalAsync(args[1]).ConfigureAwait(false),
                 "policy" when index == 1 => await client.PolicyAsync().ConfigureAwait(false),
+                "worker-status" when index == 3 => await client.WorkerStatusAsync(args[1], args[2]).ConfigureAwait(false),
                 "assigned" when index == 1 => await client.AssignedAsync().ConfigureAwait(false),
                 "assigned" when index == 2 && long.TryParse(args[1], out var assignedOrder) && assignedOrder >= 0 => await client.AssignedAsync(afterOrder: assignedOrder).ConfigureAwait(false),
                 "changes" when index == 2 && long.TryParse(args[1], out var cursor) && cursor >= 0 => await client.ChangesAsync(cursor).ConfigureAwait(false),
@@ -54,6 +57,7 @@ internal static class CoordinationRunner {
                 "cancel" when index == 3 && apply => await client.CancelAsync(args[1], Read<CoordinationCancellation>(args[2])).ConfigureAwait(false),
                 "host" when index == 2 && apply => await client.HostAsync(Read<CoordinationHost>(args[1])).ConfigureAwait(false),
                 "worker" when index == 2 && apply => await client.WorkerAsync(Read<CoordinationWorker>(args[1])).ConfigureAwait(false),
+                "requester-enroll" when index == 2 && apply => await client.EnrollRequesterAsync(Read<RequesterEnrollment>(args[1])).ConfigureAwait(false),
                 "receipt" when index == 4 && apply => await client.ReceiptAsync(args[1], args[2], Read<ExecutionReceipt>(args[3])).ConfigureAwait(false),
                 "bind" when index == 2 && apply => await client.BindSessionAsync(Read<CoordinationSessionBinding>(args[1])).ConfigureAwait(false),
                 "retire" when index == 2 && apply => await client.RetireAsync(Read<CoordinationRetirementReceipt>(args[1])).ConfigureAwait(false),

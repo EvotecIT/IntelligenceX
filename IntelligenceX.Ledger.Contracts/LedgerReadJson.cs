@@ -26,6 +26,8 @@ namespace IntelligenceX.Ledger.Contracts;
 [JsonSerializable(typeof(ExecutionReceipt))]
 [JsonSerializable(typeof(CoordinationHost))]
 [JsonSerializable(typeof(CoordinationWorker))]
+[JsonSerializable(typeof(RequesterEnrollment))]
+[JsonSerializable(typeof(CoordinationWorkerStatus))]
 [JsonSerializable(typeof(CoordinationAcknowledgement))]
 [JsonSerializable(typeof(CoordinationArtifactCommand))]
 [JsonSerializable(typeof(CoordinationWorkPage))]

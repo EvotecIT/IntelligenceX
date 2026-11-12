@@ -10,6 +10,10 @@ public sealed record CoordinationState {
     public Dictionary<string, CoordinationWork> Work { get; init; } = [];
     public Dictionary<string, CoordinationHost> Hosts { get; init; } = [];
     public Dictionary<string, CoordinationWorker> Workers { get; init; } = [];
+    /// <summary>Bounded service-owned requester registrations. Contains token digests only.</summary>
+    public Dictionary<string, RequesterEnrollment> Requesters { get; init; } = [];
+    /// <summary>Superseded requester identities remain readable and cannot resume an older native source.</summary>
+    public Dictionary<string, string> RequesterSuccessors { get; init; } = [];
     /// <summary>Immutable native assignments keyed by child request; generation is verified on every command.</summary>
     public Dictionary<string, CoordinationSessionBinding> Bindings { get; init; } = [];
     /// <summary>Terminal result intents and independent return receipts, atomically persisted with work.</summary>
@@ -31,7 +35,11 @@ public sealed class CoordinationConflictException(string reason) : Exception(rea
 
 /// <summary>Authenticated local enrollment. Tokens remain outside event and command bodies.</summary>
 public sealed record CoordinationPrincipal(string Id, string Role, string Token, string[] Projects,
-    string? MachineId = null, string? WorkerId = null);
+    string? MachineId = null, string? WorkerId = null, bool AllowRequesterEnrollment = false) {
+    /// <summary>Assigned only by service authentication, never by configuration or a command body.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal string? RequesterId { get; init; }
+}
 
 /// <summary>Separate opt-in command credentials; Ledger observation credentials grant no command authority.</summary>
 public sealed record CoordinationConfiguration {

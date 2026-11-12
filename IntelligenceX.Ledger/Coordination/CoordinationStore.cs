@@ -5,7 +5,8 @@ using IntelligenceX.Ledger.Contracts;
 namespace IntelligenceX.Ledger.Coordination;
 
 /// <summary>Single-writer durable coordination journal and projection, committed before acknowledgement.</summary>
-public sealed class CoordinationStore(string path, CoordinationPolicy initialPolicy) : IDisposable {
+public sealed class CoordinationStore(string path, CoordinationPolicy initialPolicy,
+    CoordinationPrincipal[]? configuredPrincipals = null) : IDisposable {
     private readonly SQLite _database = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private FileStream? _writerLease;
@@ -30,6 +31,7 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
             new Dictionary<string, object?> { ["json"] = JsonSerializer.Serialize(new CoordinationState {
                 Policy = initialPolicy, ResultDeliveryAttempts = []
             }, Json) }, token);
+        await ExecuteAsync((engine, _) => { engine.ValidateRequesterPrincipals(); return true; }, DateTimeOffset.UtcNow, token);
     }
 
     public async Task<T> ExecuteAsync<T>(Func<CoordinationEngine, CoordinationState, T> command, DateTimeOffset now,
@@ -54,7 +56,7 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
                         state.ResultDeliveryAttempts[outbox.RequestId] = new(outbox.Generation, ids);
                     }
                 }
-                var engine = new CoordinationEngine(state, now);
+                var engine = new CoordinationEngine(state, now, configuredPrincipals);
                 var result = command(engine, state);
                 var updated = JsonSerializer.Serialize(state, Json);
                 if (updated != value) await tx.ExecuteNonQueryAsync("UPDATE coordination_state SET json=@json WHERE id=1",

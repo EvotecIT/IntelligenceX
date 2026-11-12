@@ -29,8 +29,9 @@ public sealed partial class CoordinationEngine {
             "delivery-needs-reconciliation");
         var work = state.Work[id];
         var goal = state.Goals[work.Request.GoalId];
-        Require(!goal.Stopped && !goal.Paused && Authorized(work, goal) &&
-            MatchesRecipient(result.ReturnTo, out var recipient) && Available(recipient), "result-recipient-held");
+        Require(!goal.Stopped && !goal.Paused && Authorized(work, goal) && RequesterReady(work) &&
+            MatchesRecipient(result.ReturnTo, out var recipient, RootRequesterRecipient(work.Requester, result.ReturnTo)) &&
+            Available(recipient), "result-recipient-held");
         if (result.ReturnTo.ParentRequestId is { } parentId) {
             Require(state.Work.TryGetValue(parentId, out var parent) &&
                 parent.Generation == result.ReturnTo.ParentGeneration && !Terminal.Contains(parent.State) &&
@@ -82,7 +83,8 @@ public sealed partial class CoordinationEngine {
         var result = Result(id, generation);
         Require(caller.Role == "client" && state.Work[id].Requester == caller.Id &&
             caller.WorkerId == result.ReturnTo.WorkerId && caller.MachineId == result.ReturnTo.MachineId &&
-            MatchesRecipient(result.ReturnTo, out _) && caller.Projects.Contains(result.Candidate.Project) &&
+            MatchesRecipient(result.ReturnTo, out _, RootRequesterRecipient(state.Work[id].Requester, result.ReturnTo)) &&
+            (caller.RequesterId is not null || caller.Projects.Contains(result.Candidate.Project)) &&
             resultRef == result.ResultRef && candidate is not null && SameCandidate(candidate, result.Candidate),
             "result-consumption-conflict");
         if (result.ConsumedAtUtc is not null) return result;

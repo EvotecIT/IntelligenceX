@@ -36,8 +36,9 @@ public sealed partial class CoordinationEngine {
             var sourceChanged = state.Bindings.TryGetValue(work.Request.Id, out var currentBinding) &&
                 (!state.Workers.TryGetValue(currentBinding.WorkerId, out var currentWorker) || currentWorker.Candidate is null ||
                  !SameCandidate(currentBinding.Candidate, currentWorker.Candidate));
-            if (now > work.RenewByUtc || bootChanged || sourceChanged || goal.Stopped || goal.Paused || !Authorized(work, goal))
-                Put(work with { State = "reconcile", Reason = bootChanged ? "boot-changed" : sourceChanged ? "worker-source-changed" : goal.Stopped || goal.Paused ? "goal-held" :
+            var requesterHeld = !RequesterReady(work);
+            if (now > work.RenewByUtc || bootChanged || sourceChanged || requesterHeld || goal.Stopped || goal.Paused || !Authorized(work, goal))
+                Put(work with { State = "reconcile", Reason = bootChanged ? "boot-changed" : sourceChanged ? "worker-source-changed" : requesterHeld ? "requester-held" : goal.Stopped || goal.Paused ? "goal-held" :
                     !Authorized(work, goal) ? "control-changed" : "grant-overdue" }, "reconciliation-required", "service");
         }
         if (!state.Policy.Enabled) return;
@@ -45,6 +46,9 @@ public sealed partial class CoordinationEngine {
         foreach (var work in state.Work.Values.Where(w => w.State == "queued").OrderBy(w => w.Order).ToArray()) {
             var r = work.Request;
             var goal = state.Goals[r.GoalId];
+            if (!RequesterReady(work)) {
+                state.Work[r.Id] = work with { Reason = "requester-held" }; continue;
+            }
             if (goal.Paused || goal.Stopped || goal.Accepted || !Authorized(work, goal)) {
                 state.Work[r.Id] = work with { Reason = "goal-held-or-changed" }; continue;
             }
@@ -121,7 +125,7 @@ public sealed partial class CoordinationEngine {
         } else {
             Require(stage is "submitted" or "started" or "renew", "invalid-execution-stage");
             var goal = state.Goals[work.Request.GoalId];
-            Require(!goal.Stopped && !goal.Paused && Authorized(work, goal) && work.State != "reconcile" &&
+            Require(!goal.Stopped && !goal.Paused && Authorized(work, goal) && RequesterReady(work) && work.State != "reconcile" &&
                 now <= work.RenewByUtc && Fresh(work.Machine!), "grant-needs-reconciliation");
             Require(stage switch {
                 "submitted" => work.State is "admitted" or "submitted",

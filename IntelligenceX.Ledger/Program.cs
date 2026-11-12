@@ -47,7 +47,7 @@ public static class Program {
         using var writerLease = LedgerBackup.AcquireServiceLease(settings.DataDirectory);
         var coordination = settings.CoordinationConfigPath is null ? null : CoordinationEndpoints.Load(settings.CoordinationConfigPath, settings);
         using var coordinationStore = coordination is null ? null : new CoordinationStore(
-            Path.Combine(settings.DataDirectory, "coordination.sqlite"), coordination.InitialPolicy);
+            Path.Combine(settings.DataDirectory, "coordination.sqlite"), coordination.InitialPolicy, coordination.Principals);
         if (coordinationStore is not null) await coordinationStore.InitializeAsync();
         using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules));
         await store.InitializeAsync();
@@ -80,7 +80,7 @@ public static class Program {
             var header = context.Request.Headers.Authorization.ToString();
             var bearer = header.StartsWith("Bearer ", StringComparison.Ordinal) ? header[7..] : "";
             if (CoordinationEndpoints.OwnsRoute(context.Request.Path)) {
-                if (coordination is null || !CoordinationEndpoints.Authenticate(context, bearer, coordination)) {
+                if (coordination is null || !await CoordinationEndpoints.AuthenticateAsync(context, bearer, coordination, coordinationStore!)) {
                     context.Response.StatusCode = 401; return;
                 }
             } else {

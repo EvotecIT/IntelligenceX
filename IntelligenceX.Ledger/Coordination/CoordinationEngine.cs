@@ -5,7 +5,8 @@ using static IntelligenceX.Ledger.Coordination.CoordinationValidation;
 namespace IntelligenceX.Ledger.Coordination;
 
 /// <summary>Deterministic admission and lifecycle rules shared by every command surface.</summary>
-public sealed partial class CoordinationEngine(CoordinationState state, DateTimeOffset now) {
+public sealed partial class CoordinationEngine(CoordinationState state, DateTimeOffset now,
+    IReadOnlyCollection<CoordinationPrincipal>? configuredPrincipals = null) {
     public List<CoordinationChange> Changes { get; } = [];
     private static readonly HashSet<string> Occupied = ["admitted", "submitted", "started", "reconcile"];
     private static readonly HashSet<string> Terminal = ["succeeded", "failed", "cancelled"];
@@ -21,6 +22,8 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
 
     public CoordinationGoal SetGoal(CoordinationGoal goal, CoordinationPrincipal caller, long expectedRevision) {
         Require(caller.Role is "client" or "operator", "goal-role-denied");
+        RequireRequesterScope(caller, goal.Id, goal.AuthorizationRef, requireDispatch:
+            !state.Goals.ContainsKey(goal.Id) || !goal.Accepted && !goal.Paused && !goal.Stopped);
         Require(Id(goal.Id) && Id(goal.AuthorizationRef) && goal.AcceptanceCriteria is { Length: > 0 and <= 64 } &&
             goal.AcceptanceCriteria.All(Id) && (goal.ResultRef is null || Id(goal.ResultRef)), "invalid-goal");
         state.Goals.TryGetValue(goal.Id, out var prior);
@@ -49,6 +52,7 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
             Require(existing.Requester == caller.Id && Same(existing.Request, request), "request-id-conflict");
             return existing;
         }
+        RequireRequesterScope(caller, request.GoalId, request.AuthorizationRef, request.Checkpoint);
         Require(state.Goals.TryGetValue(request.GoalId, out var goal) &&
             ControlRevision(goal) == request.ControlRevision && !goal.Stopped && !goal.Paused && !goal.Accepted &&
             goal.AuthorizationRef == request.AuthorizationRef, "goal-control-conflict");
@@ -89,6 +93,12 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
     }
 
     public void ObserveWorker(CoordinationWorker worker, CoordinationPrincipal caller) {
+        ValidateWorkerObservation(worker, caller);
+        state.Workers[worker.Id] = worker;
+        Schedule();
+    }
+
+    private void ValidateWorkerObservation(CoordinationWorker worker, CoordinationPrincipal caller, bool allowDuplicate = false) {
         Require(caller.Role == "host" && caller.MachineId == worker.MachineId && Id(worker.Id) && Id(worker.Provider) &&
             state.Policy.Machines.Any(m => m.Id == worker.MachineId) &&
             (worker.SessionId is null || Id(worker.SessionId)) && (worker.WorkspaceId is null || Id(worker.WorkspaceId)) &&
@@ -99,12 +109,11 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
         if (worker.Candidate is not null) Checkpoint(worker.Candidate);
         if (state.Workers.TryGetValue(worker.Id, out var previous)) Require(previous.MachineId == worker.MachineId &&
             previous.Provider == worker.Provider && previous.SessionId == worker.SessionId && previous.WorkspaceId == worker.WorkspaceId &&
-            previous.TemporaryWorker == worker.TemporaryWorker && worker.ObservedAtUtc > previous.ObservedAtUtc, "worker-identity-conflict");
+            previous.TemporaryWorker == worker.TemporaryWorker &&
+            (worker.ObservedAtUtc > previous.ObservedAtUtc || allowDuplicate && Same(previous, worker)), "worker-identity-conflict");
         Require(worker.SessionId is null || !state.Workers.Values.Any(w => w.Id != worker.Id &&
             w.MachineId == worker.MachineId && w.Provider == worker.Provider && w.SessionId == worker.SessionId),
             "session-already-enrolled");
-        state.Workers[worker.Id] = worker;
-        Schedule();
     }
 
     public void ReplacePolicy(CoordinationPolicy policy, CoordinationPrincipal caller, long expectedRevision) {

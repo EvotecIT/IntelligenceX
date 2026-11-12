@@ -21,7 +21,7 @@ public sealed partial class CoordinationEngine {
     /// Owner and generation guards also apply to identical retries after acknowledgement loss.</summary>
     public CoordinationWork Cancel(string id, CoordinationCancellation command, CoordinationPrincipal caller) {
         Require(state.Work.TryGetValue(id, out var work) && caller.Role == "client" &&
-            work.Requester == caller.Id && caller.Projects.Contains(work.Request.Checkpoint.Project),
+            work.Requester == caller.Id && (caller.RequesterId is not null || caller.Projects.Contains(work.Request.Checkpoint.Project)),
             "cancel-owner-conflict");
         Require(command.ExpectedGeneration == 0 && work.Generation == command.ExpectedGeneration,
             "cancel-generation-conflict");

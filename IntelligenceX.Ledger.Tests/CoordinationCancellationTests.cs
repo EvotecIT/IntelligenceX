@@ -14,6 +14,43 @@ public sealed class CoordinationCancellationTests {
         return engine.Submit(Help("obsolete") with { Kind = "review", ReadOnly = true }, Requester);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RemovedSourceRequesterCanCancelUntouchedHistoryAndAcceptItsGoal(bool removeAllScopes) {
+        var (state, caller) = CoordinationRequesterTests.Enrolled();
+        state.Policy = state.Policy with { Enabled = false };
+        var engine = new CoordinationEngine(state, Now);
+        var queued = engine.Submit(CoordinationRequesterTests.ScopedHelp("obsolete"), caller);
+        Assert.Equal("queued", queued.State);
+        var later = new CoordinationEngine(state, Now.AddSeconds(1));
+        later.EnrollRequester(CoordinationRequesterTests.Enrollment with {
+            Sources = removeAllScopes ? [] : [new("second-project", "feature/next")],
+            ObservedAtUtc = Now.AddSeconds(1)
+        }, CoordinationRequesterTests.EnrollmentHost);
+        caller = later.AuthenticateRequester(CoordinationRequesterTests.Token)!;
+        Assert.DoesNotContain(Candidate.Project, caller.Projects);
+        var goal = state.Goals[CoordinationRequesterTests.Enrollment.GoalId];
+        Assert.Equal("goal-acceptance-incomplete", Assert.Throws<CoordinationConflictException>(() =>
+            later.SetGoal(goal with { Accepted = true, ResultRef = "task-result" }, caller, goal.Revision)).Message);
+        var cancelled = later.Cancel(queued.Request.Id, Cancellation, caller);
+        Assert.Equal("cancelled", cancelled.State);
+        Assert.Equal(0, cancelled.Generation);
+        Assert.Null(cancelled.GrantId);
+        Assert.Same(queued.Request, cancelled.Request);
+        Assert.True(cancelled.Stages!.ContainsKey("cancellation-accepted"));
+        Assert.True(cancelled.Stages.ContainsKey("accepted"));
+        Assert.Equal(cancelled, later.Cancel(queued.Request.Id, Cancellation, caller));
+        Assert.Equal("cancel-owner-conflict", Assert.Throws<CoordinationConflictException>(() =>
+            later.Cancel(queued.Request.Id, Cancellation, Requester)).Message);
+        Assert.Equal("cancel-generation-conflict", Assert.Throws<CoordinationConflictException>(() =>
+            later.Cancel(queued.Request.Id, Cancellation with { ExpectedGeneration = 1 }, caller)).Message);
+        Assert.True(later.SetGoal(goal with { Accepted = true, ResultRef = "task-result" }, caller, goal.Revision).Accepted);
+        Assert.Empty(state.Bindings);
+        Assert.Empty(state.ResultOutbox);
+        Assert.Empty(state.Retirements);
+    }
+
     [Fact]
     public void CancelsImmutableQueuedIntentIdempotentlyAndRetainsGoalAcceptance() {
         var state = CreateState();

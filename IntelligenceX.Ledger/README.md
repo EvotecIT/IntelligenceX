@@ -281,6 +281,22 @@ A coordination client configuration contains `endpoint`, `token` and optional
 Keep enrollment, policy, client configuration, native identities and result data
 outside the repository.
 
+Hosts can enroll task-scoped requesters when their configured principal has
+`allowRequesterEnrollment=true` and an explicit project list. The trusted local
+integration qualifies the native session, task generation and source branches,
+persists a random client credential locally, and sends its SHA-256 digest through
+`POST /api/coordination/v1/requesters`. `workerObservation` can accompany that
+command so a task-generation change updates the worker and supersedes the old
+requester before scheduling runs. `GET /workers/{provider}/{sessionId}` resolves
+the existing worker on the authenticated host, with an explicit null for absence.
+
+Requester credentials retain their session, task and authorization binding.
+Fresh host observations can renew their project/branch scopes and dispatch
+qualification. Held or stale controls preserve access to existing work and
+results while holding new dispatch. A superseded task generation keeps its
+history and cannot resume its former scope. Existing static principals retain
+their configured behavior.
+
 ```text
 ix coordination status sample-project --config /absolute/path/scoped-client.json
 ix coordination request sample-help --config /absolute/path/scoped-client.json
