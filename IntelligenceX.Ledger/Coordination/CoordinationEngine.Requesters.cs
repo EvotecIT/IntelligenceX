@@ -15,8 +15,13 @@ public sealed partial class CoordinationEngine {
         var workers = state.Workers.Values.Where(w => w.MachineId == caller.MachineId &&
             w.Provider == provider && w.SessionId == sessionId).Take(2).ToArray();
         Require(workers.Length <= 1, "worker-session-conflict");
-        return new(workers.SingleOrDefault());
+        var worker = workers.SingleOrDefault();
+        return new(worker, worker is null ? null : WorkerAssignment(worker.Id));
     }
+
+    private CoordinationWork? WorkerAssignment(string workerId) => state.Work.Values.Where(work => work.Assignee == workerId &&
+            (Occupied.Contains(work.State) || state.Bindings.TryGetValue(work.Request.Id, out var binding) &&
+                !ReusableAssignmentComplete(binding))).MaxBy(work => work.Order);
 
     /// <summary>Refuses startup or registration when a configured identity or credential would shadow a durable requester.</summary>
     public void ValidateRequesterPrincipals() {

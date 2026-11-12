@@ -16,6 +16,8 @@ public sealed record RequesterEnrollment(string Id, string WorkerId, string Goal
     CoordinationWorker? WorkerObservation = null);
 
 /// <summary>Host-only lookup of the existing session enrollment on the authenticated machine.
-/// An explicit null establishes absence. A missing field or failed transport cannot establish absence.</summary>
+/// An explicit null worker establishes absence. Assignment retains an occupied grant or an unconsumed
+/// session binding so host refreshes preserve the source until its assignment is released.</summary>
 public sealed record CoordinationWorkerStatus(
-    [property: System.Text.Json.Serialization.JsonRequired] CoordinationWorker? Worker);
+    [property: System.Text.Json.Serialization.JsonRequired] CoordinationWorker? Worker,
+    CoordinationWork? Assignment = null);

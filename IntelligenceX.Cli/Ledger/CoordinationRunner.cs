@@ -15,11 +15,12 @@ internal static class CoordinationRunner {
             Console.WriteLine("ix coordination submit <request.json>|checkpoint <goal-command.json>|policy-set <policy-command.json> --config <scoped-client.json> [--apply]");
             Console.WriteLine("ix coordination accept <request-id> <result-ref> --config <scoped-client.json> --apply");
             Console.WriteLine("ix coordination cancel <request-id> <command.json> --config <scoped-client.json> --apply");
-            Console.WriteLine("ix coordination assigned|results|retirements [after-order] --config <scoped-client.json>");
+            Console.WriteLine("ix coordination assigned|review-candidates|results|retirements [after-order] --config <scoped-client.json>");
             Console.WriteLine("ix coordination changes <cursor> --config <host-client.json>");
             Console.WriteLine("ix coordination host <observation.json>|worker <observation.json>|receipt <request-id> <stage> <receipt.json> --config <host-client.json> --apply");
             Console.WriteLine("ix coordination requester-enroll <enrollment.json> --config <host-client.json> --apply");
             Console.WriteLine("ix coordination worker-status <provider> <session-id> --config <host-client.json>");
+            Console.WriteLine("ix coordination worker-prepare <observation.json> --config <host-client.json> --apply");
             Console.WriteLine("ix coordination results|retirements|result <request-id>|retirement <request-id> --config <scoped-client.json>");
             Console.WriteLine("ix coordination result-content <request-id>|result-publish <request-id> <content.json> --config <scoped-client.json> [--apply]");
             Console.WriteLine("ix coordination reconcile <proof.json>|reauthorize <authorization.json> --config <scoped-client.json> --apply");
@@ -32,7 +33,7 @@ internal static class CoordinationRunner {
         var apply = args.Contains("--apply", StringComparer.Ordinal);
         if (args.Length != index + 2 + (apply ? 1 : 0) || apply && args[^1] != "--apply") return 2;
         if (!apply && args[0] is "checkpoint" or "policy-set" or "accept" or "cancel" or "host" or "worker" or
-            "requester-enroll" or "receipt" or "bind" or "retire" or "delivery-begin" or "delivery-receipt" or
+            "worker-prepare" or "requester-enroll" or "receipt" or "bind" or "retire" or "delivery-begin" or "delivery-receipt" or
             "consume" or "reconcile" or "reauthorize" or "result-publish") {
             Console.WriteLine(JsonSerializer.Serialize(new { outcome = "rejected", error = "apply-required" }));
             return 1;
@@ -47,6 +48,8 @@ internal static class CoordinationRunner {
                 "worker-status" when index == 3 => await client.WorkerStatusAsync(args[1], args[2]).ConfigureAwait(false),
                 "assigned" when index == 1 => await client.AssignedAsync().ConfigureAwait(false),
                 "assigned" when index == 2 && long.TryParse(args[1], out var assignedOrder) && assignedOrder >= 0 => await client.AssignedAsync(afterOrder: assignedOrder).ConfigureAwait(false),
+                "review-candidates" when index == 1 => await client.ReviewCandidatesAsync().ConfigureAwait(false),
+                "review-candidates" when index == 2 && long.TryParse(args[1], out var reviewOrder) && reviewOrder >= 0 => await client.ReviewCandidatesAsync(afterOrder: reviewOrder).ConfigureAwait(false),
                 "changes" when index == 2 && long.TryParse(args[1], out var cursor) && cursor >= 0 => await client.ChangesAsync(cursor).ConfigureAwait(false),
                 "results" when index == 1 => await client.ResultsAsync().ConfigureAwait(false),
                 "results" when index == 2 && long.TryParse(args[1], out var resultOrder) && resultOrder >= 0 => await client.ResultsAsync(afterOrder: resultOrder).ConfigureAwait(false),
@@ -63,6 +66,7 @@ internal static class CoordinationRunner {
                 "cancel" when index == 3 && apply => await client.CancelAsync(args[1], Read<CoordinationCancellation>(args[2])).ConfigureAwait(false),
                 "host" when index == 2 && apply => await client.HostAsync(Read<CoordinationHost>(args[1])).ConfigureAwait(false),
                 "worker" when index == 2 && apply => await client.WorkerAsync(Read<CoordinationWorker>(args[1])).ConfigureAwait(false),
+                "worker-prepare" when index == 2 && apply => await client.PrepareWorkerAsync(Read<CoordinationWorker>(args[1])).ConfigureAwait(false),
                 "requester-enroll" when index == 2 && apply => await client.EnrollRequesterAsync(Read<RequesterEnrollment>(args[1])).ConfigureAwait(false),
                 "receipt" when index == 4 && apply => await client.ReceiptAsync(args[1], args[2], Read<ExecutionReceipt>(args[3])).ConfigureAwait(false),
                 "bind" when index == 2 && apply => await client.BindSessionAsync(Read<CoordinationSessionBinding>(args[1])).ConfigureAwait(false),

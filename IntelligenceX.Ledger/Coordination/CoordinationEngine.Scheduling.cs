@@ -29,6 +29,31 @@ public sealed partial class CoordinationEngine {
                 (request.RequiredProvider is null || request.RequiredProvider == p)).OrderBy(p => p, StringComparer.Ordinal).FirstOrDefault()
             : null;
 
+    private string? QueuedDispatchHold(CoordinationWork work) {
+        if (!RequesterReady(work)) return "requester-held";
+        var goal = state.Goals[work.Request.GoalId];
+        if (goal.Paused || goal.Stopped || goal.Accepted || !Authorized(work, goal)) return "goal-held-or-changed";
+        return work.Request.Dependencies.Any(id => state.Work[id].State != "succeeded" ||
+            state.Work[id].Stages?.ContainsKey("accepted") != true) ? "dependency-not-accepted" : null;
+    }
+
+    /// <summary>Reads bounded queued reviews that this host may prepare within its project and machine scope.
+    /// Source preparation grants no native assignment. The normal scheduler and binding checks retain admission.</summary>
+    public CoordinationWorkPage ReviewCandidates(CoordinationPrincipal caller, long afterOrder = 0) {
+        Require(caller.Role == "host", "review-candidates-role-denied");
+        var machine = state.Policy.Machines.FirstOrDefault(m => m.Id == caller.MachineId && m.Enabled);
+        if (!state.Policy.Enabled || machine is null) return new([], null);
+        var page = state.Work.Values.Where(work => work.Order > Math.Max(0, afterOrder) && work.State == "queued" &&
+            work.Request.Kind == "review" && work.Request.ReadOnly && work.Request.ReuseSession &&
+            caller.Projects.Contains(work.Request.Checkpoint.Project, StringComparer.Ordinal) &&
+            (work.Request.MachineId is null || work.Request.MachineId == machine.Id) &&
+            (work.Request.WorkerId is null || state.Workers.TryGetValue(work.Request.WorkerId, out var worker) &&
+                worker.MachineId == machine.Id) && machine.Capabilities.Contains(work.Request.Capability) &&
+            Fits(work.Request.Resources, machine, new()) && QueuedDispatchHold(work) is null)
+            .OrderBy(work => work.Order).Take(17).ToArray();
+        return new(page.Take(16).ToArray(), page.Length > 16 ? page[15].Order : null);
+    }
+
     public void Schedule() {
         foreach (var work in state.Work.Values.Where(w => Occupied.Contains(w.State) && w.State != "reconcile").ToArray()) {
             var goal = state.Goals[work.Request.GoalId];
@@ -45,15 +70,8 @@ public sealed partial class CoordinationEngine {
         var blocked = new HashSet<string>(StringComparer.Ordinal);
         foreach (var work in state.Work.Values.Where(w => w.State == "queued").OrderBy(w => w.Order).ToArray()) {
             var r = work.Request;
-            var goal = state.Goals[r.GoalId];
-            if (!RequesterReady(work)) {
-                state.Work[r.Id] = work with { Reason = "requester-held" }; continue;
-            }
-            if (goal.Paused || goal.Stopped || goal.Accepted || !Authorized(work, goal)) {
-                state.Work[r.Id] = work with { Reason = "goal-held-or-changed" }; continue;
-            }
-            if (r.Dependencies.Any(id => state.Work[id].State != "succeeded" || state.Work[id].Stages?.ContainsKey("accepted") != true)) {
-                state.Work[r.Id] = work with { Reason = "dependency-not-accepted" }; continue;
+            if (QueuedDispatchHold(work) is { } hold) {
+                state.Work[r.Id] = work with { Reason = hold }; continue;
             }
             var native = r.Kind is "help" or "review";
             var needsWorker = native || r.WorkerId is not null || r.RequiredProvider is not null;

@@ -74,6 +74,9 @@ internal static partial class CoordinationEndpoints {
                     .OrderBy(w => w.Order).Take(17).ToArray();
                 return new CoordinationWorkPage(page.Take(16).ToArray(), page.Length > 16 ? page[15].Order : null);
             }, DateTimeOffset.UtcNow, ct)));
+        app.MapGet(Prefix + "/requests/review-candidates", async (long? afterOrder, HttpContext http, CancellationToken ct) =>
+            Results.Ok(await store.ExecuteAsync((engine, _) => engine.ReviewCandidates(Caller(http), afterOrder ?? 0),
+                DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/requests/{id}", async (string id, HttpContext http, CancellationToken ct) =>
             await store.ExecuteAsync((e, s) => {
                 if (!s.Work.TryGetValue(id, out var work) || !Visible(work, Caller(http))) return Results.NotFound();
@@ -96,6 +99,9 @@ internal static partial class CoordinationEndpoints {
             }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/workers", async (CoordinationWorker worker, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => { e.ObserveWorker(worker, Caller(http)); return new { acknowledged = true }; }, DateTimeOffset.UtcNow, ct)));
+        app.MapPost(Prefix + "/workers/prepare", async (CoordinationWorker worker, HttpContext http, CancellationToken ct) =>
+            Results.Ok(await store.ExecuteAsync((e, _) => { e.ObserveWorker(worker, Caller(http), requireUnassigned: true);
+                return new CoordinationAcknowledgement(true); }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/policy", async (CoordinationPolicyCommand command, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => { e.ReplacePolicy(command.Policy, Caller(http), command.ExpectedRevision); return command.Policy; }, DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/policy", async (HttpContext http, CancellationToken ct) => {

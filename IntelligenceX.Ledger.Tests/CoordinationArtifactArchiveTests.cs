@@ -54,11 +54,17 @@ public sealed class CoordinationArtifactArchiveTests {
             Assert.Equal(remote.MachineId, first.Machine);
             Assert.Equal("claude", first.Provider);
             Assert.Equal(request, first.Request);
+            Assert.Equal(first, engine.WorkerStatus("claude", remote.SessionId!, remoteHost).Assignment);
             Assert.Throws<CoordinationConflictException>(() => Bind(engine, first, local, SourceHost));
             var binding = Start(engine, state, first, remoteHost);
             var artifacts = new CoordinationArtifactStore(root);
             var answer = artifacts.Put(first.Request.Id, first.Generation, first.GrantId!, "Verified remote review.");
             engine.Receipt(first.Request.Id, "terminal", Execution(first, answer.ResultRef), remoteHost);
+            var awaitingConsumption = engine.WorkerStatus("claude", remote.SessionId!, remoteHost);
+            Assert.Equal(remote, awaitingConsumption.Worker);
+            Assert.Equal("succeeded", awaitingConsumption.Assignment?.State);
+            Assert.Equal(first.Request.Id, awaitingConsumption.Assignment?.Request.Id);
+            Assert.Null(engine.WorkerStatus("claude", remote.SessionId!, SourceHost).Worker);
             var ordinary = Help("ordinary-personal-work") with {
                 Kind = "agent", Capability = "review", WorkerId = remote.Id, RequiredProvider = "claude",
                 ReadOnly = true, ReturnTo = null
@@ -69,7 +75,9 @@ public sealed class CoordinationArtifactArchiveTests {
             Assert.Equal("admitted", resumed.State);
             Assert.Equal(remote.Id, resumed.Assignee);
             Assert.Equal(remote.MachineId, resumed.Machine);
+            Assert.Equal(resumed, engine.WorkerStatus("claude", remote.SessionId!, remoteHost).Assignment);
             engine.Receipt(ordinary.Id, "terminal", Execution(resumed, "ordinary-result"), remoteHost);
+            Assert.Null(engine.WorkerStatus("claude", remote.SessionId!, remoteHost).Assignment);
             Assert.Equal(binding, state.Bindings[first.Request.Id]);
             Assert.Equal(remote, state.Workers[remote.Id]);
             Assert.Empty(state.Retirements);

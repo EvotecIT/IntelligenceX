@@ -14,6 +14,10 @@ public sealed partial class LedgerReadClient {
     public Task<CoordinationWorkPage> AssignedAsync(CancellationToken token = default, long afterOrder = 0) =>
         GetAsync("api/coordination/v1/requests?afterOrder=" + afterOrder.ToString(System.Globalization.CultureInfo.InvariantCulture),
             LedgerReadJson.Default.CoordinationWorkPage, token);
+    /// <summary>Reads queued review candidates that this enrolled host may prepare, without admitting work.</summary>
+    public Task<CoordinationWorkPage> ReviewCandidatesAsync(CancellationToken token = default, long afterOrder = 0) =>
+        GetAsync("api/coordination/v1/requests/review-candidates?afterOrder=" + afterOrder.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            LedgerReadJson.Default.CoordinationWorkPage, token);
     public Task<CoordinationChanges> ChangesAsync(long after, CancellationToken token = default) =>
         GetAsync("api/coordination/v1/changes?after=" + after, LedgerReadJson.Default.CoordinationChanges, token);
     public Task<CoordinationGoal> GoalAsync(string id, CancellationToken token = default) =>
@@ -35,6 +39,10 @@ public sealed partial class LedgerReadClient {
         PostAsync("hosts", host, LedgerReadJson.Default.CoordinationHost, LedgerReadJson.Default.CoordinationAcknowledgement, token);
     public Task<CoordinationAcknowledgement> WorkerAsync(CoordinationWorker worker, CancellationToken token = default) =>
         PostAsync("workers", worker, LedgerReadJson.Default.CoordinationWorker, LedgerReadJson.Default.CoordinationAcknowledgement, token);
+    /// <summary>Prepares a source only while the worker has no occupied or unconsumed assignment.
+    /// Refreshes retaining the same candidate remain valid during an assignment.</summary>
+    public Task<CoordinationAcknowledgement> PrepareWorkerAsync(CoordinationWorker worker, CancellationToken token = default) =>
+        PostAsync("workers/prepare", worker, LedgerReadJson.Default.CoordinationWorker, LedgerReadJson.Default.CoordinationAcknowledgement, token);
     /// <summary>Registers or renews a hash-only requester through its explicitly enabled authenticated host.</summary>
     public Task<RequesterEnrollment> EnrollRequesterAsync(RequesterEnrollment enrollment, CancellationToken token = default) =>
         PostAsync("requesters", enrollment, LedgerReadJson.Default.RequesterEnrollment, LedgerReadJson.Default.RequesterEnrollment, token);

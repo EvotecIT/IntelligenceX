@@ -92,8 +92,12 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
         Schedule();
     }
 
-    public void ObserveWorker(CoordinationWorker worker, CoordinationPrincipal caller) {
+    /// <summary>Publishes host evidence. Guarded preparation atomically rejects source replacement while
+    /// an occupied or unconsumed assignment still owns the worker's current candidate.</summary>
+    public void ObserveWorker(CoordinationWorker worker, CoordinationPrincipal caller, bool requireUnassigned = false) {
         ValidateWorkerObservation(worker, caller);
+        if (requireUnassigned && state.Workers.TryGetValue(worker.Id, out var prior) && !Same(prior.Candidate, worker.Candidate))
+            Require(WorkerAssignment(worker.Id) is null, "worker-assignment-active");
         state.Workers[worker.Id] = worker;
         Schedule();
     }
