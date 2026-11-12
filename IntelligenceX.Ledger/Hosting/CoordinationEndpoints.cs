@@ -68,7 +68,6 @@ internal static partial class CoordinationEndpoints {
             }, DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/requests", async (long? afterOrder, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, s) => {
-                e.Schedule();
                 var p = Caller(http);
                 var page = s.Work.Values.Where(w => w.Order > Math.Max(0, afterOrder ?? 0) && Visible(w, p) &&
                     (p.Role != "host" || w.State is "admitted" or "submitted" or "started" or "reconcile"))
@@ -77,7 +76,6 @@ internal static partial class CoordinationEndpoints {
             }, DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/requests/{id}", async (string id, HttpContext http, CancellationToken ct) =>
             await store.ExecuteAsync((e, s) => {
-                e.Schedule();
                 if (!s.Work.TryGetValue(id, out var work) || !Visible(work, Caller(http))) return Results.NotFound();
                 if (s.Retirements.TryGetValue(id, out var retirement)) e.RequireTemporaryWorker(retirement.Binding);
                 return Results.Ok(new CoordinationRequestView(work, s.Bindings.GetValueOrDefault(id),
@@ -110,7 +108,7 @@ internal static partial class CoordinationEndpoints {
                 CoordinationValidation.Require(p.Role == "operator" || project is not null &&
                     (p.Projects.Contains(project) || p.RequesterId is not null &&
                         s.Work.Values.Any(w => w.Requester == p.Id && w.Request.Checkpoint.Project == project)), "project-required-or-denied");
-                e.Schedule(); return e.Summary(project, include: work => Visible(work, p));
+                return e.Summary(project, include: work => Visible(work, p));
             }, DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/changes", async (long? after, HttpContext http, CancellationToken ct) => {
             var changes = await store.ChangesAsync(Math.Max(after ?? 0, 0), 100, ct);

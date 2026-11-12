@@ -12,6 +12,47 @@ namespace IntelligenceX.Ledger.Tests;
 
 public sealed class CoordinationRequesterHttpTests {
     [Fact]
+    public async Task RequestReadsPreserveOverdueStateUntilAnExplicitHostObservation() {
+        var clientToken = new string('c', 32);
+        var hostToken = new string('h', 32);
+        var operatorToken = new string('o', 32);
+        var requester = new CoordinationPrincipal("requester", "client", clientToken, ["sample"]);
+        var hostPrincipal = new CoordinationPrincipal("host", "host", hostToken, ["sample"], "synthetic-machine");
+        await CoordinationHttpTests.WithService(new() {
+            InitialPolicy = new(1, [new("synthetic-machine", 1, 1, 4, 4096, ["validation"])], GrantSeconds: 15),
+            Principals = [requester, hostPrincipal, new("operator", "operator", operatorToken, ["sample"])]
+        }, async (endpoint, settings, token) => {
+            using var client = LedgerReadClient.ForCoordination(new(endpoint, clientToken));
+            using var host = LedgerReadClient.ForCoordination(new(endpoint, hostToken));
+            using var admin = LedgerReadClient.ForCoordination(new(endpoint, operatorToken));
+            using var database = new DBAClientX.SQLite();
+            await using var session = await database.OpenSessionAsync(Path.Combine(settings.DataDirectory, "coordination.sqlite"), token);
+            async Task<string> State() => (string)(await session.ExecuteScalarAsync(
+                "SELECT json FROM coordination_state WHERE id=1", cancellationToken: token))!;
+            var before = await State();
+            foreach (var observer in new[] { client, host, admin }) {
+                Assert.Equal("admitted", (await observer.RequestAsync("overdue-request", token)).Work.State);
+                Assert.Equal("admitted", Assert.Single((await observer.AssignedAsync(token)).Items).State);
+                Assert.Equal("admitted", Assert.Single((await observer.CoordinationStatusAsync("sample", token)).Items).State);
+            }
+            Assert.Equal(HttpStatusCode.NotFound, (await Assert.ThrowsAsync<HttpRequestException>(() =>
+                client.RequestAsync("absent-request", token))).StatusCode);
+            Assert.Equal(before, await State());
+            await host.HostAsync(new("synthetic-machine", "boot", DateTimeOffset.UtcNow, ["validation"]), token);
+            Assert.Equal("reconcile", (await client.RequestAsync("overdue-request", token)).Work.State);
+            Assert.NotEqual(before, await State());
+        }, (_, state) => {
+            var observed = DateTimeOffset.UtcNow.AddMinutes(-5);
+            var engine = new CoordinationEngine(state, observed);
+            var goal = engine.SetGoal(new("read-goal", "", 0, false, false, "authorization", ["validation"]), requester, 0);
+            engine.ObserveHost(new("synthetic-machine", "boot", observed, ["validation"]), hostPrincipal);
+            engine.Submit(new("overdue-request", goal.Id, "build", "validation", "synthetic-machine", null,
+                new(BuildSlots: 1), new("sample", "feature/sample", new('a', 40), null, "checkpoint", "validate"),
+                [], goal.ControlRevision, "authorization"), requester);
+        });
+    }
+
+    [Fact]
     public async Task HostAcknowledgementReturnsTheActiveGrantWindowThroughTheTypedClient() {
         var hostToken = new string('h', 32);
         await CoordinationHttpTests.WithService(new() {

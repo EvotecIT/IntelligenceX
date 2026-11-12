@@ -331,6 +331,9 @@ The HTTP routes under `/api/coordination/v1` expose goals, requests, host and
 worker observations, independent delivery receipts, result content, retirement
 jobs, policy and a bounded change cursor. `GET /requests/{id}` returns execution,
 the exact native binding, result delivery/consumption and cleanup in one answer.
+Queries return persisted coordination state. Host observations and explicit
+commands drive scheduling, admission and expired-grant reconciliation.
+
 `GET /summary?project=sample-project` returns queue counts, machine capacity and
 up to eight outstanding requests. Host list pages include only their assignments.
 Retirement pages expose unsafe legacy records as minimal holds for reconciliation.
