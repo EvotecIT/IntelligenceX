@@ -152,9 +152,9 @@ $smokeSource = Join-Path $PSScriptRoot '..\IntelligenceX.PackageSmoke'
 $smokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('intelligencex-package-smoke-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $smokeRoot | Out-Null
 try {
-    Copy-Item -LiteralPath (Join-Path $smokeSource 'IntelligenceX.PackageSmoke.csproj') -Destination $smokeRoot
-    Copy-Item -LiteralPath (Join-Path $smokeSource 'Program.cs') -Destination $smokeRoot
     $smokeProject = Join-Path $smokeRoot 'IntelligenceX.PackageSmoke.csproj'
+    Copy-Item -LiteralPath (Join-Path $smokeSource 'IntelligenceX.PackageSmoke.csproj.template') -Destination $smokeProject
+    Copy-Item -LiteralPath (Join-Path $smokeSource 'Program.cs') -Destination $smokeRoot
     $packagesRoot = Join-Path $smokeRoot 'packages'
     $nugetConfig = Join-Path $smokeRoot 'NuGet.Config'
     $escapedPackageDirectory = [System.Security.SecurityElement]::Escape($resolvedPackageDirectory)
