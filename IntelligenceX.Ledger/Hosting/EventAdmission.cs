@@ -20,6 +20,12 @@ internal static class EventAdmission {
             s.AccountId is not null && !Id(s.AccountId) || s.RepositoryBranchKey is not null && !Id(s.RepositoryBranchKey) ||
             !Time(s.LastActivityAtUtc) || !Time(s.TurnStartedAtUtc) || !Time(s.TurnEndedAtUtc) || !Time(s.QuestionAtUtc) ||
             !Time(s.ArchiveObservedAtUtc) || (s.Archived is null) != (s.ArchiveObservedAtUtc is null))) return false;
+        if (e.Session?.Repository is { } repository && (repository.Repo is not { Length: > 0 and <= 200 } ||
+            repository.Repo.Split('/').Length != 2 || repository.Branch?.Length > 256 || repository.Worktree?.Length > 4096 ||
+            repository.Title?.Length > 240 || repository.PullRequests is null || repository.PullRequests.Length > 10 ||
+            repository.PullRequests.Any(pr => pr is null || pr.Length > 512 || !Uri.TryCreate(pr, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0) ||
+            repository.Files?.Length > 20 || repository.Files?.Any(f => f is null || f.Length > 4096 || Path.IsPathFullyQualified(f) || f.Split('/').Any(part => part == "..")) == true ||
+            repository.BaseRef?.Length > 256 || repository.GitState is not ("observed" or "not-observed" or "workspace-missing" or "git-unavailable" or "base-unknown"))) return false;
         if (e.Work is { } w && (!DeclarationValidation.ValidScope(w.Scope) || w.QueuedInputs is < 0 or > 10000 || w.OpenPullRequests is null || w.OpenPullRequests.Length > 100 ||
             w.OwnedPullRequests is null || w.OwnedPullRequests.Length > 100 || w.OwnedPullRequests.Any(x => !Id(x)) ||
             w.CancelledPullRequests is null || w.CancelledPullRequests.Length > 100 || w.CancelledPullRequests.Any(x => !Id(x)) ||

@@ -32,7 +32,7 @@ public sealed class LedgerHttpTests {
         var settings = new LedgerSettings { DataDirectory = directory, Port = port,
             ProjectCatalogPath = catalog,
             ReadToken = new('r', 32), WriteToken = new('w', 32), ProjectEvidenceReporterId = "synthetic-reporter",
-            ExpectedReporters = new() { ["synthetic-machine"] = ["synthetic-reporter"] } };
+            ExpectedReporters = new() { ["synthetic-machine"] = ["synthetic-reporter"], ["synthetic-mac"] = ["synthetic-mac-reporter"] } };
         var config = Path.Combine(directory, "settings.json");
         await File.WriteAllTextAsync(config, JsonSerializer.Serialize(settings, LedgerJson.Options));
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true,
@@ -81,6 +81,19 @@ public sealed class LedgerHttpTests {
                 Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ReadToken);
             using var reader = new LedgerReadClient(new() { Endpoint = $"http://127.0.0.1:{port}/", ReadToken = settings.ReadToken });
+            Assert.Empty((await reader.WhoAsync("bench:synthetic", token: timeout.Token)).Leases);
+            using (var denied = await client.PostAsJsonAsync("leases/acquire", new LeaseAcquire("bench:synthetic", "agent", "synthetic-machine", "benchmark", 600), timeout.Token))
+                Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using var leaseClient = LedgerReadClient.ForLeases(new() { Endpoint = $"http://127.0.0.1:{port}/", ReadToken = settings.ReadToken, WriteToken = settings.WriteToken });
+            var acquiredLease = await leaseClient.AcquireLeaseAsync(new("bench:synthetic", "agent", "synthetic-machine", "benchmark", 600), timeout.Token);
+            Assert.True(acquiredLease.Ok);
+            Assert.Equal(acquiredLease.Lease, Assert.Single((await reader.WhoAsync("bench:synthetic", token: timeout.Token)).Leases));
+            var machineStatus = await reader.MachineStatusAsync("synthetic-machine", timeout.Token);
+            Assert.Equal("not-enrolled", machineStatus.Reporter);
+            Assert.Equal(1, machineStatus.TotalLeases);
+            Assert.Empty((await reader.BudgetStatusAsync(timeout.Token)).Limits);
+            Assert.True((await leaseClient.ReleaseLeaseAsync(new("bench:synthetic", acquiredLease.Lease!.LeaseId), timeout.Token)).Ok);
+            Assert.Empty((await reader.WhoAsync("bench:synthetic", token: timeout.Token)).Leases);
             var project = await reader.ProjectAsync("synthetic-project", "buffered encoding", timeout.Token);
             var evidence = Assert.Single(project.Knowledge);
             Assert.Equal("rejected", evidence.Outcome);
@@ -134,6 +147,53 @@ public sealed class LedgerHttpTests {
                 Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
             using (var status = await client.GetFromJsonAsync<JsonDocument>("status", timeout.Token))
                 Assert.Equal(1, status!.RootElement.GetProperty("pausedCount").GetInt32());
+            var repositorySession = Guid.NewGuid();
+            var repositoryEvent = observation with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), ItemId = "synthetic-repository-session", Delivery = null,
+                Session = new() { SourceSessionId = repositorySession, TurnOpen = true, TurnId = "synthetic-repository-turn", LastActivityAtUtc = DateTimeOffset.UtcNow,
+                    Repository = new("example/project", "feature/synthetic", directory, "Excel format performance", [], ["src/Cells.cs"], false, "main", "observed") } };
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/events", new[] { repositoryEvent }, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var repositoryActivity = await reader.RepoActivityAsync("example/project", timeout.Token);
+            Assert.Equal(repositorySession.ToString(), Assert.Single(repositoryActivity.Sessions).AgentId);
+            var overlap = await reader.OverlapAsync("example/project", files: ["src/Cells.cs"], token: timeout.Token);
+            Assert.Equal("conflict", overlap.Verdict);
+            Assert.Contains("shared-changed-files", Assert.Single(overlap.Matches).Reasons);
+            var uncovered = await reader.OverlapAsync("example/project", text: "unrelated workload", token: timeout.Token);
+            Assert.Equal("possible", uncovered.Verdict);
+            Assert.Contains("repository-metadata-unobserved:synthetic-mac", uncovered.Coverage);
+            var macEvent = repositoryEvent with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), MachineId = "synthetic-mac",
+                ReporterId = "synthetic-mac-reporter", ItemId = "synthetic-mac-session",
+                Session = repositoryEvent.Session! with { SourceSessionId = Guid.NewGuid(), Repository = repositoryEvent.Session.Repository! with { Branch = "other" } } };
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/events", new[] { macEvent, macEvent with {
+                EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), ItemId = "machine", Session = null, Heartbeat = true, ObservedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-20)
+            } }, LedgerJson.Options, timeout.Token)) Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var stale = await reader.OverlapAsync("example/project", text: "unrelated workload", token: timeout.Token);
+            Assert.Equal("possible", stale.Verdict);
+            Assert.Contains("reporter-silent:synthetic-mac", stale.Coverage);
+            Assert.DoesNotContain("repository-metadata-unobserved:synthetic-mac", stale.Coverage);
+            var probeAt = DateTimeOffset.UtcNow;
+            var probeHealth = new ReporterHealth("synthetic-machine", "synthetic-reporter", "synthetic-probe", probeAt, [], Probe: new("available") {
+                ObservedAtUtc = probeAt, SampledAtUtc = probeAt, CpuUse = .25, MemoryPressure = "warning", MemoryUsedBytes = 128,
+                MemoryTotalBytes = 256, SwapUsedBytes = 64, Volumes = [new("/synthetic", 1024, 2048)], RunnerBusy = true, RunnerListening = true
+            });
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/reporters/health", probeHealth, LedgerJson.Options, timeout.Token)) Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var joined = await reader.MachineStatusAsync("synthetic-machine", timeout.Token);
+            Assert.Equal("available", joined.Probe.State);
+            Assert.Equal(.25, joined.Probe.CpuUse);
+            Assert.Equal("warning", joined.Probe.MemoryPressure);
+            Assert.True(joined.Probe.RunnerBusy);
+            Assert.Equal(1024, Assert.Single(joined.Probe.Volumes!).FreeBytes);
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/reporters/health", probeHealth with { ObservedAtUtc = DateTimeOffset.UtcNow,
+                Probe = new("unavailable", "pairing-pending") }, LedgerJson.Options, timeout.Token)) Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var unpaired = await reader.MachineStatusAsync("synthetic-machine", timeout.Token);
+            Assert.Equal("pairing-pending", unpaired.Probe.Reason);
+            Assert.Equal(joined.LiveSessions, unpaired.LiveSessions);
+            Assert.Null(unpaired.Probe.CpuUse);
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/reporters/health", probeHealth with { ObservedAtUtc = DateTimeOffset.UtcNow,
+                Probe = new("available") { CpuUse = 2 } }, LedgerJson.Options, timeout.Token)) Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var invalidSource = await reader.MachineStatusAsync("synthetic-machine", timeout.Token);
+            Assert.Equal("healthy", invalidSource.Reporter);
+            Assert.Equal("invalid-source-data", invalidSource.Probe.Reason);
         } finally {
             if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
             await Task.WhenAll(output, error);

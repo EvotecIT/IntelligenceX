@@ -53,6 +53,8 @@ public sealed record SessionFact {
     public DateTimeOffset? QuestionAtUtc { get; init; }
     public bool? AppOwned { get; init; }
     public string? RepositoryBranchKey { get; init; }
+    /// <summary>Read-only workspace metadata and bounded changed-file names from the existing reporter.</summary>
+    public RepositoryObservation? Repository { get; init; }
 }
 
 /// <summary>Independent task/claim/wait updates. Null means unobserved; false/zero and a matching resolved wait explicitly clear state.</summary>

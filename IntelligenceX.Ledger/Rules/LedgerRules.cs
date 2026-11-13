@@ -9,6 +9,12 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         new("review", condition, recorded, ReviewAfterUtc: recorded + settings.ReviewWait, Inferred: true, Scope: scope);
     internal TimeSpan EvidenceMaxAge => settings.EvidenceMaxAge;
 
+    /// <summary>Closes current-work membership only with a normal terminal turn and positively closed task gates.</summary>
+    internal static bool IsNormallyEnded(LedgerItem item) => item.Kind == "session" &&
+        item.Session is { TurnOpen: false, Outcome: "completed", Question: false, InputUnconfirmed: false, UsageLimit: false } &&
+        item.Work is { ActiveClaim: false, PullRequestsKnown: true, OpenPullRequests.Length: 0, Wait: null } &&
+        item.Current is { Value: "done", LastKnown: false } && item.Current.Matches.All(match => match.Verdict == "done");
+
     public Verdict Evaluate(LedgerItem item, DateTimeOffset now, bool reporterSilent = false) {
         item = ApplyScope(item);
         var matches = new List<RuleMatch>();
@@ -110,7 +116,7 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         var resolvedInput = item.Kind == "input" && completed && session?.TurnOpen == false && session.InputId is not null
             && !session.Question && !session.InputUnconfirmed && !session.QuestionBlocking;
         var unknown = heldGoal && !LedgerScope.SameTask(goalScope, item.Scope) || appScopeUnknown || waitScopeUnknown || work?.NeedsApp == true && session?.AppOwned is null && !matches.Any(m => m.Verdict == "needs-you") ||
-            !knownPrimary && !resolvedInput && !(completed && work?.ActiveClaim is not null && work.PullRequestsKnown == true);
+            !knownPrimary && !resolvedInput && (session?.InputUnconfirmed == true || !(completed && work?.ActiveClaim is not null && work.PullRequestsKnown == true));
         Add(unknown, "stuck", "unknown", now, "first-observation", "missing:" + string.Join("-", MissingFacts(item)));
 
         if (wait is not null) Add(!(wait.DueAtUtc is { } deadline && now > deadline) && !(wait.ReviewAfterUtc is { } reviewAt && now > reviewAt),
@@ -121,7 +127,7 @@ public sealed partial class LedgerRules(RuleSettings settings) {
             Add(true, "working", now - last < settings.RecentActivity ? "active" : "quiet", session.TurnStartedAtUtc);
         Add(resolvedInput && wait is null && !hasDeclaredCondition && queued == 0 && !item.Deliveries.Values.Any(IsPending),
             "done", "complete", item.SessionEvidence?.ObservedAtUtc ?? item.FirstObservedAtUtc, identity: session?.InputId, evidence: item.SessionEvidence);
-        Add(completed && work?.ActiveClaim == false && work.PullRequestsKnown == true &&
+        Add(completed && session?.InputUnconfirmed != true && work?.ActiveClaim == false && work.PullRequestsKnown == true &&
             work.OpenPullRequests.Length == 0 && wait is null && !hasDeclaredCondition && queued == 0 &&
             !item.Deliveries.Values.Any(IsPending), "done", work?.CancelledPullRequests.Length > 0 ? "cancelled" : work?.HadPullRequests == true ? "complete" : "idle", session?.TurnEndedAtUtc);
 
@@ -132,7 +138,7 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         if (reporterSilent && previous is not null) return LastKnown(previous, now);
         // Done remains sticky until explicit new work appears.
         if (previous?.Value == "done" && previous.RulesVersion == Version &&
-            !(item.Kind == "input" && session?.InputUnconfirmed == true) &&
+            session?.InputUnconfirmed != true &&
             (item.Scope is null && previous.Matches.FirstOrDefault()?.Scope is null || LedgerScope.SameTask(item.Scope, previous.Matches.FirstOrDefault()?.Scope)) &&
             session?.TurnOpen != true && work?.ActiveClaim != true &&
             wait is null && queued == 0 && !item.Deliveries.Values.Any(IsPending) &&
@@ -158,7 +164,7 @@ public sealed partial class LedgerRules(RuleSettings settings) {
     }
 
     private static string[] MissingFacts(LedgerItem item) {
-        if (item.Kind == "input" && item.Session?.InputUnconfirmed == true) return ["input-status"];
+        if (item.Session?.InputUnconfirmed == true) return ["input-status"];
         TaskScope? WorkScope(string dimension) => item.WorkDimensionScopes.TryGetValue(dimension, out var scope) ? scope : item.Work?.Scope;
         if (item.Work?.GoalHeld == true && WorkScope("goal") is null) return ["goal-task-scope"];
         if (item.Scope is not null && item.Work?.NeedsApp == true && WorkScope("app") is null) return ["app-task-scope"];

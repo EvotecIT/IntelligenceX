@@ -7,6 +7,27 @@ namespace IntelligenceX.Ledger.Mcp;
 /// <summary>Thin read tools. State evaluation and retrieval remain service-owned.</summary>
 [McpServerToolType]
 public sealed class LedgerTools(LedgerReadClient client) {
+    [McpServerTool(Name = "repo_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read every live or recent (24h) session for one owner/repository across reporting machines and providers, including branch, worktree, title, PRs, capped file names and leases. Coverage identifies missing observations.")]
+    public Task<RepositoryActivity> RepoActivity(string repo, CancellationToken cancellationToken = default) => client.RepoActivityAsync(repo, cancellationToken);
+
+    [McpServerTool(Name = "overlap", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Check possible duplicate work in one owner/repository using branch, file names or task text. Returns none/possible/conflict with matching sessions and evidence reasons. Text matching is lexical; missing coverage stays explicit.")]
+    public Task<RepositoryOverlap> Overlap(string repo, string? branch = null, string[]? files = null, string? text = null, CancellationToken cancellationToken = default) =>
+        client.OverlapAsync(repo, branch, files, text, cancellationToken);
+
+    [McpServerTool(Name = "who", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read live reservations for an exact key or a prefix. Total includes any rows omitted from this compact response.")]
+    public Task<LeaseQuery> Who(string key, bool prefix = false, CancellationToken cancellationToken = default) => client.WhoAsync(key, prefix, cancellationToken);
+
+    [McpServerTool(Name = "machine_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read one enrolled machine's reporter health, live-session count, observed session-limit count and reservations.")]
+    public Task<MachineStatus> MachineStatus(string id, CancellationToken cancellationToken = default) => client.MachineStatusAsync(id, cancellationToken);
+
+    [McpServerTool(Name = "budget_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read observed usage-limit groups across machines. Credits and reset times remain unknown. An unmapped account is session-scoped evidence.")]
+    public Task<BudgetStatus> BudgetStatus(CancellationToken cancellationToken = default) => client.BudgetStatusAsync(cancellationToken);
+
     [McpServerTool(Name = "project_context", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read project responsibility/dependency evidence and optional maintained knowledge. Omit project for compact discovery. Shows up to three claims by default; request a larger maxResponsibilities when needed. Coverage identifies omitted facts.")]
     public async Task<ProjectDirectoryView> ProjectContext(

@@ -1,6 +1,6 @@
 # Local work ledger
 
-Ledger collects metadata from local Codex and Claude artifacts and evaluates Working, Waiting, Needs you, Stuck and Done. One .NET 10 HTTP service stores append-only observations and current rows in SQLite through DbaClientX.SQLite. Reporters run with the signed-in user's read access to their session files. CLI, tray and tile clients consume the same read model.
+Ledger collects metadata from local Codex and Claude artifacts and evaluates Working, Waiting, Needs you, Stuck and Done. One .NET 10 HTTP service stores recent observations, current rows and verdict transitions in SQLite through DbaClientX.SQLite. Reporters run with the signed-in user's read access to their session files. CLI, tray and tile clients consume the same read model.
 
 Collection reads provider artifacts. Event ingestion, receipts and correctness marks write Ledger's own store. Keep configurations, tokens, certificate files, spools, reports and databases outside source control.
 
@@ -35,6 +35,44 @@ ix ledger report 2026-01-12 --config /absolute/path/client.json
 
 Lists expose `nextCursor`. Pass it with `--cursor` before `--config` to continue the same snapshot. Cursors expire after five minutes; start a new list if a cursor expires. Native session IDs, when observed, are included as identity metadata; messages, prompts, answers, tool arguments and raw hook payloads are excluded.
 
+## Quick reservations and queries
+
+Leases reserve a key until its TTL expires. They work independently of Goals and requests. Competing acquisition returns `busy` with the current holder. Renew and release require the returned `leaseId`, which protects a replacement reservation from an old caller. TTL accepts seconds from 1 to 86400. CLI values also accept `s`, `m` and `h` suffixes.
+
+```text
+ix ledger who bench:shared --config /absolute/path/client.json
+ix ledger who branch:example/project: --prefix --config /absolute/path/client.json
+ix ledger lease_acquire bench:shared session-id machine-id benchmark 10m --config /absolute/path/leases.json
+ix ledger lease_renew bench:shared <lease-id> 10m --config /absolute/path/leases.json
+ix ledger lease_release bench:shared <lease-id> --config /absolute/path/leases.json
+ix ledger machine_status machine-id --config /absolute/path/client.json
+ix ledger budget_status --config /absolute/path/client.json
+```
+
+The write configuration contains `endpoint`, `readToken`, `writeToken` and optional `certificateSha256`. Protect it locally. Read configuration continues to contain only read credentials. MCP `--config` exposes `who`, `machine_status` and `budget_status` alongside the existing read tools. Explicit `--lease-config` adds `lease_acquire`, `lease_renew` and `lease_release` using separate write credentials.
+
+The corresponding HTTP routes are `GET /leases?key=...&prefix=false`, `POST /leases/acquire`, `POST /leases/renew`, `POST /leases/release`, `GET /machine-status/{id}` and `GET /budget-status` under `/api/ledger/v1`. Mutation payloads use the same field names as the CLI arguments, with `ttlSeconds` for TTL. Read calls require the read token and mutations require the write token. Responses are compact JSON with total counts when rows are omitted to stay within 1 KB.
+
+Machine status includes reporter health, live-session and observed usage-limit counts. Budget status groups observed limits across machines and mapped accounts. Missing account mapping keeps the evidence session-scoped. Remaining credits and reset times remain unknown.
+
+Each reporter can read an optional local Marquee Probe on loopback port 47820. `probeEndpoint` overrides that loopback origin. Probe wire version 1 supplies CPU load, memory pressure, swap, free space and runner activity through the existing reporter health row. Machine queries use this cached observation and report an unavailable source when Probe is absent, unpaired or stale. The consumed wire records reference their pinned upstream source.
+
+The reporter requests pairing and retains its private reader state beside its configuration in `probe-reader/reader-state.json`. Approve the request in Probe or with `marquee-probe allow`. Denied, expired or revoked pairing remains unavailable until the owner stops the reporter, removes that private state file and restarts it for a new pairing request.
+
+`repo_activity` returns live sessions and sessions active during the last 24 hours across reporting machines, with branch, worktree, explicit title, observed open PRs and up to 20 changed-file names per workspace. `pullRequestsKnown` identifies a complete recent GitHub observation. Git comparison includes branch commits, tracked working changes and untracked files against the merge base of the observed default branch. Missing PR observations, workspaces or base refs remain explicit coverage gaps. File names describe the workspace and do not establish individual authorship.
+
+```text
+ix ledger repo_activity example/project --config /absolute/path/client.json
+ix ledger overlap example/project --text "Excel cell formatting performance" --config /absolute/path/client.json
+ix ledger overlap example/project --branch feature/cell-formatting --files src/Cells.cs src/Formats.cs --config /absolute/path/client.json
+```
+
+MCP exposes `repo_activity(repo)` and `overlap(repo, branch?, files?, text?)` with the read token. HTTP uses `GET /repo-activity?repo=...` and `GET /overlap?repo=...&branch=...&files=...&text=...`. Overlap reports `none`, `possible` or `conflict` with the matching evidence. Text comparison uses words from the supplied text and observed titles. Repository answers retain every matching session, so their size grows with recent activity. File names are capped and missing machine metadata stays visible in coverage.
+
+## Reporting and retention
+
+Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. Raw events older than seven days are pruned in batches of at most 10000 per minute. Items and verdict transitions stay. Existing retention backlog drains over successive ticks. Freed database pages are reused by SQLite, so the file can retain its allocated size.
+
 All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET routes require the read token; POST requires the write token.
 
 | Route | Result |
@@ -57,7 +95,7 @@ evidence retain their separate timestamps.
 ## Shared views and project context
 
 `GET /api/ledger/v1/work` returns current work, separate from all-history counts.
-Current work includes claims, explicit holds, open unarchived turns, current
+Current work excludes positively completed sessions whose claim and PR gates are closed. It includes claims, explicit holds, open unarchived turns, current
 declarations, and activity or deliveries within the last day. Archived sessions
 with active claims remain visible. The list contains up to 200 rows, with full
 current-work counts and a `truncated` flag. `verdict` filters returned rows;

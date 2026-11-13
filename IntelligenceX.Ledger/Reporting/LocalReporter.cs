@@ -7,6 +7,7 @@ using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Telemetry.Agents;
 using IntelligenceX.Telemetry.GitHub;
+using IntelligenceX.Ledger.Reporting.Probe;
 
 namespace IntelligenceX.Ledger.Reporting;
 
@@ -22,6 +23,7 @@ public sealed record ReporterSettings {
     public Dictionary<string, string> AccountByRoot { get; init; } = [];
     public bool GitHub { get; init; }
     public ProjectClaimsSettings? ProjectClaims { get; init; }
+    public string? ProbeEndpoint { get; init; }
 }
 
 /// <summary>Read-only watcher backstop with local durable delivery, usable on Windows, macOS and Linux.</summary>
@@ -63,12 +65,10 @@ public static class LocalReporter {
         string sourceVersion;
         using (var ownAssembly = File.OpenRead(typeof(LocalReporter).Assembly.Location))
             sourceVersion = Convert.ToHexStringLower(SHA256.HashData(ownAssembly))[..16];
-        long sequence = 0;
-        LedgerEvent Event(string item, string provider, SessionFact? session = null, bool heartbeat = false,
-            string[]? coverage = null) => new() {
-            EventId = Guid.NewGuid(), Epoch = epoch, Sequence = Interlocked.Increment(ref sequence), MachineId = settings.MachineId,
+        LedgerEvent Event(string item, string provider, SessionFact? session = null, string[]? coverage = null) => new() {
+            EventId = Guid.NewGuid(), Epoch = epoch, Sequence = 1, MachineId = settings.MachineId,
             ReporterId = settings.ReporterId, ItemId = item, Provider = provider, Source = hook ? "hook" : "watcher",
-            ObservedAtUtc = DateTimeOffset.UtcNow, SourceVersion = sourceVersion, Session = session, Heartbeat = heartbeat, Coverage = coverage
+            ObservedAtUtc = DateTimeOffset.UtcNow, SourceVersion = sourceVersion, Session = session, Coverage = coverage
         };
         if (hook) {
             // Hints only: a Stop or AskUserQuestion call does not establish completion or pending input.
@@ -114,51 +114,45 @@ public static class LocalReporter {
                 archives.Observe(available.Sessions, DateTimeOffset.UtcNow);
                 return available.Sessions;
             }, github: settings.GitHub ? github : null);
-        var last = new Dictionary<string, string>(StringComparer.Ordinal);
-        var lastWork = new Dictionary<string, string>(StringComparer.Ordinal);
+        var changes = new ReporterChangeTracker(spool, settings.SpoolDirectory);
+        var workspaces = new ReporterWorkspaceCache();
+        using var probeHandler = new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false };
+        using var probeClient = new HttpClient(probeHandler) { Timeout = Timeout.InfiniteTimeSpan };
+        var probe = new ProbeReader(probeClient, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(file))!, "probe-reader"),
+            "IntelligenceX Ledger " + settings.MachineId, settings.ProbeEndpoint);
+        string[] coverage = ["collection-starting"];
         var captureGate = new object();
         void Capture(AgentWorkSnapshot snapshot) {
             lock (captureGate) {
             foreach (var session in snapshot.Sessions) {
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
-                var fact = SessionEvidence(settings, session, archives.For(session));
-                var signature = JsonSerializer.Serialize(fact, LedgerJson.Options);
-                if (!last.TryGetValue(id, out var previous) || previous != signature) {
-                    if (!spool.TryAppend(Event(id, session.Provider, fact))) continue;
-                    last[id] = signature;
-                }
-                foreach (var messageEvent in SessionMessageEvents(Event(id, session.Provider, fact), session.PeerMessages)) {
-                    var messageKey = messageEvent.ItemId + ":" + (messageEvent.Delivery?.Stage ?? "session");
-                    var messageSignature = JsonSerializer.Serialize((object?)messageEvent.Delivery ?? messageEvent.Session, LedgerJson.Options);
-                    if (last.GetValueOrDefault(messageKey) == messageSignature) continue;
-                    if (spool.TryAppend(messageEvent with { Sequence = Interlocked.Increment(ref sequence) }))
-                        last[messageKey] = messageSignature;
-                }
+                var fact = SessionEvidence(settings, session, archives.For(session)) with {
+                    Repository = workspaces.For(session, settings.GitHub && snapshot.GitHubCheckedAtUtc >= DateTimeOffset.UtcNow.AddMinutes(-10))
+                };
+                changes.TryAppend(Event(id, session.Provider, fact));
+                if (fact.SourceMessageId is not null || session.PeerMessages.Count > 0)
+                    foreach (var messageEvent in SessionMessageEvents(Event(id, session.Provider, fact), session.PeerMessages))
+                        changes.TryAppend(messageEvent);
                 foreach (var (childInputId, inputFact) in InputFacts(session)) {
                     var childId = LedgerScope.InputItemId(id, childInputId);
-                    var inputSignature = JsonSerializer.Serialize(inputFact, LedgerJson.Options);
-                    if (last.GetValueOrDefault(childId) == inputSignature) continue;
-                    if (spool.TryAppend(Event(childId, session.Provider, inputFact) with { ItemKind = "input", ParentItemId = id }))
-                        last[childId] = inputSignature;
+                    changes.TryAppend(Event(childId, session.Provider, inputFact) with { ItemKind = "input", ParentItemId = id });
                 }
                 var claims = Volatile.Read(ref claimSnapshot);
                 // Claim membership and its freshness are published once in ProjectEvidence.
                 // Repeating its check time for every historical session creates a full fan-out each refresh.
                 var work = new WorkFact { HadPullRequests = session.PullRequests.Count > 0 || claims?.ItemsWithPullRequests.Contains(id) == true };
-                var workSignature = JsonSerializer.Serialize(work, LedgerJson.Options);
-                if (!lastWork.TryGetValue(id, out var previousWork) || previousWork != workSignature) {
-                    if (spool.TryAppend(Event(id, session.Provider) with { Work = work })) lastWork[id] = workSignature;
-                }
+                changes.TryAppend(Event(id, session.Provider) with { Work = work });
             }
+            changes.Checkpoint();
             }
         }
         async Task UploadLoop() {
-            using var heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            using var heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
             do {
-                await DeliverAsync(client, spool, Event("machine", "machine", heartbeat: true), stop.Token);
+                var machineFacts = await probe.ReadAsync(stop.Token);
+                await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts);
             } while (await heartbeatTimer.WaitForNextTickAsync(stop.Token));
         }
-        spool.TryAppend(Event("source-health", "machine", coverage: ["collection-starting"]));
         var uploader = UploadLoop();
         _ = uploader.ContinueWith(_ => stop.Cancel(), TaskContinuationOptions.OnlyOnFaulted);
         try {
@@ -168,10 +162,10 @@ public static class LocalReporter {
             sourceDiagnostics = watcher.CurrentSnapshot.Diagnostics.Select(x => x.Code).Distinct().ToArray() }));
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
         var evidenceImporter = settings.EvidenceFile is null ? null : new EvidenceSnapshotImporter(settings.EvidenceFile, settings.SpoolDirectory);
-        string? lastGlobalSignature = null;
         var claimsChecked = DateTimeOffset.MinValue;
         var proofsChecked = DateTimeOffset.MinValue;
         PullRequestProof[] proofs = [];
+        string? lastGlobalRefreshSignature = null;
         var proofGap = false;
         var claimFailure = "claims-unavailable";
         do {
@@ -189,6 +183,7 @@ public static class LocalReporter {
                     Volatile.Write(ref claimSnapshot, null);
                 }
             }
+            await workspaces.RefreshAsync(watcher.CurrentSnapshot.Sessions, DateTimeOffset.UtcNow, stop.Token);
             Capture(watcher.CurrentSnapshot);
             if (prCatalog is not null && DateTimeOffset.UtcNow - proofsChecked > TimeSpan.FromMinutes(5)) {
                 proofsChecked = DateTimeOffset.UtcNow;
@@ -202,13 +197,16 @@ public static class LocalReporter {
                 }
             }
             if (ProjectEvidence(settings, watcher.CurrentSnapshot, claimSnapshot, proofs) is { } global) {
-                var signature = JsonSerializer.Serialize(global, LedgerJson.Options);
-                if (signature != lastGlobalSignature) {
-                    if (spool.TryAppend(Event("project-evidence", "project") with { GlobalWork = global })) {
-                        lastGlobalSignature = signature;
-                        try { prCatalog?.RetireAdmittedMerged(proofs); }
-                        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine("pull-request-catalog-retirement-pending"); }
-                    }
+                var observation = Event("project-evidence", "project") with { GlobalWork = global };
+                var refreshed = JsonSerializer.Serialize(global, LedgerJson.Options);
+                if (changes.TryAppend(observation)) {
+                    changes.Checkpoint();
+                    lastGlobalRefreshSignature = refreshed;
+                    try { prCatalog?.RetireAdmittedMerged(proofs); }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.Error.WriteLine("pull-request-catalog-retirement-pending"); }
+                } else if (refreshed != lastGlobalRefreshSignature &&
+                    await RefreshProjectEvidenceAsync(client, spool, changes, observation, stop.Token)) {
+                    lastGlobalRefreshSignature = refreshed;
                 }
             }
             string? evidenceGap = null;
@@ -219,14 +217,14 @@ public static class LocalReporter {
                     Console.Error.WriteLine(evidenceGap);
                 }
             }
-            spool.TryAppend(Event("source-health", "machine", coverage: watcher.CurrentSnapshot.Diagnostics.Select(x => x.Code)
+            Volatile.Write(ref coverage, watcher.CurrentSnapshot.Diagnostics.Select(x => x.Code)
                 .Concat(Volatile.Read(ref metadataDiagnostics).Select(x => x.Code + ":" + x.SourceRootId))
                 .Append("queue-not-visible").Concat(settings.ProjectClaims is not null && claimSnapshot is null ? [claimFailure] : Array.Empty<string>())
                 .Concat(settings.GitHub && watcher.CurrentSnapshot.GitHubCheckedAtUtc is null ? ["pull-requests-unavailable"] : Array.Empty<string>())
                 .Concat(proofGap ? ["pull-request-proof-unavailable"] : Array.Empty<string>())
                 .Concat(settings.EvidenceFile is null ? ["delivery-evidence-not-configured"] :
                     File.Exists(settings.EvidenceFile) ? Array.Empty<string>() : ["coordination-evidence-file-missing"])
-                .Concat(evidenceGap is null ? Array.Empty<string>() : [evidenceGap]).Distinct().ToArray()));
+                .Concat(evidenceGap is null ? Array.Empty<string>() : [evidenceGap]).Distinct().Order(StringComparer.Ordinal).ToArray());
         } while (await timer.WaitForNextTickAsync(stop.Token));
         } finally {
             stop.Cancel();
@@ -335,13 +333,41 @@ public static class LocalReporter {
             claims?.PullRequestUrlsByItem.ToDictionary(pair => pair.Key, pair => new PullRequestLinks(
                 pair.Value.Select(url => ItemId("pr", "github", url)).ToArray(), !claims.IncompletePullRequestItems.Contains(pair.Key), claims.CapturedAtUtc)));
     }
-    internal static async Task DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent heartbeat, CancellationToken token) {
-        await FlushAsync(client, spool, token);
-        spool.TryAppend(heartbeat);
-        await FlushAsync(client, spool, token);
+    internal static async Task DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent healthObservation,
+        CancellationToken token, ReporterChangeTracker? changes = null, ProbeAvailability? probe = null) {
+        var progress = changes?.Progress.Where(p => p.LastActivityAtUtc <= healthObservation.ObservedAtUtc).ToArray() ?? [];
+        var coverage = (healthObservation.Coverage ?? []).Distinct(StringComparer.Ordinal).ToList();
+        if (progress.Length > 128) coverage.Insert(0, "progress-truncated");
+        if (coverage.Count > 32) coverage = [.. coverage.Take(31), "coverage-truncated"];
+        var health = new ReporterHealth(healthObservation.MachineId, healthObservation.ReporterId,
+            healthObservation.SourceVersion, healthObservation.ObservedAtUtc, coverage.ToArray(), progress.Take(128).ToArray(), probe);
+        await FlushAsync(client, spool, token, changes);
+        try {
+            using var response = await client.PostAsJsonAsync("api/ledger/v1/reporters/health", health, LedgerJson.Options, token);
+            if (!response.IsSuccessStatusCode) Console.Error.WriteLine("ledger-health-rejected:" + (int)response.StatusCode);
+        } catch (Exception error) when (!token.IsCancellationRequested &&
+            error is HttpRequestException or IOException or TaskCanceledException) {
+            Console.Error.WriteLine("ledger-health-delivery-pending");
+        }
     }
 
-    private static async Task FlushAsync(HttpClient client, ReporterSpool spool, CancellationToken token) {
+    /// <summary>Refreshes successful source check times after the matching state has drained to the service.</summary>
+    internal static async Task<bool> RefreshProjectEvidenceAsync(HttpClient client, ReporterSpool spool, ReporterChangeTracker changes,
+        LedgerEvent observation, CancellationToken token) {
+        if (!changes.IsCurrent(observation) || spool.Pending().Length > 0) return false;
+        try {
+            using var response = await client.PostAsJsonAsync("api/ledger/v1/project-evidence", observation, LedgerJson.Options, token);
+            if (!response.IsSuccessStatusCode) Console.Error.WriteLine("ledger-project-refresh-rejected:" + (int)response.StatusCode);
+            // A mismatch can settle after an outstanding state event. Retry the same observation later.
+            return response.StatusCode != System.Net.HttpStatusCode.Conflict;
+        } catch (Exception error) when (!token.IsCancellationRequested &&
+            error is HttpRequestException or IOException or TaskCanceledException) {
+            Console.Error.WriteLine("ledger-project-refresh-pending");
+            return true; // The next successful source check supplies another observational refresh.
+        }
+    }
+
+    private static async Task FlushAsync(HttpClient client, ReporterSpool spool, CancellationToken token, ReporterChangeTracker? changes) {
         while (spool.Pending() is { Length: > 0 } pending) {
             try {
                 using var response = await client.PostAsJsonAsync("api/ledger/v1/events", pending, LedgerJson.Options, token);
@@ -349,7 +375,8 @@ public static class LocalReporter {
                 var receipt = await response.Content.ReadFromJsonAsync<Receipt>(cancellationToken: token);
                 var sent = pending.Select(x => x.EventId).ToHashSet();
                 if (receipt is null || receipt.AcknowledgedEventIds.Any(id => !sent.Contains(id))) return;
-                spool.Acknowledge(receipt.AcknowledgedEventIds);
+                if (changes is null) spool.Acknowledge(receipt.AcknowledgedEventIds);
+                else changes.Acknowledge(receipt.AcknowledgedEventIds);
                 if (receipt.AcknowledgedEventIds.Length == 0) return;
             } catch (HttpRequestException error) {
                 var root = error.GetBaseException();
@@ -358,7 +385,7 @@ public static class LocalReporter {
                 return;
             }
             catch (TaskCanceledException) when (!token.IsCancellationRequested) { return; }
-            catch (IOException) {
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
                 Console.Error.WriteLine("ledger-spool-delivery-pending");
                 return;
             }

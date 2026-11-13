@@ -1,6 +1,7 @@
 using DBAClientX;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Ledger.Rules;
+using IntelligenceX.Ledger.Reporting;
 using System.Text.Json;
 
 namespace IntelligenceX.Ledger.Storage;
@@ -12,6 +13,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
     private sealed record LinkObservation(PullRequestLinks Fact, EvidenceRef Evidence);
     private sealed record AssociationObservation(DateTimeOffset ObservedAtUtc, EvidenceRef Evidence);
     private sealed record GlobalSnapshot(GlobalObservation? Claims, GlobalObservation? PullRequests) {
+        public string? ContentSignature { get; init; }
         public Dictionary<string, ProofObservation> Proofs { get; init; } = [];
         public Dictionary<string, LinkObservation> Links { get; init; } = [];
         public Dictionary<string, Dictionary<string, AssociationObservation>> BranchLinks { get; init; } = [];
@@ -45,6 +47,17 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
             CREATE TABLE IF NOT EXISTS heartbeats (reporter TEXT PRIMARY KEY, machine TEXT NOT NULL, received TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS machines (id TEXT PRIMARY KEY, firstseen TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS source_health (reporter TEXT PRIMARY KEY, machine TEXT NOT NULL, json TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS reporter_health (reporter TEXT PRIMARY KEY, machine TEXT NOT NULL, observed TEXT NOT NULL, json TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS leases (key TEXT PRIMARY KEY, id TEXT NOT NULL, machine TEXT NOT NULL, expires TEXT NOT NULL, json TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS leases_machine ON leases(machine,expires);
+            CREATE TABLE IF NOT EXISTS session_status (item TEXT PRIMARY KEY, machine TEXT NOT NULL, provider TEXT NOT NULL,
+              open INTEGER NOT NULL, limited INTEGER NOT NULL, archived INTEGER NOT NULL, account TEXT);
+            CREATE INDEX IF NOT EXISTS session_status_machine ON session_status(machine,archived,open);
+            INSERT OR IGNORE INTO session_status(item,machine,provider,open,limited,archived,account)
+              SELECT id,json_extract(json,'$.machineId'),json_extract(json,'$.provider'),
+                COALESCE(json_extract(json,'$.session.turnOpen'),0),COALESCE(json_extract(json,'$.session.usageLimit'),0),
+                COALESCE(json_extract(json,'$.session.archived'),0),json_extract(json,'$.session.accountId')
+              FROM items WHERE json_extract(json,'$.kind')='session' AND json_type(json,'$.session')='object';
             CREATE TABLE IF NOT EXISTS global_work (id INTEGER PRIMARY KEY CHECK(id=1), json TEXT NOT NULL, received TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS transitions (ordinal INTEGER PRIMARY KEY AUTOINCREMENT,
               item TEXT NOT NULL, recorded TEXT NOT NULL, json TEXT NOT NULL);
@@ -53,16 +66,41 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
             CREATE TABLE IF NOT EXISTS declaration_receipts (item TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL,
               PRIMARY KEY(item,id));
             """, cancellationToken: token);
+        await InitializeRepositoryActivityAsync(db, token);
     }
 
-    public async Task<Guid[]> IngestAsync(LedgerEvent[] events, DateTimeOffset received, CancellationToken token = default) {
+    public async Task<Guid[]> IngestAsync(LedgerEvent[] events, DateTimeOffset received, CancellationToken token = default, bool journal = true) {
+        if (!journal && events.Any(e => e.GlobalWork is null)) throw new ArgumentException("Only source-check refreshes may bypass event history.");
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
             return await db.RunInTransactionAsync(async (tx, ct) => {
                 var global = await ReadGlobalAsync(tx, ct);
                 foreach (var observation in events) {
+                    // Older reporters remain supported without keeping their liveness pings in history.
+                    if (observation.Heartbeat || observation.Source == "watcher" && observation.Coverage is not null) {
+                        await UpsertReporterHealthAsync(tx, new(observation.MachineId, observation.ReporterId, observation.SourceVersion,
+                            observation.ObservedAtUtc, observation.Coverage ?? []), observation.Heartbeat, ct);
+                        continue;
+                    }
+                    LedgerItem? progressItem = null;
+                    ReporterProgress? progressUpdate = null;
+                    if (observation.Source == "watcher" && observation.Session is { TurnOpen: true, TurnId: not null, LastActivityAtUtc: not null } incoming) {
+                        var retained = await tx.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
+                            new Dictionary<string, object?> { ["id"] = observation.ItemId }, ct);
+                        if (retained is string retainedJson) {
+                            var current = Read<LedgerItem>(retainedJson);
+                            var compared = incoming with { LastActivityAtUtc = current.Session?.LastActivityAtUtc,
+                                ArchiveObservedAtUtc = current.Session?.ArchiveObservedAtUtc, AppOwned = current.Session?.AppOwned };
+                            if (current.Session?.TurnOpen == true && current.MachineId == observation.MachineId && current.Provider == observation.Provider &&
+                                current.Kind == (observation.ItemKind ?? "session") && current.ParentItemId == observation.ParentItemId && Json(compared) == Json(current.Session)) {
+                                progressItem = current;
+                                progressUpdate = new(observation.ItemId, incoming.TurnId, incoming.LastActivityAtUtc.Value);
+                            }
+                        }
+                    }
                     var json = Json(observation);
+                    if (journal) {
                     var existing = await tx.ExecuteScalarAsync("SELECT json FROM events WHERE id=@id",
                         new Dictionary<string, object?> { ["id"] = observation.EventId.ToString() }, ct);
                     if (existing is string previous) {
@@ -73,6 +111,11 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                     var sequenceOwner = await tx.ExecuteScalarAsync("SELECT id FROM events WHERE reporter=@reporter AND epoch=@epoch AND sequence=@seq",
                         new Dictionary<string, object?> { ["reporter"] = observation.ReporterId, ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence }, ct);
                     if (sequenceOwner is string) throw new EventConflictException();
+                    if (progressItem is not null && progressUpdate is not null) {
+                        await ApplyProgressAsync(tx, progressItem, progressUpdate,
+                            new(observation.EventId, observation.Source, observation.SourceVersion, observation.ObservedAtUtc, received), received, ct);
+                        continue;
+                    }
                     await tx.ExecuteNonQueryAsync("""
                         INSERT INTO events(id,reporter,epoch,sequence,item,received,json)
                         VALUES(@id,@reporter,@epoch,@seq,@item,@received,@json)
@@ -81,8 +124,12 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                             ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence,
                             ["item"] = observation.ItemId, ["received"] = received.ToString("O"), ["json"] = json
                         }, ct);
+                    }
                     if (observation.GlobalWork is not null) {
                         global ??= new(null, null);
+                        var contentSignature = ReporterChangeTracker.GlobalSignature(observation.GlobalWork);
+                        if (!journal && global.ContentSignature != contentSignature) throw new EventConflictException();
+                        global = global with { ContentSignature = contentSignature };
                         if (observation.GlobalWork.ClaimsAtUtc is { } claimAt &&
                             (global.Claims?.Event.GlobalWork?.ClaimsAtUtc is not { } oldClaim || claimAt >= oldClaim))
                             global = global with { Claims = new(observation, received) };
@@ -228,6 +275,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                     if (decisionChanged) item = await EvaluateAsync(tx, item, received, ct, item.Current?.LastKnown == true);
                     await tx.ExecuteNonQueryAsync("INSERT INTO items(id,json) VALUES(@id,@json) ON CONFLICT(id) DO UPDATE SET json=excluded.json",
                         new Dictionary<string, object?> { ["id"] = item.Id, ["json"] = Json(item) }, ct);
+                    if (item.Kind == "session" && item.Session is { } session) await UpsertSessionStatusAsync(tx, item, session, ct);
+                    if (item.Kind == "session") await UpsertRepositorySessionAsync(tx, item, ct);
                 }
                 return events.Select(x => x.EventId).ToArray();
             }, token);
@@ -386,13 +435,10 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
     }
 
     public async Task<Dictionary<string, DateTimeOffset>> HeartbeatsAsync(CancellationToken token) {
-        await _gate.WaitAsync(token);
-        try {
-            await using var db = await _database.OpenSessionAsync(path, token);
-            var rows = await db.QueryAsListAsync("SELECT reporter,received FROM heartbeats", r =>
-                (r.GetString(0), DateTimeOffset.Parse(r.GetString(1))), cancellationToken: token);
-            return rows.ToDictionary(x => x.Item1, x => x.Item2);
-        } finally { _gate.Release(); }
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var rows = await db.QueryAsListAsync("SELECT reporter,MAX(received) FROM (SELECT reporter,received FROM heartbeats UNION ALL SELECT reporter,observed AS received FROM reporter_health) GROUP BY reporter", r =>
+            (r.GetString(0), DateTimeOffset.Parse(r.GetString(1))), cancellationToken: token);
+        return rows.ToDictionary(x => x.Item1, x => x.Item2);
     }
 
     public async Task<Dictionary<string, DateTimeOffset>> EnrollAsync(IEnumerable<string> machines, CancellationToken token) {
@@ -410,8 +456,12 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
-            var rows = await db.QueryAsListAsync("SELECT json FROM source_health", r => Read<LedgerEvent>(r.GetString(0)), cancellationToken: token);
-            return rows.ToArray();
+            var rows = await db.QueryAsListAsync("SELECT json FROM source_health WHERE reporter NOT IN (SELECT reporter FROM reporter_health)", r => Read<LedgerEvent>(r.GetString(0)), cancellationToken: token);
+            var health = await db.QueryAsListAsync("SELECT json,observed FROM reporter_health", r => Read<ReporterHealth>(r.GetString(0)) with {
+                ObservedAtUtc = DateTimeOffset.Parse(r.GetString(1)) }, cancellationToken: token);
+            return rows.Concat(health.Select(h => new LedgerEvent { EventId = Guid.Empty, Epoch = Guid.Empty, Sequence = 1,
+                ReporterId = h.ReporterId, MachineId = h.MachineId, ItemId = "source-health", Provider = "machine", Source = "watcher",
+                SourceVersion = h.SourceVersion, ObservedAtUtc = h.ObservedAtUtc, Coverage = h.Coverage })).ToArray();
         } finally { _gate.Release(); }
     }
 
@@ -434,6 +484,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
 
     public async Task<object> ReportAsync(DateOnly date, DateTimeOffset now, CancellationToken token) {
         var transitions = await DailyAsync(date, token);
+        var reporterHealth = await HeartbeatsAsync(token);
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
@@ -443,13 +494,13 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                     latestReceiptAtUtc = r.IsDBNull(1) ? (DateTimeOffset?)null : DateTimeOffset.Parse(r.GetString(1)), eventCount = r.GetInt64(2) },
                 new Dictionary<string, object?> { ["start"] = start.ToString("O"), ["end"] = start.AddDays(1).ToString("O") }, cancellationToken: token);
             var unknowns = await db.QueryAsListAsync("SELECT json FROM items", r => Read<LedgerItem>(r.GetString(0)), cancellationToken: token);
-            return new { date, generatedAtUtc = now, coverage = "observed-only", observationCoverage = bounds.Single(),
+            return new { date, generatedAtUtc = now, coverage = "observed-only", observationCoverage = bounds.Single(), reporterHealthAsOfUtc = now, reporterHealth,
                 unresolvedUnknownsAsOfUtc = now, unresolvedUnknowns = unknowns.Where(i => !i.IsMessageEvidence && i.Current?.ReasonCode == "unknown")
                     .Select(i => new { i.Id, i.MachineId, i.Provider, i.Current!.SinceUtc, i.Current.MissingFacts }).ToArray(), transitions };
         } finally { _gate.Release(); }
     }
 
-    public void Dispose() { _database.Dispose(); _gate.Dispose(); }
+    public void Dispose() { _database.Dispose(); _gate.Dispose(); _leaseGate.Dispose(); }
 }
 
 public sealed class EventConflictException : Exception;

@@ -35,7 +35,7 @@ public sealed class LedgerHostingRegressionTests : IDisposable {
     }
 
     [Fact]
-    public async Task ShadowFileAdvancesCoverageForHeartbeatOnlyObservations() {
+    public async Task ShadowFileAdvancesLatestReporterHealthWithoutCreatingEvents() {
         using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
         await store.InitializeAsync();
         using var worker = new ShadowReportWorker(store, new() { DataDirectory = _directory, ReadToken = new('r', 32), WriteToken = new('w', 32) });
@@ -45,22 +45,20 @@ public sealed class LedgerHostingRegressionTests : IDisposable {
         await store.IngestAsync([Heartbeat(now)], now);
         await worker.StartAsync(default);
         try {
-            async Task<long> Count() {
+            async Task<DateTimeOffset?> LatestHeartbeat() {
                 try {
                     using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, deadline.Token));
                     Assert.Empty(document.RootElement.GetProperty("transitions").EnumerateArray());
-                    return document.RootElement.GetProperty("observationCoverage").GetProperty("eventCount").GetInt64();
-                } catch (IOException) { return 0; }
+                    Assert.Equal(0, document.RootElement.GetProperty("observationCoverage").GetProperty("eventCount").GetInt64());
+                    return document.RootElement.GetProperty("reporterHealth").GetProperty("synthetic-first-reporter").GetDateTimeOffset();
+                } catch (IOException) { return null; }
             }
-            while (await Count() != 1) await Task.Delay(50, deadline.Token);
+            while (await LatestHeartbeat() != now) await Task.Delay(50, deadline.Token);
             var received = DateTimeOffset.UtcNow;
             await store.IngestAsync([Heartbeat(received)], received);
-            long count = 1;
-            try { while ((count = await Count()) != 2) await Task.Delay(50, deadline.Token); }
-            catch (OperationCanceledException) when (deadline.IsCancellationRequested) { }
-            Assert.Equal(2, count);
+            while (await LatestHeartbeat() != received) await Task.Delay(50, deadline.Token);
             using var report = JsonDocument.Parse(await File.ReadAllBytesAsync(path));
-            Assert.Equal(received, report.RootElement.GetProperty("observationCoverage").GetProperty("latestReceiptAtUtc").GetDateTimeOffset());
+            Assert.Equal(received, report.RootElement.GetProperty("reporterHealth").GetProperty("synthetic-first-reporter").GetDateTimeOffset());
         } finally { await worker.StopAsync(default); }
     }
 

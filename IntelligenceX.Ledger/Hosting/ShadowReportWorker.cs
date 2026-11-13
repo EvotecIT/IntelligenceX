@@ -14,6 +14,7 @@ internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings setti
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         do {
             var now = DateTimeOffset.UtcNow;
+            await store.PruneEventsAsync(now, token: stoppingToken);
             await new LedgerRuntime(store, settings).ItemsAsync(now, stoppingToken);
             foreach (var day in new[] { DateOnly.FromDateTime(now.UtcDateTime).AddDays(-1), DateOnly.FromDateTime(now.UtcDateTime) }) {
                 var file = Path.Combine(directory, day.ToString("yyyy-MM-dd") + ".json");
@@ -23,6 +24,7 @@ internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings setti
                 var closed = day < DateOnly.FromDateTime(now.UtcDateTime);
                 var content = JsonSerializer.SerializeToUtf8Bytes(new { transitions = document.RootElement.GetProperty("transitions"),
                     observationCoverage = document.RootElement.GetProperty("observationCoverage"),
+                    reporterHealth = closed ? (JsonElement?)null : document.RootElement.GetProperty("reporterHealth"),
                     unknowns = closed ? (JsonElement?)null : document.RootElement.GetProperty("unresolvedUnknowns") }, LedgerJson.Options);
                 var fingerprint = Convert.ToHexString(SHA256.HashData(content)) + (closed ? ":closed" : ":open");
                 if (written.TryGetValue(day, out var previous) && previous == fingerprint) continue;

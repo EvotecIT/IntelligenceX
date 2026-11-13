@@ -353,7 +353,7 @@ public sealed class LedgerPersistenceTests : IDisposable {
     }
 
     [Fact]
-    public async Task FullOutboxDrainsBeforeAdmittingHeartbeatAfterConnectivityReturns() {
+    public async Task FullOutboxDrainsBeforePostingLatestHealthAfterConnectivityReturns() {
         var retained = Event();
         var heartbeat = Event(2) with { Delivery = null, Heartbeat = true };
         var capacity = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(retained, LedgerJson.Options).Length;
@@ -363,13 +363,20 @@ public sealed class LedgerPersistenceTests : IDisposable {
         using var handler = new ReceiptHandler();
         using var client = new HttpClient(handler) { BaseAddress = new("http://127.0.0.1/") };
         await LocalReporter.DeliverAsync(client, spool, heartbeat, default);
-        Assert.Equal(new[] { retained.EventId, heartbeat.EventId }, handler.Received);
+        Assert.Equal(new[] { retained.EventId }, handler.Received);
+        Assert.Equal(heartbeat.ObservedAtUtc, handler.Health!.ObservedAtUtc);
         Assert.Empty(spool.Pending());
     }
 
     private sealed class ReceiptHandler : HttpMessageHandler {
         internal List<Guid> Received { get; } = [];
+        internal ReporterHealth? Health { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/reporters/health", StringComparison.Ordinal)) {
+                Health = System.Text.Json.JsonSerializer.Deserialize<ReporterHealth>(await request.Content!.ReadAsStringAsync(cancellationToken), LedgerJson.Options);
+                Assert.NotEmpty(Received);
+                return new(System.Net.HttpStatusCode.OK) { Content = new StringContent("{}") };
+            }
             var events = System.Text.Json.JsonSerializer.Deserialize<LedgerEvent[]>(await request.Content!.ReadAsStringAsync(cancellationToken), LedgerJson.Options)!;
             Received.AddRange(events.Select(e => e.EventId));
             return new(System.Net.HttpStatusCode.OK) { Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(

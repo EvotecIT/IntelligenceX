@@ -91,9 +91,11 @@ public static class Program {
             catch (CoordinationConflictException error) { context.Response.StatusCode = 409; await context.Response.WriteAsJsonAsync(new { error = error.Message }); }
             catch (EventConflictException) { context.Response.StatusCode = 409; }
             catch (JsonException) { context.Response.StatusCode = 400; }
+            catch (ArgumentException) { context.Response.StatusCode = 400; }
         });
         const string prefix = "/api/ledger/v1";
         ProjectContextEndpoints.Map(app, contextService, runtime);
+        LeaseEndpoints.Map(app, store, settings);
         if (coordinationStore is not null) CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory);
         app.MapPost(prefix + "/events", async (LedgerEvent[] events, CancellationToken ct) => {
             var now = DateTimeOffset.UtcNow;
