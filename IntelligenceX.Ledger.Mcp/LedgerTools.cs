@@ -8,13 +8,13 @@ namespace IntelligenceX.Ledger.Mcp;
 [McpServerToolType]
 public sealed class LedgerTools(LedgerReadClient client) {
     [McpServerTool(Name = "repo_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Read every live or recent (24h) session for one owner/repository across reporting machines and providers, including branch, worktree, title, PRs, capped file names and leases. Coverage identifies missing observations.")]
-    public Task<RepositoryActivity> RepoActivity(string repo, CancellationToken cancellationToken = default) => client.RepoActivityAsync(repo, cancellationToken);
+    [Description("Read current repository work grouped by checkout. The compact default includes full live identities, recent-session counts/titles, up to five shared filenames and total counts. Set details for all session rows, and recent24h for 24-hour history. Summary comes first.")]
+    public Task<RepositoryActivity> RepoActivity(string repo, CancellationToken cancellationToken = default, bool recent24h = false, bool details = false) => client.RepoActivityAsync(repo, cancellationToken, recent24h, details);
 
     [McpServerTool(Name = "overlap", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Check possible duplicate work in one owner/repository using branch, file names or task text. Returns none/possible/conflict with matching sessions and evidence reasons. Text matching is lexical; missing coverage stays explicit.")]
-    public Task<RepositoryOverlap> Overlap(string repo, string? branch = null, string[]? files = null, string? text = null, CancellationToken cancellationToken = default) =>
-        client.OverlapAsync(repo, branch, files, text, cancellationToken);
+    [Description("Check duplicate work using branches, filenames or task text across live and last-two-hour sessions. Returns none/possible/conflict grouped by worktree, with live identities and recent counts/titles. Set details for full session rows and recent24h for 24-hour history. Text matching is lexical.")]
+    public Task<RepositoryOverlap> Overlap(string repo, string? branch = null, string[]? files = null, string? text = null, CancellationToken cancellationToken = default, bool recent24h = false, bool details = false) =>
+        client.OverlapAsync(repo, branch, files, text, cancellationToken, recent24h, details);
 
     [McpServerTool(Name = "who", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read live reservations for an exact key or a prefix. Total includes any rows omitted from this compact response.")]

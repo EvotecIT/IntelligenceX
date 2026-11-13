@@ -21,6 +21,12 @@ public sealed class LedgerPersistenceTests : IDisposable {
             PendingInputs = [new() { Id = "synthetic-question", TurnId = "synthetic-turn", AnswerIsUnconfirmed = true }]
         };
         var pending = Assert.Single(LocalReporter.InputFacts(session));
+        var settings = new ReporterSettings { Endpoint = "http://127.0.0.1/", Token = new('w', 32),
+            MachineId = "synthetic-machine", ReporterId = "synthetic-reporter", SpoolDirectory = _directory };
+        Assert.True(LocalReporter.SessionEvidence(settings, session, null).InputUnconfirmed);
+        var successor = session with { TurnId = "synthetic-successor", TurnStartedAtUtc = Now };
+        Assert.False(LocalReporter.SessionEvidence(settings, successor, null).InputUnconfirmed);
+        Assert.Equal(pending.Id, Assert.Single(LocalReporter.InputFacts(successor)).Id);
         var parentId = LocalReporter.ItemId("synthetic-machine", "codex", session.Id);
         var childId = LedgerScope.InputItemId(parentId, pending.Id);
         var parent = Event() with { ItemId = parentId, Delivery = null, Session = new() {

@@ -12,12 +12,19 @@ public sealed partial class LedgerRules(RuleSettings settings) {
     /// <summary>Retires ended, unclaimed sessions from current work while preserving their historical verdict.</summary>
     internal static bool IsNormallyEnded(LedgerItem item) => item.Kind == "session" &&
         item.Session is { TurnOpen: false, Outcome: "completed", Question: false, InputUnconfirmed: false, UsageLimit: false } &&
-        item.Work is { ActiveClaim: false, OpenPullRequests.Length: 0, Wait: null, QueuedInputs: null or 0 } &&
-        item.Current is { LastKnown: false } && !item.Deliveries.Values.Any(IsPending) &&
-        (item.Current.Value == "done" &&
-             item.Current.Matches.All(match => match.Verdict == "done") ||
-         item.Work.HadPullRequests != true && item.Current is { Value: "stuck", ReasonCode: "unknown", MissingFacts: ["pull-requests"] } &&
-             item.Current.Matches.All(match => match.ReasonCode == "unknown"));
+        !HasSessionFollowUp(ApplyScope(item));
+
+    internal static bool IsSessionCatalog(LedgerItem item) => item.Kind == "session" &&
+        item.Session is { TurnOpen: null, TurnId: null, TurnStartedAtUtc: null, TurnEndedAtUtc: null, LastActivityAtUtc: null } &&
+        !HasSessionFollowUp(ApplyScope(item));
+
+    private static bool HasSessionFollowUp(LedgerItem item) =>
+        item.Session is { Question: true } or { InputUnconfirmed: true } or { UsageLimit: true } ||
+        item.Safety is { Resolved: false } ||
+        item.Control?.State is "paused" or "stopped" or "budget" ||
+        item.Work is { Wait: not null } or { QueuedInputs: > 0 } or { GoalHeld: true } or { NeedsApp: true } ||
+        item.Deliveries.Values.Any(IsPending) ||
+        item.Declarations.Values.Any(declaration => !declaration.Fact.Resolved && declaration.Fact.Blocking);
 
     public Verdict Evaluate(LedgerItem item, DateTimeOffset now, bool reporterSilent = false) {
         item = ApplyScope(item);

@@ -9,15 +9,16 @@ internal static class LedgerRepositoryRunner {
         try {
             using var client = new LedgerReadClient(LedgerClientSettings.Load(args[^1]));
             var command = args[..^2];
-            if (command is ["repo_activity", var repository]) {
-                Console.WriteLine(JsonSerializer.Serialize(await client.RepoActivityAsync(repository), LedgerReadJson.Default.RepositoryActivity));
-                return 0;
-            }
-            if (command[0] != "overlap") return 2;
+            if (command[0] is not ("repo_activity" or "overlap")) return 2;
             string? branch = null, text = null;
+            var recent24h = false;
+            var details = false;
             var files = new List<string>();
             for (var i = 2; i < command.Length; i++) {
                 var option = command[i];
+                if (option == "--recent24h") { recent24h = true; continue; }
+                if (option == "--details") { details = true; continue; }
+                if (command[0] != "overlap") return 2;
                 if (++i >= command.Length) return 2;
                 switch (option) {
                     case "--branch": branch = command[i]; break;
@@ -29,7 +30,10 @@ internal static class LedgerRepositoryRunner {
                     default: return 2;
                 }
             }
-            Console.WriteLine(JsonSerializer.Serialize(await client.OverlapAsync(command[1], branch, files.ToArray(), text), LedgerReadJson.Default.RepositoryOverlap));
+            if (command[0] == "repo_activity")
+                Console.WriteLine(JsonSerializer.Serialize(await client.RepoActivityAsync(command[1], recent24h: recent24h, details: details), LedgerReadJson.Default.RepositoryActivity));
+            else
+                Console.WriteLine(JsonSerializer.Serialize(await client.OverlapAsync(command[1], branch, files.ToArray(), text, recent24h: recent24h, details: details), LedgerReadJson.Default.RepositoryOverlap));
             return 0;
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException) {
             Console.Error.WriteLine("Invalid Ledger repository query or local configuration."); return 2;

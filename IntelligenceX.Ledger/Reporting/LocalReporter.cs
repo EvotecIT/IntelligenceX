@@ -125,6 +125,7 @@ public static class LocalReporter {
         void Capture(AgentWorkSnapshot snapshot) {
             lock (captureGate) {
             foreach (var session in snapshot.Sessions) {
+                if (session.ObservationSources == AgentObservationSources.TitleIndex) continue;
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
                 var fact = SessionEvidence(settings, session, archives.For(session)) with {
                     Repository = workspaces.For(session, settings.GitHub && snapshot.GitHubCheckedAtUtc.HasValue)
@@ -226,6 +227,9 @@ public static class LocalReporter {
                 .Concat(proofGap ? ["pull-request-proof-unavailable"] : Array.Empty<string>())
                 .Concat(settings.EvidenceFile is null ? ["delivery-evidence-not-configured"] :
                     File.Exists(settings.EvidenceFile) ? Array.Empty<string>() : ["coordination-evidence-file-missing"])
+                .Concat(settings.EvidenceFile is not null && File.Exists(settings.EvidenceFile) &&
+                    File.GetLastWriteTimeUtc(settings.EvidenceFile) < DateTime.UtcNow.AddDays(-1)
+                    ? ["coordination-evidence-stale"] : Array.Empty<string>())
                 .Concat(evidenceGap is null ? Array.Empty<string>() : [evidenceGap]).Distinct().Order(StringComparer.Ordinal).ToArray());
         } while (await timer.WaitForNextTickAsync(stop.Token));
         } finally {
@@ -251,7 +255,7 @@ public static class LocalReporter {
             ArchiveObservedAtUtc = archive?.ObservedAtUtc,
             TurnOpen = session.TurnOpen, TurnStartedAtUtc = session.TurnStartedAtUtc?.ToUniversalTime(), TurnEndedAtUtc = session.TurnEndedAtUtc?.ToUniversalTime(),
             LastActivityAtUtc = session.LastTurnActivityAtUtc?.ToUniversalTime(), Outcome = session.LastTurnOutcome.ToString().ToLowerInvariant(),
-            Question = blocking is not null, InputUnconfirmed = pending.Any(x => x.AnswerIsUnconfirmed),
+            Question = blocking is not null, InputUnconfirmed = pending.Any(x => x.AnswerIsUnconfirmed && !PriorTurn(x, session)),
             QuestionAtUtc = blocking?.RequestedAtUtc?.ToUniversalTime(),
             // The existing limit hold covers both structured usage and rate limits.
             // Neither code establishes account scope or a reset time.

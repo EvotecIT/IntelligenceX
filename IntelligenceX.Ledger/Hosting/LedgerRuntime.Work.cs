@@ -8,7 +8,7 @@ internal sealed partial class LedgerRuntime {
     private readonly SemaphoreSlim _workGate = new(1, 1);
     private long _workRevision;
     private WorkSnapshot? _workSnapshot;
-    private sealed record WorkSnapshot(DateTimeOffset At, long Revision, LedgerItem[] Current, MachineRow[] Machines);
+    private sealed record WorkSnapshot(DateTimeOffset At, long Revision, LedgerItem[] Current, MachineRow[] Machines, int HistoricalDeliveries);
 
     internal void InvalidateWork() => Interlocked.Increment(ref _workRevision);
 
@@ -22,7 +22,9 @@ internal sealed partial class LedgerRuntime {
             if (_workSnapshot is { } cached && cached.Revision == revision && now >= cached.At && now - cached.At < TimeSpan.FromSeconds(10)) snapshot = cached;
             else {
                 var items = await ItemsAsync(now, token);
-                var current = items.Where(item => !LedgerRules.IsNormallyEnded(item) &&
+                var historicalDeliveries = items.Where(item => IsHistoricalDelivery(item, now)).Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+                var current = items.Where(item => !LedgerRules.IsNormallyEnded(item) && !LedgerRules.IsSessionCatalog(item) &&
+                    !historicalDeliveries.Contains(item.Id) &&
                     (item.Work?.ActiveClaim == true || item.Current?.Hold is { Type: not "observation-gap" } ||
                     item.Session?.Archived != true && (item.Session?.TurnOpen == true ||
                         LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(x =>
@@ -33,7 +35,7 @@ internal sealed partial class LedgerRuntime {
                         item.Deliveries.Values.Any(x => x.LastStageOrderAtUtc >= now.AddDays(-1)))))
                     .OrderBy(item => Priority(item.Current!.Value)).ThenByDescending(item => item.Current!.LastProgressAtUtc)
                     .ThenBy(item => item.Id, StringComparer.Ordinal).ToArray();
-                snapshot = _workSnapshot = new(now, revision, current, await MachinesAsync(now, token));
+                snapshot = _workSnapshot = new(now, revision, current, await MachinesAsync(now, token), historicalDeliveries.Count);
             }
         } finally { _workGate.Release(); }
         var selected = snapshot.Current.Where(item => verdict is null || item.Current!.Value == verdict).ToArray();
@@ -45,9 +47,17 @@ internal sealed partial class LedgerRuntime {
         }).ToArray();
         return new(snapshot.At, LedgerRules.Version, snapshot.Machines,
             snapshot.Current.GroupBy(x => x.Current!.Value).ToDictionary(x => x.Key, x => x.Count()), rows,
-            ["current-work:claimed-open-declared-or-active-within-24h", "display-labels:explicit-local-catalog",
+            ["current-work:unfinished-turn-or-explicit-follow-up", "display-labels:explicit-local-catalog",
+             "imported-delivery-history-older-than-24h:" + snapshot.HistoricalDeliveries,
              "work-view-cache:max-age-10s"], selected.Length > rows.Length);
     }
+
+    private static bool IsHistoricalDelivery(LedgerItem item, DateTimeOffset now) =>
+        item.Kind == "delivery" && item.Session is null && item.Work?.ActiveClaim != true &&
+        !item.Declarations.Values.Any(declaration => !declaration.Fact.Resolved && declaration.Fact.Blocking) &&
+        item.Deliveries.Count > 0 && item.Deliveries.Values.SelectMany(delivery => delivery.Stages.Values)
+            .SelectMany(stage => stage.Sources()).All(evidence => evidence.Source == "evidence" &&
+                evidence.ObservedAtUtc < now.AddDays(-1));
 
     private static IEnumerable<LedgerItem> Interleave(LedgerItem[] items) {
         var groups = items.GroupBy(item => item.Current!.Value).Select(group => group.ToArray()).ToArray();

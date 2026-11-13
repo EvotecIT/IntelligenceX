@@ -34,7 +34,7 @@ public sealed class ReporterWorkspaceTests {
             Assert.NotNull(fact.Files);
             Assert.Equal(["base.txt", "committed.txt", "staged.txt", "untracked.txt"], fact.Files!);
             Assert.False(fact.FilesCapped);
-            Assert.False(fact.PullRequestsKnown);
+            Assert.Null(fact.PullRequestsKnown);
             Assert.True(cache.For(session, pullRequestsKnown: true)!.PullRequestsKnown);
             var missing = session with { WorkingDirectory = Path.Combine(root, "absent") };
             await cache.RefreshAsync([missing], DateTimeOffset.UtcNow, default);

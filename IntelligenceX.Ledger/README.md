@@ -59,21 +59,24 @@ Each reporter can read an optional local Marquee Probe on loopback port 47820. `
 
 The reporter requests pairing and retains its private reader state beside its configuration in `probe-reader/reader-state.json`. Approve the request in Probe or with `marquee-probe allow`. Denied, expired or revoked pairing remains unavailable until the owner stops the reporter, removes that private state file and restarts it for a new pairing request.
 
-`repo_activity` returns live sessions and sessions active during the last 24 hours across reporting machines, with branch, worktree, explicit title, observed open PRs and up to 20 changed-file names per workspace. `pullRequestsKnown` identifies a complete recent GitHub observation. Git comparison includes branch commits, tracked working changes and untracked files against the merge base of the observed default branch. Missing PR observations, workspaces or base refs remain explicit coverage gaps. File names describe the workspace and do not establish individual authorship.
+`repo_activity` groups live sessions and the last two hours of activity by machine and worktree. The compact default includes full live identities and recent-session counts and title previews. `--details` returns full recent session rows and Git metadata. `--recent24h` extends the activity window to 24 hours. Live status requires an open, unarchived turn with progress during the 30-minute Working window. Incomplete turns retain recent-history coverage.
+
+Changed-file previews belong to each checkout and contain up to five names with a total count. The compact view shortens previews toward a 3 KB response target while preserving worktrees and live identities. Legacy capped observations retain an unknown total. Git comparison includes branch commits, tracked working changes and untracked files against the merge base of the observed default branch. Missing workspaces omit file lists. Missing PR observations, workspaces and base refs appear in coverage.
 
 ```text
 ix ledger repo_activity example/project --config /absolute/path/client.json
+ix ledger repo_activity example/project --recent24h --details --config /absolute/path/client.json
 ix ledger overlap example/project --text "Excel cell formatting performance" --config /absolute/path/client.json
 ix ledger overlap example/project --branch feature/cell-formatting --files src/Cells.cs src/Formats.cs --config /absolute/path/client.json
 ```
 
-MCP exposes `repo_activity(repo)` and `overlap(repo, branch?, files?, text?)` with the read token. HTTP uses `GET /repo-activity?repo=...` and `GET /overlap?repo=...&branch=...&files=...&text=...`. Overlap reports `none`, `possible` or `conflict` with the matching evidence. Text comparison uses words from the supplied text and observed titles. Repository answers retain every matching session, so their size grows with recent activity. File names are capped and missing machine metadata stays visible in coverage.
+MCP exposes `repo_activity(repo)` and `overlap(repo, branch?, files?, text?)` with the read token. Both accept `details` and `recent24h`. HTTP uses `GET /repo-activity?repo=...` and `GET /overlap?repo=...&branch=...&files=...&text=...`, with `details=true` and `recent24h=true` for the optional views. Overlap evaluates all selected evidence before formatting and returns `none`, `possible` or `conflict` with grouped matches. Text comparison uses words from the supplied text and observed titles. Every response starts with a one-line summary and preserves missing-source coverage.
 
 ## Reporting and retention
 
 Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. Raw events older than seven days are pruned in batches of at most 10000 per minute. Items and verdict transitions stay. Existing retention backlog drains over successive ticks. Freed database pages are reused by SQLite, so the file can retain its allocated size.
 
-Normally completed, unclaimed sessions leave the current-work roster when their work is Done, or when PR coverage is the only unknown and no PR or follow-up is recorded. Their stored verdict and evidence remain available through item history. Active claims, recorded PRs, pending deliveries, questions, waits and usage limits retain current-work visibility.
+Completed sessions and title-only catalog rows leave the current-work roster. Explicit questions, unconfirmed current-turn input, waits, declarations, usage limits, native holds and pending deliveries retain follow-up visibility. Claims and PR history remain available with each stored item. Frozen imported delivery observations older than 24 hours appear in retained history, with their excluded count in current-view coverage. Reporter health identifies a stale evidence file.
 
 All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET routes require the read token; POST requires the write token.
 
@@ -97,9 +100,7 @@ evidence retain their separate timestamps.
 ## Shared views and project context
 
 `GET /api/ledger/v1/work` returns current work, separate from all-history counts.
-Current work excludes positively completed sessions whose claim and PR gates are closed. It includes claims, explicit holds, open unarchived turns, current
-declarations, and activity or deliveries within the last day. Archived sessions
-with active claims remain visible. The list contains up to 200 rows, with full
+Current work includes unfinished turns and explicit follow-up. Completed sessions and catalog-only rows retain their stored history. Questions, waits, current declarations and pending deliveries remain visible. The list contains up to 200 rows, with full
 current-work counts and a `truncated` flag. `verdict` filters returned rows;
 `limit` bounds their number from 1 to 200. Counts retain the full current scope.
 Verdicts come from the existing rules engine. The view interleaves verdict

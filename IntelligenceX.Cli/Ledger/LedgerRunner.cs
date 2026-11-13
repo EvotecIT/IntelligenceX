@@ -20,7 +20,7 @@ internal static class LedgerRunner {
             Console.WriteLine("ix ledger work|projects|context <project> [topic]|search <project> <topic> --config <local-client.json>");
             Console.WriteLine("ix ledger status|needs-you|stuck|item <id> [--config <local-client-json>]");
             Console.WriteLine("ix ledger who <key> [--prefix]|machine_status <id>|budget_status --config <read-json>");
-            Console.WriteLine("ix ledger repo_activity <owner/repo>|overlap <owner/repo> [--branch <branch>] [--files <file> ...] [--text <task>] --config <read-json>");
+            Console.WriteLine("ix ledger repo_activity <owner/repo>|overlap <owner/repo> [--recent24h] [--details] [--branch <branch>] [--files <file> ...] [--text <task>] --config <read-json>");
             Console.WriteLine("ix ledger lease_acquire <key> <holder> <machine> <purpose> <ttl-seconds>|lease_renew <key> <lease-id> <ttl-seconds>|lease_release <key> <lease-id> --config <lease-write-json>");
             Console.WriteLine("Set IX_LEDGER_ENDPOINT and IX_LEDGER_READ_TOKEN locally. Output is JSON from the read API.");
             Console.WriteLine("ix ledger declare <codex|claude> <source-session-id> <declaration-json> --config <reporter-json> [--validate]");

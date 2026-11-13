@@ -154,7 +154,16 @@ public sealed class LedgerHttpTests {
             using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/events", new[] { repositoryEvent }, LedgerJson.Options, timeout.Token))
                 Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
             var repositoryActivity = await reader.RepoActivityAsync("example/project", timeout.Token);
-            Assert.Equal(repositorySession.ToString(), Assert.Single(repositoryActivity.Sessions).AgentId);
+            Assert.Equal(repositorySession.ToString(), Assert.Single(Assert.Single(repositoryActivity.Worktrees).Sessions).AgentId);
+            var historicalSession = Guid.NewGuid();
+            var historicalEvent = repositoryEvent with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), ItemId = "synthetic-historical-session",
+                Session = repositoryEvent.Session! with { SourceSessionId = historicalSession, TurnOpen = false, LastActivityAtUtc = DateTimeOffset.UtcNow.AddHours(-3) } };
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/events", new[] { historicalEvent }, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            Assert.Single(Assert.Single((await reader.RepoActivityAsync("example/project", timeout.Token)).Worktrees).Sessions);
+            Assert.Equal(1, Assert.Single((await reader.RepoActivityAsync("example/project", timeout.Token, recent24h: true)).Worktrees).RecentSessionCount);
+            Assert.Equal(2, Assert.Single((await reader.RepoActivityAsync("example/project", timeout.Token, recent24h: true, details: true)).Worktrees).Sessions.Length);
+            Assert.Equal(2, Assert.Single((await reader.OverlapAsync("example/project", "feature/synthetic", token: timeout.Token, recent24h: true, details: true)).Matches).Worktree.Sessions.Length);
             var overlap = await reader.OverlapAsync("example/project", files: ["src/Cells.cs"], token: timeout.Token);
             Assert.Equal("conflict", overlap.Verdict);
             Assert.Contains("shared-changed-files", Assert.Single(overlap.Matches).Reasons);

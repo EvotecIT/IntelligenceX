@@ -37,14 +37,16 @@ internal static class LeaseEndpoints {
             }
             return coverage.ToArray();
         }
-        app.MapGet(api + "/repo-activity", async (string repo, CancellationToken ct) => {
-            var result = await store.RepositoryActivityAsync(repo, DateTimeOffset.UtcNow, ct);
-            return Results.Ok(result with { Coverage = result.Coverage.Concat(await RepositoryCoverage(ct)).ToArray() });
+        app.MapGet(api + "/repo-activity", async (string repo, bool? recent24h, bool? details, CancellationToken ct) => {
+            var result = await store.RepositoryActivityAsync(repo, DateTimeOffset.UtcNow, ct, recent24h ?? false, details: true);
+            result = result with { Coverage = result.Coverage.Concat(await RepositoryCoverage(ct)).ToArray() };
+            return Results.Ok(details == true ? result : RepositoryActivityFormatting.Compact(result));
         });
-        app.MapGet(api + "/overlap", async (string repo, string? branch, string[]? files, string? text, CancellationToken ct) => {
-            var activity = await store.RepositoryActivityAsync(repo, DateTimeOffset.UtcNow, ct);
+        app.MapGet(api + "/overlap", async (string repo, string? branch, string[]? files, string? text, bool? recent24h, bool? details, CancellationToken ct) => {
+            var activity = await store.RepositoryActivityAsync(repo, DateTimeOffset.UtcNow, ct, recent24h ?? false, details: true);
             activity = activity with { Coverage = activity.Coverage.Concat(await RepositoryCoverage(ct)).ToArray() };
-            return Results.Ok(RepositoryOverlapEvaluator.Evaluate(activity, branch, files, text));
+            var result = RepositoryOverlapEvaluator.Evaluate(activity, branch, files, text);
+            return Results.Ok(details == true ? result : RepositoryActivityFormatting.Compact(result));
         });
         app.MapPost(api + "/project-evidence", async (LedgerEvent value, CancellationToken ct) => {
             var now = DateTimeOffset.UtcNow;

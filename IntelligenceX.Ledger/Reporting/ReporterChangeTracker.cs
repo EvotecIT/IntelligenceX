@@ -6,7 +6,7 @@ namespace IntelligenceX.Ledger.Reporting;
 
 /// <summary>Persists admitted watcher comparisons independently of the durable event outbox.</summary>
 internal sealed class ReporterChangeTracker {
-    private sealed record Entry(string Signature, DateTimeOffset ObservedAtUtc);
+    private sealed record Entry(string Signature, DateTimeOffset ObservedAtUtc, bool HadPullRequests = false);
     private readonly ReporterSpool _spool;
     private readonly string _file;
     private readonly object _gate = new();
@@ -31,7 +31,8 @@ internal sealed class ReporterChangeTracker {
             if (!Tracked(observation)) continue;
             var key = Key(observation);
             if (_entries.TryGetValue(key, out var prior) && prior.ObservedAtUtc > observation.ObservedAtUtc) continue;
-            _entries[key] = new(Signature(observation), observation.ObservedAtUtc);
+            observation = PreserveHistory(observation, _entries.GetValueOrDefault(key));
+            _entries[key] = new(Signature(observation), observation.ObservedAtUtc, observation.Work?.HadPullRequests == true);
             _dirty = true;
         }
     }
@@ -45,11 +46,12 @@ internal sealed class ReporterChangeTracker {
                 } else _progress.Remove(observation.ItemId);
             }
             var key = Key(observation);
+            observation = PreserveHistory(observation, _entries.GetValueOrDefault(key));
             var signature = Signature(observation);
             if (_entries.TryGetValue(key, out var prior) && prior.Signature == signature) return false;
             observation = observation with { Sequence = ++_sequence };
             if (!_spool.TryAppend(observation)) return false;
-            _entries[key] = new(signature, observation.ObservedAtUtc);
+            _entries[key] = new(signature, observation.ObservedAtUtc, observation.Work?.HadPullRequests == true);
             _dirty = true;
             return true;
         }
@@ -61,7 +63,8 @@ internal sealed class ReporterChangeTracker {
     }
 
     internal bool IsCurrent(LedgerEvent observation) {
-        lock (_gate) return _entries.TryGetValue(Key(observation), out var entry) && entry.Signature == Signature(observation);
+        lock (_gate) return _entries.TryGetValue(Key(observation), out var entry) &&
+            entry.Signature == Signature(PreserveHistory(observation, entry));
     }
 
     internal void Checkpoint() {
@@ -108,9 +111,22 @@ internal sealed class ReporterChangeTracker {
             LastActivityAtUtc = session.TurnOpen == true && session.TurnId is not null
                 ? Known(session.LastActivityAtUtc) : session.LastActivityAtUtc
         } : null,
-        observation.Work, observation.Delivery,
+        Work = observation.Work is { } work ? work with {
+            ClaimsAtUtc = Known(work.ClaimsAtUtc), PullRequestsAtUtc = Known(work.PullRequestsAtUtc),
+            OpenPullRequests = Ordered(work.OpenPullRequests), OwnedPullRequests = Ordered(work.OwnedPullRequests),
+            CancelledPullRequests = Ordered(work.CancelledPullRequests)
+        } : null,
+        observation.Delivery,
         GlobalWork = observation.GlobalWork is { } global ? ComparableGlobal(global) : null
     });
+
+    // Missing a current association cannot undo positively observed PR history.
+    private static LedgerEvent PreserveHistory(LedgerEvent observation, Entry? previous) {
+        if (previous is null || observation.Work is not { HadPullRequests: false } work) return observation;
+        var positive = observation with { Work = work with { HadPullRequests = true } };
+        // Version-one catalogs stored the semantic signature without the history flag.
+        return previous.HadPullRequests || previous.Signature == Signature(positive) ? positive : observation;
+    }
 
     /// <summary>Canonical global state comparison shared by watcher admission and observational refresh admission.</summary>
     internal static string GlobalSignature(GlobalWorkFact global) => Hash(ComparableGlobal(global));

@@ -11,6 +11,34 @@ public sealed class ReporterChangeTests : IDisposable {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "ix-reporter-changes", Guid.NewGuid().ToString("N"));
     private static readonly DateTimeOffset Now = new(2026, 1, 12, 12, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData("history")]
+    [InlineData("check-time")]
+    [InlineData("set-order")]
+    public void SemanticWorkComparisonSurvivesRefreshAndRestart(string refresh) {
+        var original = Observation() with { Work = new() { HadPullRequests = true, ActiveClaim = false,
+            ClaimsAtUtc = Now, PullRequestsKnown = true, PullRequestsAtUtc = Now,
+            OpenPullRequests = ["synthetic-a", "synthetic-b"] } };
+        var refreshed = original with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = Now.AddMinutes(1),
+            Work = refresh switch {
+                "history" => original.Work with { HadPullRequests = false },
+                "check-time" => original.Work with { ClaimsAtUtc = Now.AddMinutes(1), PullRequestsAtUtc = Now.AddMinutes(1) },
+                _ => original.Work with { OpenPullRequests = ["synthetic-b", "synthetic-a"] }
+            } };
+        using (var spool = new ReporterSpool(_directory, 1024 * 1024)) {
+            var changes = new ReporterChangeTracker(spool, _directory);
+            Assert.True(changes.TryAppend(original));
+            Assert.False(changes.TryAppend(refreshed));
+            changes.Acknowledge(spool.Pending().Select(value => value.EventId));
+        }
+        using var restartedSpool = new ReporterSpool(_directory, 1024 * 1024);
+        var restarted = new ReporterChangeTracker(restartedSpool, _directory);
+        Assert.False(restarted.TryAppend(refreshed with { Epoch = Guid.NewGuid() }));
+        Assert.True(restarted.TryAppend(refreshed with { EventId = Guid.NewGuid(),
+            Work = refreshed.Work! with { GoalHeld = true, GoalHeldAtUtc = Now.AddMinutes(2) } }));
+        Assert.True(Assert.Single(restartedSpool.Pending()).Work!.HadPullRequests);
+    }
+
     [Fact]
     public void ObservationOnlyReadsAndRestartsDoNotReplaySessionOrWorkFacts() {
         var settings = new ReporterSettings { Endpoint = "http://127.0.0.1/", Token = new('w', 32),
