@@ -9,15 +9,17 @@ namespace IntelligenceX.Ledger.Tests;
 public sealed class EndedSessionTests {
     private static readonly DateTimeOffset Now = new(2026, 1, 12, 12, 0, 0, TimeSpan.Zero);
 
-    [Fact]
-    public async Task NormalCompletionLeavesCurrentWorkUntilUnconfirmedInputReopensFollowUp() {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(null)]
+    public async Task NormalCompletionLeavesCurrentWorkUntilUnconfirmedInputReopensFollowUp(bool? pullRequestsKnown) {
         var root = LedgerTestPaths.NewDirectory("ended-session");
         try {
             using var store = new LedgerStore(Path.Combine(root, "ledger.sqlite"), new(new()));
             await store.InitializeAsync();
             var observation = Observation(new() {
                 TurnId = "synthetic-turn", TurnOpen = true, Archived = false, TurnStartedAtUtc = Now.AddHours(-1), LastActivityAtUtc = Now
-            }, new() { ActiveClaim = false, PullRequestsKnown = true });
+            }, new() { ActiveClaim = false, PullRequestsKnown = pullRequestsKnown });
             await store.IngestAsync([observation, Heartbeat(observation, 2)], Now);
             var runtime = Runtime(store, root);
             var context = new ProjectContextService(null);
@@ -34,8 +36,12 @@ public sealed class EndedSessionTests {
             Assert.Empty(view.Items);
             Assert.Empty(view.Counts);
             var retained = Assert.Single(await store.EvaluateAllAsync(ended));
-            Assert.Equal("done", retained.Current!.Value);
-            Assert.Equal("idle", retained.Current.ReasonCode);
+            Assert.Equal(pullRequestsKnown == true ? "done" : "stuck", retained.Current!.Value);
+            Assert.Equal(pullRequestsKnown == true ? "idle" : "unknown", retained.Current.ReasonCode);
+            if (pullRequestsKnown != true) {
+                Assert.NotNull(retained.Current.MissingFacts);
+                Assert.Equal(["pull-requests"], retained.Current.MissingFacts!);
+            }
             Assert.Equal(ended, retained.Current.SinceUtc);
             Assert.False(retained.Session!.Archived);
             await store.IngestAsync([observation with { EventId = Guid.NewGuid(), Sequence = 4, ObservedAtUtc = ended.AddMinutes(1),
@@ -60,7 +66,9 @@ public sealed class EndedSessionTests {
     [InlineData("archive-only", "stuck", "unknown")]
     [InlineData("unknown-outcome", "stuck", "unknown")]
     [InlineData("unknown-claim", "stuck", "unknown")]
-    [InlineData("unknown-prs", "stuck", "unknown")]
+    [InlineData("recorded-pr", "stuck", "unknown")]
+    [InlineData("pending-delivery", "stuck", "unknown")]
+    [InlineData("archived-claim", "stuck", "unknown")]
     [InlineData("queued-input", "stuck", "unknown")]
     [InlineData("unconfirmed-input", "stuck", "unknown")]
     [InlineData("reporter-silent", "done", "idle")]
@@ -86,7 +94,12 @@ public sealed class EndedSessionTests {
                 case "archive-only": session = session with { TurnOpen = null, Outcome = "unknown", Archived = true, ArchiveObservedAtUtc = Now }; break;
                 case "unknown-outcome": session = session with { Outcome = "unknown" }; break;
                 case "unknown-claim": work = work with { ActiveClaim = null }; break;
-                case "unknown-prs": work = work with { PullRequestsKnown = null }; break;
+                case "recorded-pr": work = work with { PullRequestsKnown = null, HadPullRequests = true }; break;
+                case "pending-delivery": work = work with { PullRequestsKnown = null }; break;
+                case "archived-claim":
+                    work = work with { ActiveClaim = true };
+                    session = session with { Archived = true, ArchiveObservedAtUtc = Now };
+                    break;
                 case "queued-input": work = work with { QueuedInputs = 1, OldestQueuedAtUtc = Now.AddMinutes(-5) }; break;
                 case "unconfirmed-input": session = session with { InputUnconfirmed = true }; break;
             }
@@ -94,6 +107,10 @@ public sealed class EndedSessionTests {
             if (scenario == "archive-only") work = work with { ActiveClaim = true };
             var observation = Observation(session, work);
             await store.IngestAsync(scenario == "reporter-silent" ? [observation] : [observation, Heartbeat(observation, 2)], Now);
+            if (scenario == "pending-delivery") await store.IngestAsync([observation with {
+                EventId = Guid.NewGuid(), Sequence = 3, Session = null, Work = null,
+                Delivery = new("synthetic-delivery", "requested", Now)
+            }], Now);
 
             var view = await Runtime(store, root).WorkAsync(new ProjectContextService(null), Now, default);
             var row = Assert.Single(view.Items).Item;

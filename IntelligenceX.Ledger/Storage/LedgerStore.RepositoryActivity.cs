@@ -73,6 +73,12 @@ public sealed partial class LedgerStore {
                   OR json_extract(l.json,'$.holder')=json_extract(r.json,'$.agentId'))))
             ORDER BY l.key
             """, row => Read<Lease>(row.GetString(0)), args, cancellationToken: token);
+        var unavailablePrSources = await db.QueryAsListAsync("""
+            SELECT DISTINCT h.machine FROM reporter_health h, json_each(h.json,'$.coverage') c
+            WHERE c.value='pull-requests-unavailable'
+            """, row => row.GetString(0), cancellationToken: token);
+        sessions = sessions.Select(session => session.PullRequestsKnown == true && unavailablePrSources.Contains(session.Machine)
+            ? session with { PullRequestsKnown = null } : session).ToList();
         var coverage = new List<string>();
         if (sessions.Count == 0) coverage.Add("repository-sessions-unobserved");
         var missing = await db.ExecuteScalarAsync("""

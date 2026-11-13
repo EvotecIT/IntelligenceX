@@ -73,6 +73,8 @@ MCP exposes `repo_activity(repo)` and `overlap(repo, branch?, files?, text?)` wi
 
 Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. Raw events older than seven days are pruned in batches of at most 10000 per minute. Items and verdict transitions stay. Existing retention backlog drains over successive ticks. Freed database pages are reused by SQLite, so the file can retain its allocated size.
 
+Normally completed, unclaimed sessions leave the current-work roster when their work is Done, or when PR coverage is the only unknown and no PR or follow-up is recorded. Their stored verdict and evidence remain available through item history. Active claims, recorded PRs, pending deliveries, questions, waits and usage limits retain current-work visibility.
+
 All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET routes require the read token; POST requires the write token.
 
 | Route | Result |

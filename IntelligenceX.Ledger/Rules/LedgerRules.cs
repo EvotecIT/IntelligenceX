@@ -9,11 +9,15 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         new("review", condition, recorded, ReviewAfterUtc: recorded + settings.ReviewWait, Inferred: true, Scope: scope);
     internal TimeSpan EvidenceMaxAge => settings.EvidenceMaxAge;
 
-    /// <summary>Closes current-work membership only with a normal terminal turn and positively closed task gates.</summary>
+    /// <summary>Retires ended, unclaimed sessions from current work while preserving their historical verdict.</summary>
     internal static bool IsNormallyEnded(LedgerItem item) => item.Kind == "session" &&
         item.Session is { TurnOpen: false, Outcome: "completed", Question: false, InputUnconfirmed: false, UsageLimit: false } &&
-        item.Work is { ActiveClaim: false, PullRequestsKnown: true, OpenPullRequests.Length: 0, Wait: null } &&
-        item.Current is { Value: "done", LastKnown: false } && item.Current.Matches.All(match => match.Verdict == "done");
+        item.Work is { ActiveClaim: false, OpenPullRequests.Length: 0, Wait: null, QueuedInputs: null or 0 } &&
+        item.Current is { LastKnown: false } && !item.Deliveries.Values.Any(IsPending) &&
+        (item.Work.PullRequestsKnown == true && item.Current.Value == "done" &&
+             item.Current.Matches.All(match => match.Verdict == "done") ||
+         item.Work.HadPullRequests != true && item.Current is { Value: "stuck", ReasonCode: "unknown", MissingFacts: ["pull-requests"] } &&
+             item.Current.Matches.All(match => match.ReasonCode == "unknown"));
 
     public Verdict Evaluate(LedgerItem item, DateTimeOffset now, bool reporterSilent = false) {
         item = ApplyScope(item);

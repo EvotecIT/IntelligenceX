@@ -127,7 +127,7 @@ public static class LocalReporter {
             foreach (var session in snapshot.Sessions) {
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
                 var fact = SessionEvidence(settings, session, archives.For(session)) with {
-                    Repository = workspaces.For(session, settings.GitHub && snapshot.GitHubCheckedAtUtc >= DateTimeOffset.UtcNow.AddMinutes(-10))
+                    Repository = workspaces.For(session, settings.GitHub && snapshot.GitHubCheckedAtUtc.HasValue)
                 };
                 changes.TryAppend(Event(id, session.Provider, fact));
                 if (fact.SourceMessageId is not null || session.PeerMessages.Count > 0)
@@ -220,7 +220,9 @@ public static class LocalReporter {
             Volatile.Write(ref coverage, watcher.CurrentSnapshot.Diagnostics.Select(x => x.Code)
                 .Concat(Volatile.Read(ref metadataDiagnostics).Select(x => x.Code + ":" + x.SourceRootId))
                 .Append("queue-not-visible").Concat(settings.ProjectClaims is not null && claimSnapshot is null ? [claimFailure] : Array.Empty<string>())
-                .Concat(settings.GitHub && watcher.CurrentSnapshot.GitHubCheckedAtUtc is null ? ["pull-requests-unavailable"] : Array.Empty<string>())
+                .Concat(settings.GitHub && (watcher.CurrentSnapshot.GitHubCheckedAtUtc is null ||
+                    watcher.CurrentSnapshot.GitHubCheckedAtUtc < DateTimeOffset.UtcNow.AddMinutes(-10))
+                    ? ["pull-requests-unavailable"] : Array.Empty<string>())
                 .Concat(proofGap ? ["pull-request-proof-unavailable"] : Array.Empty<string>())
                 .Concat(settings.EvidenceFile is null ? ["delivery-evidence-not-configured"] :
                     File.Exists(settings.EvidenceFile) ? Array.Empty<string>() : ["coordination-evidence-file-missing"])

@@ -205,6 +205,23 @@ public sealed class RepositoryActivityTests : IDisposable {
         return store;
     }
 
+    [Fact]
+    public async Task SourceHealthQualifiesPrCompletenessWithoutRewritingSessionHistory() {
+        using var store = await OpenStoreAsync();
+        await store.IngestAsync([Event("session", new() { TurnOpen = true, Repository = Observation() })], Now);
+        await store.UpdateReporterHealthAsync(new("windows", "reporter", "v1", Now, ["pull-requests-unavailable"]));
+        var unavailable = await store.RepositoryActivityAsync(Repo, Now);
+        Assert.Null(Assert.Single(unavailable.Sessions).PullRequestsKnown);
+        Assert.Contains("pull-requests-unobserved", unavailable.Coverage);
+        Assert.Equal("possible", (await store.RepositoryOverlapAsync(Repo, "unrelated", null, null, Now)).Verdict);
+        Assert.True(Assert.Single(await store.EvaluateAllAsync(Now)).Session!.Repository!.PullRequestsKnown);
+        await store.UpdateReporterHealthAsync(new("windows", "reporter", "v1", Now.AddSeconds(1), []));
+        var recovered = await store.RepositoryActivityAsync(Repo, Now.AddSeconds(1));
+        Assert.True(Assert.Single(recovered.Sessions).PullRequestsKnown);
+        Assert.Empty(recovered.Coverage);
+        Assert.Single(await store.HistoryAsync("session", 0, 100, default));
+    }
+
     private static RepositoryObservation Observation() => new(Repo, "feature/work", "/synthetic/worktree", "Repository activity",
         ["https://example.test/pull/7"], ["src/File.cs"], false, "origin/main", "observed", true);
 
