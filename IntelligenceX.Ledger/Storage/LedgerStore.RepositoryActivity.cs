@@ -5,7 +5,6 @@ using IntelligenceX.Ledger.Reporting;
 namespace IntelligenceX.Ledger.Storage;
 
 public sealed partial class LedgerStore {
-    private static readonly TimeSpan RepositoryWorkingWindow = TimeSpan.FromMinutes(30);
     /// <summary>Creates the repository index and imports observations retained before this index existed.</summary>
     internal static async Task InitializeRepositoryActivityAsync(SQLiteAsyncSession db, CancellationToken token = default) {
         await db.ExecuteNonQueryAsync("""
@@ -34,11 +33,11 @@ public sealed partial class LedgerStore {
         var files = repository.Files?.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Take(20).ToArray();
         var open = fact.TurnOpen == true && fact.Archived != true && fact.Outcome != "incomplete";
         var session = new RepositorySession(fact.SourceSessionId?.ToString() ?? item.Id, item.MachineId, item.Provider,
-            repository.Branch, repository.Worktree, repository.Title, repository.PullRequests.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+            repository.Branch, repository.Worktree, fact.Title ?? repository.Title, repository.PullRequests.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
             fact.LastActivityAtUtc?.ToUniversalTime(), files, repository.FilesCapped || repository.Files?.Length > 20,
             repository.BaseRef, repository.GitState, open, repository.PullRequestsKnown,
             repository.FileCount ?? (repository.Files is not null && !repository.FilesCapped ? repository.Files.Distinct(StringComparer.Ordinal).Count() : null),
-            item.SessionEvidence?.ObservedAtUtc);
+            item.SessionEvidence?.ObservedAtUtc, fact.Origin, fact.OriginEvidence, null, fact.TurnCount, fact.CreatedAtUtc);
         args["repo"] = RepositoryOverlapEvaluator.NormalizeRepo(repository.Repo);
         args["activity"] = session.LastActivityAtUtc?.ToString("O");
         args["open"] = open ? 1 : 0;
@@ -55,10 +54,12 @@ public sealed partial class LedgerStore {
     /// <summary>Groups all live and recent sessions by checkout. The default window is two hours, with 24 hours opt-in.</summary>
     public async Task<RepositoryActivity> RepositoryActivityAsync(string repo, DateTimeOffset now, CancellationToken token = default, bool recent24h = false, bool details = false) {
         repo = RepositoryOverlapEvaluator.NormalizeRepo(repo);
+        var policy = await ReadPolicyAsync(token);
+        var workingWindow = TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes);
         await using var db = await _database.OpenSessionAsync(path, token);
         var args = new Dictionary<string, object?> {
             ["repo"] = repo, ["cutoff"] = now.AddHours(recent24h ? -24 : -2).ToUniversalTime().ToString("O"),
-            ["workingCutoff"] = (now - RepositoryWorkingWindow).ToUniversalTime().ToString("O"),
+            ["workingCutoff"] = (now - workingWindow).ToUniversalTime().ToString("O"),
             ["now"] = now.ToUniversalTime().ToString("O"), ["build"] = "build:" + repo,
             ["repoKey"] = "repo:" + repo, ["branchPrefix"] = "branch:" + repo + ":"
         };
@@ -70,15 +71,18 @@ public sealed partial class LedgerStore {
             ORDER BY item
             """, row => Read<RepositorySession>(row.GetString(0)), args, cancellationToken: token);
         sessions = sessions.Select(session => session with {
-            Live = session.Live && session.LastActivityAtUtc >= now - RepositoryWorkingWindow
+            Live = session.Live && session.LastActivityAtUtc >= now - workingWindow,
+            FreshAdvice = FreshAdvice(new() { Origin = session.Origin, TurnCount = session.TurnCount, CreatedAtUtc = session.CreatedAtUtc }, policy, now)
         }).ToList();
         var leases = await db.QueryAsListAsync("""
-            SELECT l.json FROM leases l WHERE l.expires>@now AND (
+            SELECT l.json FROM reservations l WHERE l.state='active' AND l.expires>@now AND (
               l.key=@build COLLATE NOCASE OR l.key=@repoKey COLLATE NOCASE
               OR substr(l.key,1,length(@branchPrefix))=@branchPrefix COLLATE NOCASE
               OR EXISTS (SELECT 1 FROM repository_sessions r WHERE r.repo=@repo
                 AND (json_extract(l.json,'$.holder')=r.item
-                  OR json_extract(l.json,'$.holder')=json_extract(r.json,'$.agentId'))))
+                  OR json_extract(l.json,'$.holder')=json_extract(r.json,'$.agentId')
+                  OR json_extract(l.json,'$.holder')=json_extract(r.json,'$.provider')||':'||json_extract(r.json,'$.agentId')
+                  OR json_extract(l.json,'$.holder')=json_extract(r.json,'$.provider')||':'||json_extract(r.json,'$.agentId')||':owner-driven')))
             ORDER BY l.key
             """, row => Read<Lease>(row.GetString(0)), args, cancellationToken: token);
         var unavailablePrSources = await db.QueryAsListAsync("""

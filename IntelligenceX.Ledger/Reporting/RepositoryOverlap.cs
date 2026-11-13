@@ -25,7 +25,7 @@ internal static class RepositoryOverlapEvaluator {
                 .ThenBy(session => session.AgentId, StringComparer.Ordinal)
                 .Select(session => new RepositoryWorktreeSession(session.AgentId, session.Provider,
                     session.Title is { Length: > SessionTitleLimit } title ? title[..SessionTitleLimit] : session.Title,
-                    session.LastActivityAtUtc, session.Live)).ToArray();
+                    session.LastActivityAtUtc, session.Live, session.Origin, session.FreshAdvice)).ToArray();
             return new RepositoryWorktree(latest.Machine, latest.Worktree, latest.Branch, compact,
                 group.SelectMany(session => session.PullRequests).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
                 files?.Take(FilePreviewLimit).ToArray(), count, files is not null && (latest.FilesCapped || files.Length > FilePreviewLimit),

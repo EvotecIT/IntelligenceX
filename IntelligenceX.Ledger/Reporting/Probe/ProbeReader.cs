@@ -16,19 +16,21 @@ internal sealed class ProbeReader {
     private readonly Uri? _endpoint;
     private readonly string _directory;
     private readonly string _reader;
+    private readonly TimeProvider _time;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>
     /// Uses a caller-owned, dedicated client with redirects and proxies disabled and no default authorization.
     /// The state directory must inherit private permissions on Windows and be outside the reporter spool.
     /// </summary>
-    public ProbeReader(HttpClient client, string stateDirectory, string readerName, string? endpoint = null) {
+    public ProbeReader(HttpClient client, string stateDirectory, string readerName, string? endpoint = null, TimeProvider? timeProvider = null) {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(readerName);
         _client = client;
         _directory = Path.GetFullPath(stateDirectory);
         _reader = readerName;
+        _time = timeProvider ?? TimeProvider.System;
         var address = endpoint ?? "http://127.0.0.1:47820";
         if (Uri.TryCreate(address, UriKind.Absolute, out var origin) && origin.IsLoopback &&
             origin.Scheme is "http" or "https" && origin.UserInfo.Length == 0 &&
@@ -41,8 +43,8 @@ internal sealed class ProbeReader {
     /// Denial, expiry and revoked authorization require a manual reset of the private reader-state.json.
     /// </summary>
     public async Task<ProbeAvailability> ReadAsync(CancellationToken cancellationToken = default) {
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(ReadDeadline);
+        using var timeout = new CancellationTokenSource(ReadDeadline, _time);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         var entered = false;
         try {
             if (_endpoint is null) return Unavailable("invalid-endpoint");

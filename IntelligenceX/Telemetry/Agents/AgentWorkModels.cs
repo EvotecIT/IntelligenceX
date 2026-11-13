@@ -53,6 +53,12 @@ public sealed record AgentSessionState {
     public string Id { get; init; } = string.Empty;
     /// <summary>Explicit session title, when available; never synthesized from a message.</summary>
     public string? Title { get; init; }
+    /// <summary>Structured native launcher identity, when present.</summary>
+    public string? SessionSource { get; init; }
+    /// <summary>Native parent session identity. A message parent is a separate relationship.</summary>
+    public string? ParentSessionId { get; init; }
+    /// <summary>Number of observed provider turn starts.</summary>
+    public int TurnCount { get; init; }
     /// <summary>Working directory reported by the provider.</summary>
     public string? WorkingDirectory { get; init; }
     /// <summary>GitHub repository in owner/name form, when known.</summary>

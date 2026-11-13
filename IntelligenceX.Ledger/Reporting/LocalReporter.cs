@@ -121,6 +121,7 @@ public static class LocalReporter {
         var probe = new ProbeReader(probeClient, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(file))!, "probe-reader"),
             "IntelligenceX Ledger " + settings.MachineId, settings.ProbeEndpoint);
         string[] coverage = ["collection-starting"];
+        SessionPolicy? lifecyclePolicy = null;
         var captureGate = new object();
         void Capture(AgentWorkSnapshot snapshot) {
             lock (captureGate) {
@@ -151,7 +152,8 @@ public static class LocalReporter {
             using var heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
             do {
                 var machineFacts = await probe.ReadAsync(stop.Token);
-                await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts);
+                var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts);
+                if (receipt is { Ok: true, PolicyRevision: > 0, Session: not null }) Volatile.Write(ref lifecyclePolicy, receipt.Session);
             } while (await heartbeatTimer.WaitForNextTickAsync(stop.Token));
         }
         var uploader = UploadLoop();
@@ -184,7 +186,7 @@ public static class LocalReporter {
                     Volatile.Write(ref claimSnapshot, null);
                 }
             }
-            await workspaces.RefreshAsync(watcher.CurrentSnapshot.Sessions, DateTimeOffset.UtcNow, stop.Token);
+            await workspaces.RefreshAsync(watcher.CurrentSnapshot.Sessions, DateTimeOffset.UtcNow, stop.Token, Volatile.Read(ref lifecyclePolicy));
             Capture(watcher.CurrentSnapshot);
             if (prCatalog is not null && DateTimeOffset.UtcNow - proofsChecked > TimeSpan.FromMinutes(5)) {
                 proofsChecked = DateTimeOffset.UtcNow;
@@ -245,8 +247,12 @@ public static class LocalReporter {
     internal static SessionFact SessionEvidence(ReporterSettings settings, AgentSessionState session,
         SessionArchiveCache.Observation? archive) {
         var pending = session.PendingInputs;
+        var origin = SessionOrigin.For(session);
         var blocking = pending.FirstOrDefault(x => x.IsBlocking && x.Id is not null && !x.AnswerIsUnconfirmed && !PriorTurn(x, session));
         return new SessionFact {
+            Title = SessionOrigin.Title(session.Title),
+            Origin = origin.Origin, OriginEvidence = origin.Evidence,
+            CreatedAtUtc = session.StartedAtUtc?.ToUniversalTime(), TurnCount = session.TurnCount,
             TurnId = session.TurnId is null ? null : LedgerScope.Id("turn", session.TurnId),
             InputId = blocking?.Id is { } inputId ? LedgerScope.Id("input", inputId) : null,
             SourceSessionId = Guid.TryParse(session.Id, out var sourceId) ? sourceId : null,
@@ -339,7 +345,7 @@ public static class LocalReporter {
             claims?.PullRequestUrlsByItem.ToDictionary(pair => pair.Key, pair => new PullRequestLinks(
                 pair.Value.Select(url => ItemId("pr", "github", url)).ToArray(), !claims.IncompletePullRequestItems.Contains(pair.Key), claims.CapturedAtUtc)));
     }
-    internal static async Task DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent healthObservation,
+    internal static async Task<ReporterHealthReceipt?> DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent healthObservation,
         CancellationToken token, ReporterChangeTracker? changes = null, ProbeAvailability? probe = null) {
         var progress = changes?.Progress.Where(p => p.LastActivityAtUtc <= healthObservation.ObservedAtUtc).ToArray() ?? [];
         var coverage = (healthObservation.Coverage ?? []).Distinct(StringComparer.Ordinal).ToList();
@@ -351,10 +357,12 @@ public static class LocalReporter {
         try {
             using var response = await client.PostAsJsonAsync("api/ledger/v1/reporters/health", health, LedgerJson.Options, token);
             if (!response.IsSuccessStatusCode) Console.Error.WriteLine("ledger-health-rejected:" + (int)response.StatusCode);
+            else return await response.Content.ReadFromJsonAsync<ReporterHealthReceipt>(LedgerJson.Options, token);
         } catch (Exception error) when (!token.IsCancellationRequested &&
-            error is HttpRequestException or IOException or TaskCanceledException) {
+            error is HttpRequestException or IOException or TaskCanceledException or JsonException) {
             Console.Error.WriteLine("ledger-health-delivery-pending");
         }
+        return null;
     }
 
     /// <summary>Refreshes successful source check times after the matching state has drained to the service.</summary>

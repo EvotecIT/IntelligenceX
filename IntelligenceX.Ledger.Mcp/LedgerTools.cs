@@ -7,6 +7,10 @@ namespace IntelligenceX.Ledger.Mcp;
 /// <summary>Thin read tools. State evaluation and retrieval remain service-owned.</summary>
 [McpServerToolType]
 public sealed class LedgerTools(LedgerReadClient client) {
+    [McpServerTool(Name = "session_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read one compact session status by provider session/thread ID or unique title fragment. Includes real title, turn state, last activity, question, usage limit, archive, repository, reservations and origin. Ambiguous titles return explicit matches.")]
+    public Task<SessionStatus> SessionStatus(string id, CancellationToken cancellationToken = default) => client.SessionStatusAsync(id, cancellationToken);
+
     [McpServerTool(Name = "repo_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read current repository work grouped by checkout. The compact default includes full live identities, recent-session counts/titles, up to five shared filenames and total counts. Set details for all session rows, and recent24h for 24-hour history. Summary comes first.")]
     public Task<RepositoryActivity> RepoActivity(string repo, CancellationToken cancellationToken = default, bool recent24h = false, bool details = false) => client.RepoActivityAsync(repo, cancellationToken, recent24h, details);
@@ -25,8 +29,17 @@ public sealed class LedgerTools(LedgerReadClient client) {
     public Task<MachineStatus> MachineStatus(string id, CancellationToken cancellationToken = default) => client.MachineStatusAsync(id, cancellationToken);
 
     [McpServerTool(Name = "budget_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Read observed usage-limit groups across machines. Credits and reset times remain unknown. An unmapped account is session-scoped evidence.")]
+    [Description("Read observed usage-limit groups and the next policy provider suggested for those limited sessions. Credits/reset remain unknown. Unmapped accounts are session-scoped evidence. Routing is advice and any session can do any kind of work.")]
     public Task<BudgetStatus> BudgetStatus(CancellationToken cancellationToken = default) => client.BudgetStatusAsync(cancellationToken);
+
+    [McpServerTool(Name = "policy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read the current revisioned policy for session lifecycle, resource reservations, load and routing preferences.")]
+    public Task<CoordinationPolicy> Policy(CancellationToken cancellationToken = default) => client.ReadPolicyAsync(cancellationToken);
+
+    [McpServerTool(Name = "pr_ready", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = true)]
+    [Description("Read cached GitHub merge evidence for one PR, including current commit checks, all-page unresolved thread count, pending reviewers, branch requirements and known checkouts. Cached for 60 seconds. The collector checks the head before and after collection. Task merge authority remains with the caller.")]
+    public Task<PullRequestReadiness> PullRequestReadiness(string repo, int pr, CancellationToken cancellationToken = default) =>
+        client.PullRequestReadinessAsync(repo, pr, cancellationToken);
 
     [McpServerTool(Name = "project_context", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read project responsibility/dependency evidence and optional maintained knowledge. Omit project for compact discovery. Shows up to three claims by default; request a larger maxResponsibilities when needed. Coverage identifies omitted facts.")]
@@ -62,7 +75,7 @@ public sealed class LedgerTools(LedgerReadClient client) {
         var view = await client.WorkAsync(cancellationToken, verdict, 8);
         return new(view.AsOfUtc, view.Counts, view.Machines.Select(machine => new MachineSummary(machine.Id, machine.State)).ToArray(),
             view.Items.Select(row => new WorkSummaryRow(row.Item.Id, row.Label, row.Item.Provider, row.Item.MachineId,
-                row.Item.Verdict, row.Item.ReasonCode, row.Item.SinceUtc, row.Item.NextActor, row.Item.LastKnown)).ToArray(),
+                row.Item.Verdict, row.Item.ReasonCode, row.Item.SinceUtc, row.Item.NextActor, row.Item.LastKnown, row.Item.Session?.Origin ?? "unknown")).ToArray(),
             view.Coverage, view.Truncated);
     }
 
@@ -79,4 +92,4 @@ public sealed record WorkSummary(DateTimeOffset AsOfUtc, Dictionary<string, int>
 public sealed record MachineSummary(string Id, string State);
 /// <summary>Compact item identity and service verdict for optional evidence drill-down.</summary>
 public sealed record WorkSummaryRow(string Id, string Label, string Provider, string MachineId, string Verdict,
-    string ReasonCode, DateTimeOffset SinceUtc, string? NextActor, bool LastKnown);
+    string ReasonCode, DateTimeOffset SinceUtc, string? NextActor, bool LastKnown, string Origin = "unknown");

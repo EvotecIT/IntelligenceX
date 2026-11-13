@@ -49,7 +49,9 @@ public static class Program {
         using var coordinationStore = coordination is null ? null : new CoordinationStore(
             Path.Combine(settings.DataDirectory, "coordination.sqlite"), coordination.InitialPolicy, coordination.Principals);
         if (coordinationStore is not null) await coordinationStore.InitializeAsync();
-        using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules));
+        async Task<CoordinationPolicy> ReadPolicy(CancellationToken ct) => coordinationStore is null
+            ? new(1, []) : await coordinationStore.ExecuteAsync((_, state) => state.Policy, DateTimeOffset.UtcNow, ct);
+        using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules), ReadPolicy);
         await store.InitializeAsync();
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders(); // Payloads, paths and credentials never enter request logs.
@@ -95,8 +97,21 @@ public static class Program {
         });
         const string prefix = "/api/ledger/v1";
         ProjectContextEndpoints.Map(app, contextService, runtime);
+        var readiness = new PullRequestReadinessService(store);
+        app.MapGet(prefix + "/pr-ready", async (string repo, int pr, CancellationToken ct) =>
+            Results.Ok(await readiness.ReadAsync(repo, pr, ct)));
+        app.MapGet(prefix + "/cleanup", async (string? machine, CancellationToken ct) =>
+            Results.Ok(await store.CleanupPlanAsync(DateTimeOffset.UtcNow, machine, ct)));
+        app.MapGet(prefix + "/session-status", async (string id, CancellationToken ct) => {
+            var machines = await runtime.MachinesAsync(DateTimeOffset.UtcNow, ct);
+            return Results.Ok(await store.SessionStatusAsync(id, DateTimeOffset.UtcNow, ct,
+                machines.Where(machine => machine.State != "healthy").Select(machine => machine.Id).ToHashSet(StringComparer.Ordinal)));
+        });
         LeaseEndpoints.Map(app, store, settings);
-        if (coordinationStore is not null) CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory);
+        if (coordinationStore is not null) {
+            CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory);
+        }
+        app.MapGet(prefix + "/policy", async (CancellationToken ct) => Results.Ok(await ReadPolicy(ct)));
         app.MapPost(prefix + "/events", async (LedgerEvent[] events, CancellationToken ct) => {
             var now = DateTimeOffset.UtcNow;
             if (events.Length is 0 or > LedgerJson.MaximumBatchEvents || events.Any(e => !EventAdmission.Valid(e, settings, now)))

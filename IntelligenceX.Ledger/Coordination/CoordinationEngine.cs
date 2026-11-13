@@ -11,8 +11,9 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
     private static readonly HashSet<string> Occupied = ["admitted", "submitted", "started", "reconcile"];
     private static readonly HashSet<string> Terminal = ["succeeded", "failed", "cancelled"];
     private static bool Same<T>(T left, T right) => JsonSerializer.Serialize(left) == JsonSerializer.Serialize(right);
-    private void Note(string id, string stage, string principal, long generation, string? evidence = null) =>
-        Changes.Add(new(++state.Sequence, id, stage, now, principal, generation, evidence));
+    private void Note(string id, string stage, string principal, long generation, string? evidence = null,
+        PolicyValueChange[]? policyChanges = null) =>
+        Changes.Add(new(++state.Sequence, id, stage, now, principal, generation, evidence) { PolicyChanges = policyChanges });
     private void Put(CoordinationWork work, string stage, string principal, string? evidence = null) {
         var stages = new Dictionary<string, DateTimeOffset>(work.Stages ?? []);
         stages.TryAdd(stage, now);
@@ -127,9 +128,20 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
         Require(state.Work.Values.Where(w => Occupied.Contains(w.State)).All(w => policy.Machines.Any(m => m.Id == w.Machine)) &&
             state.Retirements.Values.Where(j => j.CompletedAtUtc is null).All(j => policy.Machines.Any(m => m.Id == j.Binding.MachineId)),
             "occupied-machine-removal");
+        var changes = CoordinationPolicyValues.Changes(state.Policy, policy);
         state.Policy = policy;
-        Note("policy", "policy-updated", caller.Id, policy.Revision);
+        Note("policy", "policy-updated", caller.Id, policy.Revision, policyChanges: changes);
         Schedule(); // A reduced ceiling blocks new grants; it never terminates existing work.
+    }
+
+    /// <summary>Changes one operator-selected value with revision checking and the ordinary policy audit.</summary>
+    public CoordinationPolicy SetPolicyValue(PolicyValueCommand command, CoordinationPrincipal caller) {
+        Require(caller.Role == "operator", "policy-role-denied");
+        Require(command.ExpectedRevision == state.Policy.Revision, "policy-revision-conflict");
+        var updated = CoordinationPolicyValues.Set(state.Policy, command);
+        if (ReferenceEquals(updated, state.Policy)) return state.Policy;
+        ReplacePolicy(updated, caller, command.ExpectedRevision);
+        return updated;
     }
 
     /// <summary>Builds one scoped work overview. Machine occupancy retains all admitted reservations.</summary>

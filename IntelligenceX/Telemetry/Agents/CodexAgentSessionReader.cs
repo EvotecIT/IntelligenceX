@@ -43,6 +43,10 @@ internal static class CodexAgentSessionReader {
                     var git = Object(payload, "git");
                     session = session with {
                         Id = Text(payload, "id") ?? Text(payload, "session_id") ?? session.Id,
+                        SessionSource = Text(payload, "source") ??
+                            (Object(Object(payload, "source"), "subagent").ValueKind is JsonValueKind.True or JsonValueKind.Object or JsonValueKind.String
+                                ? "subagent" : session.SessionSource),
+                        ParentSessionId = Text(payload, "parent_thread_id") ?? session.ParentSessionId,
                         WorkingDirectory = Text(payload, "cwd") ?? session.WorkingDirectory,
                         Branch = Text(git, "branch") ?? session.Branch,
                         Repository = AgentRepositoryIdentity.FromRemote(Text(git, "repository_url")) ?? session.Repository
@@ -60,6 +64,8 @@ internal static class CodexAgentSessionReader {
                     switch (Text(payload, "type")) {
                         case "task_started": case "turn_started":
                             active = true;
+                            if (session.TurnId != (Text(payload, "turn_id") ?? Text(payload, "turnId")) || session.TurnOpen != true)
+                                session = session with { TurnCount = session.TurnCount + 1 };
                             session = session with { TurnOpen = true, TurnId = Text(payload, "turn_id") ?? Text(payload, "turnId"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null,
                                 State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,
                                 FailureCause = AgentFailureCause.Unknown, FailureEvidence = AgentFailureEvidence.None };

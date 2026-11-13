@@ -42,7 +42,8 @@ internal sealed partial class LedgerRuntime {
         var visible = verdict is null ? Interleave(selected).Take(limit) : selected.Take(limit);
         var rows = visible.Select(item => {
             labels.TryGetValue(item.Id, out var display);
-            var label = display?.Label ?? item.Provider + " " + item.Kind + " " + item.Id[..Math.Min(10, item.Id.Length)];
+            var label = item.Session?.Title ?? item.Session?.Repository?.Title ?? display?.Label ??
+                item.Provider + " " + item.Kind + " " + item.Id[..Math.Min(10, item.Id.Length)];
             return new LedgerWorkRow(label, display?.ProjectId, LedgerItemView.From(item));
         }).ToArray();
         return new(snapshot.At, LedgerRules.Version, snapshot.Machines,

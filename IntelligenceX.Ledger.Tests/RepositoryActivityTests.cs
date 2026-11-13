@@ -262,10 +262,10 @@ public sealed class RepositoryActivityTests : IDisposable {
         var nativeId = Guid.NewGuid();
         await store.IngestAsync([Event("item", new() { SourceSessionId = nativeId, TurnOpen = false,
             LastActivityAtUtc = Now.AddDays(-2), Repository = Observation() })], Now);
-        var keys = new[] { "build:SYNTHETIC/REPOSITORY", "repo:" + Repo, "branch:" + Repo + ":feature/one", "bench:by-item" }
-            .Concat(Enumerable.Range(0, 6).Select(index => "bench:by-native-" + index)).ToArray();
+        var keys = new[] { "build:SYNTHETIC/REPOSITORY", "repo:" + Repo, "branch:" + Repo + ":feature/one", "resource:by-item" }
+            .Concat(Enumerable.Range(0, 6).Select(index => "resource:by-native-" + index)).ToArray();
         foreach (var key in keys) {
-            var holder = key == "bench:by-item" ? "item" : key.StartsWith("bench:", StringComparison.Ordinal) ? nativeId.ToString() : "independent";
+            var holder = key == "resource:by-item" ? "item" : key.StartsWith("resource:", StringComparison.Ordinal) ? nativeId.ToString() : "independent";
             Assert.True((await store.AcquireLeaseAsync(new(key, holder, "windows", "validation", 600), Now)).Ok);
         }
         foreach (var key in new[] { "build:" + Repo + "-extra", "repo:" + Repo + ":other", "branch:" + Repo + "-extra:feature/one" })

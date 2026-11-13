@@ -104,6 +104,8 @@ internal static partial class CoordinationEndpoints {
                 return new CoordinationAcknowledgement(true); }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/policy", async (CoordinationPolicyCommand command, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => { e.ReplacePolicy(command.Policy, Caller(http), command.ExpectedRevision); return command.Policy; }, DateTimeOffset.UtcNow, ct)));
+        app.MapPost(Prefix + "/policy/value", async (PolicyValueCommand command, HttpContext http, CancellationToken ct) =>
+            Results.Ok(await store.ExecuteAsync((engine, _) => engine.SetPolicyValue(command, Caller(http)), DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/policy", async (HttpContext http, CancellationToken ct) => {
             CoordinationValidation.Require(Caller(http).Role == "operator", "policy-role-denied");
             return Results.Ok(await store.ExecuteAsync((_, s) => s.Policy, DateTimeOffset.UtcNow, ct));

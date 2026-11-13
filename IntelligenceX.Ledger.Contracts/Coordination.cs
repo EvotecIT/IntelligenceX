@@ -1,13 +1,30 @@
+using System.Text.Json.Serialization;
+
 namespace IntelligenceX.Ledger.Contracts;
 
 /// <summary>Versioned local policy. Units describe admitted work, not unobserved system load.</summary>
 public sealed record CoordinationPolicy(long Revision, MachineCapacity[] Machines, int MaximumQueued = 2000,
-    int GrantSeconds = 120, bool Enabled = true);
+    int GrantSeconds = 120, bool Enabled = true) {
+    public SessionPolicy Session { get; set; } = new();
+    public ResourceLeasePolicy Lease { get; set; } = new();
+    public BenchmarkPolicy Bench { get; set; } = new();
+    public MachineLoadPolicy Load { get; set; } = new();
+    public Dictionary<string, string[]> Routing { get; set; } = new(StringComparer.Ordinal) {
+        ["engine"] = ["claude", "codex"], ["visual"] = ["claude"],
+        ["ciLoop"] = ["codex"], ["mergeLoop"] = ["codex"], ["review"] = ["claude", "codex"]
+    };
+    public Dictionary<string, string> Priority { get; set; } = new(StringComparer.Ordinal) {
+        ["benchmark"] = "normal", ["build"] = "normal", ["test"] = "normal"
+    };
+}
 
 /// <summary>Distinct machine reservation capacity; processor identifiers come from qualified machine observations.
 /// AllowedCreateProviders explicitly permits reserving native worker creation; null or empty disables creation.</summary>
 public sealed record MachineCapacity(string Id, int AgentSlots, int BuildSlots, int CpuUnits, long MemoryMiB,
-    string[] Capabilities, int[]? BenchmarkProcessors = null, bool Enabled = true, string[]? AllowedCreateProviders = null);
+    string[] Capabilities, int[]? BenchmarkProcessors = null, bool Enabled = true, string[]? AllowedCreateProviders = null) {
+    /// <summary>Test capacity defaults to the configured build capacity.</summary>
+    public int? TestSlots { get; init; }
+}
 
 /// <summary>Requested admission; an exclusive benchmark occupies the admitted host until verified release.</summary>
 public sealed record ResourceDemand(int AgentSlots = 0, int BuildSlots = 0, int CpuUnits = 0, long MemoryMiB = 0,
@@ -131,7 +148,11 @@ public sealed record CoordinationRetirementReceipt(CoordinationSessionBinding Bi
     long? ExpectedRevision = null);
 
 public sealed record CoordinationChange(long Sequence, string RequestId, string Stage, DateTimeOffset AtUtc,
-    string Principal, long Generation, string? EvidenceRef = null);
+    string Principal, long Generation, string? EvidenceRef = null) {
+    /// <summary>Changed policy values retain their path and the original JSON values.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PolicyValueChange[]? PolicyChanges { get; init; }
+}
 
 public sealed record MachineAdmission(string Id, ResourceDemand Used, MachineCapacity Capacity, bool Fresh);
 public sealed record CoordinationSummary(DateTimeOffset AsOfUtc, long PolicyRevision,

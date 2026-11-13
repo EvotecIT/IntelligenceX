@@ -16,14 +16,33 @@ public static class CoordinationValidation {
         (d.Processors is null || d.Processors.Length > 0 && d.Processors.All(p => p >= 0) && d.Processors.Distinct().Count() == d.Processors.Length);
 
     public static void Policy(CoordinationPolicy p) {
-        Require(p.Revision > 0 && p.Machines is { Length: > 0 and <= 128 } && p.MaximumQueued is > 0 and <= 10000 &&
+        Require(p is not null, "invalid-policy");
+        Require(p.Revision > 0 && p.Machines is { Length: > 0 and <= 128 } && p.Machines.All(m => m is not null) && p.MaximumQueued is > 0 and <= 10000 &&
             p.GrantSeconds is >= 15 and <= 3600, "invalid-policy");
         Require(p.Machines.Select(m => m.Id).Distinct(StringComparer.Ordinal).Count() == p.Machines.Length, "duplicate-machine");
-        foreach (var m in p.Machines) Require(Id(m.Id) && m.AgentSlots >= 0 && m.BuildSlots >= 0 && m.CpuUnits > 0 && m.MemoryMiB > 0 &&
+        foreach (var m in p.Machines) Require(m is not null && Id(m.Id) && m.AgentSlots >= 0 && m.BuildSlots >= 0 && m.TestSlots is not < 0 && m.CpuUnits > 0 && m.MemoryMiB > 0 &&
             m.Capabilities is { Length: > 0 and <= 64 } && m.Capabilities.All(Id) && Providers(m.AllowedCreateProviders) &&
             (m.BenchmarkProcessors is null || m.BenchmarkProcessors.Length > 0 && m.BenchmarkProcessors.All(p => p >= 0) &&
              m.BenchmarkProcessors.Distinct().Count() == m.BenchmarkProcessors.Length), "invalid-machine-policy");
+        Require(p.Session is not null && Positive(p.Session.IdleArchiveHours) && p.Session.FreshAfterTurns > 0 &&
+            Positive(p.Session.FreshAfterDays) && Positive(p.Session.CleanupIntervalHours), "invalid-session-policy");
+        Require(p.Lease is not null && p.Lease.DefaultTtlSeconds > 0 && Nonnegative(p.Lease.TakeoverIdleMinutes) &&
+            Nonnegative(p.Lease.TakeoverIdleMinutesHuman) && Positive(p.Lease.LiveWithinMinutes) && Positive(p.Lease.QueueTtlMinutes) &&
+            p.Lease.MaximumTtlMinutes is { Count: > 0 and <= 64 } && p.Lease.MaximumTtlMinutes.ContainsKey("other") &&
+            p.Lease.MaximumTtlMinutes.All(pair => Id(pair.Key) && pair.Key == pair.Key.ToLowerInvariant() && Positive(pair.Value) && pair.Value * 60 >= 1), "invalid-lease-policy");
+        Require(p.Bench is not null && Positive(p.Bench.MaxPerDayHours) && p.Bench.MaxPerDayHours <= 24 &&
+            Positive(p.Bench.MaxContinuousMinutes) && p.Bench.HeavySlotsWhileActive >= 0 && Nonnegative(p.Bench.ContinuityGapMinutes), "invalid-benchmark-policy");
+        Require(p.Load is not null && p.Load.HeavyCpuPercent is >= 0 and <= 100 && p.Load.AlertCpuPercent is >= 0 and <= 100 &&
+            Nonnegative(p.Load.HeavySustainedMinutes) && Positive(p.Load.AlertMinutes) && Positive(p.Load.SampleFreshMinutes) &&
+            p.Load.HeavyMemoryPressure is { Length: <= 16 } && p.Load.HeavyMemoryPressure.All(Id), "invalid-load-policy");
+        Require(p.Routing is { Count: > 0 and <= 64 } && p.Routing.All(pair => Id(pair.Key) &&
+            pair.Value is { Length: > 0 and <= 64 } && Providers(pair.Value)), "invalid-routing-policy");
+        Require(p.Priority is { Count: > 0 and <= 64 } && p.Priority.All(pair => Id(pair.Key) &&
+            pair.Value is "low" or "normal" or "high"), "invalid-priority-policy");
     }
+
+    private static bool Positive(double value) => double.IsFinite(value) && value > 0;
+    private static bool Nonnegative(double value) => double.IsFinite(value) && value >= 0;
 
     public static void Request(CoordinationRequest r, CoordinationPrincipal caller) {
         var c = r.Checkpoint;

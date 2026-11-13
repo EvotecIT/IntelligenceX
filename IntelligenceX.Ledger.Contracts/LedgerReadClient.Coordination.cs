@@ -24,10 +24,15 @@ public sealed partial class LedgerReadClient {
         GetAsync("api/coordination/v1/goals/" + Uri.EscapeDataString(id), LedgerReadJson.Default.CoordinationGoal, token);
     public Task<CoordinationPolicy> PolicyAsync(CancellationToken token = default) =>
         GetAsync("api/coordination/v1/policy", LedgerReadJson.Default.CoordinationPolicy, token);
+    /// <summary>Reads policy through the ordinary read credential.</summary>
+    public Task<CoordinationPolicy> ReadPolicyAsync(CancellationToken token = default) =>
+        GetAsync("api/ledger/v1/policy", LedgerReadJson.Default.CoordinationPolicy, token);
     public Task<CoordinationGoal> SetGoalAsync(CoordinationGoalCommand command, CancellationToken token = default) =>
         PostAsync("goals", command, LedgerReadJson.Default.CoordinationGoalCommand, LedgerReadJson.Default.CoordinationGoal, token);
     public Task<CoordinationPolicy> SetPolicyAsync(CoordinationPolicyCommand command, CancellationToken token = default) =>
         PostAsync("policy", command, LedgerReadJson.Default.CoordinationPolicyCommand, LedgerReadJson.Default.CoordinationPolicy, token);
+    public Task<CoordinationPolicy> SetPolicyValueAsync(PolicyValueCommand command, CancellationToken token = default) =>
+        PostAsync("policy/value", command, LedgerReadJson.Default.PolicyValueCommand, LedgerReadJson.Default.CoordinationPolicy, token);
     public Task<CoordinationWork> SubmitAsync(CoordinationRequest request, bool apply = false, CancellationToken token = default) =>
         PostAsync(apply ? "requests" : "requests/preview", request, LedgerReadJson.Default.CoordinationRequest, LedgerReadJson.Default.CoordinationWork, token);
     public Task<CoordinationWork> AcceptAsync(string id, string resultRef, CancellationToken token = default) =>

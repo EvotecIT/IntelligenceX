@@ -91,8 +91,12 @@ public sealed class ReporterChangeTests : IDisposable {
             var changes = new ReporterChangeTracker(spool, _directory);
             Assert.True(changes.TryAppend(first));
             Assert.True(changes.TryAppend(work));
-            session = session with { Title = "Synthetic refreshed title", LastActivityAtUtc = Now.AddSeconds(30) };
+            session = session with { LastActivityAtUtc = Now.AddSeconds(30) };
             Assert.False(changes.TryAppend(SessionAt(Now.AddSeconds(30))));
+            session = session with { Title = "Synthetic refreshed title" };
+            Assert.True(changes.TryAppend(SessionAt(Now.AddSeconds(30))));
+            Assert.Equal("Synthetic refreshed title", spool.Pending().Last().Session!.Title);
+            Assert.False(changes.TryAppend(SessionAt(Now.AddSeconds(31))));
             Assert.False(changes.TryAppend(work with { EventId = Guid.NewGuid(), Sequence = 3, ObservedAtUtc = Now.AddSeconds(30) }));
             changes.Acknowledge(spool.Pending().Select(e => e.EventId));
             Assert.Empty(spool.Pending());

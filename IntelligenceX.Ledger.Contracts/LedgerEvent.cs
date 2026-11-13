@@ -32,6 +32,12 @@ public sealed record LedgerEvent {
 
 /// <summary>Latest provider turn evidence, independent of watcher liveness heuristics.</summary>
 public sealed record SessionFact {
+    /// <summary>Explicit provider title. Ordinary conversation text is excluded.</summary>
+    public string? Title { get; init; }
+    public string Origin { get; init; } = "unknown";
+    public string? OriginEvidence { get; init; }
+    public int? TurnCount { get; init; }
+    public DateTimeOffset? CreatedAtUtc { get; init; }
     public TaskScope? Scope { get; init; }
     public string? TurnId { get; init; }
     public string? InputId { get; init; }

@@ -7,7 +7,10 @@ using System.Text.Json;
 namespace IntelligenceX.Ledger.Storage;
 
 /// <summary>Single service-owned database. History, projections and receipts commit together.</summary>
-public sealed partial class LedgerStore(string path, LedgerRules rules) : IDisposable {
+public sealed partial class LedgerStore(string path, LedgerRules rules,
+    Func<CancellationToken, Task<CoordinationPolicy>>? policyReader = null) : IDisposable {
+    internal Task<CoordinationPolicy> ReadPolicyAsync(CancellationToken token) =>
+        policyReader?.Invoke(token) ?? Task.FromResult(new CoordinationPolicy(1, []));
     private sealed record GlobalObservation(LedgerEvent Event, DateTimeOffset Received);
     private sealed record ProofObservation(PullRequestProof Fact, EvidenceRef Evidence);
     private sealed record LinkObservation(PullRequestLinks Fact, EvidenceRef Evidence);
@@ -67,6 +70,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
               PRIMARY KEY(item,id));
             """, cancellationToken: token);
         await InitializeRepositoryActivityAsync(db, token);
+        await InitializeReservationsAsync(db, token);
+        await InitializeSessionLookupAsync(db, token);
     }
 
     public async Task<Guid[]> IngestAsync(LedgerEvent[] events, DateTimeOffset received, CancellationToken token = default, bool journal = true) {

@@ -15,6 +15,12 @@ public sealed partial class LedgerReadClient {
         GetAsync("api/ledger/v1/machine-status/" + Uri.EscapeDataString(id), LedgerReadJson.Default.MachineStatus, token);
     public Task<BudgetStatus> BudgetStatusAsync(CancellationToken token = default) =>
         GetAsync("api/ledger/v1/budget-status", LedgerReadJson.Default.BudgetStatus, token);
+    public Task<SessionStatus> SessionStatusAsync(string id, CancellationToken token = default) =>
+        GetAsync("api/ledger/v1/session-status?id=" + Uri.EscapeDataString(id), LedgerReadJson.Default.SessionStatus, token);
+    public Task<PullRequestReadiness> PullRequestReadinessAsync(string repo, int pr, CancellationToken token = default) =>
+        GetAsync("api/ledger/v1/pr-ready?repo=" + Uri.EscapeDataString(repo) + "&pr=" + pr, LedgerReadJson.Default.PullRequestReadiness, token);
+    public Task<SessionCleanupPlan> CleanupPlanAsync(string? machine = null, CancellationToken token = default) =>
+        GetAsync("api/ledger/v1/cleanup" + (machine is null ? "" : "?machine=" + Uri.EscapeDataString(machine)), LedgerReadJson.Default.SessionCleanupPlan, token);
     public Task<LeaseReply> AcquireLeaseAsync(LeaseAcquire value, CancellationToken token = default) =>
         LeaseCommandAsync("acquire", value, LedgerReadJson.Default.LeaseAcquire, token);
     public Task<LeaseReply> RenewLeaseAsync(LeaseRenew value, CancellationToken token = default) =>

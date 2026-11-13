@@ -38,14 +38,19 @@ public sealed class LedgerHostingRegressionTests : IDisposable {
     public async Task ShadowFileAdvancesLatestReporterHealthWithoutCreatingEvents() {
         using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
         await store.InitializeAsync();
-        using var worker = new ShadowReportWorker(store, new() { DataDirectory = _directory, ReadToken = new('r', 32), WriteToken = new('w', 32) });
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        using var worker = new ShadowReportWorker(store, new() { DataDirectory = _directory, ReadToken = new('r', 32), WriteToken = new('w', 32) }, clock);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         var path = Path.Combine(_directory, "shadow", now.UtcDateTime.ToString("yyyy-MM-dd") + ".json");
         await store.IngestAsync([Heartbeat(now)], now);
         await worker.StartAsync(default);
         try {
             async Task<DateTimeOffset?> LatestHeartbeat() {
+                if (worker.ExecuteTask is { IsCompleted: true } completed) {
+                    await completed;
+                    Assert.Fail("The shadow worker ended before refreshing its report.");
+                }
                 try {
                     using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, deadline.Token));
                     Assert.Empty(document.RootElement.GetProperty("transitions").EnumerateArray());
@@ -54,8 +59,9 @@ public sealed class LedgerHostingRegressionTests : IDisposable {
                 } catch (IOException) { return null; }
             }
             while (await LatestHeartbeat() != now) await Task.Delay(50, deadline.Token);
-            var received = DateTimeOffset.UtcNow;
+            var received = now.AddMinutes(1);
             await store.IngestAsync([Heartbeat(received)], received);
+            clock.Advance(TimeSpan.FromMinutes(1));
             while (await LatestHeartbeat() != received) await Task.Delay(50, deadline.Token);
             using var report = JsonDocument.Parse(await File.ReadAllBytesAsync(path));
             Assert.Equal(received, report.RootElement.GetProperty("reporterHealth").GetProperty("synthetic-first-reporter").GetDateTimeOffset());

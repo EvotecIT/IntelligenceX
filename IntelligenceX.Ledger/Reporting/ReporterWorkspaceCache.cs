@@ -6,33 +6,39 @@ namespace IntelligenceX.Ledger.Reporting;
 
 /// <summary>Reads each current workspace once per minute and attaches Git metadata to existing session facts.</summary>
 internal sealed class ReporterWorkspaceCache {
-    private sealed record Workspace(DateTimeOffset CheckedAtUtc, string? Branch, string? Root, string[]? Files, bool Capped, string? BaseRef, string State, int? FileCount = null);
+    private sealed record Workspace(DateTimeOffset CheckedAtUtc, string? Branch, string? Root, string[]? Files, bool Capped, string? BaseRef, string State,
+        int? FileCount = null, bool? Dirty = null, bool? Unpushed = null, string? Commit = null);
     private readonly Dictionary<string, Workspace> _workspaces = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Provider, string Id, string Repo), (string[] Urls, bool Known)> _pullRequests = new();
     private readonly object _gate = new();
 
-    internal async Task RefreshAsync(IEnumerable<AgentSessionState> sessions, DateTimeOffset now, CancellationToken token) {
+    internal async Task RefreshAsync(IEnumerable<AgentSessionState> sessions, DateTimeOffset now, CancellationToken token, SessionPolicy? policy = null) {
         var paths = sessions.Where(s => s.Repository is not null && s.WorkingDirectory is not null &&
-            (s.TurnOpen == true || s.LastActivityAtUtc >= now.AddDays(-1))).Select(s => s.WorkingDirectory!).Distinct(StringComparer.Ordinal).ToArray();
+            (s.TurnOpen == true || s.LastActivityAtUtc >= now.AddDays(-1) || policy is not null && !s.IsArchived &&
+                SessionOrigin.For(s).Origin == "agent" && s.LastActivityAtUtc <= now.AddHours(-policy.IdleArchiveHours)))
+            .GroupBy(s => s.WorkingDirectory!, StringComparer.Ordinal).ToDictionary(group => group.Key,
+                group => group.Any(s => s.TurnOpen == true || s.LastActivityAtUtc >= now.AddDays(-1))
+                    ? TimeSpan.FromMinutes(1) : TimeSpan.FromHours(policy!.CleanupIntervalHours), StringComparer.Ordinal);
         foreach (var path in paths) {
-            lock (_gate) { if (_workspaces.TryGetValue(path, out var old) && now - old.CheckedAtUtc < TimeSpan.FromMinutes(1)) continue; }
-            var observed = await ReadAsync(path, now, token);
-            lock (_gate) _workspaces[path] = observed;
+            lock (_gate) { if (_workspaces.TryGetValue(path.Key, out var old) && now - old.CheckedAtUtc < path.Value) continue; }
+            var observed = await ReadAsync(path.Key, now, token);
+            lock (_gate) _workspaces[path.Key] = observed;
         }
         var identities = sessions.Select(session => (session.Provider, session.Id, session.Repository ?? "")).ToHashSet();
         lock (_gate) {
-            foreach (var old in _workspaces.Keys.Except(paths, StringComparer.Ordinal).ToArray()) _workspaces.Remove(old);
+            foreach (var old in _workspaces.Keys.Except(paths.Keys, StringComparer.Ordinal).ToArray()) _workspaces.Remove(old);
             foreach (var old in _pullRequests.Keys.Except(identities).ToArray()) _pullRequests.Remove(old);
         }
     }
 
     internal RepositoryObservation? For(AgentSessionState session, bool pullRequestsKnown = false) {
-        if (session.Repository is null || session.TurnOpen != true &&
-            (session.LastActivityAtUtc is not { } activity || activity < DateTimeOffset.UtcNow.AddDays(-1))) return null;
+        if (session.Repository is null) return null;
         Workspace? workspace;
         (string[] Urls, bool Known) pullRequests;
         lock (_gate) {
             _workspaces.TryGetValue(session.WorkingDirectory ?? "", out workspace);
+            if (workspace is null && session.TurnOpen != true &&
+                (session.LastActivityAtUtc is not { } activity || activity < DateTimeOffset.UtcNow.AddDays(-1))) return null;
             var key = (session.Provider, session.Id, session.Repository);
             if (!_pullRequests.TryGetValue(key, out pullRequests) || pullRequestsKnown) {
                 pullRequests = (session.PullRequests.Where(pr => pr.IsOpen).Select(pr => pr.Url)
@@ -41,15 +47,17 @@ internal sealed class ReporterWorkspaceCache {
             }
         }
         return new(session.Repository, workspace?.Branch ?? session.Branch, workspace?.Root ?? session.WorkingDirectory,
-            session.Title is { Length: > 240 } title ? title[..240] : session.Title,
+            SessionOrigin.Title(session.Title),
             pullRequests.Urls, workspace?.Files?.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
-            workspace?.Capped ?? false, workspace?.BaseRef, workspace?.State ?? "not-observed", pullRequests.Known ? true : null, workspace?.FileCount);
+            workspace?.Capped ?? false, workspace?.BaseRef, workspace?.State ?? "not-observed", pullRequests.Known ? true : null,
+            workspace?.FileCount, workspace?.Dirty, workspace?.Unpushed, workspace?.Commit);
     }
 
     private static async Task<Workspace> ReadAsync(string path, DateTimeOffset now, CancellationToken token) {
         if (!Directory.Exists(path)) return new(now, null, null, null, false, null, "workspace-missing");
         var root = (await GitAsync(path, ["rev-parse", "--show-toplevel"], token))?.Trim();
         if (string.IsNullOrEmpty(root)) return new(now, null, null, null, false, null, "git-unavailable");
+        var head = (await GitAsync(root, ["rev-parse", "HEAD"], token))?.Trim();
         var branch = (await GitAsync(root, ["symbolic-ref", "--quiet", "--short", "HEAD"], token))?.Trim();
         var defaultBranch = (await GitAsync(root, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], token))?.Trim();
         string? baseRef = null, baseCommit = null;
@@ -62,7 +70,12 @@ internal sealed class ReporterWorkspaceCache {
         var untracked = await GitAsync(root, ["ls-files", "--others", "--exclude-standard", "-z"], token);
         if (tracked is null || untracked is null) return new(now, branch, root, null, false, baseRef, "git-unavailable");
         var files = (tracked + untracked).Split('\0', StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-        return new(now, branch, root, files.Take(20).ToArray(), files.Length > 20, baseRef, "observed", files.Length);
+        var status = await GitAsync(root, ["status", "--porcelain", "-z", "--untracked-files=normal"], token);
+        var published = await GitAsync(root, ["branch", "-r", "--contains", "HEAD", "--list", "origin/*"], token);
+        var currentHead = (await GitAsync(root, ["rev-parse", "HEAD"], token))?.Trim();
+        if (head is null || head != currentHead) return new(now, branch, root, null, false, baseRef, "git-unavailable");
+        return new(now, branch, root, files.Take(20).ToArray(), files.Length > 20, baseRef, "observed", files.Length,
+            status is null ? null : status.Length != 0, published is null ? null : string.IsNullOrWhiteSpace(published), head);
     }
 
     private static async Task<string?> GitAsync(string directory, string[] arguments, CancellationToken token) {

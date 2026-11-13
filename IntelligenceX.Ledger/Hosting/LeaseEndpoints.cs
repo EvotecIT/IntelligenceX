@@ -65,7 +65,8 @@ internal static class LeaseEndpoints {
                 return Results.BadRequest(new { error = "invalid-health" });
             if (!ValidProbe(value.Probe, now)) value = value with { Probe = new("unavailable", "invalid-source-data") { ObservedAtUtc = now } };
             await store.UpdateReporterHealthAsync(value, ct);
-            return Results.Ok(new { ok = true });
+            var policy = await store.ReadPolicyAsync(ct);
+            return Results.Ok(new ReporterHealthReceipt(true, policy.Revision, policy.Session));
         });
     }
 

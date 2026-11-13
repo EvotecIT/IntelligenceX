@@ -6,14 +6,15 @@ using IntelligenceX.Ledger.Storage;
 namespace IntelligenceX.Ledger.Hosting;
 
 /// <summary>Reevaluates aging rules and writes daily shadow reports locally without waking any client.</summary>
-internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings settings) : BackgroundService {
+internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings settings, TimeProvider? timeProvider = null) : BackgroundService {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         var directory = Path.Combine(settings.DataDirectory, "shadow");
         Directory.CreateDirectory(directory);
         var written = new Dictionary<DateOnly, string>();
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        var clock = timeProvider ?? TimeProvider.System;
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), clock);
         do {
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.GetUtcNow();
             await store.PruneEventsAsync(now, token: stoppingToken);
             await new LedgerRuntime(store, settings).ItemsAsync(now, stoppingToken);
             foreach (var day in new[] { DateOnly.FromDateTime(now.UtcDateTime).AddDays(-1), DateOnly.FromDateTime(now.UtcDateTime) }) {

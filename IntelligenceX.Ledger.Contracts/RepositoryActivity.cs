@@ -5,13 +5,18 @@ namespace IntelligenceX.Ledger.Contracts;
 /// <summary>Workspace observation. Null file names mean Git state was unavailable.</summary>
 public sealed record RepositoryObservation(string Repo, string? Branch, string? Worktree, string? Title,
     string[] PullRequests, string[]? Files, bool FilesCapped, string? BaseRef, string GitState, bool? PullRequestsKnown = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FileCount = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? FileCount = null,
+    bool? Dirty = null, bool? Unpushed = null, string? Commit = null);
 /// <summary>Stored session observation used to build repository queries.</summary>
 public sealed record RepositorySession(string AgentId, string Machine, string Provider, string? Branch, string? Worktree,
     string? Title, string[] PullRequests, DateTimeOffset? LastActivityAtUtc, string[]? Files, bool FilesCapped, string? BaseRef, string GitState, bool Live,
-    bool? PullRequestsKnown = null, int? FileCount = null, DateTimeOffset? ObservedAtUtc = null);
+    bool? PullRequestsKnown = null, int? FileCount = null, DateTimeOffset? ObservedAtUtc = null,
+    string Origin = "unknown", string? OriginEvidence = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? FreshAdvice = null,
+    int? TurnCount = null, DateTimeOffset? CreatedAtUtc = null);
 /// <summary>Compact session identity and activity within a shared checkout.</summary>
-public sealed record RepositoryWorktreeSession(string AgentId, string Provider, string? Title, DateTimeOffset? LastActivityAtUtc, bool Live);
+public sealed record RepositoryWorktreeSession(string AgentId, string Provider, string? Title, DateTimeOffset? LastActivityAtUtc, bool Live,
+    string Origin = "unknown", [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? FreshAdvice = null);
 /// <summary>Files describe the checkout. A null count means the full changed-file count was unavailable.</summary>
 public sealed record RepositoryWorktree(string Machine, string? Worktree, string? Branch, RepositoryWorktreeSession[] Sessions,
     string[] PullRequests, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? Files,

@@ -229,20 +229,32 @@ public sealed class ProbeReaderTests : IDisposable {
 
     [Fact]
     public async Task DiscoveryAndPairingShareOneReadDeadline() {
-        var startedPairing = false;
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var discoveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pairingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishDiscovery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var handler = new Handler(async (request, token) => {
             if (request.RequestUri!.AbsolutePath == "/v1/info") {
-                await Task.Delay(TimeSpan.FromMilliseconds(1100), token);
+                discoveryStarted.SetResult();
+                await finishDiscovery.Task.WaitAsync(token);
                 return Reply("{\"version\":1}");
             }
             Assert.Equal("/v1/pair", request.RequestUri.AbsolutePath);
-            startedPairing = true;
-            await Task.Delay(TimeSpan.FromMilliseconds(1300), token);
+            pairingStarted.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
             return Reply("{\"id\":\"synthetic-ticket\"}");
         });
         using var client = new HttpClient(handler);
-        var result = await Reader(client).ReadAsync();
-        Assert.True(startedPairing);
+        var reader = new ProbeReader(client, _directory, "synthetic-reader", timeProvider: clock);
+        var pending = reader.ReadAsync();
+        await discoveryStarted.Task;
+        clock.Advance(TimeSpan.FromMilliseconds(1100));
+        finishDiscovery.SetResult();
+        await pairingStarted.Task;
+        clock.Advance(TimeSpan.FromMilliseconds(899));
+        Assert.False(pending.IsCompleted);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        var result = await pending;
         Assert.Equal("unavailable", result.State);
         Assert.Equal("timeout", result.Reason);
     }

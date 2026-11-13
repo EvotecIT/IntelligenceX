@@ -51,6 +51,7 @@ internal static class ClaudeAgentSessionReader {
                 var timestamp = Timestamp(entry);
                 session = session with {
                     Id = Text(entry, "sessionId") ?? session.Id,
+                    ParentSessionId = Text(entry, "parentSessionId") ?? session.ParentSessionId,
                     ProviderPullRequestUrls = AssociationsFor(Text(entry, "sessionId") ?? session.Id),
                     WorkingDirectory = Text(entry, "cwd") ?? session.WorkingDirectory,
                     Branch = Text(entry, "gitBranch") ?? session.Branch,
@@ -79,6 +80,7 @@ internal static class ClaudeAgentSessionReader {
                     var toolResult = responses.ValueKind == JsonValueKind.Array &&
                         responses.EnumerateArray().Any(block => Text(block, "type") == "tool_result");
                     if (session.TurnOpen != true || !toolResult) {
+                        if (session.TurnId != Text(entry, "uuid")) session = session with { TurnCount = session.TurnCount + 1 };
                         session = session with { TurnOpen = true, TurnId = Text(entry, "uuid"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null,
                             SourceMessageId = Text(Object(entry, "origin"), "kind") == "peer" &&
                                 Guid.TryParse(Text(Object(entry, "origin"), "msg_id"), out var messageId) ? messageId : null };
@@ -95,7 +97,7 @@ internal static class ClaudeAgentSessionReader {
                                 session = AgentInputRequests.CompleteBlocking(session, Text(block, "tool_use_id"));
                 } else if (type == "assistant") {
                     if (session.TurnOpen != true)
-                        session = session with { TurnOpen = true, TurnId = Text(entry, "uuid"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null,
+                        session = session with { TurnCount = session.TurnCount + 1, TurnOpen = true, TurnId = Text(entry, "uuid"), TurnStartedAtUtc = timestamp, TurnEndedAtUtc = null,
                             SourceMessageId = null };
                     active = true;
                     session = session with { State = AgentWorkState.Idle, LastTurnOutcome = AgentTurnOutcome.Unknown,

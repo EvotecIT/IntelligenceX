@@ -17,14 +17,17 @@ public sealed class LeaseTests : IDisposable {
         using (var store = new LedgerStore(Database, new(new()))) {
             await store.InitializeAsync();
             var contenders = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => store.AcquireLeaseAsync(
-                new("bench:synthetic", "agent-" + i, "synthetic", "benchmark", 600), Now)));
+                new("resource:synthetic", "agent-" + i, "synthetic", "exclusive", 600), Now)));
             first = Assert.Single(contenders, r => r.Ok).Lease!;
             Assert.All(contenders.Where(r => !r.Ok), r => { Assert.Equal("busy", r.State); Assert.Equal(first, r.Lease); });
-            Assert.Equal(first, Assert.Single((await store.WhoAsync("bench:", true, Now)).Leases));
+            Assert.Equal(first, Assert.Single((await store.WhoAsync("resource:", true, Now)).Leases));
         }
         using var restarted = new LedgerStore(Database, new(new()));
         await restarted.InitializeAsync();
         Assert.Equal(first, Assert.Single((await restarted.WhoAsync(first.Key, false, Now.AddSeconds(599))).Leases));
+        await restarted.IngestAsync([new() { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Sequence = 1,
+            MachineId = "synthetic", ReporterId = "reporter", ItemId = first.Holder, Provider = "codex", Source = "watcher",
+            ObservedAtUtc = Now.AddSeconds(599), Session = new() { TurnOpen = true, LastActivityAtUtc = Now.AddSeconds(599) } }], Now.AddSeconds(599));
         var renewed = await restarted.RenewLeaseAsync(new(first.Key, first.LeaseId, 60), Now.AddSeconds(599));
         Assert.True(renewed.Ok);
         Assert.Equal(Now.AddSeconds(659), renewed.Lease!.ExpiresAtUtc);
@@ -126,7 +129,7 @@ public sealed class LeaseTests : IDisposable {
         Assert.NotEmpty(who.Leases);
         Assert.True(JsonSerializer.SerializeToUtf8Bytes(who, LedgerJson.Options).Length < 1024);
         Assert.Empty((await store.WhoAsync("build:synthetic/_", true, Now)).Leases);
-        await Assert.ThrowsAsync<ArgumentException>(() => store.AcquireLeaseAsync(new("bench:synthetic", "agent", "synthetic", "bench", 0), Now));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.AcquireLeaseAsync(new("bench:synthetic", "agent", "synthetic", "bench", -1), Now));
         Assert.Empty((await store.BudgetStatusAsync()).Limits);
         var events = Enumerable.Range(0, 3).Select(i => new LedgerEvent { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Sequence = 1,
             MachineId = "synthetic", ReporterId = "reporter", ItemId = "session-" + i, Provider = "claude", Source = "watcher", ObservedAtUtc = Now,

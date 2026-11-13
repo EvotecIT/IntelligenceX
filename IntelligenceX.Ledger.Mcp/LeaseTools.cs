@@ -8,13 +8,14 @@ namespace IntelligenceX.Ledger.Mcp;
 [McpServerToolType]
 public sealed class LeaseTools(LedgerReadClient client) {
     [McpServerTool(Name = "lease_acquire", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Reserve one exact key for an agent. A busy answer reports its holder. TTL is 1..86400 seconds. Save the returned leaseId for renew/release.")]
-    public Task<LeaseReply> Acquire(string key, string holder, string machine, string purpose, int ttlSeconds = 600, CancellationToken cancellationToken = default) =>
-        client.AcquireLeaseAsync(new(key, holder, machine, purpose, ttlSeconds), cancellationToken);
+    [Description("Reserve a resource for a session. Policy controls capacity and TTL. Omit ttlSeconds for the policy default. Heavy work queues. For a branch handoff, supply transferLeaseId and handoff {commit,nextStep,pullRequest?}; the reporter must have observed that clean, pushed commit. Save leaseId for renewal/release.")]
+    public Task<LeaseReply> Acquire(string key, string holder, string machine, string purpose, int ttlSeconds = 0,
+        string? transferLeaseId = null, LeaseHandoff? handoff = null, CancellationToken cancellationToken = default) =>
+        client.AcquireLeaseAsync(new(key, holder, machine, purpose, ttlSeconds, transferLeaseId, handoff), cancellationToken);
 
     [McpServerTool(Name = "lease_renew", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Renew a still-live reservation using its exact leaseId. An expired or replaced lease cannot be renewed.")]
-    public Task<LeaseReply> Renew(string key, string leaseId, int ttlSeconds = 600, CancellationToken cancellationToken = default) =>
+    [Description("Renew a reservation by exact leaseId when the holder has fresh session evidence. Policy controls TTL and benchmark budgets. Omit ttlSeconds to use the policy default.")]
+    public Task<LeaseReply> Renew(string key, string leaseId, int ttlSeconds = 0, CancellationToken cancellationToken = default) =>
         client.RenewLeaseAsync(new(key, leaseId, ttlSeconds), cancellationToken);
 
     [McpServerTool(Name = "lease_release", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
