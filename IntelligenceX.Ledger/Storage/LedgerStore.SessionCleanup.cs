@@ -25,9 +25,8 @@ public sealed partial class LedgerStore {
             var repo = fact.Repository;
             var reason = "clean-and-pushed";
             if (fact.Origin != "agent") reason = "personal-session-information-only";
-            else if (leases.Any(row => row.Lease.Machine == item.MachineId &&
-                (row.Lease.Holder == id || row.Lease.Holder == item.Id || row.Lease.Holder == item.Provider + ":" + id ||
-                 row.Lease.Holder == item.Provider + ":" + id + ":owner-driven"))) reason = "live-lease-or-queue";
+            else if (leases.Any(row => row.Lease.Holder == id || row.Lease.Holder == item.Id ||
+                row.Lease.Holder == item.Provider + ":" + id || row.Lease.Holder == item.Provider + ":" + id + ":owner-driven")) reason = "live-lease-or-queue";
             else if (fact.Question || await HasOpenQuestionAsync(db, item, now, false, token)) reason = "open-question";
             else if (repo?.Dirty == true) reason = "dirty-worktree";
             else if (repo?.Unpushed == true) reason = "unpushed-worktree";

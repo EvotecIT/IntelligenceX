@@ -80,7 +80,7 @@ public sealed class SessionCleanupTests : IDisposable {
         await store.IngestAsync([observations[6] with { EventId = Guid.NewGuid(), Sequence = 9, ItemId = "pending-input", ItemKind = "input", ParentItemId = "question",
             Session = new() { TurnId = "turn", InputId = "input", Question = true, QuestionBlocking = false, QuestionAtUtc = Now.AddDays(-4) } }], Now);
         var holder = qualifiedHolder ? "codex:" + observations[5].Session!.SourceSessionId + ":owner-driven" : "leased";
-        Assert.True((await store.AcquireLeaseAsync(new("branch:example/repo:feature", holder, "synthetic", "edit", 600), Now)).Ok);
+        Assert.True((await store.AcquireLeaseAsync(new("branch:example/repo:feature", holder, qualifiedHolder ? "synthetic-other" : "synthetic", "edit", 600), Now)).Ok);
         Assert.Single((await store.SessionStatusAsync(observations[5].Session!.SourceSessionId.ToString()!, Now)).Leases);
         var plan = await store.CleanupPlanAsync(Now);
         Assert.Equal(observations[2].Session!.SourceSessionId.ToString(), Assert.Single(plan.Archivable).Id);

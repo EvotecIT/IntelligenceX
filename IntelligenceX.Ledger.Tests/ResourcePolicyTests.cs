@@ -63,19 +63,23 @@ public sealed class ResourcePolicyTests : IDisposable {
         Assert.False((await store.RenewLeaseAsync(new(first.Key, first.LeaseId, 600), Now.AddMinutes(idleMinutes))).Ok);
     }
 
-    [Fact]
-    public async Task BenchmarkExcludesHeavyWorkWithoutBlockingBranchLeasesAndRenewalRequiresLiveEvidence() {
-        using var store = new LedgerStore(Database, new(new()), _ => Task.FromResult(Policy));
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BenchmarkExcludesHeavyWorkWithoutBlockingBranchLeasesAndRenewalRequiresLiveEvidence(bool remoteResource) {
+        var policy = Policy with { Machines = [.. Policy.Machines, new("synthetic-other", 1, 1, 4, 8192, ["build"])] };
+        var machine = remoteResource ? "synthetic-other" : "synthetic";
+        using var store = new LedgerStore(Database, new(new()), _ => Task.FromResult(policy));
         await store.InitializeAsync();
-        var bench = await store.AcquireLeaseAsync(new("bench:synthetic", "bench-worker", "synthetic", "measure", 600), Now);
+        var bench = await store.AcquireLeaseAsync(new("bench:" + machine, "bench-worker", machine, "measure", 600), Now);
         Assert.True(bench.Ok);
         Assert.True((await store.AcquireLeaseAsync(new("branch:example/repo:feature", "editor", "synthetic", "edit", 600), Now)).Ok);
-        Assert.Equal("queued", (await store.AcquireLeaseAsync(new("build:synthetic", "builder", "synthetic", "compile", 600), Now)).State);
+        Assert.Equal("queued", (await store.AcquireLeaseAsync(new("build:" + machine, "builder", machine, "compile", 600), Now)).State);
         Assert.Equal("holder-not-live", (await store.RenewLeaseAsync(new(bench.Lease!.Key, bench.Lease.LeaseId, 60), Now)).State);
         await Session(store, "bench-worker", "agent", Now);
         Assert.True((await store.RenewLeaseAsync(new(bench.Lease.Key, bench.Lease.LeaseId, 60), Now)).Ok);
         Assert.True((await store.ReleaseLeaseAsync(new(bench.Lease.Key, bench.Lease.LeaseId), Now)).Ok);
-        Assert.Single((await store.WhoAsync("build:synthetic", false, Now)).Leases);
+        Assert.Single((await store.WhoAsync("build:" + machine, false, Now)).Leases);
     }
 
     [Fact]
@@ -94,9 +98,15 @@ public sealed class ResourcePolicyTests : IDisposable {
         Assert.Equal("sustained-cpu", loaded.Reason);
         for (var minute = 4; minute <= 16; minute += 2) await Observe(Now.AddMinutes(minute), .96);
         Assert.True((await store.MachineStatusAsync("synthetic", "healthy", Now.AddMinutes(16))).Resources!.SustainedHighCpu);
+        policy = policy with { Revision = 2, Machines = [policy.Machines[0] with { BuildSlots = 3 }] };
+        var edited = (await store.MachineStatusAsync("synthetic", "healthy", Now.AddMinutes(16))).Resources!;
+        Assert.Equal(3, edited.BuildSlots);
+        Assert.Equal("no", edited.CanStartHeavy);
+        Assert.True(edited.SustainedHighCpu);
+        await Observe(Now.AddMinutes(16.5), .96);
+        Assert.True((await store.MachineStatusAsync("synthetic", "healthy", Now.AddMinutes(16.5))).Resources!.SustainedHighCpu);
         await Observe(Now.AddMinutes(17), .1);
         Assert.Equal("yes", (await store.MachineStatusAsync("synthetic", "healthy", Now.AddMinutes(17))).Resources!.CanStartHeavy);
-        policy = policy with { Revision = 2, Machines = [policy.Machines[0] with { BuildSlots = 3 }] };
         Assert.Equal(3, (await store.MachineStatusAsync("synthetic", "healthy", Now.AddMinutes(17))).Resources!.BuildSlots);
         Assert.Empty(await store.HistoryAsync("reporter", 0, 100, default));
     }

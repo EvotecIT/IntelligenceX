@@ -4,7 +4,13 @@ using IntelligenceX.Ledger.Contracts;
 namespace IntelligenceX.Ledger.Storage;
 
 public sealed partial class LedgerStore {
-    private sealed record LoadWindow(long Revision, DateTimeOffset Observed, DateTimeOffset? HeavySince, DateTimeOffset? AlertSince);
+    private sealed record LoadWindow(long Revision, DateTimeOffset Observed, DateTimeOffset? HeavySince, DateTimeOffset? AlertSince,
+        double? HeavyCpuPercent = null, double? AlertCpuPercent = null, double? SampleFreshMinutes = null);
+
+    private static bool SameLoadThresholds(LoadWindow window, CoordinationPolicy policy) => window.HeavyCpuPercent is null
+        ? window.Revision == policy.Revision
+        : window.HeavyCpuPercent == policy.Load.HeavyCpuPercent && window.AlertCpuPercent == policy.Load.AlertCpuPercent &&
+          window.SampleFreshMinutes == policy.Load.SampleFreshMinutes;
 
     private static async Task UpdateLoadAsync(SQLiteAsyncSession db, ReporterHealth health, CoordinationPolicy policy, CancellationToken token) {
         var probe = health.Probe;
@@ -12,13 +18,15 @@ public sealed partial class LedgerStore {
             health.ObservedAtUtc - sampled > TimeSpan.FromMinutes(policy.Load.SampleFreshMinutes)) return;
         var previous = await ReadLoadAsync(db, health.MachineId, token);
         if (previous is not null && sampled <= previous.Observed) return;
-        var continuous = previous?.Revision == policy.Revision && sampled - previous.Observed <= TimeSpan.FromMinutes(policy.Load.SampleFreshMinutes);
+        var continuous = previous is not null && SameLoadThresholds(previous, policy) &&
+            sampled - previous.Observed <= TimeSpan.FromMinutes(policy.Load.SampleFreshMinutes);
         var heavy = probe.CpuUse * 100 > policy.Load.HeavyCpuPercent;
         var alert = probe.CpuUse * 100 > policy.Load.AlertCpuPercent;
         DateTimeOffset? heavySince = null, alertSince = null;
         if (heavy) heavySince = continuous ? previous?.HeavySince ?? sampled : sampled;
         if (alert) alertSince = continuous ? previous?.AlertSince ?? sampled : sampled;
-        var window = new LoadWindow(policy.Revision, sampled, heavySince, alertSince);
+        var window = new LoadWindow(policy.Revision, sampled, heavySince, alertSince,
+            policy.Load.HeavyCpuPercent, policy.Load.AlertCpuPercent, policy.Load.SampleFreshMinutes);
         await db.ExecuteNonQueryAsync("INSERT INTO machine_load(machine,json) VALUES(@machine,@json) ON CONFLICT(machine) DO UPDATE SET json=excluded.json",
             new Dictionary<string, object?> { ["machine"] = health.MachineId, ["json"] = Json(window) }, token);
     }
@@ -48,7 +56,7 @@ public sealed partial class LedgerStore {
         var window = await ReadLoadAsync(db, machine, token);
         var sampleFresh = probe.State == "available" && probe.SampledAtUtc is { } sampled &&
             now - sampled <= TimeSpan.FromMinutes(policy.Load.SampleFreshMinutes);
-        var fresh = sampleFresh && window?.Revision == policy.Revision &&
+        var fresh = sampleFresh && window is not null && SameLoadThresholds(window, policy) &&
             now - window.Observed <= TimeSpan.FromMinutes(policy.Load.SampleFreshMinutes);
         var sustained = fresh && now - window!.AlertSince >= TimeSpan.FromMinutes(policy.Load.AlertMinutes);
         var reason = capacity is null ? "machine-capacity-unconfigured" : !capacity.Enabled ? "machine-disabled" :

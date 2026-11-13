@@ -103,7 +103,9 @@ public sealed partial class GitHubDashboardService {
         if (checksState == GitHubReadinessCheckState.Unknown) waiting.Add("checks-unknown");
         if (pending.Count > 0) waiting.Add("reviewers-pending");
         if (decision == "REVIEW_REQUIRED") waiting.Add("required-approval-pending");
-        if (protection?.RequiresApprovingReviews == true && decision is null) waiting.Add("required-approval-unknown");
+        if (protection?.RequiresApprovingReviews == true && decision is null &&
+            (protection.RequiredApprovingReviewCount > 0 || protection.RequiresCodeOwnerReviews || protection.RequireLastPushApproval))
+            waiting.Add("required-approval-unknown");
         if (decision is not (null or "APPROVED" or "REVIEW_REQUIRED" or "CHANGES_REQUESTED")) waiting.Add("review-decision-unknown");
         if (mergeable is not ("MERGEABLE" or "CONFLICTING")) waiting.Add("mergeability-unknown");
         if (mergeState == "BLOCKED" && blockers.Count == 0 && waiting.Count == 0) blockers.Add("github-merge-gate-blocked");

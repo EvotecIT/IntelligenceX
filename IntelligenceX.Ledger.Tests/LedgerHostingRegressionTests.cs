@@ -52,13 +52,17 @@ public sealed class LedgerHostingRegressionTests : IDisposable {
                     Assert.Fail("The shadow worker ended before refreshing its report.");
                 }
                 try {
-                    using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, deadline.Token));
+                    await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous);
+                    using var document = await JsonDocument.ParseAsync(stream, cancellationToken: deadline.Token);
                     Assert.Empty(document.RootElement.GetProperty("transitions").EnumerateArray());
                     Assert.Equal(0, document.RootElement.GetProperty("observationCoverage").GetProperty("eventCount").GetInt64());
                     return document.RootElement.GetProperty("reporterHealth").GetProperty("synthetic-first-reporter").GetDateTimeOffset();
                 } catch (IOException) { return null; }
             }
             while (await LatestHeartbeat() != now) await Task.Delay(50, deadline.Token);
+            await using var previousReport = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
             var received = now.AddMinutes(1);
             await store.IngestAsync([Heartbeat(received)], received);
             clock.Advance(TimeSpan.FromMinutes(1));

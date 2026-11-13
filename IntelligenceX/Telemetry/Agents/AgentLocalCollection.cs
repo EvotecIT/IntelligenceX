@@ -170,10 +170,8 @@ internal sealed class AgentLocalCollection {
         var titles = new List<AgentSessionState>();
         try {
             LocalAgentWorkStateService.ReadCodexTitles(state.Root, titles, 0, (_, code) => state.Report(code), token);
-            if (state.IndexDiagnostics.Diagnostics.Count == 0) {
-                state.Titles.Clear();
-                foreach (var title in titles) state.Titles[title.Id] = title;
-            }
+            if (state.IndexDiagnostics.Diagnostics.Count == 0) state.Titles.Clear();
+            foreach (var title in titles) state.Titles[title.Id] = title;
         } catch (IOException) { state.Report("unreadable-source");
         } catch (UnauthorizedAccessException) { state.Report("unreadable-source");
         } finally { state.CurrentFile = null; }

@@ -66,11 +66,10 @@ public sealed partial class LedgerStore {
         var qualified = parts.Length is 2 or 3 && parts[0] is "codex" or "claude" &&
             Guid.TryParse(parts[1], out _) && (parts.Length == 2 || parts[2] == "owner-driven");
         var found = await db.ExecuteScalarAsync("""
-            SELECT i.json FROM items i JOIN session_status s ON s.item=i.id
-            WHERE s.machine=@machine AND (i.id=@holder OR
-              json_extract(i.json,'$.session.sourceSessionId')=@native AND (@provider IS NULL OR s.provider=@provider))
+            SELECT i.json FROM session_lookup s JOIN items i ON s.item=i.id
+            WHERE s.item=@holder OR (s.native=@native AND (@provider IS NULL OR s.provider=@provider))
             ORDER BY json_extract(i.json,'$.session.lastActivityAtUtc') DESC LIMIT 1
-            """, new Dictionary<string, object?> { ["machine"] = lease.Machine, ["holder"] = lease.Holder,
+            """, new Dictionary<string, object?> { ["holder"] = lease.Holder,
                 ["native"] = qualified ? Guid.Parse(parts[1]).ToString() : lease.Holder,
                 ["provider"] = qualified ? parts[0] : null }, token);
         return found is string json ? Read<LedgerItem>(json).Session : null;

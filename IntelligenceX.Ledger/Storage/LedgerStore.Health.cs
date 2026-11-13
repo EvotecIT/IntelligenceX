@@ -59,15 +59,15 @@ public sealed partial class LedgerStore {
         await UpsertSessionLookupAsync(db, item, session, token);
         if (session.Archived == true && session.ArchiveObservedAtUtc is { } archivedAt) {
             var args = new Dictionary<string, object?> { ["item"] = item.Id,
-                ["native"] = session.SourceSessionId?.ToString(), ["machine"] = item.MachineId,
+                ["native"] = session.SourceSessionId?.ToString(),
                 ["actor"] = item.Provider + ":" + session.SourceSessionId,
                 ["ownerActor"] = item.Provider + ":" + session.SourceSessionId + ":owner-driven" };
             var reservations = await db.QueryAsListAsync("""
-                SELECT json FROM reservations WHERE machine=@machine AND holder IN (@item,@native,@actor,@ownerActor)
+                SELECT json FROM reservations WHERE holder IN (@item,@native,@actor,@ownerActor)
                 """, row => Read<Lease>(row.GetString(0)), args, cancellationToken: token);
             foreach (var lease in reservations.Where(lease => lease.AcquiredAtUtc is not null))
                 await RememberLeaseAsync(db, lease, archivedAt, token);
-            await db.ExecuteNonQueryAsync("DELETE FROM reservations WHERE machine=@machine AND holder IN (@item,@native,@actor,@ownerActor)", args, token);
+            await db.ExecuteNonQueryAsync("DELETE FROM reservations WHERE holder IN (@item,@native,@actor,@ownerActor)", args, token);
         }
         return changed;
     }

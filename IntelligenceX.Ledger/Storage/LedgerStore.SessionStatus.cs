@@ -45,12 +45,11 @@ public sealed partial class LedgerStore {
         var fact = item.Session!;
         var verdict = rules.Evaluate(item, now, silentMachines?.Contains(item.MachineId) == true);
         args["native"] = fact.SourceSessionId?.ToString();
-        args["machine"] = item.MachineId;
         args["actor"] = item.Provider + ":" + fact.SourceSessionId;
         args["ownerActor"] = args["actor"] + ":owner-driven";
         args["now"] = now.ToString("O");
         var leases = await db.QueryAsListAsync("""
-            SELECT json FROM reservations WHERE state='active' AND expires>@now AND machine=@machine
+            SELECT json FROM reservations WHERE state='active' AND expires>@now
               AND holder IN (@item,@native,@actor,@ownerActor) ORDER BY key,ordinal
             """, row => Read<Lease>(row.GetString(0)), args, cancellationToken: token);
         var question = await HasOpenQuestionAsync(db, item, now, true, token);

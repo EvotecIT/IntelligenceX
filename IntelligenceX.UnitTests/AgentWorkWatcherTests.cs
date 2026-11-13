@@ -86,6 +86,12 @@ public sealed class AgentWorkWatcherTests : IDisposable {
             Assert.Equal(0, jsonExceptions);
             Assert.Contains(partial.Diagnostics, item => item.Code == "transient-index");
         } finally { AppDomain.CurrentDomain.FirstChanceException -= observe; }
+        File.AppendAllText(index, "\n{\"id\":\"fake-live\",\"thread_name\":\"Readable during partial rewrite\"}\n");
+        Assert.True(collection.Update(Root.Id, index, default));
+        Assert.Equal("Readable during partial rewrite", Assert.Single(collection.Snapshot(Array.Empty<AgentSessionState>()).Sessions).Title);
+        var cold = new AgentLocalCollection(new AgentWorkOptions());
+        cold.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("Readable during partial rewrite", Assert.Single(cold.Snapshot(Array.Empty<AgentSessionState>()).Sessions).Title);
         File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"New title\"}\n");
         Assert.True(collection.Update(Root.Id, index, default));
         var recovered = collection.Snapshot(Array.Empty<AgentSessionState>());

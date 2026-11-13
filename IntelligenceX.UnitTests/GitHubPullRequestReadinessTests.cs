@@ -204,6 +204,25 @@ public sealed class GitHubPullRequestReadinessTests {
         else Assert.Empty(report.Checks);
     }
 
+    [Theory]
+    [InlineData(0, false, false, GitHubReadinessVerdict.Ready)]
+    [InlineData(1, false, false, GitHubReadinessVerdict.Waiting)]
+    [InlineData(0, true, false, GitHubReadinessVerdict.Waiting)]
+    [InlineData(0, false, true, GitHubReadinessVerdict.Waiting)]
+    public async Task Readiness_NullReviewDecisionRequiresActualApprovalConditions(int count, bool codeOwners, bool latestPush, GitHubReadinessVerdict expected) {
+        using var fixture = new Fixture();
+        var protection = Protection();
+        protection["requiredApprovingReviewCount"] = count;
+        protection["requiresCodeOwnerReviews"] = codeOwners;
+        protection["requireLastPushApproval"] = latestPush;
+        protection["requiresStatusChecks"] = false;
+        protection["requiredStatusCheckContexts"] = new JsonArray();
+        fixture.Metadata["baseRef"]!["branchProtectionRule"] = protection;
+        var report = await fixture.Service.FetchPullRequestReadinessAsync("Sample/Project", 42);
+        Assert.Equal(expected, report.Verdict);
+        Assert.Equal(expected == GitHubReadinessVerdict.Waiting, report.Reasons.Contains("required-approval-unknown"));
+    }
+
     [Fact]
     public async Task Readiness_IndependentObservationsFetchFreshChecksAndFailureDominatesPending() {
         using var fixture = new Fixture();

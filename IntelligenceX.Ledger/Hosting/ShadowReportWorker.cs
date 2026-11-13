@@ -30,7 +30,8 @@ internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings setti
                 var fingerprint = Convert.ToHexString(SHA256.HashData(content)) + (closed ? ":closed" : ":open");
                 if (written.TryGetValue(day, out var previous) && previous == fingerprint) continue;
                 await File.WriteAllBytesAsync(temporary, bytes, stoppingToken);
-                File.Move(temporary, file, true);
+                if (File.Exists(file)) File.Replace(temporary, file, null);
+                else File.Move(temporary, file);
                 written[day] = fingerprint;
             }
             foreach (var old in written.Keys.Where(day => day < DateOnly.FromDateTime(now.UtcDateTime).AddDays(-1)).ToArray()) written.Remove(old);
