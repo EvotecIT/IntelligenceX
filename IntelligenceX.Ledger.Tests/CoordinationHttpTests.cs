@@ -448,36 +448,8 @@ public sealed class CoordinationHttpTests {
             Principals = [new("client", "client", new('c', 32), ["sample"], "source", "root-worker"),
                 new("source-host", "host", new('s', 32), [], "source"), new("target-host", "host", new('t', 32), [], "target")]
         }, async (endpoint, _, token) => {
-            using var client = Client(endpoint, new('c', 32));
             using var source = Client(endpoint, new('s', 32));
             using var target = Client(endpoint, new('t', 32));
-            var candidate = new WorkCheckpoint("sample", "feature/sample", new('a', 40), null, "checkpoint", "validate");
-            var now = DateTimeOffset.UtcNow;
-            await source.HostAsync(new("source", "source-boot", now, ["source"]), token);
-            await target.HostAsync(new("target", "target-boot", now, ["help"]), token);
-            await source.WorkerAsync(new("root-worker", "source", "provider", true, null, now,
-                "root-session", "root-workspace", candidate, "source-boot"), token);
-            var goal = await client.SetGoalAsync(new(new("page-task", "", 0, false, false, "authorization", ["answers"]), 0), token);
-            var back = new CoordinationReturnBinding("root-worker", "source", "provider", "root-session", candidate);
-            for (var index = 0; index < 17; index++) {
-                var id = "help-" + index;
-                await target.WorkerAsync(new("worker-" + index, "target", "provider", true, null, DateTimeOffset.UtcNow,
-                    "session-" + index, "workspace-" + index, candidate, "target-boot", TemporaryWorker: true), token);
-                var work = await client.SubmitAsync(new(id, goal.Id, "help", "help", null, null, new(AgentSlots: 1),
-                    candidate, [], goal.ControlRevision, "authorization", "provider", true, back), true, token);
-                var binding = new CoordinationSessionBinding(id, work.Generation, work.GrantId!, work.Assignee!, "target", "provider",
-                    "session-" + index, "workspace-" + index, candidate);
-                await target.BindSessionAsync(binding, token);
-                var execution = new ExecutionReceipt(work.GrantId!, work.Generation, "target-boot", "execution-" + index);
-                await target.ReceiptAsync(id, "submitted", execution, token);
-                await target.ReceiptAsync(id, "started", execution, token);
-                var answer = await target.PublishResultAsync(id, new(work.Generation, work.GrantId!, "target-boot", "Answer " + index), token);
-                await target.ReceiptAsync(id, "terminal", execution with { ResultRef = answer.ResultRef, Succeeded = true, ExclusionVerified = true }, token);
-                if (index < 16) {
-                    await source.ResultReceiptAsync(id, new(work.Generation, new("pre-send-" + index, "held", "recipient-held")), token);
-                    await target.RetireAsync(new(binding, "waiting", "protected-workspace", WaitingOn: "protected-primary"), token);
-                }
-            }
             var results = await source.ResultsAsync(token);
             Assert.Equal(16, results.Items.Length); Assert.NotNull(results.NextOrder);
             Assert.All(results.Items, item => Assert.Equal("held", item.State));
@@ -488,13 +460,44 @@ public sealed class CoordinationHttpTests {
             Assert.All(retirement.Items, item => Assert.Equal("protected-primary", item.WaitingOn));
             var retirementEnd = await target.RetirementsAsync(token, retirement.NextOrder!.Value);
             Assert.Equal("help-16", Assert.Single(retirementEnd.Items).Binding.RequestId); Assert.Null(retirementEnd.NextOrder);
-            for (var index = 0; index < 17; index++)
-                await client.SubmitAsync(new("reservation-" + index, goal.Id, "build", "help", "target", null,
-                    new(BuildSlots: 1), candidate, [], goal.ControlRevision, "authorization", ReadOnly: true), true, token);
             var assigned = await target.AssignedAsync(token);
             Assert.Equal(16, assigned.Items.Length); Assert.NotNull(assigned.NextOrder);
             var assignedEnd = await target.AssignedAsync(token, assigned.NextOrder!.Value);
             Assert.Equal("reservation-16", Assert.Single(assignedEnd.Items).Request.Id); Assert.Null(assignedEnd.NextOrder);
+        }, (_, state) => {
+            var now = DateTimeOffset.UtcNow;
+            var engine = new CoordinationEngine(state, now);
+            var client = new CoordinationPrincipal("client", "client", "unused", ["sample"], "source", "root-worker");
+            var source = new CoordinationPrincipal("source-host", "host", "unused", [], "source");
+            var target = new CoordinationPrincipal("target-host", "host", "unused", [], "target");
+            var candidate = new WorkCheckpoint("sample", "feature/sample", new('a', 40), null, "checkpoint", "validate");
+            engine.ObserveHost(new("source", "source-boot", now, ["source"]), source);
+            engine.ObserveHost(new("target", "target-boot", now, ["help"]), target);
+            engine.ObserveWorker(new("root-worker", "source", "provider", true, null, now,
+                "root-session", "root-workspace", candidate, "source-boot"), source);
+            var goal = engine.SetGoal(new("page-task", "", 0, false, false, "authorization", ["answers"]), client, 0);
+            var back = new CoordinationReturnBinding("root-worker", "source", "provider", "root-session", candidate);
+            for (var index = 0; index < 17; index++) {
+                var id = "help-" + index;
+                engine.ObserveWorker(new("worker-" + index, "target", "provider", true, null, now,
+                    "session-" + index, "workspace-" + index, candidate, "target-boot", TemporaryWorker: true), target);
+                var work = engine.Submit(new(id, goal.Id, "help", "help", null, null, new(AgentSlots: 1),
+                    candidate, [], goal.ControlRevision, "authorization", "provider", true, back), client);
+                var binding = new CoordinationSessionBinding(id, work.Generation, work.GrantId!, work.Assignee!, "target", "provider",
+                    "session-" + index, "workspace-" + index, candidate);
+                engine.BindSession(binding, target);
+                var execution = new ExecutionReceipt(work.GrantId!, work.Generation, "target-boot", "execution-" + index);
+                engine.Receipt(id, "submitted", execution, target);
+                engine.Receipt(id, "started", execution, target);
+                engine.Receipt(id, "terminal", execution with { ResultRef = "answer-" + index, Succeeded = true, ExclusionVerified = true }, target);
+                if (index < 16) {
+                    engine.RecordResultDelivery(id, work.Generation, new("pre-send-" + index, "held", "recipient-held"), source);
+                    engine.Retire(new(binding, "waiting", "protected-workspace", WaitingOn: "protected-primary"), target);
+                }
+            }
+            for (var index = 0; index < 17; index++)
+                engine.Submit(new("reservation-" + index, goal.Id, "build", "help", "target", null,
+                    new(BuildSlots: 1), candidate, [], goal.ControlRevision, "authorization", ReadOnly: true), client);
         }, timeout: TimeSpan.FromMinutes(1));
     }
 
