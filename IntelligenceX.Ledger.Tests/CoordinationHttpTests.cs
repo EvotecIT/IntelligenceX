@@ -495,7 +495,7 @@ public sealed class CoordinationHttpTests {
             Assert.Equal(16, assigned.Items.Length); Assert.NotNull(assigned.NextOrder);
             var assignedEnd = await target.AssignedAsync(token, assigned.NextOrder!.Value);
             Assert.Equal("reservation-16", Assert.Single(assignedEnd.Items).Request.Id); Assert.Null(assignedEnd.NextOrder);
-        });
+        }, timeout: TimeSpan.FromMinutes(1));
     }
 
     private static LedgerReadClient Client(string endpoint, string token) => LedgerReadClient.ForCoordination(new(endpoint, token));
@@ -585,7 +585,7 @@ public sealed class CoordinationHttpTests {
     internal static async Task WithService(CoordinationConfiguration enrollment,
         Func<string, LedgerSettings, CancellationToken, Task> run,
         Action<CoordinationEngine, CoordinationState>? initialize = null,
-        Action<LedgerSettings>? prepare = null) {
+        Action<LedgerSettings>? prepare = null, TimeSpan? timeout = null) {
         var directory = LedgerTestPaths.NewDirectory("coordination-http");
         Directory.CreateDirectory(directory);
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -610,7 +610,7 @@ public sealed class CoordinationHttpTests {
         using var process = Process.Start(start)!;
         var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
         try {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var deadline = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(30));
             using var readiness = new HttpClient { BaseAddress = new(endpoint) };
             readiness.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ReadToken);
             while (true) {

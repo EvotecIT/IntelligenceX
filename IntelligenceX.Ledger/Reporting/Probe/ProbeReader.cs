@@ -198,7 +198,8 @@ internal sealed class ProbeReader {
         var options = new FileStreamOptions {
             Mode = mode, Access = FileAccess.ReadWrite, Share = FileShare.None, Options = FileOptions.Asynchronous
         };
-        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        if (!OperatingSystem.IsWindows() && mode is FileMode.CreateNew or FileMode.OpenOrCreate)
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         var stream = new FileStream(path, options);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(stream.SafeFileHandle, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         return stream;
