@@ -44,10 +44,25 @@ public sealed class EndedSessionTests {
             }
             Assert.Equal(ended, retained.Current.SinceUtc);
             Assert.False(retained.Session!.Archived);
-            await store.IngestAsync([observation with { EventId = Guid.NewGuid(), Sequence = 4, ObservedAtUtc = ended.AddMinutes(1),
-                Session = retained.Session with { InputUnconfirmed = true } }], ended.AddMinutes(1));
+            var followUpAt = ended.AddMinutes(1);
+            if (pullRequestsKnown == true) {
+                var stalePrAt = ended.AddHours(2);
+                await store.IngestAsync([
+                    Heartbeat(observation, 4) with { ObservedAtUtc = stalePrAt },
+                    observation with { EventId = Guid.NewGuid(), Sequence = 5, ObservedAtUtc = stalePrAt, Session = null,
+                        Work = new() { ActiveClaim = false, ClaimsAtUtc = stalePrAt } }
+                ], stalePrAt);
+                runtime.InvalidateWork();
+                Assert.Empty((await runtime.WorkAsync(context, stalePrAt, default)).Items);
+                var historical = Assert.Single(await store.EvaluateAllAsync(stalePrAt));
+                Assert.Equal("done", historical.Current!.Value);
+                Assert.Null(historical.Work!.PullRequestsKnown);
+                followUpAt = stalePrAt.AddMinutes(1);
+            }
+            await store.IngestAsync([observation with { EventId = Guid.NewGuid(), Sequence = 6, ObservedAtUtc = followUpAt,
+                Session = retained.Session with { InputUnconfirmed = true } }], followUpAt);
             runtime.InvalidateWork();
-            var followUp = Assert.Single((await runtime.WorkAsync(context, ended.AddMinutes(1), default)).Items).Item;
+            var followUp = Assert.Single((await runtime.WorkAsync(context, followUpAt, default)).Items).Item;
             Assert.Equal("stuck", followUp.Verdict);
             Assert.Equal("unknown", followUp.ReasonCode);
             Assert.Equal(["input-status"], followUp.MissingFacts);

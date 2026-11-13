@@ -14,7 +14,7 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         item.Session is { TurnOpen: false, Outcome: "completed", Question: false, InputUnconfirmed: false, UsageLimit: false } &&
         item.Work is { ActiveClaim: false, OpenPullRequests.Length: 0, Wait: null, QueuedInputs: null or 0 } &&
         item.Current is { LastKnown: false } && !item.Deliveries.Values.Any(IsPending) &&
-        (item.Work.PullRequestsKnown == true && item.Current.Value == "done" &&
+        (item.Current.Value == "done" &&
              item.Current.Matches.All(match => match.Verdict == "done") ||
          item.Work.HadPullRequests != true && item.Current is { Value: "stuck", ReasonCode: "unknown", MissingFacts: ["pull-requests"] } &&
              item.Current.Matches.All(match => match.ReasonCode == "unknown"));
