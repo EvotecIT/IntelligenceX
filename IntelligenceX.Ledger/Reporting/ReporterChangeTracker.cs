@@ -6,7 +6,7 @@ namespace IntelligenceX.Ledger.Reporting;
 
 /// <summary>Persists admitted watcher comparisons independently of the durable event outbox.</summary>
 internal sealed class ReporterChangeTracker {
-    private sealed record Entry(string Signature, DateTimeOffset ObservedAtUtc, bool HadPullRequests = false);
+    private sealed record Entry(string Signature, DateTimeOffset ObservedAtUtc, bool HadPullRequests = false, int SessionOrderRevision = 0);
     private readonly ReporterSpool _spool;
     private readonly string _file;
     private readonly object _gate = new();
@@ -32,7 +32,10 @@ internal sealed class ReporterChangeTracker {
             var key = Key(observation);
             if (_entries.TryGetValue(key, out var prior) && prior.ObservedAtUtc > observation.ObservedAtUtc) continue;
             observation = PreserveHistory(observation, _entries.GetValueOrDefault(key));
-            _entries[key] = new(Signature(observation), observation.ObservedAtUtc, observation.Work?.HadPullRequests == true);
+            // A retained ID may already be journaled by the old store. Recovery alone
+            // cannot satisfy the fresh replay needed to repair its rejected projection.
+            _entries[key] = new(Signature(observation), observation.ObservedAtUtc, observation.Work?.HadPullRequests == true,
+                prior?.SessionOrderRevision ?? 0);
             _dirty = true;
         }
     }
@@ -48,10 +51,13 @@ internal sealed class ReporterChangeTracker {
             var key = Key(observation);
             observation = PreserveHistory(observation, _entries.GetValueOrDefault(key));
             var signature = Signature(observation);
-            if (_entries.TryGetValue(key, out var prior) && prior.Signature == signature) return false;
+            // Replay the current session once after the store's terminal-order correction.
+            // Older catalogs can have acknowledged a completion that the old store rejected.
+            if (_entries.TryGetValue(key, out var prior) && prior.Signature == signature &&
+                (observation.Session is null || prior.SessionOrderRevision >= 1)) return false;
             observation = observation with { Sequence = ++_sequence };
             if (!_spool.TryAppend(observation)) return false;
-            _entries[key] = new(signature, observation.ObservedAtUtc, observation.Work?.HadPullRequests == true);
+            _entries[key] = new(signature, observation.ObservedAtUtc, observation.Work?.HadPullRequests == true, 1);
             _dirty = true;
             return true;
         }

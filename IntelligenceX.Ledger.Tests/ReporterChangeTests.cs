@@ -12,6 +12,40 @@ public sealed class ReporterChangeTests : IDisposable {
     private static readonly DateTimeOffset Now = new(2026, 1, 12, 12, 0, 0, TimeSpan.Zero);
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LegacyComparisonCatalogReplaysSessionsOnceForTerminalOrderingCorrection(bool retainedDelivery) {
+        var session = Observation() with { Session = new() { TurnId = "synthetic-turn", TurnOpen = false,
+            Outcome = "completed", TurnStartedAtUtc = Now.AddHours(-1), TurnEndedAtUtc = Now, LastActivityAtUtc = Now } };
+        var work = Observation() with { Work = new() { ActiveClaim = false } };
+        using (var spool = new ReporterSpool(_directory, 1024 * 1024)) {
+            var changes = new ReporterChangeTracker(spool, _directory);
+            Assert.True(changes.TryAppend(session));
+            Assert.True(changes.TryAppend(work));
+            if (retainedDelivery) changes.Checkpoint();
+            else changes.Acknowledge(spool.Pending().Select(e => e.EventId));
+        }
+        var file = Path.Combine(_directory, "reporter-comparisons-v1.catalog");
+        var catalog = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+        foreach (var entry in catalog) entry.Value!.AsObject().Remove("sessionOrderRevision");
+        File.WriteAllText(file, catalog.ToJsonString());
+        using (var spool = new ReporterSpool(_directory, 1024 * 1024)) {
+            var changes = new ReporterChangeTracker(spool, _directory);
+            var replay = session with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid() };
+            Assert.True(changes.TryAppend(replay));
+            Assert.False(changes.TryAppend(work));
+            var sessions = spool.Pending().Where(e => e.Session is not null).ToArray();
+            Assert.Equal(retainedDelivery ? 2 : 1, sessions.Length);
+            Assert.Equal("completed", Assert.Single(sessions, e => e.EventId == replay.EventId).Session!.Outcome);
+            changes.Acknowledge(spool.Pending().Select(e => e.EventId));
+        }
+        using var finalSpool = new ReporterSpool(_directory, 1024 * 1024);
+        var final = new ReporterChangeTracker(finalSpool, _directory);
+        Assert.False(final.TryAppend(session));
+        Assert.Empty(finalSpool.Pending());
+    }
+
+    [Theory]
     [InlineData("history")]
     [InlineData("check-time")]
     [InlineData("set-order")]
@@ -118,8 +152,13 @@ public sealed class ReporterChangeTests : IDisposable {
         }
         using var restartedSpool = new ReporterSpool(_directory, 1024 * 1024);
         var restarted = new ReporterChangeTracker(restartedSpool, _directory);
-        Assert.False(restarted.TryAppend(observation with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid() }));
-        restarted.Acknowledge([observation.EventId]);
+        var replay = observation with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid() };
+        Assert.True(restarted.TryAppend(replay));
+        Assert.Equal(new[] { observation.EventId, replay.EventId }.Order(), restartedSpool.Pending().Select(e => e.EventId).Order());
+        Assert.False(restarted.TryAppend(observation with { EventId = Guid.NewGuid() }));
+        restarted.Acknowledge([observation.EventId, replay.EventId]);
+        Assert.Empty(restartedSpool.Pending());
+        Assert.False(new ReporterChangeTracker(restartedSpool, _directory).TryAppend(observation));
         var terminal = observation with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = Now.AddMinutes(1),
             Session = observation.Session with { TurnOpen = false, Outcome = "completed", TurnEndedAtUtc = Now.AddMinutes(1) } };
         Assert.True(restarted.TryAppend(terminal));

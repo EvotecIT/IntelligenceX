@@ -199,7 +199,12 @@ public sealed partial class LedgerStore(string path, LedgerRules rules) : IDispo
                         item = item with { Session = (item.Session ?? new()) with { AppOwned = owned }, OwnershipEvidence = evidence };
                     }
                     if (observation.Session is not null && (observation.Session.Scope is null || LedgerScope.SameTask(observation.Session.Scope, item.Scope)) &&
-                        (item.Session?.TurnStartedAtUtc is null || observation.Session.TurnStartedAtUtc is null || observation.Session.TurnStartedAtUtc >= item.Session.TurnStartedAtUtc) &&
+                        (item.Session?.TurnStartedAtUtc is null || observation.Session.TurnStartedAtUtc is null || observation.Session.TurnStartedAtUtc >= item.Session.TurnStartedAtUtc ||
+                            // A full reread can recover an earlier start for a turn observed midstream.
+                            item.Session.TurnOpen == true && observation.Session.TurnOpen == false &&
+                            observation.Session.Outcome is "completed" or "failed" or "interrupted" or "incomplete" &&
+                            observation.Session.TurnEndedAtUtc >= item.Session.TurnStartedAtUtc &&
+                            observation.Session.TurnEndedAtUtc > item.Session.LastActivityAtUtc) &&
                         (item.SessionEvidence is null || observation.ObservedAtUtc >= item.SessionEvidence.ObservedAtUtc)) {
                         ObserveSessionConditions(item, observation.Session, received);
                         decisionChanged |= Json(item.Session) != Json(observation.Session);

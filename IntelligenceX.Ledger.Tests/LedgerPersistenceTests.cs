@@ -13,6 +13,34 @@ public sealed class LedgerPersistenceTests : IDisposable {
         MachineId = "synthetic-machine", ReporterId = "synthetic-reporter", ItemId = "synthetic-item", Provider = "codex",
         Source = "evidence", ObservedAtUtc = Now, Delivery = new("synthetic-delivery", "submitted", Now) };
 
+    [Theory]
+    [InlineData(false, "completed")]
+    [InlineData(true, "completed")]
+    [InlineData(true, "incomplete")]
+    public async Task TerminalRereadCanCorrectEarlierStartWithoutClosingALaterTurn(bool terminalCoversCurrentActivity, string outcome) {
+        var path = Path.Combine(_directory, "session-order.sqlite");
+        var partial = Event() with { Source = "watcher", Delivery = null, Session = new() {
+            TurnId = "synthetic-partial-turn", TurnOpen = true, Outcome = "unknown",
+            TurnStartedAtUtc = Now.AddMinutes(-10), LastActivityAtUtc = Now.AddMinutes(-5)
+        } };
+        using (var initial = new LedgerStore(path, new(new()))) {
+            await initial.InitializeAsync();
+            await initial.IngestAsync([partial], Now);
+        }
+        var ended = terminalCoversCurrentActivity ? Now.AddMinutes(-1) : Now.AddMinutes(-20);
+        var terminal = partial with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = Now.AddMinutes(1),
+            Session = new() { TurnId = "synthetic-reread-turn", TurnOpen = false, Outcome = outcome,
+                TurnStartedAtUtc = Now.AddDays(-1), TurnEndedAtUtc = ended, LastActivityAtUtc = ended } };
+        using var restarted = new LedgerStore(path, new(new()));
+        await restarted.InitializeAsync();
+        await restarted.IngestAsync([terminal], Now.AddMinutes(1));
+        var item = Assert.Single(await restarted.EvaluateAllAsync(Now.AddMinutes(1)));
+        Assert.Equal(terminalCoversCurrentActivity ? terminal.Session.TurnId : partial.Session.TurnId, item.Session!.TurnId);
+        Assert.Equal(!terminalCoversCurrentActivity, item.Session.TurnOpen);
+        Assert.Equal(terminalCoversCurrentActivity ? terminal.EventId : partial.EventId, item.SessionEvidence!.EventId);
+        Assert.Equal(2, (await restarted.HistoryAsync(partial.ItemId, 0, 100, default)).Length);
+    }
+
     [Fact]
     public async Task MatchedInputResolutionRetiresPersistedChildWithoutCompletingParent() {
         var path = Path.Combine(_directory, "resolved-input.sqlite");
