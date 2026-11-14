@@ -13,6 +13,34 @@ public sealed class LedgerPersistenceTests : IDisposable {
         MachineId = "synthetic-machine", ReporterId = "synthetic-reporter", ItemId = "synthetic-item", Provider = "codex",
         Source = "evidence", ObservedAtUtc = Now, Delivery = new("synthetic-delivery", "submitted", Now) };
 
+    [Theory]
+    [InlineData(false, "completed")]
+    [InlineData(true, "completed")]
+    [InlineData(true, "incomplete")]
+    public async Task TerminalRereadCanCorrectEarlierStartWithoutClosingALaterTurn(bool terminalCoversCurrentActivity, string outcome) {
+        var path = Path.Combine(_directory, "session-order.sqlite");
+        var partial = Event() with { Source = "watcher", Delivery = null, Session = new() {
+            TurnId = "synthetic-partial-turn", TurnOpen = true, Outcome = "unknown",
+            TurnStartedAtUtc = Now.AddMinutes(-10), LastActivityAtUtc = Now.AddMinutes(-5)
+        } };
+        using (var initial = new LedgerStore(path, new(new()))) {
+            await initial.InitializeAsync();
+            await initial.IngestAsync([partial], Now);
+        }
+        var ended = terminalCoversCurrentActivity ? Now.AddMinutes(-1) : Now.AddMinutes(-20);
+        var terminal = partial with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = Now.AddMinutes(1),
+            Session = new() { TurnId = "synthetic-reread-turn", TurnOpen = false, Outcome = outcome,
+                TurnStartedAtUtc = Now.AddDays(-1), TurnEndedAtUtc = ended, LastActivityAtUtc = ended } };
+        using var restarted = new LedgerStore(path, new(new()));
+        await restarted.InitializeAsync();
+        await restarted.IngestAsync([terminal], Now.AddMinutes(1));
+        var item = Assert.Single(await restarted.EvaluateAllAsync(Now.AddMinutes(1)));
+        Assert.Equal(terminalCoversCurrentActivity ? terminal.Session.TurnId : partial.Session.TurnId, item.Session!.TurnId);
+        Assert.Equal(!terminalCoversCurrentActivity, item.Session.TurnOpen);
+        Assert.Equal(terminalCoversCurrentActivity ? terminal.EventId : partial.EventId, item.SessionEvidence!.EventId);
+        Assert.Equal(2, (await restarted.HistoryAsync(partial.ItemId, 0, 100, default)).Length);
+    }
+
     [Fact]
     public async Task MatchedInputResolutionRetiresPersistedChildWithoutCompletingParent() {
         var path = Path.Combine(_directory, "resolved-input.sqlite");
@@ -21,6 +49,12 @@ public sealed class LedgerPersistenceTests : IDisposable {
             PendingInputs = [new() { Id = "synthetic-question", TurnId = "synthetic-turn", AnswerIsUnconfirmed = true }]
         };
         var pending = Assert.Single(LocalReporter.InputFacts(session));
+        var settings = new ReporterSettings { Endpoint = "http://127.0.0.1/", Token = new('w', 32),
+            MachineId = "synthetic-machine", ReporterId = "synthetic-reporter", SpoolDirectory = _directory };
+        Assert.True(LocalReporter.SessionEvidence(settings, session, null).InputUnconfirmed);
+        var successor = session with { TurnId = "synthetic-successor", TurnStartedAtUtc = Now };
+        Assert.False(LocalReporter.SessionEvidence(settings, successor, null).InputUnconfirmed);
+        Assert.Equal(pending.Id, Assert.Single(LocalReporter.InputFacts(successor)).Id);
         var parentId = LocalReporter.ItemId("synthetic-machine", "codex", session.Id);
         var childId = LedgerScope.InputItemId(parentId, pending.Id);
         var parent = Event() with { ItemId = parentId, Delivery = null, Session = new() {
@@ -353,7 +387,7 @@ public sealed class LedgerPersistenceTests : IDisposable {
     }
 
     [Fact]
-    public async Task FullOutboxDrainsBeforeAdmittingHeartbeatAfterConnectivityReturns() {
+    public async Task FullOutboxDrainsBeforePostingLatestHealthAfterConnectivityReturns() {
         var retained = Event();
         var heartbeat = Event(2) with { Delivery = null, Heartbeat = true };
         var capacity = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(retained, LedgerJson.Options).Length;
@@ -363,13 +397,20 @@ public sealed class LedgerPersistenceTests : IDisposable {
         using var handler = new ReceiptHandler();
         using var client = new HttpClient(handler) { BaseAddress = new("http://127.0.0.1/") };
         await LocalReporter.DeliverAsync(client, spool, heartbeat, default);
-        Assert.Equal(new[] { retained.EventId, heartbeat.EventId }, handler.Received);
+        Assert.Equal(new[] { retained.EventId }, handler.Received);
+        Assert.Equal(heartbeat.ObservedAtUtc, handler.Health!.ObservedAtUtc);
         Assert.Empty(spool.Pending());
     }
 
     private sealed class ReceiptHandler : HttpMessageHandler {
         internal List<Guid> Received { get; } = [];
+        internal ReporterHealth? Health { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/reporters/health", StringComparison.Ordinal)) {
+                Health = System.Text.Json.JsonSerializer.Deserialize<ReporterHealth>(await request.Content!.ReadAsStringAsync(cancellationToken), LedgerJson.Options);
+                Assert.NotEmpty(Received);
+                return new(System.Net.HttpStatusCode.OK) { Content = new StringContent("{}") };
+            }
             var events = System.Text.Json.JsonSerializer.Deserialize<LedgerEvent[]>(await request.Content!.ReadAsStringAsync(cancellationToken), LedgerJson.Options)!;
             Received.AddRange(events.Select(e => e.EventId));
             return new(System.Net.HttpStatusCode.OK) { Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(
@@ -577,6 +618,24 @@ public sealed class LedgerPersistenceTests : IDisposable {
             ["json"] = legacy.ToJsonString(), ["id"] = observation.EventId.ToString() });
         Assert.Equal([observation.EventId], await store.IngestAsync([observation], Now.AddMinutes(1)));
         Assert.Single(await store.HistoryAsync(observation.ItemId, 0, 100, default));
+    }
+
+    [Fact]
+    public async Task UnchangedUnknownPollingPreservesMatchSinceWithoutDatabaseWrites() {
+        var path = Path.Combine(_directory, "ledger.sqlite");
+        using var store = new LedgerStore(path, new(new()));
+        await store.InitializeAsync();
+        await store.IngestAsync([Event() with { Delivery = null }], Now);
+        var first = Assert.Single(await store.EvaluateAllAsync(Now));
+        Assert.Equal("unknown", first.Current!.ReasonCode);
+        using var database = new DBAClientX.SQLite();
+        await using var observer = await database.OpenSessionAsync(path);
+        var before = Convert.ToInt64(await observer.ExecuteScalarAsync("PRAGMA data_version"));
+        var later = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(1)));
+        var after = Convert.ToInt64(await observer.ExecuteScalarAsync("PRAGMA data_version"));
+        Assert.Equal(before, after);
+        Assert.Equal(first.Current.SinceUtc, Assert.Single(later.Current!.Matches).SinceUtc);
+        Assert.Equal(Now.AddMinutes(1), later.Current.EvaluatedAtUtc);
     }
 
     public void Dispose() { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }

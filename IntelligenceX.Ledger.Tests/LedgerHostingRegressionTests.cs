@@ -35,32 +35,40 @@ public sealed class LedgerHostingRegressionTests : IDisposable {
     }
 
     [Fact]
-    public async Task ShadowFileAdvancesCoverageForHeartbeatOnlyObservations() {
+    public async Task ShadowFileAdvancesLatestReporterHealthWithoutCreatingEvents() {
         using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
         await store.InitializeAsync();
-        using var worker = new ShadowReportWorker(store, new() { DataDirectory = _directory, ReadToken = new('r', 32), WriteToken = new('w', 32) });
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        using var worker = new ShadowReportWorker(store, new() { DataDirectory = _directory, ReadToken = new('r', 32), WriteToken = new('w', 32) }, clock);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         var path = Path.Combine(_directory, "shadow", now.UtcDateTime.ToString("yyyy-MM-dd") + ".json");
         await store.IngestAsync([Heartbeat(now)], now);
         await worker.StartAsync(default);
         try {
-            async Task<long> Count() {
+            async Task<DateTimeOffset?> LatestHeartbeat() {
+                if (worker.ExecuteTask is { IsCompleted: true } completed) {
+                    await completed;
+                    Assert.Fail("The shadow worker ended before refreshing its report.");
+                }
                 try {
-                    using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, deadline.Token));
+                    await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous);
+                    using var document = await JsonDocument.ParseAsync(stream, cancellationToken: deadline.Token);
                     Assert.Empty(document.RootElement.GetProperty("transitions").EnumerateArray());
-                    return document.RootElement.GetProperty("observationCoverage").GetProperty("eventCount").GetInt64();
-                } catch (IOException) { return 0; }
+                    Assert.Equal(0, document.RootElement.GetProperty("observationCoverage").GetProperty("eventCount").GetInt64());
+                    return document.RootElement.GetProperty("reporterHealth").GetProperty("synthetic-first-reporter").GetDateTimeOffset();
+                } catch (IOException) { return null; }
             }
-            while (await Count() != 1) await Task.Delay(50, deadline.Token);
-            var received = DateTimeOffset.UtcNow;
+            while (await LatestHeartbeat() != now) await Task.Delay(50, deadline.Token);
+            await using var previousReport = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            var received = now.AddMinutes(1);
             await store.IngestAsync([Heartbeat(received)], received);
-            long count = 1;
-            try { while ((count = await Count()) != 2) await Task.Delay(50, deadline.Token); }
-            catch (OperationCanceledException) when (deadline.IsCancellationRequested) { }
-            Assert.Equal(2, count);
+            clock.Advance(TimeSpan.FromMinutes(1));
+            while (await LatestHeartbeat() != received) await Task.Delay(50, deadline.Token);
             using var report = JsonDocument.Parse(await File.ReadAllBytesAsync(path));
-            Assert.Equal(received, report.RootElement.GetProperty("observationCoverage").GetProperty("latestReceiptAtUtc").GetDateTimeOffset());
+            Assert.Equal(received, report.RootElement.GetProperty("reporterHealth").GetProperty("synthetic-first-reporter").GetDateTimeOffset());
         } finally { await worker.StopAsync(default); }
     }
 

@@ -348,11 +348,11 @@ public sealed class NativeTableWorkspaceViewModelTests {
     [Fact]
     public void SetColumnVisible_RemovesHiddenColumnFromSearchAndSort() {
         var model = new NativeTableWorkspaceViewModel(new NativeTranscriptTable(
-            (string[])["Name", "Private note"],
-            (string[][])[
-                (string[])["Alpha", "secret needle"],
-                (string[])["Bravo", "visible only elsewhere"]
-            ]));
+            new[] { "Name", "Private note" },
+            new[] {
+                new[] { "Alpha", "secret needle" },
+                new[] { "Bravo", "visible only elsewhere" }
+            }));
         model.SortByColumn(1);
         model.SetSearch("needle");
         Assert.Single(model.VisibleRows);

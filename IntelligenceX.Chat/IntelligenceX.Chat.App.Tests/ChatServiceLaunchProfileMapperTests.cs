@@ -333,7 +333,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
     public void CreateFromState_SeedsWriteToolDefaultsFromRuntimeCatalog() {
         var options = ChatRequestOptionsFactory.CreateFromState(
             new ChatAppState { DisabledTools = ["existing_disabled"] },
-            availableTools: (ToolDefinitionDto[])[
+            availableTools: new ToolDefinitionDto[] {
                 new ToolDefinitionDto {
                     Name = "read_tool",
                     Description = "Reads data.",
@@ -349,7 +349,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
                     Description = "Duplicate catalog spelling.",
                     IsWriteCapable = true
                 }
-            ]);
+            });
 
         Assert.NotNull(options.DisabledTools);
         Assert.Equal(["existing_disabled", "write_tool"], options.DisabledTools!);
@@ -365,7 +365,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
                 DisabledTools = ["write_tool"],
                 EnabledWriteTools = ["write_tool"]
             },
-            availableTools: (ToolDefinitionDto[])[
+            availableTools: new ToolDefinitionDto[] {
                 new ToolDefinitionDto {
                     Name = "write_tool",
                     Description = "Changes data.",
@@ -376,7 +376,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
                     Description = "Changes other data.",
                     IsWriteCapable = true
                 }
-            ]);
+            });
 
         Assert.NotNull(options.DisabledTools);
         Assert.Equal(["other_write_tool"], options.DisabledTools!);

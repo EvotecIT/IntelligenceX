@@ -50,7 +50,7 @@ public sealed class LedgerWorkProjectionTests {
     }
 
     [Fact]
-    public async Task HistoricalObservationGapsStayOutOfCurrentWorkWhileRecentUnknownAndClaimedArchivedWorkRemain() {
+    public async Task CurrentWorkRetainsRecentUnknownWithoutPromotingClaimedArchivedCatalogRows() {
         var root = Path.Combine(Path.GetTempPath(), "ledger-work-membership-" + Guid.NewGuid().ToString("N"));
         try {
             using var store = new LedgerStore(Path.Combine(root, "ledger.sqlite"), new(new()));
@@ -75,11 +75,11 @@ public sealed class LedgerWorkProjectionTests {
 
             var view = await new LedgerRuntime(store, settings).WorkAsync(new ProjectContextService(null), now, default);
 
-            Assert.Equal(2, view.Items.Length);
+            Assert.Single(view.Items);
             Assert.DoesNotContain(view.Items, row => row.Item.Id.StartsWith("historical-", StringComparison.Ordinal));
             Assert.Equal("unknown", Assert.Single(view.Items, row => row.Item.Id == "recent-unknown").Item.ReasonCode);
             Assert.Equal("stuck", Assert.Single(view.Items, row => row.Item.Id == "recent-unknown").Item.Verdict);
-            Assert.True(Assert.Single(view.Items, row => row.Item.Id == "claimed-archived").Item.Availability!.Archived);
+            Assert.DoesNotContain(view.Items, row => row.Item.Id == "claimed-archived");
             Assert.Equal(4, (await store.EvaluateAllAsync(now)).Length);
         } finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }

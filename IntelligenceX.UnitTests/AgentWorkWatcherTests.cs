@@ -86,6 +86,12 @@ public sealed class AgentWorkWatcherTests : IDisposable {
             Assert.Equal(0, jsonExceptions);
             Assert.Contains(partial.Diagnostics, item => item.Code == "transient-index");
         } finally { AppDomain.CurrentDomain.FirstChanceException -= observe; }
+        File.AppendAllText(index, "\n{\"id\":\"fake-live\",\"thread_name\":\"Readable during partial rewrite\"}\n");
+        Assert.True(collection.Update(Root.Id, index, default));
+        Assert.Equal("Readable during partial rewrite", Assert.Single(collection.Snapshot(Array.Empty<AgentSessionState>()).Sessions).Title);
+        var cold = new AgentLocalCollection(new AgentWorkOptions());
+        cold.Reconcile(new[] { Root }, null, default);
+        Assert.Equal("Readable during partial rewrite", Assert.Single(cold.Snapshot(Array.Empty<AgentSessionState>()).Sessions).Title);
         File.WriteAllText(index, "{\"id\":\"fake-live\",\"thread_name\":\"New title\"}\n");
         Assert.True(collection.Update(Root.Id, index, default));
         var recovered = collection.Snapshot(Array.Empty<AgentSessionState>());
@@ -476,9 +482,11 @@ public sealed class AgentWorkWatcherTests : IDisposable {
 
     [Fact]
     public async Task Reconcile_FindsRootsCreatedAfterStartupWithoutPublishingUnchangedSnapshots() {
+        var clock = new AgentWorkTestClock();
         await using var watcher = new AgentWorkWatcher(new[] { Root }, new AgentWorkOptions {
-            ReconcileInterval = TimeSpan.FromMilliseconds(50)
-        });
+            ReconcileInterval = TimeSpan.FromSeconds(5)
+        }, null, null, null, () => new[] { Root },
+            static (directory, filter) => new FileSystemWatcher(directory, filter), clock);
         var running = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var events = 0;
         watcher.SnapshotChanged += (_, e) => {
@@ -486,12 +494,33 @@ public sealed class AgentWorkWatcherTests : IDisposable {
             if (e.Snapshot.Sessions.Any(static s => s.State == AgentWorkState.Running)) running.TrySetResult(true);
         };
         await watcher.StartAsync();
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(5)));
         Write(Meta + Event("task_started"));
+        clock.Advance(TimeSpan.FromSeconds(5));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1)));
+        clock.Advance(TimeSpan.FromSeconds(1));
         await Within(running.Task);
-        var count = events;
-        await Task.Delay(1300);
-        Assert.Equal(count, events);
-        Assert.True(watcher.CurrentSnapshot.Scan!.FilesReused > 0);
+        var first = watcher.CurrentSnapshot;
+        Assert.Equal(1, first.Scan!.FilesRead);
+        Assert.Equal(0, first.Scan.FilesReused);
+        var count = Volatile.Read(ref events);
+
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(5), 2));
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1), 2));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10))) {
+            while (ReferenceEquals(first, watcher.CurrentSnapshot)) await Task.Delay(1, deadline.Token);
+        }
+        var reconciled = watcher.CurrentSnapshot;
+        // The next coalescing delay proves the prior collection and its event delivery have finished.
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(5), 3));
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await Within(clock.Scheduled(TimeSpan.FromSeconds(1), 3));
+        Assert.Equal(count, Volatile.Read(ref events));
+        Assert.True(reconciled.CapturedAtUtc > first.CapturedAtUtc);
+        Assert.Equal(0, reconciled.Scan!.FilesRead);
+        Assert.Equal(1, reconciled.Scan.FilesReused);
     }
 
     private static async Task<T> Within<T>(Task<T> task) {

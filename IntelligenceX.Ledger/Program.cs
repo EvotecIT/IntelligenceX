@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Coordination;
 using IntelligenceX.Ledger.Context;
 using IntelligenceX.Ledger.Hosting;
 using IntelligenceX.Ledger.Reporting;
@@ -14,7 +15,19 @@ public static class Program {
     public static async Task<int> Main(string[] args) {
         if (args.Length == 5 && args[0] == "backup" && args[1] == "--config" && args[3] == "--out") {
             var configuration = LedgerSettings.Load(args[2]);
-            var manifest = await LedgerBackup.CreateAsync(Path.Combine(configuration.DataDirectory, "ledger.sqlite"), args[4]);
+            var coordinated = configuration.CoordinationConfigPath is not null ||
+                File.Exists(Path.Combine(configuration.DataDirectory, "coordination.sqlite"));
+            var manifest = coordinated
+                ? await LedgerBackup.CreateStoppedAsync(configuration.DataDirectory, args[4])
+                : await LedgerBackup.CreateAsync(Path.Combine(configuration.DataDirectory, "ledger.sqlite"), args[4]);
+            Console.WriteLine(JsonSerializer.Serialize(manifest, LedgerJson.Options));
+            return 0;
+        }
+        if (args.Length == 5 && args[0] == "restore" && args[1] == "--config" && args[3] == "--from") {
+            var configuration = LedgerSettings.Load(args[2]);
+            if (configuration.CoordinationConfigPath is not null && !Directory.Exists(args[4]))
+                throw new InvalidDataException("Coordination enrollment requires a complete stopped backup directory.");
+            var manifest = await LedgerBackup.RestoreAsync(args[4], configuration.DataDirectory);
             Console.WriteLine(JsonSerializer.Serialize(manifest, LedgerJson.Options));
             return 0;
         }
@@ -23,12 +36,22 @@ public static class Program {
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
             return await LocalReporter.RunNotifyChainAsync(args[2], args[3]);
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {
-            Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>");
+            Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>\n" +
+                "       IntelligenceX.Ledger backup --config <local-json-file> --out <new-backup-path>\n" +
+                "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>");
             return 2;
         }
         if (args[0] is "report" or "hook") return await LocalReporter.RunAsync(args[2], args[0] == "hook");
         var settings = LedgerSettings.Load(args[2]);
-        using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules));
+        Directory.CreateDirectory(settings.DataDirectory);
+        using var writerLease = LedgerBackup.AcquireServiceLease(settings.DataDirectory);
+        var coordination = settings.CoordinationConfigPath is null ? null : CoordinationEndpoints.Load(settings.CoordinationConfigPath, settings);
+        using var coordinationStore = coordination is null ? null : new CoordinationStore(
+            Path.Combine(settings.DataDirectory, "coordination.sqlite"), coordination.InitialPolicy, coordination.Principals);
+        if (coordinationStore is not null) await coordinationStore.InitializeAsync();
+        async Task<CoordinationPolicy> ReadPolicy(CancellationToken ct) => coordinationStore is null
+            ? new(1, []) : await coordinationStore.ExecuteAsync((_, state) => state.Policy, DateTimeOffset.UtcNow, ct);
+        using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules), ReadPolicy);
         await store.InitializeAsync();
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders(); // Payloads, paths and credentials never enter request logs.
@@ -58,14 +81,37 @@ public static class Program {
             context.Response.Headers.CacheControl = "no-store";
             var header = context.Request.Headers.Authorization.ToString();
             var bearer = header.StartsWith("Bearer ", StringComparison.Ordinal) ? header[7..] : "";
-            var expected = HttpMethods.IsPost(context.Request.Method) ? settings.WriteToken : settings.ReadToken;
-            if (!LedgerRuntime.TokenEquals(bearer, expected)) { context.Response.StatusCode = 401; return; }
+            if (CoordinationEndpoints.OwnsRoute(context.Request.Path)) {
+                if (coordination is null || !await CoordinationEndpoints.AuthenticateAsync(context, bearer, coordination, coordinationStore!)) {
+                    context.Response.StatusCode = 401; return;
+                }
+            } else {
+                var expected = HttpMethods.IsPost(context.Request.Method) ? settings.WriteToken : settings.ReadToken;
+                if (!LedgerRuntime.TokenEquals(bearer, expected)) { context.Response.StatusCode = 401; return; }
+            }
             try { await next(context); }
+            catch (CoordinationConflictException error) { context.Response.StatusCode = 409; await context.Response.WriteAsJsonAsync(new { error = error.Message }); }
             catch (EventConflictException) { context.Response.StatusCode = 409; }
             catch (JsonException) { context.Response.StatusCode = 400; }
+            catch (ArgumentException) { context.Response.StatusCode = 400; }
         });
         const string prefix = "/api/ledger/v1";
         ProjectContextEndpoints.Map(app, contextService, runtime);
+        var readiness = new PullRequestReadinessService(store);
+        app.MapGet(prefix + "/pr-ready", async (string repo, int pr, CancellationToken ct) =>
+            Results.Ok(await readiness.ReadAsync(repo, pr, ct)));
+        app.MapGet(prefix + "/cleanup", async (string? machine, CancellationToken ct) =>
+            Results.Ok(await store.CleanupPlanAsync(DateTimeOffset.UtcNow, machine, ct)));
+        app.MapGet(prefix + "/session-status", async (string id, CancellationToken ct) => {
+            var machines = await runtime.MachinesAsync(DateTimeOffset.UtcNow, ct);
+            return Results.Ok(await store.SessionStatusAsync(id, DateTimeOffset.UtcNow, ct,
+                machines.Where(machine => machine.State != "healthy").Select(machine => machine.Id).ToHashSet(StringComparer.Ordinal)));
+        });
+        LeaseEndpoints.Map(app, store, settings);
+        if (coordinationStore is not null) {
+            CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory);
+        }
+        app.MapGet(prefix + "/policy", async (CancellationToken ct) => Results.Ok(await ReadPolicy(ct)));
         app.MapPost(prefix + "/events", async (LedgerEvent[] events, CancellationToken ct) => {
             var now = DateTimeOffset.UtcNow;
             if (events.Length is 0 or > LedgerJson.MaximumBatchEvents || events.Any(e => !EventAdmission.Valid(e, settings, now)))
@@ -89,7 +135,7 @@ public static class Program {
                 page.SnapshotId, page.AsOfUtc, items = page.Items.Select(LedgerItemView.From), page.NextCursor });
         });
         app.MapGet(prefix + "/items/{id}", async (string id, CancellationToken ct) => {
-            var item = (await runtime.ItemsAsync(DateTimeOffset.UtcNow, ct)).FirstOrDefault(i => i.Id == id);
+            var item = (await runtime.ItemsAsync(DateTimeOffset.UtcNow, ct, includeMessageEvidence: true)).FirstOrDefault(i => i.Id == id);
             return item is null ? Results.NotFound() : Results.Ok(LedgerItemView.From(item));
         });
         app.MapGet(prefix + "/items/{id}/events", async (string id, long? cursor, int? limit, CancellationToken ct) =>

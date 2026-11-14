@@ -134,7 +134,7 @@ public sealed partial class LocalExportArtifactWriterTests {
     [Fact]
     public void CreateTranscriptMarkdownToWordOptions_ConfiguresNarrativeAndImageDefaults() {
         var options = OfficeImoWordMarkdownRuntimeContract.CreateTranscriptMarkdownToWordOptions(
-            (string[])["C:\\allowed-a", "C:\\allowed-b"],
+            new[] { "C:\\allowed-a", "C:\\allowed-b" },
             2500);
 
         Assert.Equal("Calibri", options.FontFamily);

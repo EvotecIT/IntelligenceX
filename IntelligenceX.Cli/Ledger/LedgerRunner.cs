@@ -10,12 +10,22 @@ namespace IntelligenceX.Cli.Ledger;
 /// <summary>Read-only HTTP view of service-evaluated state; never runs local verdict rules.</summary>
 internal static class LedgerRunner {
     internal static async Task<int> RunAsync(string[] args) {
+        if (args.Length > 0 && args[0] == "policy") return await LedgerPolicyRunner.RunAsync(args).ConfigureAwait(false);
+        if (args.Length > 0 && args[0] is "repo_activity" or "overlap") return await LedgerRepositoryRunner.RunAsync(args).ConfigureAwait(false);
+        if (args.Length > 0 && args[0] is "who" or "machine_status" or "budget_status" or "session_status" or "pr_ready" or "cleanup" or "lease_acquire" or "lease_renew" or "lease_release")
+            return await LedgerLeaseRunner.RunAsync(args).ConfigureAwait(false);
         if (args.Length > 0 && args[0] is "work" or "projects" or "context" or "search")
             return await LedgerContextRunner.RunAsync(args).ConfigureAwait(false);
         if (args.Length > 0 && args[0] == "declare") return LedgerDeclarationRunner.Run(args);
         if (args.Length == 0 || args[0] is "--help" or "-h" || args[0] is not ("status" or "needs-you" or "stuck" or "item" or "report" or "mark")) {
             Console.WriteLine("ix ledger work|projects|context <project> [topic]|search <project> <topic> --config <local-client.json>");
             Console.WriteLine("ix ledger status|needs-you|stuck|item <id> [--config <local-client-json>]");
+            Console.WriteLine("ix ledger who <key> [--prefix]|machine_status <id>|budget_status --config <read-json>");
+            Console.WriteLine("ix ledger session_status <session-id-or-title>|cleanup --dry-run [--machine <id>] --config <read-json>");
+            Console.WriteLine("ix ledger pr_ready <owner/repo> <pr-number> --config <read-json>");
+            Console.WriteLine("ix ledger policy show --config <read-json>|policy set <path> <value> --config <operator-json>");
+            Console.WriteLine("ix ledger repo_activity <owner/repo>|overlap <owner/repo> [--recent24h] [--details] [--branch <branch>] [--files <file> ...] [--text <task>] --config <read-json>");
+            Console.WriteLine("ix ledger lease_acquire <key> <holder> <machine> <purpose> <ttl-seconds>|lease_renew <key> <lease-id> <ttl-seconds>|lease_release <key> <lease-id> --config <lease-write-json>");
             Console.WriteLine("Set IX_LEDGER_ENDPOINT and IX_LEDGER_READ_TOKEN locally. Output is JSON from the read API.");
             Console.WriteLine("ix ledger declare <codex|claude> <source-session-id> <declaration-json> --config <reporter-json> [--validate]");
             return args.Length == 0 ? 2 : 0;

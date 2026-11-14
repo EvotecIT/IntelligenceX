@@ -12,6 +12,7 @@ namespace IntelligenceX.Telemetry.Agents;
 // a transcript-validation surface; malformed framing and malformed selected values are reported.
 internal static class AgentSessionMetadataProjection {
     private const int MaximumEnvelopeBytes = 256 * 1024;
+    private const int MaximumProviderCodeBytes = 64;
     internal static IEnumerable<JsonDocument> Read(string path, Action<string> diagnostic, CancellationToken token, AgentSessionReadWindow window) {
         window.EndOffset = window.StartOffset;
         using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
@@ -92,7 +93,7 @@ internal static class AgentSessionMetadataProjection {
         window.TailSafe = true; // EndOffset is the last complete newline, not an in-flight suffix.
     }
 
-    private enum Context { Root, Payload, Git, Message, Block, Error, Code, Item }
+    private enum Context { Root, Payload, Git, Message, Block, Error, Code, Item, Origin, SessionSource }
 
     private static void ProjectObject(Cursor input, Utf8JsonWriter writer, Context context, int depth) {
         if (depth > 64) throw new JsonException();
@@ -106,9 +107,11 @@ internal static class AgentSessionMetadataProjection {
             input.Space(); input.Expect(':'); input.Space();
             var nested = context == Context.Root && name == "payload" ? Context.Payload
                 : context == Context.Root && name == "message" ? Context.Message
+                : context == Context.Root && name == "origin" ? Context.Origin
                 : (context == Context.Root || context == Context.Payload) && name == "error" ? Context.Error
                 : (context == Context.Payload || context == Context.Error) && name == "codex_error_info" ? Context.Code
-                : context == Context.Payload && name == "git" ? Context.Git : (Context?)null;
+                : context == Context.Payload && name == "git" ? Context.Git
+                : context == Context.Payload && name == "source" ? Context.SessionSource : (Context?)null;
             if (context == Context.Payload && name == "item") nested = Context.Item;
             if (nested.HasValue && input.Peek() == '{') {
                 writer.WritePropertyName(name);
@@ -130,10 +133,23 @@ internal static class AgentSessionMetadataProjection {
             } else if (context == Context.Code) {
                 writer.WriteNull(name);
                 input.Skip(depth + 1);
+            } else if (context == Context.Root && name == "error" && input.Peek() == '"') {
+                // Native Claude errors can be scalar codes. Retain only exact known codes,
+                // draining arbitrary error text without retaining or exporting it.
+                using var text = new JsonStringStream(input);
+                var buffer = new byte[MaximumProviderCodeBytes];
+                var length = text.Read(buffer, 0, buffer.Length);
+                text.Drain();
+                var code = System.Text.Encoding.UTF8.GetString(buffer, 0, length);
+                if (length < buffer.Length && AgentFailureClassifier.ClaudeCause(code) != AgentFailureCause.Unknown)
+                    writer.WriteString(name, code);
             } else if (context == Context.Payload && name == "error") {
                 var isNull = input.Peek() == 'n';
                 input.Skip(depth + 1);
                 if (isNull) writer.WriteNull(name); else writer.WriteBoolean(name, true);
+            } else if (context == Context.SessionSource && name == "subagent" && (input.Peek() == '{' || input.Peek() == '"')) {
+                writer.WriteBoolean(name, true);
+                input.Skip(depth + 1);
             } else if (Keep(context, name) && input.Peek() != '{' && input.Peek() != '[') {
                 var raw = input.Value();
                 using var value = JsonDocument.Parse(raw);
@@ -162,13 +178,14 @@ internal static class AgentSessionMetadataProjection {
     }
 
     private static bool Keep(Context context, string name) => context switch {
-        Context.Root => name is "type" or "uuid" or "timestamp" or "sessionId" or "cwd" or "gitBranch" or "isSidechain" or "isApiErrorMessage" or "is_error" or "customTitle" or "subtype" or "prNumber" or "prUrl" or "prRepository",
-        Context.Payload => name is "type" or "role" or "turn_id" or "turnId" or "id" or "session_id" or "cwd" or "thread_id" or "threadId" or "thread_name" or "title" or "name" or "call_id" or "codex_error_info",
+        Context.Root => name is "type" or "uuid" or "parentUuid" or "parentSessionId" or "timestamp" or "sessionId" or "cwd" or "gitBranch" or "isSidechain" or "isApiErrorMessage" or "is_error" or "customTitle" or "subtype" or "prNumber" or "prUrl" or "prRepository",
+        Context.Payload => name is "type" or "role" or "turn_id" or "turnId" or "id" or "session_id" or "source" or "parent_thread_id" or "cwd" or "thread_id" or "threadId" or "thread_name" or "title" or "name" or "call_id" or "codex_error_info",
         Context.Git => name is "branch" or "repository_url",
         Context.Message => name == "stop_reason",
         Context.Block => name is "type" or "name" or "id" or "tool_use_id",
         Context.Error => name is "type" or "codex_error_info",
         Context.Item => name is "type" or "id" or "delivery",
+        Context.Origin => name is "kind" or "msg_id",
         _ => false
     };
 

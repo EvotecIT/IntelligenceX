@@ -7,7 +7,8 @@ namespace IntelligenceX.Telemetry.Agents;
 internal static class AgentFailureClassifier {
     internal static AgentSessionState Failed(AgentSessionState session, JsonElement error, bool codex,
         AgentTurnOutcome outcome = AgentTurnOutcome.Failed) {
-        var code = codex ? Object(error, "codex_error_info") : Object(error, "type");
+        var code = codex ? Object(error, "codex_error_info")
+            : error.ValueKind == JsonValueKind.String ? error : Object(error, "type");
         var cause = AgentFailureCause.Unknown;
         if (code.ValueKind == JsonValueKind.String) cause = Map(code.GetString(), codex);
         else if (codex && code.ValueKind == JsonValueKind.Object) {
@@ -35,9 +36,11 @@ internal static class AgentFailureClassifier {
             or "ResponseStreamDisconnected" or "response_stream_disconnected" or "ResponseTooManyFailedAttempts" or "response_too_many_failed_attempts" => AgentFailureCause.Transport,
         "ContextWindowExceeded" or "context_window_exceeded" => AgentFailureCause.ContextLimit,
         _ => AgentFailureCause.Unknown
-    } : code switch {
+    } : ClaudeCause(code);
+
+    internal static AgentFailureCause ClaudeCause(string? code) => code switch {
         "overloaded_error" => AgentFailureCause.Capacity,
-        "rate_limit_error" => AgentFailureCause.RateLimit,
+        "rate_limit" or "rate_limit_error" => AgentFailureCause.RateLimit,
         "authentication_error" => AgentFailureCause.Authentication,
         _ => AgentFailureCause.Unknown
     };

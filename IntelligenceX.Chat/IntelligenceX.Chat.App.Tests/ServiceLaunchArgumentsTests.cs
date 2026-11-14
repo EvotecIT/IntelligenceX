@@ -26,7 +26,7 @@ public sealed class ServiceLaunchArgumentsTests {
             });
 
         Assert.Equal(
-            (string[])["--pipe", "intelligencex.chat", "--profile", "default", "--save-profile", "default"],
+            new[] { "--pipe", "intelligencex.chat", "--profile", "default", "--save-profile", "default" },
             args);
     }
 

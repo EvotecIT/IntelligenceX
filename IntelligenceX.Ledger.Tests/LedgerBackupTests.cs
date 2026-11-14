@@ -22,17 +22,19 @@ public sealed class LedgerBackupTests {
                         Provider = "codex", Source = "watcher", ObservedAtUtc = now, Session = new() { TurnOpen = true } }], now);
                 }
             }
-            var destination = Path.Combine(root, "accepted.sqlite");
-            var copies = Enumerable.Range(0, 8).Select(index => Task.Run(async () => {
-                try { return await LedgerBackup.CreateAsync(sources[index % 2], destination); }
-                catch (Exception error) when (error is IOException or InvalidDataException) { return null; }
-            })).ToArray();
-            var winner = Assert.Single((await Task.WhenAll(copies)).OfType<LedgerBackupManifest>());
-            var published = System.Text.Json.JsonSerializer.Deserialize<LedgerBackupManifest>(
-                await File.ReadAllTextAsync(destination + ".json"), LedgerJson.Options);
-            Assert.Equal(winner, published);
-            var bytes = await File.ReadAllBytesAsync(destination);
-            Assert.Equal(winner.Sha256, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant());
+            for (var round = 0; round < 64; round++) {
+                var destination = Path.Combine(root, "accepted-" + round + ".sqlite");
+                var copies = Enumerable.Range(0, 8).Select(index => Task.Run(async () => {
+                    try { return await LedgerBackup.CreateAsync(sources[index % 2], destination); }
+                    catch (Exception error) when (error is IOException or InvalidDataException) { return null; }
+                })).ToArray();
+                var winner = Assert.Single((await Task.WhenAll(copies)).OfType<LedgerBackupManifest>());
+                var published = System.Text.Json.JsonSerializer.Deserialize<LedgerBackupManifest>(
+                    await File.ReadAllTextAsync(destination + ".json"), LedgerJson.Options);
+                Assert.Equal(winner, published);
+                var bytes = await File.ReadAllBytesAsync(destination);
+                Assert.Equal(winner.Sha256, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant());
+            }
             Assert.Empty(Directory.GetFiles(root, "*.partial*"));
         } finally { Directory.Delete(root, recursive: true); }
     }
@@ -53,6 +55,7 @@ public sealed class LedgerBackupTests {
             await writer.InitializeAsync();
             await writer.IngestAsync([observation], now);
 
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => LedgerBackup.CreateAsync(source, target, new CancellationToken(true)));
             var manifest = await LedgerBackup.CreateAsync(source, target);
             await writer.IngestAsync([observation with { EventId = Guid.NewGuid(), Sequence = 2,
                 Delivery = new("synthetic-delivery", "started", now.AddSeconds(1)) }], now.AddSeconds(1));

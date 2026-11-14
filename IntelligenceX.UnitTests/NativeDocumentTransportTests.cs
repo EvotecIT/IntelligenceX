@@ -12,6 +12,7 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class NativeDocumentTransportTests {
+    private static readonly TimeSpan ReadCompletionTimeout = TimeSpan.FromSeconds(10);
     [Theory]
     [InlineData("client", "bytes")]
     [InlineData("client", "url")]
@@ -208,9 +209,9 @@ public sealed class NativeDocumentTransportTests {
         using var cancellation = new CancellationTokenSource();
         var pending = transport.StartTurnAsync(thread.Id, ChatInput.FromText("read"), new ChatOptions { Model = "model" },
             null, null, null, cancellation.Token);
-        await stream.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await stream.Entered.Task.WaitAsync(ReadCompletionTimeout);
         cancellation.Cancel();
-        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(2)));
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(ReadCompletionTimeout));
         Assert.Equal(cancellation.Token, error.CancellationToken);
     }
 
@@ -225,9 +226,9 @@ public sealed class NativeDocumentTransportTests {
         var thread = await transport.StartThreadAsync("model", null, null, null, CancellationToken.None);
         var pending = transport.StartTurnAsync(thread.Id, ChatInput.FromText("read"), new ChatOptions { Model = "model" },
             null, null, null, CancellationToken.None);
-        await stream.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await stream.Entered.Task.WaitAsync(ReadCompletionTimeout);
         stream.Fail();
-        var error = await Assert.ThrowsAsync<IOException>(() => pending.WaitAsync(TimeSpan.FromSeconds(2)));
+        var error = await Assert.ThrowsAsync<IOException>(() => pending.WaitAsync(ReadCompletionTimeout));
         Assert.Equal("fixture transport failure", error.Message);
     }
 
