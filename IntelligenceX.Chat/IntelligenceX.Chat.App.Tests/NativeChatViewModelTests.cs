@@ -25,13 +25,13 @@ public sealed class NativeChatViewModelTests {
             ThreadId = "thread-artifact",
             Text = "Here is the result.",
             Tools = new ToolRunDto {
-                Calls = [new ToolCallDto { CallId = "call-1", Name = "directory_check" }],
-                Outputs = [new ToolOutputDto { CallId = "call-1", Output = "ok", SummaryMarkdown = "One healthy domain controller." }]
+                Calls = (ToolCallDto[])[new ToolCallDto { CallId = "call-1", Name = "directory_check" }],
+                Outputs = (ToolOutputDto[])[new ToolOutputDto { CallId = "call-1", Output = "ok", SummaryMarkdown = "One healthy domain controller." }]
             },
             Images = [new ChatImageOutputDto { Url = "https://example.test/artifact.png" }]
         };
         var conversation = NativeConversation.CreateNew();
-        var store = new FakeConversationStore(new NativeConversationWorkspace([conversation], conversation.Id));
+        var store = new FakeConversationStore(new NativeConversationWorkspace((NativeConversation[])[conversation], conversation.Id));
         var model = new NativeChatViewModel(new ScriptedRuntime(_ =>
             Task.FromResult(new ChatTurnRunResult(response, null))), conversationStore: store);
         await model.InitializeConversationsAsync();
@@ -52,7 +52,7 @@ public sealed class NativeChatViewModelTests {
     public async Task DeleteConversationAsync_RemovesConversationAndPersistsDiscardIntent() {
         var first = new NativeConversation("chat-first", "First");
         var second = new NativeConversation("chat-second", "Second");
-        var workspace = new NativeConversationWorkspace([first, second], first.Id);
+        var workspace = new NativeConversationWorkspace((NativeConversation[])[first, second], first.Id);
         var store = new FakeConversationStore(workspace);
         var model = new NativeChatViewModel(
             new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("done", "thread-1"))),
@@ -79,7 +79,7 @@ public sealed class NativeChatViewModelTests {
             DateTime.UtcNow,
             SkipUserBubbleOnDispatch: false,
             NativeQueuedTurnSource.Pending);
-        var workspace = new NativeConversationWorkspace([conversation], conversation.Id, queuedTurns: [queued]);
+        var workspace = new NativeConversationWorkspace((NativeConversation[])[conversation], conversation.Id, queuedTurns: (NativeQueuedTurn[])[queued]);
         var store = new FakeConversationStore(workspace);
         var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("Healthy", "thread-queued")));
         var model = new NativeChatViewModel(runtime, conversationStore: store);
@@ -102,7 +102,7 @@ public sealed class NativeChatViewModelTests {
         var queued = new NativeQueuedTurn("Keep queued prompt", conversation.Id, DateTime.UtcNow,
             SkipUserBubbleOnDispatch: false, NativeQueuedTurnSource.Pending);
         var store = new FakeConversationStore(new NativeConversationWorkspace(
-            [conversation], conversation.Id, queuedTurns: [queued])) {
+            (NativeConversation[])[conversation], conversation.Id, queuedTurns: (NativeQueuedTurn[])[queued])) {
             ClaimStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
             ReleaseClaim = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
         };
@@ -136,7 +136,7 @@ public sealed class NativeChatViewModelTests {
             DateTime.UtcNow,
             SkipUserBubbleOnDispatch: false,
             NativeQueuedTurnSource.Pending);
-        var workspace = new NativeConversationWorkspace([conversation], conversation.Id, queuedTurns: [queued]);
+        var workspace = new NativeConversationWorkspace((NativeConversation[])[conversation], conversation.Id, queuedTurns: (NativeQueuedTurn[])[queued]);
         var store = new FakeConversationStore(workspace) { QueuedTurnClaimResult = false };
         var runtime = new ScriptedRuntime(_ => Task.FromResult(CreateTurnResult("Healthy", "thread-queued")));
         var model = new NativeChatViewModel(runtime, conversationStore: store);
@@ -1205,7 +1205,7 @@ public sealed class NativeChatViewModelTests {
         public Task<NativeConversationWorkspace> LoadAsync(CancellationToken cancellationToken) {
             cancellationToken.ThrowIfCancellationRequested();
             var conversation = NativeConversation.CreateNew();
-            return Task.FromResult(new NativeConversationWorkspace([conversation], conversation.Id));
+            return Task.FromResult(new NativeConversationWorkspace((NativeConversation[])[conversation], conversation.Id));
         }
 
         public async Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) {
@@ -1232,7 +1232,7 @@ public sealed class NativeChatViewModelTests {
             LoadStarted.TrySetResult();
             await ReleaseLoad.Task.WaitAsync(cancellationToken);
             var conversation = NativeConversation.CreateNew();
-            return new NativeConversationWorkspace([conversation], conversation.Id);
+            return new NativeConversationWorkspace((NativeConversation[])[conversation], conversation.Id);
         }
 
         public Task SaveAsync(NativeConversationWorkspace workspace, CancellationToken cancellationToken) =>
@@ -1251,7 +1251,7 @@ public sealed class NativeChatViewModelTests {
             cancellationToken.ThrowIfCancellationRequested();
             if (Interlocked.Increment(ref _loadCount) == 1) {
                 var conversation = NativeConversation.CreateNew();
-                return new NativeConversationWorkspace([conversation], conversation.Id);
+                return new NativeConversationWorkspace((NativeConversation[])[conversation], conversation.Id);
             }
 
             ReloadStarted.TrySetResult();

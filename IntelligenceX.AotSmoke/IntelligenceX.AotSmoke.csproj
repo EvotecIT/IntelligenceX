@@ -14,6 +14,6 @@
   <ItemGroup>
     <ProjectReference Include="../IntelligenceX/IntelligenceX.csproj" />
     <ProjectReference Include="../IntelligenceX.Storage.SQLite/IntelligenceX.Storage.SQLite.csproj" />
-    <PackageReference Include="DBAClientX.SQLite" Version="0.8.0" PrivateAssets="all" Publish="true" />
+    <PackageReference Include="DBAClientX.SQLite" Version="1.0.18" PrivateAssets="all" Publish="true" />
   </ItemGroup>
 </Project>
