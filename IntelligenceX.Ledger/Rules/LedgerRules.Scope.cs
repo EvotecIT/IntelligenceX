@@ -80,13 +80,19 @@ public sealed partial class LedgerRules {
         var matchScope = declaration?.Scope ?? (reason == "paused-by-user" ? item.Control?.Scope :
             reason == "urgent-safety" ? item.Safety?.Scope :
             item.Scope is null ? null : item.Scope with { TurnId = session?.TurnId ?? item.Scope.TurnId });
-        return new(verdict, reason, at ?? item.ConditionFirstObservedAtUtc.GetValueOrDefault(reason, item.FirstObservedAtUtc),
+        var match = new RuleMatch(verdict, reason, at ?? item.ConditionFirstObservedAtUtc.GetValueOrDefault(reason, item.FirstObservedAtUtc),
             at.HasValue ? basis : "first-observation") {
                 EpisodeId = LedgerScope.Id(item.Id, item.Scope?.TaskId ?? "unscoped", item.Scope?.Generation.ToString() ?? "unknown",
                     reason, identity ?? item.ConditionFirstObservedAtUtc.GetValueOrDefault(reason, item.FirstObservedAtUtc).ToString("O")),
                 Scope = matchScope, Evidence = new[] { evidence, declared?.EpisodeEvidence }.OfType<EvidenceRef>().DistinctBy(e => e.EventId).ToArray(),
                 Wait = verdict == "waiting" || reason.StartsWith("wait", StringComparison.Ordinal) || declaration?.Kind == "operation" ? wait : null
             };
+        if (match.SinceBasis == "first-observation" && item.Current?.RulesVersion == Version) {
+            var prior = item.Current.Matches.FirstOrDefault(previous => previous.EpisodeId == match.EpisodeId &&
+                previous.SinceBasis == "first-observation");
+            if (prior is not null && prior.SinceUtc <= match.SinceUtc) match = match with { SinceUtc = prior.SinceUtc };
+        }
+        return match;
     }
 
     private static HoldView? Hold(LedgerItem item, RuleMatch match, bool quiet = false) {

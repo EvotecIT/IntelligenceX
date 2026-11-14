@@ -71,6 +71,9 @@ public sealed class GitHubDeviceFlowClient : IDisposable {
         try {
             while (true) {
                 await Task.Delay(TimeSpan.FromSeconds(interval), deadline.Token).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (DateTimeOffset.UtcNow >= authorization.ExpiresAt)
+                    throw new TimeoutException("GitHub device authorization expired.");
                 var result = await PostAsync("login/oauth/access_token", new Dictionary<string, string> {
                     ["client_id"] = _clientId, ["device_code"] = authorization.DeviceCode,
                     ["grant_type"] = "urn:ietf:params:oauth:grant-type:device_code"

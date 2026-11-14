@@ -1,0 +1,136 @@
+using DBAClientX;
+using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Reporting;
+
+namespace IntelligenceX.Ledger.Storage;
+
+public sealed partial class LedgerStore {
+    /// <summary>Creates the repository index and imports observations retained before this index existed.</summary>
+    internal static async Task InitializeRepositoryActivityAsync(SQLiteAsyncSession db, CancellationToken token = default) {
+        await db.ExecuteNonQueryAsync("""
+            CREATE TABLE IF NOT EXISTS repository_sessions (
+              item TEXT PRIMARY KEY, repo TEXT NOT NULL, activity TEXT,
+              open INTEGER NOT NULL, archived INTEGER NOT NULL, json TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS repository_sessions_live ON repository_sessions(repo,open,archived);
+            CREATE INDEX IF NOT EXISTS repository_sessions_activity ON repository_sessions(repo,activity);
+            """, cancellationToken: token);
+        var items = await db.QueryAsListAsync("""
+            SELECT json FROM items WHERE json_extract(json,'$.kind')='session'
+              AND json_type(json,'$.session.repository')='object'
+            """, row => Read<LedgerItem>(row.GetString(0)), cancellationToken: token);
+        foreach (var item in items) await UpsertRepositorySessionAsync(db, item, token);
+    }
+
+    /// <summary>Refreshes the compact index inside the current ingest or health-activity transaction.</summary>
+    internal static async Task UpsertRepositorySessionAsync(SQLiteAsyncSession db, LedgerItem item, CancellationToken token = default) {
+        var args = new Dictionary<string, object?> { ["item"] = item.Id };
+        if (item.Kind != "session" || item.Session?.Repository is not { } repository || string.IsNullOrWhiteSpace(repository.Repo)) {
+            await db.ExecuteNonQueryAsync("DELETE FROM repository_sessions WHERE item=@item", args, token);
+            return;
+        }
+
+        var fact = item.Session;
+        var files = repository.Files?.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Take(20).ToArray();
+        var open = fact.TurnOpen == true && fact.Archived != true && fact.Outcome != "incomplete";
+        var session = new RepositorySession(fact.SourceSessionId?.ToString() ?? item.Id, item.MachineId, item.Provider,
+            repository.Branch, repository.Worktree, fact.Title ?? repository.Title, repository.PullRequests.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+            fact.LastActivityAtUtc?.ToUniversalTime(), files, repository.FilesCapped || repository.Files?.Length > 20,
+            repository.BaseRef, repository.GitState, open, repository.PullRequestsKnown,
+            repository.FileCount ?? (repository.Files is not null && !repository.FilesCapped ? repository.Files.Distinct(StringComparer.Ordinal).Count() : null),
+            item.SessionEvidence?.ObservedAtUtc, fact.Origin, fact.OriginEvidence, null, fact.TurnCount, fact.CreatedAtUtc);
+        args["repo"] = RepositoryOverlapEvaluator.NormalizeRepo(repository.Repo);
+        args["activity"] = session.LastActivityAtUtc?.ToString("O");
+        args["open"] = open ? 1 : 0;
+        args["archived"] = fact.Archived == true ? 1 : 0;
+        args["json"] = Json(session);
+        await db.ExecuteNonQueryAsync("""
+            INSERT INTO repository_sessions(item,repo,activity,open,archived,json)
+            VALUES(@item,@repo,@activity,@open,@archived,@json)
+            ON CONFLICT(item) DO UPDATE SET repo=excluded.repo,activity=excluded.activity,
+              open=excluded.open,archived=excluded.archived,json=excluded.json
+            """, args, token);
+    }
+
+    /// <summary>Groups all live and recent sessions by checkout. The default window is two hours, with 24 hours opt-in.</summary>
+    public async Task<RepositoryActivity> RepositoryActivityAsync(string repo, DateTimeOffset now, CancellationToken token = default, bool recent24h = false, bool details = false) {
+        repo = RepositoryOverlapEvaluator.NormalizeRepo(repo);
+        var policy = await ReadPolicyAsync(token);
+        var workingWindow = TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes);
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var args = new Dictionary<string, object?> {
+            ["repo"] = repo, ["cutoff"] = now.AddHours(recent24h ? -24 : -2).ToUniversalTime().ToString("O"),
+            ["workingCutoff"] = (now - workingWindow).ToUniversalTime().ToString("O"),
+            ["now"] = now.ToUniversalTime().ToString("O"), ["build"] = "build:" + repo,
+            ["repoKey"] = "repo:" + repo, ["branchPrefix"] = "branch:" + repo + ":"
+        };
+        // UNION lets SQLite use the live and activity indexes independently and deduplicates their intersection.
+        var sessions = await db.QueryAsListAsync("""
+            SELECT json FROM repository_sessions WHERE item IN (
+              SELECT item FROM repository_sessions WHERE repo=@repo AND open=1 AND archived=0 AND activity>=@workingCutoff
+              UNION SELECT item FROM repository_sessions WHERE repo=@repo AND activity>=@cutoff)
+            ORDER BY item
+            """, row => Read<RepositorySession>(row.GetString(0)), args, cancellationToken: token);
+        sessions = sessions.Select(session => session with {
+            Live = session.Live && session.LastActivityAtUtc >= now - workingWindow,
+            FreshAdvice = FreshAdvice(new() { Origin = session.Origin, TurnCount = session.TurnCount, CreatedAtUtc = session.CreatedAtUtc }, policy, now)
+        }).ToList();
+        var leases = await db.QueryAsListAsync("""
+            SELECT l.json FROM reservations l WHERE l.state='active' AND l.expires>@now AND (
+              l.key=@build COLLATE NOCASE OR l.key=@repoKey COLLATE NOCASE
+              OR substr(l.key,1,length(@branchPrefix))=@branchPrefix COLLATE NOCASE
+              OR EXISTS (SELECT 1 FROM repository_sessions r WHERE r.repo=@repo
+                AND (json_extract(l.json,'$.holder')=r.item
+                  OR json_extract(l.json,'$.holder')=json_extract(r.json,'$.agentId')
+                  OR json_extract(l.json,'$.holder')=json_extract(r.json,'$.provider')||':'||json_extract(r.json,'$.agentId')
+                  OR json_extract(l.json,'$.holder')=json_extract(r.json,'$.provider')||':'||json_extract(r.json,'$.agentId')||':owner-driven')))
+            ORDER BY l.key
+            """, row => Read<Lease>(row.GetString(0)), args, cancellationToken: token);
+        var unavailablePrSources = await db.QueryAsListAsync("""
+            SELECT DISTINCT h.machine FROM reporter_health h, json_each(h.json,'$.coverage') c
+            WHERE c.value='pull-requests-unavailable'
+            """, row => row.GetString(0), cancellationToken: token);
+        sessions = sessions.Select(session => session.PullRequestsKnown == true && unavailablePrSources.Contains(session.Machine)
+            ? session with { PullRequestsKnown = null } : session).ToList();
+        var coverage = new List<string>();
+        if (sessions.Count == 0) coverage.Add("repository-sessions-unobserved");
+        var freshness = await db.QueryAsListAsync("""
+            SELECT DISTINCT CASE WHEN activity IS NULL THEN 'session-activity-unobserved' ELSE 'stale-open-sessions' END
+            FROM repository_sessions WHERE repo=@repo AND open=1 AND archived=0
+              AND (activity IS NULL OR activity<@workingCutoff)
+            """, row => row.GetString(0), args, cancellationToken: token);
+        coverage.AddRange(freshness.Order(StringComparer.Ordinal));
+        var missing = await db.ExecuteScalarAsync("""
+            SELECT EXISTS(SELECT 1 FROM session_status s JOIN items i ON i.id=s.item
+              LEFT JOIN repository_sessions r ON r.item=s.item WHERE r.item IS NULL
+              AND ((s.open=1 AND s.archived=0)
+                OR julianday(json_extract(i.json,'$.session.lastActivityAtUtc'))>=julianday(@cutoff)))
+            """, args, token);
+        if (Convert.ToInt32(missing) != 0) coverage.Add("repository-metadata-missing");
+        var worktrees = RepositoryOverlapEvaluator.GroupWorktrees(sessions);
+        if (worktrees.Any(worktree => worktree.Files is null)) coverage.Add("changed-files-unknown");
+        if (worktrees.Any(worktree => worktree.GitState != "observed")) coverage.Add("git-unavailable-or-partial");
+        if (worktrees.Any(worktree => worktree.Branch is null)) coverage.Add("branch-unknown");
+        if (worktrees.Any(worktree => worktree.FilesCapped)) coverage.Add("changed-files-capped");
+        if (worktrees.Any(worktree => worktree.FilesCapped && worktree.FileCount is null)) coverage.Add("changed-file-count-unknown");
+        if (worktrees.Any(worktree => worktree.PullRequestsKnown != true)) coverage.Add("pull-requests-unobserved");
+        var result = new RepositoryActivity(RepositoryOverlapEvaluator.Summary(worktrees), repo, worktrees, leases.ToArray(), coverage.ToArray());
+        return details ? result : RepositoryActivityFormatting.Compact(result);
+    }
+
+    /// <summary>Evaluates overlap using the same complete repository activity query as repo_activity.</summary>
+    public async Task<RepositoryOverlap> RepositoryOverlapAsync(string repo, string? branch, string[]? files, string? text,
+        DateTimeOffset now, CancellationToken token = default, bool recent24h = false, bool details = false) {
+        var result = RepositoryOverlapEvaluator.Evaluate(await RepositoryActivityAsync(repo, now, token, recent24h, details: true), branch, files, text);
+        return details ? result : RepositoryActivityFormatting.Compact(result);
+    }
+
+    /// <summary>Machines with persisted repository observations, for expected-reporter coverage enrichment.</summary>
+    public async Task<string[]> ReportedRepositoryMachinesAsync(CancellationToken token = default) {
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var machines = await db.QueryAsListAsync("""
+            SELECT DISTINCT json_extract(json,'$.machine') FROM repository_sessions
+            ORDER BY json_extract(json,'$.machine')
+            """, row => row.GetString(0), cancellationToken: token);
+        return machines.ToArray();
+    }
+}

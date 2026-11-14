@@ -32,11 +32,19 @@ public sealed record LedgerEvent {
 
 /// <summary>Latest provider turn evidence, independent of watcher liveness heuristics.</summary>
 public sealed record SessionFact {
+    /// <summary>Explicit provider title. Ordinary conversation text is excluded.</summary>
+    public string? Title { get; init; }
+    public string Origin { get; init; } = "unknown";
+    public string? OriginEvidence { get; init; }
+    public int? TurnCount { get; init; }
+    public DateTimeOffset? CreatedAtUtc { get; init; }
     public TaskScope? Scope { get; init; }
     public string? TurnId { get; init; }
     public string? InputId { get; init; }
     public bool QuestionBlocking { get; init; } = true;
     public Guid? SourceSessionId { get; init; }
+    /// <summary>Observed structured peer input identity for the current turn; message content is excluded.</summary>
+    public Guid? SourceMessageId { get; init; }
     public bool? Archived { get; init; }
     public DateTimeOffset? ArchiveObservedAtUtc { get; init; }
     public bool? TurnOpen { get; init; }
@@ -51,6 +59,8 @@ public sealed record SessionFact {
     public DateTimeOffset? QuestionAtUtc { get; init; }
     public bool? AppOwned { get; init; }
     public string? RepositoryBranchKey { get; init; }
+    /// <summary>Read-only workspace metadata and bounded changed-file names from the existing reporter.</summary>
+    public RepositoryObservation? Repository { get; init; }
 }
 
 /// <summary>Independent task/claim/wait updates. Null means unobserved; false/zero and a matching resolved wait explicitly clear state.</summary>

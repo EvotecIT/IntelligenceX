@@ -1,6 +1,6 @@
 # Local work ledger
 
-Ledger collects metadata from local Codex and Claude artifacts and evaluates Working, Waiting, Needs you, Stuck and Done. One .NET 10 HTTP service stores append-only observations and current rows in SQLite through DbaClientX.SQLite. Reporters run with the signed-in user's read access to their session files. CLI, tray and tile clients consume the same read model.
+Ledger collects metadata from local Codex and Claude artifacts and evaluates Working, Waiting, Needs you, Stuck and Done. One .NET 10 HTTP service stores recent observations, current rows and verdict transitions in SQLite through DbaClientX.SQLite. Reporters run with the signed-in user's read access to their session files. CLI, tray and tile clients consume the same read model.
 
 Collection reads provider artifacts. Event ingestion, receipts and correctness marks write Ledger's own store. Keep configurations, tokens, certificate files, spools, reports and databases outside source control.
 
@@ -35,6 +35,49 @@ ix ledger report 2026-01-12 --config /absolute/path/client.json
 
 Lists expose `nextCursor`. Pass it with `--cursor` before `--config` to continue the same snapshot. Cursors expire after five minutes; start a new list if a cursor expires. Native session IDs, when observed, are included as identity metadata; messages, prompts, answers, tool arguments and raw hook payloads are excluded.
 
+## Quick reservations and queries
+
+Leases reserve a key until its TTL expires. They work independently of Goals and requests. Competing acquisition returns `busy` with the current holder. Renew and release require the returned `leaseId`, which protects a replacement reservation from an old caller. TTL accepts seconds from 1 to 86400. CLI values also accept `s`, `m` and `h` suffixes.
+
+```text
+ix ledger who bench:shared --config /absolute/path/client.json
+ix ledger who branch:example/project: --prefix --config /absolute/path/client.json
+ix ledger lease_acquire bench:shared session-id machine-id benchmark 10m --config /absolute/path/leases.json
+ix ledger lease_renew bench:shared <lease-id> 10m --config /absolute/path/leases.json
+ix ledger lease_release bench:shared <lease-id> --config /absolute/path/leases.json
+ix ledger machine_status machine-id --config /absolute/path/client.json
+ix ledger budget_status --config /absolute/path/client.json
+```
+
+The write configuration contains `endpoint`, `readToken`, `writeToken` and optional `certificateSha256`. Protect it locally. Read configuration continues to contain only read credentials. MCP `--config` exposes `who`, `machine_status` and `budget_status` alongside the existing read tools. Explicit `--lease-config` adds `lease_acquire`, `lease_renew` and `lease_release` using separate write credentials.
+
+The corresponding HTTP routes are `GET /leases?key=...&prefix=false`, `POST /leases/acquire`, `POST /leases/renew`, `POST /leases/release`, `GET /machine-status/{id}` and `GET /budget-status` under `/api/ledger/v1`. Mutation payloads use the same field names as the CLI arguments, with `ttlSeconds` for TTL. Read calls require the read token and mutations require the write token. Responses are compact JSON with total counts when rows are omitted to stay within 1 KB.
+
+Machine status includes reporter health, live-session and observed usage-limit counts. Budget status groups observed limits across machines and mapped accounts. Missing account mapping keeps the evidence session-scoped. Remaining credits and reset times remain unknown.
+
+Each reporter can read an optional local Marquee Probe on loopback port 47820. `probeEndpoint` overrides that loopback origin. Probe wire version 1 supplies CPU load, memory pressure, swap, free space and runner activity through the existing reporter health row. Machine queries use this cached observation and report an unavailable source when Probe is absent, unpaired or stale. The consumed wire records reference their pinned upstream source.
+
+The reporter requests pairing and retains its private reader state beside its configuration in `probe-reader/reader-state.json`. Approve the request in Probe or with `marquee-probe allow`. Denied, expired or revoked pairing remains unavailable until the owner stops the reporter, removes that private state file and restarts it for a new pairing request.
+
+`repo_activity` groups live sessions and the last two hours of activity by machine and worktree. The compact default includes full live identities and recent-session counts and title previews. `--details` returns full recent session rows and Git metadata. `--recent24h` extends the activity window to 24 hours. Live status requires an open, unarchived turn with progress during the 30-minute Working window. Incomplete turns retain recent-history coverage.
+
+Changed-file previews belong to each checkout and contain up to five names with a total count. The compact view shortens previews toward a 3 KB response target while preserving worktrees and live identities. Legacy capped observations retain an unknown total. Git comparison includes branch commits, tracked working changes and untracked files against the merge base of the observed default branch. Missing workspaces omit file lists. Missing PR observations, workspaces and base refs appear in coverage.
+
+```text
+ix ledger repo_activity example/project --config /absolute/path/client.json
+ix ledger repo_activity example/project --recent24h --details --config /absolute/path/client.json
+ix ledger overlap example/project --text "Excel cell formatting performance" --config /absolute/path/client.json
+ix ledger overlap example/project --branch feature/cell-formatting --files src/Cells.cs src/Formats.cs --config /absolute/path/client.json
+```
+
+MCP exposes `repo_activity(repo)` and `overlap(repo, branch?, files?, text?)` with the read token. Both accept `details` and `recent24h`. HTTP uses `GET /repo-activity?repo=...` and `GET /overlap?repo=...&branch=...&files=...&text=...`, with `details=true` and `recent24h=true` for the optional views. Overlap evaluates all selected evidence before formatting and returns `none`, `possible` or `conflict` with grouped matches. Text comparison uses words from the supplied text and observed titles. Every response starts with a one-line summary and preserves missing-source coverage.
+
+## Reporting and retention
+
+Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. Raw events older than seven days are pruned in batches of at most 10000 per minute. Items and verdict transitions stay. Existing retention backlog drains over successive ticks. Freed database pages are reused by SQLite, so the file can retain its allocated size.
+
+Completed sessions and title-only catalog rows leave the current-work roster. Explicit questions, unconfirmed current-turn input, waits, declarations, usage limits, native holds and pending deliveries retain follow-up visibility. Claims and PR history remain available with each stored item. Frozen imported delivery observations older than 24 hours appear in retained history, with their excluded count in current-view coverage. Reporter health identifies a stale evidence file.
+
 All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET routes require the read token; POST requires the write token.
 
 | Route | Result |
@@ -49,12 +92,15 @@ All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET route
 
 Requested, admitted, submitted, started, terminal and accepted stages are independent. A terminal result does not fill missing admission or requester-acceptance evidence. Unknown timestamps remain null. A delivery's target links back to its session item when known.
 
+Item details include the watcher's structured `session` facts and their own
+`sessionEvidence`. Consumers can check the observed turn identity, nullable open
+state and original observation time directly. Claim, control and delivery
+evidence retain their separate timestamps.
+
 ## Shared views and project context
 
 `GET /api/ledger/v1/work` returns current work, separate from all-history counts.
-Current work includes claims, explicit holds, open unarchived turns, current
-declarations, and activity or deliveries within the last day. Archived sessions
-with active claims remain visible. The list contains up to 200 rows, with full
+Current work includes unfinished turns and explicit follow-up. Completed sessions and catalog-only rows retain their stored history. Questions, waits, current declarations and pending deliveries remain visible. The list contains up to 200 rows, with full
 current-work counts and a `truncated` flag. `verdict` filters returned rows;
 `limit` bounds their number from 1 to 200. Counts retain the full current scope.
 Verdicts come from the existing rules engine. The view interleaves verdict
@@ -125,9 +171,9 @@ and state evaluation remain service-owned and make no model calls. These tools
 grant no execution or publication authority. Register the host through the
 client's supported MCP settings after reviewing the exact configuration change.
 
-## Online backup and restore
+## Backup and restore
 
-An operator can request a DbaClientX online snapshot while the service runs:
+An observation-only service supports a DbaClientX online snapshot while it runs.
 
 ```text
 dotnet IntelligenceX.Ledger.dll backup --config /absolute/path/service.json --out /absolute/path/backups/ledger.sqlite
@@ -141,9 +187,48 @@ A database without its matching manifest is incomplete; verify the hash before
 using a backup. Do not treat manifest publication as an atomic two-file operation.
 
 Retain the protected local configuration, certificate references, catalog and
-source enrollment needed to rebuild the service separately. For a restore drill,
-copy the verified database into a fresh data directory, configure a separate
-loopback port, and inspect its reads before switching any reporter. A real host
+source enrollment needed to rebuild the service separately. Reporter spools also
+have a separate recovery lifecycle.
+
+With coordination enrolled, or with a retained `coordination.sqlite` in the data
+directory, stop the service and use a new backup directory as the output.
+Both source databases must exist.
+
+```text
+dotnet IntelligenceX.Ledger.dll backup --config /absolute/path/service.json --out /absolute/path/backups/coordination-backup
+```
+
+The stopped backup holds the service and coordination writer leases while
+snapshotting `ledger.sqlite`, `coordination.sqlite` and the immutable result and
+assignment files in `coordination-results`. It verifies SQLite integrity and
+retained result bindings, records every file's size and SHA-256 in
+`ledger.sqlite.json`, and publishes the directory after all copies complete.
+The service acquires its writer lease at startup with the existing settings
+shape. Verify shutdown of older binaries and any external database writers
+before taking a stopped backup.
+
+Prepare a separate local configuration whose `dataDirectory` names a new,
+absent directory with an existing parent, then restore a backup directory or an
+observation-only database file.
+
+```text
+dotnet IntelligenceX.Ledger.dll restore --config /absolute/path/restore.json --from /absolute/path/backups/coordination-backup
+```
+
+Restore checks hashes, SQLite integrity and retained result bindings before
+publishing the data directory. A coordination restore disables admission,
+pauses active goals through the existing control-revision mechanism and clears
+cached host freshness and worker eligibility. It preserves grants, execution
+identities, result-delivery attempts, journal history and retirement obligations.
+Refresh authenticated host and worker observations, reconcile retained uncertain
+assignments and sends, then explicitly resume policy/goals and reauthorize
+eligible pending requests. Restore supplies recovery state without changing
+local configuration or enabling coordination enrollment. A coordination-enrolled
+restore requires a complete backup directory. Legacy single-database backups
+contain observation history only.
+
+For a restore drill, configure a separate loopback port and inspect reads before
+switching any reporter. A real host
 migration requires stopping and verifying the old writer before activating the
 new writer, then reconciling reporter spools and external receipts. A restored
 ordinal is a recovery point; later events require reconciliation. Never run two
@@ -158,6 +243,16 @@ Undeclared active turns become quiet after ten minutes and no-progress after thi
 Deliberate native Stop, pause and budget controls produce a quiet `paused-by-user` hold. Queued work behind the hold produces a warning and remains included in the paused count. Submission without an observed start becomes Stuck/`delivery-uncertain` after ten minutes. Needs you/`needs-app` requires both app ownership and evidence that human steering is the next step. Unconfirmed input stays explicit. Optional questions have their own item with `parentItemId`. A qualified parent task or turn supersession retires obsolete questions as cancelled while retaining their evidence. Done requires clear delivery and queue gates, and closed unmerged work is `cancelled`.
 
 Items expose `hold`, `nextActor`, `acceptanceBy`, `resultRef` and a read-only `wakeEligibility` explanation. Unavailable metadata remains null or explicitly unknown. Eligibility includes eligible, suppressed or unknown, with its reason, condition and evidence. Versioned urgent-safety facts carry the matching policy, source reference and any required manual action. Phase 1 evaluates and reports these observations.
+
+Structured Claude rate and usage-limit failures produce `needs-you` /
+`usage-limit`. Peer-message observations retain their native message identity,
+session, turn and independently observed delivery stages. Later personal turns
+preserve those historical failures. The parser retains up to 256 peer-message
+observations per session file and exposes `peer-message-retention-limit` if
+older observations leave that cache. The service retains admitted history.
+Exact item lookup and event history expose peer-message receipts. Normal status,
+work lists and daily shadow reports count sessions and tasks.
+Quota reset time and sharing across accounts or machines require separate evidence.
 
 ## Declare a work boundary
 
@@ -208,3 +303,131 @@ This command uses the writer configuration; regenerating a report preserves stor
 For a Mac or Linux reporter, publish for its runtime identifier, copy the output to that user's application-data directory, create a private reporter configuration pointing at the service's HTTPS LAN endpoint, and run `report --config ...`. For example, an Apple Silicon build uses `dotnet publish -c Release -f net10.0 -r osx-arm64 --self-contained false`. Keep the spool on local disk. Verify a fresh machine heartbeat and an acknowledged outbox before treating enrollment as complete. A running process or an open TCP port alone does not establish reporting. Record an unavailable host or launch-mode/network restriction explicitly, with the retained spool and the next supported local launch step.
 
 Matched provider answers close their own input rows, including after reporter or ledger restart. Missing pending inputs alone do not establish an answer, and completing an input does not complete its parent session.
+
+## Coordinate authorized work
+
+Set `coordinationConfigPath` to an absolute, private configuration file to enable
+the coordination API. It owns a separate SQLite store through DbaClientX.SQLite
+and retains an append-only command journal with its current projection. The
+configuration contains `initialPolicy` and `principals`. Each principal has its
+own random `token` and a role of `client`, `host` or `operator`. Client enrollment
+scopes requests to its project IDs and optional machine/worker identity. Host
+enrollment scopes execution evidence to its machine. Operators manage policy
+and explicit recovery. Use separate credentials for observation and coordination.
+
+Policy assigns each machine its capabilities, active-worker and build slots,
+CPU units, memory capacity and optional benchmark processor IDs. Native worker
+creation additionally requires both policy permission and a current eligible
+host observation. Lowering capacity holds new admission while retaining existing
+reservations. These reservations coordinate enrolled participants. Agents keep
+their existing shell commands and build workflows.
+
+A coordination client configuration contains `endpoint`, `token` and optional
+`certificateSha256`. HTTPS and certificate handling follow the read transport.
+Keep enrollment, policy, client configuration, native identities and result data
+outside the repository.
+
+Hosts can enroll task-scoped requesters when their configured principal has
+`allowRequesterEnrollment=true` and an explicit project list. The trusted local
+integration qualifies the native session, task generation and source branches,
+persists a random client credential locally, and sends its SHA-256 digest through
+`POST /api/coordination/v1/requesters`. `workerObservation` can accompany that
+command so a task-generation change updates the worker and supersedes the old
+requester before scheduling runs. `GET /workers/{provider}/{sessionId}` resolves
+the existing worker on the authenticated host, with an explicit null for absence.
+
+Requester credentials retain their session, task and authorization binding.
+Fresh host observations can renew their project/branch scopes and dispatch
+qualification. Held or stale controls preserve access to existing work and
+results while holding new dispatch. A superseded task generation keeps its
+history and cannot resume its former scope. Existing static principals retain
+their configured behavior.
+Task authority follows the enrolled project/branch scopes. A personal worker's
+recorded execution candidate can belong to a completed borrowed assignment.
+
+```text
+ix coordination status sample-project --config /absolute/path/scoped-client.json
+ix coordination request sample-help --config /absolute/path/scoped-client.json
+ix coordination submit /absolute/path/request.json --config /absolute/path/scoped-client.json
+ix coordination submit /absolute/path/request.json --config /absolute/path/scoped-client.json --apply
+ix coordination result-content sample-help --config /absolute/path/scoped-client.json
+ix coordination consume sample-help /absolute/path/consumption.json --config /absolute/path/scoped-client.json --apply
+```
+
+Submission previews by default. An applied request has an immutable ID and body,
+goal control revision, source checkpoint, capability and resource demand. Retry
+that same intent after a lost response. `goal_checkpoint` uses the goal metadata
+revision for compare-and-swap. Pausing, stopping or changing authorization advances
+the separate control revision. Resuming requires explicit reauthorization of
+affected pending work.
+
+Help and review requests can include optional `taskBrief` plain-text instructions
+alongside the source checkpoint. A supplied brief must contain non-whitespace
+and fit within 8192 UTF-8 bytes. Omitted or null briefs preserve legacy request
+behavior. The brief is part of the immutable request body, so retries retain its
+exact text. Hosts receive it through `work.request.taskBrief` on the existing
+coordination surfaces.
+
+The HTTP routes under `/api/coordination/v1` expose goals, requests, host and
+worker observations, independent delivery receipts, result content, retirement
+jobs, policy and a bounded change cursor. `GET /requests/{id}` returns execution,
+the exact native binding, result delivery/consumption and cleanup in one answer.
+Queries return persisted coordination state. Host observations and explicit
+commands drive scheduling, admission and expired-grant reconciliation.
+
+`GET /summary?project=sample-project` returns queue counts, machine capacity and
+up to eight outstanding requests. Host list pages include only their assignments.
+Retirement pages expose unsafe legacy records as minimal holds for reconciliation.
+
+The stdio MCP host accepts `--coordination-config <scoped-client.json>` to expose
+the same task contract. Mutation tools require explicit `apply=true`. The normal
+`--config` entry point exposes the existing read tools. Enroll command credentials
+for the actual task before registering that command surface in a client.
+
+An enrolled host adapter performs native client operations and waits in code.
+Each operation retains its request, grant, generation, host boot and exact source
+candidate. Unknown submission or surviving execution retains occupancy until
+qualified reconciliation. Original-requester cancellation is available only for
+untouched generation-zero requests. `reuseSession` explicitly names an existing
+help/review worker and machine, preserving that session's ordinary lifecycle.
+
+Terminal execution, substantive result consumption and workspace retirement
+have separate receipts. Temporary workers create durable retirement jobs.
+An exact bound host can supply an independently verified terminal answer while
+earlier submission and start receipts remain unknown. Known execution identity,
+grant, generation, boot, binding, source and exclusion checks still apply.
+Personal reused sessions become available for another assignment after their
+terminal result is consumed. Cleanup records require source preservation,
+descendant resolution, process release, native archive and supported workspace
+release evidence. A protected primary checkout retains its named cleanup hold.
+Write-capable nested help requires explicit source handoff and currently returns
+`write-help-source-handoff-required` before queueing.
+
+Command clients preserve a validated service rejection as
+`{"outcome":"rejected","error":"<service-code>"}`. Transport failures and
+unqualified responses produce `{"outcome":"uncertain"}`. The CLI returns a
+nonzero exit code for either outcome. MCP reports them as tool errors.
+
+Result content is immutable for its exact request, generation and grant.
+The local artifact store admits content up to 8 KiB, with a 64-MiB and 4,096-file
+active storage bound. Capacity pressure moves completed assignments and content
+into the fixed `coordination-results/archive` directory after requester consumption
+and verified temporary-helper retirement. Explicitly reused personal sessions
+qualify after consumption and retain their ordinary session lifecycle. Missing or
+contradictory lifecycle evidence keeps an assignment active. When eligible moves
+cannot free enough capacity, new content returns `result-store-capacity`.
+An unbound request qualifies after its matching, verified `never-created`
+reconciliation and requester consumption establish that no session needs retirement.
+
+Reads and assignment replays resolve both tiers, including a restart between
+content and binding moves and content shared by active assignments. Archived
+content retains its original reference for the lifetime of the durable request.
+The archive and append-only coordination history grow with retained work and
+require normal disk-capacity monitoring. Complete stopped backups include both
+tiers with size and hash verification. New coordination backups use schema 3
+with canonical `archive/<file>` entries. Restore also accepts the existing schema
+1 observation-only and schema 2 flat coordination backups, rejects additional
+directory levels and links, and preserves the existing recovery controls.
+After acquiring both writer leases, stopped backups exclude recognized
+uncommitted staging files from interrupted writes and verify every committed
+result. The original staging files can be inspected in the source directory.

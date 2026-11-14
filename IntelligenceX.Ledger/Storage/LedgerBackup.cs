@@ -1,24 +1,34 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DBAClientX;
 using IntelligenceX.Ledger.Contracts;
 
 namespace IntelligenceX.Ledger.Storage;
 
 /// <summary>Operator-requested online snapshots using DbaClientX's SQLite backup API.</summary>
-public static class LedgerBackup {
+public static partial class LedgerBackup {
     /// <summary>Copies a committed snapshot without stopping its writer or overwriting an existing backup.</summary>
     public static async Task<LedgerBackupManifest> CreateAsync(string source, string destination, CancellationToken token = default) {
+        var directory = Path.GetDirectoryName(source)!;
+        if (File.Exists(Path.Combine(directory, "coordination.sqlite")) || Directory.Exists(Path.Combine(directory, "coordination-results")))
+            throw new InvalidDataException("Coordination state requires a stopped backup of the complete data directory.");
         if (!Path.IsPathFullyQualified(source) || !Path.IsPathFullyQualified(destination) || !File.Exists(source) ||
-            !Directory.Exists(Path.GetDirectoryName(destination)) || File.Exists(destination) || File.Exists(destination + ".json"))
+            !Directory.Exists(Path.GetDirectoryName(destination)))
+            throw new InvalidDataException("Backup requires an existing source and a new absolute destination in an existing directory.");
+        // A stable lock inode excludes other publishers across processes and releases on process exit.
+        // Keep it in place: unlinking a lock file could let another publisher lock a different inode.
+        using var publicationLease = new FileStream(destination + ".writer.lock", FileMode.OpenOrCreate,
+            FileAccess.ReadWrite, FileShare.None);
+        if (File.Exists(destination) || File.Exists(destination + ".json"))
             throw new InvalidDataException("Backup requires an existing source and a new absolute destination in an existing directory.");
         var staging = destination + "." + Guid.NewGuid().ToString("N") + ".partial";
         try {
             var manifest = await SnapshotAsync(source, staging, token);
             await using (var output = new FileStream(staging + ".json", FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 await JsonSerializer.SerializeAsync(output, manifest, LedgerJson.Options, token);
-            // Unique provider destinations isolate concurrent copies. Promotion refuses any existing final file.
+            // Unique provider destinations isolate copies. The lease protects this two-file publication.
             File.Move(staging, destination, overwrite: false);
             File.Move(staging + ".json", destination + ".json", overwrite: false);
             return manifest;
@@ -50,4 +60,11 @@ public static class LedgerBackup {
 
 /// <summary>Verified backup identity and the last included durable journal ordinal.</summary>
 public sealed record LedgerBackupManifest(int SchemaVersion, DateTimeOffset CompletedAtUtc, string Method,
-    long Bytes, string Sha256, long Events, long LastEventOrdinal, long Items, long DurationMilliseconds);
+    long Bytes, string Sha256, long Events, long LastEventOrdinal, long Items, long DurationMilliseconds,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] LedgerCoordinationBackup? Coordination = null);
+
+/// <summary>Integrity identities for the coordination database and its immutable result and assignment files.</summary>
+public sealed record LedgerCoordinationBackup(LedgerBackupFile Database, Dictionary<string, LedgerBackupFile> Artifacts);
+
+/// <summary>Size and SHA-256 of one complete backup file.</summary>
+public sealed record LedgerBackupFile(long Bytes, string Sha256);

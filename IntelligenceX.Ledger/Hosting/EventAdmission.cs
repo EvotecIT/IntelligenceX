@@ -16,10 +16,19 @@ internal static class EventAdmission {
                 e.Delivery is not null, e.GlobalWork is not null, e.ReviewMark is not null, e.Heartbeat, e.Coverage is not null }.Count(x => x) != 1)
             return false;
         if (e.Session is { } s && (s.Outcome is not ("unknown" or "completed" or "interrupted" or "failed" or "incomplete") ||
+            s.Origin is not ("human" or "agent" or "unknown") || s.Title?.Length > 240 || s.Title?.Any(char.IsControl) == true ||
+            s.OriginEvidence is not null && !Id(s.OriginEvidence) || s.TurnCount is < 0 || !Time(s.CreatedAtUtc) ||
             !DeclarationValidation.ValidScope(s.Scope) || s.TurnId is not null && !Id(s.TurnId) || s.InputId is not null && !Id(s.InputId) ||
             s.AccountId is not null && !Id(s.AccountId) || s.RepositoryBranchKey is not null && !Id(s.RepositoryBranchKey) ||
             !Time(s.LastActivityAtUtc) || !Time(s.TurnStartedAtUtc) || !Time(s.TurnEndedAtUtc) || !Time(s.QuestionAtUtc) ||
             !Time(s.ArchiveObservedAtUtc) || (s.Archived is null) != (s.ArchiveObservedAtUtc is null))) return false;
+        if (e.Session?.Repository is { } repository && (repository.Repo is not { Length: > 0 and <= 200 } ||
+            repository.Repo.Split('/').Length != 2 || repository.Branch?.Length > 256 || repository.Worktree?.Length > 4096 ||
+            repository.Title?.Length > 240 || repository.PullRequests is null || repository.PullRequests.Length > 10 ||
+            repository.PullRequests.Any(pr => pr is null || pr.Length > 512 || !Uri.TryCreate(pr, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0) ||
+            repository.Files?.Length > 20 || repository.Files?.Any(f => f is null || f.Length > 4096 || Path.IsPathFullyQualified(f) || f.Split('/').Any(part => part == "..")) == true ||
+            repository.BaseRef?.Length > 256 || repository.GitState is not ("observed" or "not-observed" or "workspace-missing" or "git-unavailable" or "base-unknown"))) return false;
+        if (e.Session?.Repository?.Commit is { } commit && (commit.Length is not (40 or 64) || !commit.All(Uri.IsHexDigit))) return false;
         if (e.Work is { } w && (!DeclarationValidation.ValidScope(w.Scope) || w.QueuedInputs is < 0 or > 10000 || w.OpenPullRequests is null || w.OpenPullRequests.Length > 100 ||
             w.OwnedPullRequests is null || w.OwnedPullRequests.Length > 100 || w.OwnedPullRequests.Any(x => !Id(x)) ||
             w.CancelledPullRequests is null || w.CancelledPullRequests.Length > 100 || w.CancelledPullRequests.Any(x => !Id(x)) ||

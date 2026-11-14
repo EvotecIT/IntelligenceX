@@ -74,8 +74,8 @@ public sealed class PromptMarkdownBuilderTests {
 
         var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
             userText: "What model and tools are active?",
-            capabilitySelfKnowledgeLines: ["Active Directory tools are enabled."],
-            runtimeCapabilityLines: ["Runtime transport: native, active model for this turn: gpt-test"],
+            capabilitySelfKnowledgeLines: new[] { "Active Directory tools are enabled." },
+            runtimeCapabilityLines: new[] { "Runtime transport: native, active model for this turn: gpt-test" },
             runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("[Capability self-knowledge]", markdown, StringComparison.Ordinal);

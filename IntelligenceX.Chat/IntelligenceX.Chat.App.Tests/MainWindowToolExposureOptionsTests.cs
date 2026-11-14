@@ -118,7 +118,7 @@ public sealed class MainWindowToolExposureOptionsTests {
         var result = MainWindow.BuildEnabledWriteToolsList(
             new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
             new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
-            ["approved_write_tool"]);
+            new[] { "approved_write_tool" });
 
         Assert.Equal(["approved_write_tool"], result);
     }
@@ -137,7 +137,7 @@ public sealed class MainWindowToolExposureOptionsTests {
             new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
                 ["approved_write_tool"] = true
             },
-            ["approved_write_tool"]);
+            new[] { "approved_write_tool" });
 
         Assert.Equal(expectedPersisted, result.Contains("approved_write_tool", StringComparer.OrdinalIgnoreCase));
     }

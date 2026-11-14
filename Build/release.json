@@ -21,7 +21,8 @@
     "ExpectedVersion": null,
     "ExpectedVersionMap": {
       "IntelligenceX": "0.1.X",
-      "IntelligenceX.Storage.SQLite": "0.1.X"
+      "IntelligenceX.Storage.SQLite": "0.1.X",
+      "IntelligenceX.Ledger.Contracts": "0.1.X"
     },
     "ExpectedVersionMapAsInclude": true,
     "ExpectedVersionMapUseWildcards": false,

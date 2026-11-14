@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace IntelligenceX.Ledger.Contracts;
 
 public sealed record EvidenceRef(Guid EventId, string Source, string SourceVersion,
@@ -34,6 +36,11 @@ public sealed record LedgerItem {
     public required string MachineId { get; init; }
     public required string Provider { get; init; }
     public string Kind { get; init; } = "session";
+    /// <summary>Peer-message receipt with only native started/terminal stages, outside normal work projections.</summary>
+    [JsonIgnore]
+    public bool IsMessageEvidence => Kind == "delivery" && Session?.SourceMessageId is not null &&
+        !Deliveries.Values.Any(delivery => delivery.Stages.Any(stage =>
+            stage.Key is not ("started" or "terminal") && stage.Value.Knowledge == "known"));
     public string? ParentItemId { get; init; }
     public required DateTimeOffset FirstObservedAtUtc { get; init; }
     public SessionFact? Session { get; init; }

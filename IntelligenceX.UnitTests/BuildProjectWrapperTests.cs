@@ -58,9 +58,10 @@ public sealed class BuildProjectWrapperTests {
         var expectedVersions = root.GetProperty("ExpectedVersionMap");
 
         Assert.True(root.GetProperty("ExpectedVersionMapAsInclude").GetBoolean());
-        Assert.Equal(2, expectedVersions.EnumerateObject().Count());
+        Assert.Equal(3, expectedVersions.EnumerateObject().Count());
         Assert.Equal("0.1.X", expectedVersions.GetProperty("IntelligenceX").GetString());
         Assert.Equal("0.1.X", expectedVersions.GetProperty("IntelligenceX.Storage.SQLite").GetString());
+        Assert.Equal("0.1.X", expectedVersions.GetProperty("IntelligenceX.Ledger.Contracts").GetString());
         Assert.Equal("IntelligenceX", root.GetProperty("GitHubPrimaryProject").GetString());
         Assert.Equal("../Artifacts/ProjectBuild/project.build.plan.json", root.GetProperty("PlanOutputPath").GetString());
         Assert.Equal("../Artifacts/ProjectBuild/ReleaseZip", root.GetProperty("ReleaseZipOutputPath").GetString());

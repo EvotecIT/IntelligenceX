@@ -398,7 +398,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             originalMarkdown,
             materializedMarkdown,
             @"C:\exports\transcript.docx",
-            [@"C:\temp"],
+            new[] { @"C:\temp" },
             docxVisualMaxWidthPx: null,
             markdownWriter: (_, text) => savedMarkdown = text,
             docxWriter: (_, _, _, _, _) => {
