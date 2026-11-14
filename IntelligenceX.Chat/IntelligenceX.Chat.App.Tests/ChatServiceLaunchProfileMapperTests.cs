@@ -333,7 +333,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
     public void CreateFromState_SeedsWriteToolDefaultsFromRuntimeCatalog() {
         var options = ChatRequestOptionsFactory.CreateFromState(
             new ChatAppState { DisabledTools = ["existing_disabled"] },
-            availableTools: [
+            availableTools: (ToolDefinitionDto[])[
                 new ToolDefinitionDto {
                     Name = "read_tool",
                     Description = "Reads data.",
@@ -365,7 +365,7 @@ public sealed class ChatServiceLaunchProfileMapperTests {
                 DisabledTools = ["write_tool"],
                 EnabledWriteTools = ["write_tool"]
             },
-            availableTools: [
+            availableTools: (ToolDefinitionDto[])[
                 new ToolDefinitionDto {
                     Name = "write_tool",
                     Description = "Changes data.",
