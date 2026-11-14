@@ -169,6 +169,11 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_toolRoutingScore field not found.");
 
+    private static readonly FieldInfo NativeProviderUsageByAccountIdField = typeof(MainWindow).GetField(
+        "_nativeProviderUsageByAccountId",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_nativeProviderUsageByAccountId field not found.");
+
     private static readonly FieldInfo NativeAccountSlotsField = typeof(MainWindow).GetField(
         "_nativeAccountSlots",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -798,6 +803,7 @@ public sealed class MainWindowToolCatalogNormalizationTests {
     private static MainWindow CreateWindow() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
         SetField(NativeAccountSlotsField, window, new[] { string.Empty });
+        SetField(NativeProviderUsageByAccountIdField, window, Activator.CreateInstance(NativeProviderUsageByAccountIdField.FieldType)!);
         SetField(AppProfileNameField, window, "default");
         SetField(ServiceProfileNamesField, window, Array.Empty<string>());
         SetField(AvailableModelsField, window, Array.Empty<ModelInfoDto>());
