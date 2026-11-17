@@ -12,6 +12,9 @@ internal sealed record TurnTokens(long Input, long CachedInput, long Output, lon
         value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var number) && number.TryGetInt64(out var result) ? result : 0;
 }
 
+/// <summary>A turn that outlived its limit and could not be confirmed stopped; it stays subject to reconciliation.</summary>
+internal sealed class TurnStillRunningException(string message) : InvalidOperationException(message);
+
 /// <summary>How one turn ended. Status is the app server's turn status (completed, failed, interrupted) or timed-out.</summary>
 internal sealed record TurnOutcome(string TurnId, string Status, string? FinalText, TurnTokens Tokens, string Model, string? Error);
 
@@ -22,6 +25,7 @@ internal sealed record CodexDelivery(string Route, string TurnId, string Model);
 /// notifications; a lost connection is reconnected and the turn read once, never polled.</summary>
 internal sealed class CodexRunner(string executable, string? controlSocket) {
     private static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(30);
 
     public Task<CodexAppServer> OpenAsync(CancellationToken token) => CodexAppServer.OpenAsync(executable, controlSocket, token);
 
@@ -58,21 +62,30 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     }
 
     /// <summary>Starts one helper turn and waits for its completion notification, up to the policy's turn limit. A turn
-    /// that outlives the limit is interrupted. Usage is summed from token-usage notifications for this turn.</summary>
+    /// that outlives the limit is interrupted. Usage is summed from token-usage notifications for this turn.
+    /// <paramref name="submitting"/> records the thread's turn count before turn/start; when an earlier call recorded one
+    /// (<paramref name="knownTurns"/>) and the thread has more turns now, that submission was accepted and its turn is
+    /// followed instead of submitting the input again.</summary>
     public async Task<TurnOutcome> RunTurnAsync(string threadId, string cwd, string text, JsonObject? outputSchema, string? model,
-        string? effort, TimeSpan limit, Func<string, Task> started, CancellationToken token) {
+        string? effort, TimeSpan limit, int? knownTurns, Func<int, Task> submitting, Func<string, Task> started, TurnWatch watch,
+        CancellationToken token) {
         var deadline = DateTimeOffset.UtcNow + limit;
-        var watch = new TurnWatch(threadId);
         var server = await OpenAsync(token).ConfigureAwait(false);
         try {
             server.Notification += watch.Observe;
             var resumed = await ResumeAsync(server, threadId, cwd, token).ConfigureAwait(false);
-            var parameters = new JsonObject { ["threadId"] = threadId, ["input"] = Input(text), ["approvalPolicy"] = "never" };
-            if (model is not null) parameters["model"] = model;
-            if (effort is not null) parameters["effort"] = effort;
-            if (outputSchema is not null) parameters["outputSchema"] = outputSchema.DeepClone();
-            var response = await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false);
-            var turnId = response.GetProperty("turn").GetProperty("id").GetString() ?? throw new InvalidDataException("turn/start returned no id.");
+            var turns = await TurnIdsAsync(server, threadId, token).ConfigureAwait(false);
+            string turnId;
+            if (knownTurns is { } known && turns.Count > known) turnId = turns[known];
+            else {
+                await submitting(turns.Count).ConfigureAwait(false);
+                var parameters = new JsonObject { ["threadId"] = threadId, ["input"] = Input(text), ["approvalPolicy"] = "never" };
+                if (model is not null) parameters["model"] = model;
+                if (effort is not null) parameters["effort"] = effort;
+                if (outputSchema is not null) parameters["outputSchema"] = outputSchema.DeepClone();
+                var response = await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false);
+                turnId = response.GetProperty("turn").GetProperty("id").GetString() ?? throw new InvalidDataException("turn/start returned no id.");
+            }
             watch.Follow(turnId);
             await started(turnId).ConfigureAwait(false);
             return await AwaitTurnAsync(server, watch, cwd, model ?? resumed, deadline, token, reconnect: async () => {
@@ -90,8 +103,8 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     }
 
     /// <summary>Follows a turn that was started before this process restarted.</summary>
-    public async Task<TurnOutcome> FollowTurnAsync(string threadId, string turnId, string cwd, TimeSpan limit, CancellationToken token) {
-        var watch = new TurnWatch(threadId);
+    public async Task<TurnOutcome> FollowTurnAsync(string threadId, string turnId, string cwd, TimeSpan limit, TurnWatch watch,
+        CancellationToken token) {
         watch.Follow(turnId);
         var server = await OpenAsync(token).ConfigureAwait(false);
         try {
@@ -129,10 +142,29 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             if (done == closed) { server = await reconnect().ConfigureAwait(false); continue; }
             break;
         }
+        // A timed-out turn counts as ended only once it is seen stopped; otherwise a resume or terminal receipt could
+        // overlap a turn the live daemon is still running.
         try {
             await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = watch.ThreadId, ["turnId"] = watch.TurnId }, CallTimeout, token).ConfigureAwait(false);
         } catch (Exception error) when (error is IOException or TimeoutException) { }
+        if (await Task.WhenAny(watch.Completed, Task.Delay(StopTimeout, token)).ConfigureAwait(false) != watch.Completed &&
+            !await StoppedAsync(server, watch.ThreadId, watch.TurnId!, token).ConfigureAwait(false))
+            throw new TurnStillRunningException("Turn " + watch.TurnId + " passed its limit and was not confirmed stopped.");
         return new(watch.TurnId!, "timed-out", watch.LastMessage, watch.Tokens, model, "turn-limit-reached");
+    }
+
+    private static async Task<bool> StoppedAsync(CodexAppServer server, string threadId, string turnId, CancellationToken token) {
+        try { return await ReadTurnAsync(server, threadId, turnId, token).ConfigureAwait(false) is { Status: not "inProgress" }; }
+        catch (Exception error) when (error is IOException or TimeoutException) { return false; }
+    }
+
+    /// <summary>The thread's turn ids, oldest first. A thread with no turns yet may have nothing to read.</summary>
+    private static async Task<List<string>> TurnIdsAsync(CodexAppServer server, string threadId, CancellationToken token) {
+        try {
+            var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
+            return read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
+                ? turns.EnumerateArray().Select(turn => turn.GetProperty("id").GetString()!).ToList() : [];
+        } catch (CodexRpcException) { return []; }
     }
 
     private static async Task WaitClosedAsync(CodexAppServer server, CancellationToken token) {
@@ -213,7 +245,8 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         }
     }
 
-    /// <summary>Interrupts a running turn, if any, and returns the thread's last agent message.</summary>
+    /// <summary>Interrupts a running turn, if any, waits until it is seen stopped, and returns the thread's last agent
+    /// message. Throws <see cref="TurnStillRunningException"/> when the turn can't be confirmed stopped.</summary>
     public async Task<string?> CloseAsync(string threadId, CancellationToken token) {
         await using var server = await OpenAsync(token).ConfigureAwait(false);
         var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
@@ -221,10 +254,17 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         var last = turns.EnumerateArray().LastOrDefault();
         if (last.ValueKind != JsonValueKind.Object) return null;
         if (Status(last) == "inProgress") {
+            var turnId = last.GetProperty("id").GetString()!;
             try {
-                await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = threadId, ["turnId"] = last.GetProperty("id").GetString() },
-                    CallTimeout, token).ConfigureAwait(false);
+                await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = threadId, ["turnId"] = turnId }, CallTimeout, token).ConfigureAwait(false);
             } catch (CodexRpcException) { }
+            var deadline = DateTimeOffset.UtcNow + StopTimeout;
+            while (!await StoppedAsync(server, threadId, turnId, token).ConfigureAwait(false)) {
+                if (DateTimeOffset.UtcNow > deadline) throw new TurnStillRunningException("Turn " + turnId + " was not confirmed stopped.");
+                await Task.Delay(TimeSpan.FromSeconds(2), token).ConfigureAwait(false);
+            }
+            read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
+            turns = read.GetProperty("thread").GetProperty("turns");
         }
         return turns.EnumerateArray().Select(FinalText).LastOrDefault(text => text is not null);
     }
@@ -282,11 +322,13 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     }
 }
 
-/// <summary>Collects one turn's notifications: completion, final message and summed token usage.</summary>
-internal sealed class TurnWatch(string threadId) {
+/// <summary>Collects one turn's notifications: completion, final message and summed token usage. Usage starts from
+/// <paramref name="tokens"/> (what a turn followed after a restart had already spent) and each update is reported to
+/// <paramref name="checkpoint"/>.</summary>
+internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Action<TurnTokens>? checkpoint = null) {
     private readonly TaskCompletionSource<(string Status, string? Text, string? Error)> _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _gate = new();
-    private TurnTokens _tokens = TurnTokens.None;
+    private TurnTokens _tokens = tokens ?? TurnTokens.None;
     public string ThreadId { get; } = threadId;
     public string? TurnId { get; private set; }
     public string? LastMessage { get; private set; }
@@ -304,7 +346,9 @@ internal sealed class TurnWatch(string threadId) {
         switch (method) {
             case "thread/tokenUsage/updated" when Matches(parameters, "turnId") &&
                 parameters.TryGetProperty("tokenUsage", out var usage) && usage.TryGetProperty("last", out var last):
-                lock (_gate) _tokens = _tokens.Add(last);
+                TurnTokens now;
+                lock (_gate) now = _tokens = _tokens.Add(last);
+                checkpoint?.Invoke(now);
                 break;
             case "item/completed" when Matches(parameters, "turnId") && parameters.TryGetProperty("item", out var item) &&
                 item.TryGetProperty("type", out var type) && type.GetString() == "agentMessage" &&

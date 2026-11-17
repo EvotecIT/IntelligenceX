@@ -56,6 +56,70 @@ public sealed class CoordinationAskTests {
     }
 
     [Fact]
+    public void AnAskIdIsReusedOnlyForTheSameAskEvenAfterItIsArchived() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        engine.Ask(Ask(), Sessions);
+        Assert.Equal("request-id-conflict", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask() with { Commit = new string('c', 40) }, Sessions)).Message);
+        Assert.Equal("request-id-conflict", Assert.Throws<CoordinationConflictException>(() => engine.Ask(Ask(machine: "pc"), Sessions)).Message);
+
+        Complete(engine, state, "done-1");
+        var archiving = new CoordinationEngine(state, Now.AddDays(state.Policy.RetainFinishedDays + 1));
+        archiving.Schedule();
+        var entry = Assert.Single(archiving.Archived, e => e.RequestId == "done-1");
+        var retry = new CoordinationEngine(state, Now.AddDays(state.Policy.RetainFinishedDays + 1));
+        Assert.Equal("succeeded", retry.Ask(Ask("done-1"), Sessions, entry).State);
+        Assert.False(state.Work.ContainsKey("done-1"));
+        Assert.Equal("request-id-conflict", Assert.Throws<CoordinationConflictException>(() =>
+            retry.Ask(Ask("done-1") with { Task = "Something else." }, Sessions, entry)).Message);
+    }
+
+    [Fact]
+    public void AnAskReturnsToTheWorkerTheSessionIsAlreadyEnrolledAs() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        engine.ObserveWorker(new("pc-session-worker", "pc", "codex", true, null, Now, "requester-thread", BootId: "boot"), PcHost);
+        Assert.Equal("pc-session-worker", engine.Ask(Ask(), Sessions).Request.ReturnTo!.WorkerId);
+    }
+
+    [Fact]
+    public void AQuestionTheHelperStoppedWaitingOnIsNotOfferedToTheRequester() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        var work = engine.Ask(Ask(), Sessions);
+        StartHelper(engine, work);
+        engine.RaiseQuestion("ask-1", new(work.Generation, work.GrantId!, "boot", "Which Xcode version?"), MacHost);
+        engine.RecordQuestionDelivery("ask-1", 1, new("question", "hold-1", "held", "claude-signed-out"), PcHost);
+        Assert.Single(engine.QuestionsToDeliver(PcHost, 0).Items);
+        var later = new CoordinationEngine(state, Now.AddMinutes(state.Policy.Ask.QuestionWaitMinutes + 1));
+        later.Schedule();
+        Assert.Equal("expired", state.Questions["ask-1#1"].State);
+        Assert.Empty(later.QuestionsToDeliver(PcHost, 0).Items);
+        Assert.Single(later.QuestionsToDeliver(MacHost, 0).Items);
+    }
+
+    [Fact]
+    public void ArchivedRequestsTakeTheirResultFilesToTheArchiveTier() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
+        try {
+            var state = CreateState();
+            Complete(new CoordinationEngine(state, Now), state, "done-1");
+            var archiving = new CoordinationEngine(state, Now.AddDays(state.Policy.RetainFinishedDays + 1));
+            archiving.Schedule();
+            var entry = Assert.Single(archiving.Archived);
+            var artifacts = new CoordinationArtifactStore(root);
+            var artifact = artifacts.Put("done-1", entry.Work.Generation, entry.Work.GrantId!, "The tests pass.");
+            artifacts.ArchiveEntries([entry with { Work = entry.Work with { ResultRef = artifact.ResultRef } }]);
+            Assert.Empty(Directory.EnumerateFiles(root));
+            Assert.Equal(2, Directory.EnumerateFiles(Path.Combine(root, CoordinationArtifactStore.ArchiveDirectoryName)).Count());
+            Assert.Equal("The tests pass.", artifacts.ReadForAssignment("done-1", entry.Work.Generation, entry.Work.GrantId!, artifact.ResultRef)!.Content);
+        } finally {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void AskKeepsTheAddressAClaudeSessionIsReachedBy() {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);

@@ -47,6 +47,7 @@ internal static partial class CoordinationEndpoints {
 
     internal static void Map(WebApplication app, CoordinationStore store, string dataDirectory) {
         var artifacts = new CoordinationArtifactStore(Path.Combine(dataDirectory, "coordination-results"));
+        store.Archived = artifacts.ArchiveEntries;
         MapArtifacts(app, store, artifacts);
         MapRecovery(app, store, artifacts);
         MapLifecycle(app, store);

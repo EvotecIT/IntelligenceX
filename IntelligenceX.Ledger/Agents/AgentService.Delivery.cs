@@ -44,7 +44,15 @@ internal sealed partial class AgentService {
         CancellationToken stop) {
         if (to.Provider == "claude") {
             // SendMessage addresses sessions by the name ListAgents shows; the asker supplied its own.
-            var sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop).ConfigureAwait(false);
+            ClaudeSendOutcome sent;
+            try { sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop).ConfigureAwait(false); }
+            catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException) {
+                // The CLI didn't start, so nothing was sent: the delivery returns to pending and is retried after a pause.
+                Log("delivery-not-submitted", requestId + " claude " + error.Message);
+                Observe("claude", false, "launch-failed");
+                Defer("deliver:" + requestId);
+                return ("not-submitted", "claude-cli-unavailable");
+            }
             await RecordUsageAsync(requestId, "delivery", "claude", sent.Model, sent.Tokens, sent.CostUsd, to.SessionId, stop).ConfigureAwait(false);
             if (sent.Failure is { } failure) Observe("claude", false, failure);
             else if (sent.Stage == "submitted") Observe("claude", true, "sent");

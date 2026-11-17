@@ -97,6 +97,15 @@ internal sealed record RunRecord {
     public int? QuestionNumber { get; init; }
     public int Resumes { get; init; }
     public string? ResultRef { get; init; }
+    /// <summary>The thread's turn count just before a turn/start whose outcome isn't known yet. A retry follows the turn
+    /// that appeared after it instead of submitting the same input again.</summary>
+    public int? KnownTurns { get; init; }
+    /// <summary>An answer-side delivery begun (sending) but not yet recorded as submitted, with the prompt it delivers.</summary>
+    public string? AnswerAttempt { get; init; }
+    public string? AnswerPrompt { get; init; }
+    /// <summary>Result content chosen before it is published, so a retry or reconciliation publishes the same content.</summary>
+    public string? PendingResult { get; init; }
+    public bool PendingSucceeded { get; init; }
 
     public static string FileFor(string stateDirectory, string requestId, long generation) =>
         Path.Combine(stateDirectory, "runs", LocalFiles.Hash(requestId, generation)[..32] + ".json");
@@ -109,5 +118,15 @@ internal sealed record RunRecord {
     public RunRecord Save(string stateDirectory) {
         LocalFiles.WriteAtomic(FileFor(stateDirectory, RequestId, Generation), JsonSerializer.Serialize(this));
         return this;
+    }
+
+    /// <summary>Tokens observed so far for the current turn, written as usage notifications arrive (a separate file, so the
+    /// notification thread never races the run record), so a turn followed after a restart keeps what it already spent.</summary>
+    public static string TokensFile(string stateDirectory, string requestId, long generation) =>
+        Path.ChangeExtension(FileFor(stateDirectory, requestId, generation), ".tokens.json");
+
+    public static TurnTokens LoadTokens(string stateDirectory, string requestId, long generation) {
+        var file = TokensFile(stateDirectory, requestId, generation);
+        return File.Exists(file) ? JsonSerializer.Deserialize<TurnTokens>(File.ReadAllText(file)) ?? TurnTokens.None : TurnTokens.None;
     }
 }

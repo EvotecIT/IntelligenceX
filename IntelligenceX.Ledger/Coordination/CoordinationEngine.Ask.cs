@@ -19,19 +19,27 @@ public sealed partial class CoordinationEngine {
 
     /// <summary>Creates the goal and the help request for one ask in a single command. The caller is the machine's
     /// session client; the asking session must be on that machine. Provider and capability fall back to policy routing
-    /// and the target machine. Identical retries return the existing work.</summary>
-    public CoordinationWork Ask(CoordinationAsk ask, CoordinationPrincipal caller) {
+    /// and the target machine. An identical retry returns the existing work, live or <paramref name="archived"/>; any
+    /// other reuse of the id is rejected.</summary>
+    public CoordinationWork Ask(CoordinationAsk ask, CoordinationPrincipal caller, CoordinationArchiveEntry? archived = null) {
         Require(caller.Role == "client" && Id(caller.MachineId) && caller.RequesterId is null, "ask-role-denied");
         Require(ask is not null && Id(ask.Id) && ask.Id.Length <= 120 && Text(ask.Task) && Id(ask.ReturnProvider) &&
             Id(ask.ReturnSessionId) && (ask.MachineId is null || Id(ask.MachineId)) && (ask.Provider is null || Id(ask.Provider)) &&
             (ask.Kind is null || Id(ask.Kind)) && (ask.Capability is null || Id(ask.Capability)) &&
             (ask.ReturnAddress is null || ask.ReturnAddress.Length is > 0 and <= 300 && !ask.ReturnAddress.Any(char.IsControl)), "invalid-ask");
-        var returnWorker = ask.ReturnProvider + "-" + ask.ReturnSessionId;
-        if (state.Work.TryGetValue(ask.Id, out var existing)) {
-            Require(existing.Requester == caller.Id && IsAsk(existing) && existing.Request.TaskBrief == ask.Task &&
-                existing.Request.ReturnTo?.WorkerId == returnWorker, "request-id-conflict");
+        bool Same(CoordinationWork work) => work.Requester == caller.Id && IsAsk(work) && work.Request.TaskBrief == ask.Task &&
+            work.Request.ReturnTo is { } back && back.Provider == ask.ReturnProvider && back.SessionId == ask.ReturnSessionId &&
+            work.Request.MachineId == ask.MachineId && work.Request.Checkpoint.Project == ask.Project &&
+            work.Request.Checkpoint.Branch == ask.Branch && work.Request.Checkpoint.Commit == ask.Commit &&
+            (ask.Provider is null || work.Request.RequiredProvider == ask.Provider) &&
+            (ask.Capability is null || work.Request.Capability == ask.Capability);
+        if (state.Work.TryGetValue(ask.Id, out var existing) || archived?.RequestId == ask.Id && (existing = archived.Work) is not null) {
+            Require(Same(existing), "request-id-conflict");
             return existing;
         }
+        // A session already enrolled under another worker id keeps it, so the result can be delivered to that worker.
+        var returnWorker = state.Workers.Values.FirstOrDefault(w => w.MachineId == caller.MachineId && w.Provider == ask.ReturnProvider &&
+            w.SessionId == ask.ReturnSessionId)?.Id ?? ask.ReturnProvider + "-" + ask.ReturnSessionId;
         var machine = ask.MachineId is null ? null : state.Policy.Machines.FirstOrDefault(m => m.Id == ask.MachineId);
         Require(ask.MachineId is null || machine is not null, "ask-machine-unknown");
         var provider = ask.Provider;
@@ -162,7 +170,9 @@ public sealed partial class CoordinationEngine {
         var items = new List<CoordinationQuestionItem>();
         foreach (var q in state.Questions.Values.Where(q => q.Order > afterOrder).OrderBy(q => q.Order)) {
             if (!state.Work.TryGetValue(q.RequestId, out var work) || work.Request.ReturnTo is not { } returnTo) continue;
-            if (returnTo.MachineId == caller.MachineId && q.Delivery is null or { Stage: "held" })
+            // A question reaches the requester only while the helper still waits on it; notices always do.
+            if (returnTo.MachineId == caller.MachineId && q.Delivery is null or { Stage: "held" } &&
+                (q.Kind != "question" || q.State == "asked" && q.Generation == work.Generation && work.State == "question"))
                 items.Add(new(q, "question", returnTo, work.Machine, work.Provider));
             else if (work.Machine == caller.MachineId && q.Kind == "question" && q.Generation == work.Generation &&
                 q.State is "answered" or "expired" && q.AnswerDelivery is null or { Stage: "held" })

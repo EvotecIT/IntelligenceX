@@ -10,6 +10,10 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
     private readonly SQLite _database = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private FileStream? _writerLease;
+
+    /// <summary>Called with the requests a command moved to the archive table, after it commits and before the next
+    /// command starts.</summary>
+    internal Action<IReadOnlyList<CoordinationArchiveEntry>>? Archived { get; set; }
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) {
         UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
         MaxDepth = 32
@@ -42,7 +46,8 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
-            return await db.RunInTransactionAsync(async (tx, ct) => {
+            List<CoordinationArchiveEntry>? archived = null;
+            var committed = await db.RunInTransactionAsync(async (tx, ct) => {
                 var value = (string)(await tx.ExecuteScalarAsync("SELECT json FROM coordination_state WHERE id=1", cancellationToken: ct))!;
                 var state = JsonSerializer.Deserialize<CoordinationState>(value, Json)!;
                 if (state.ResultDeliveryAttempts is null) {
@@ -75,8 +80,11 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
                         ["principal"] = change.Principal, ["recorded"] = change.AtUtc.ToString("O"),
                         ["json"] = JsonSerializer.Serialize(change, Json)
                     }, ct);
+                archived = engine.Archived;
                 return result;
             }, token);
+            if (archived is { Count: > 0 }) Archived?.Invoke(archived);
+            return committed;
         } finally { _gate.Release(); }
     }
 

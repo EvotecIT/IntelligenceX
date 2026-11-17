@@ -73,6 +73,25 @@ public sealed class AgentServiceTests {
     }
 
     [Fact]
+    public void ATurnFollowedAfterARestartKeepsTheTokensRecordedBeforeIt() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
+        try {
+            Directory.CreateDirectory(Path.Combine(directory, "runs"));
+            var file = RunRecord.TokensFile(directory, "ask-1", 1);
+            var before = new TurnWatch("thread", null, tokens => File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(tokens)));
+            before.Follow("turn-1");
+            before.Observe("thread/tokenUsage/updated", Json(new { threadId = "thread", turnId = "turn-1", tokenUsage = new { last = new { inputTokens = 100, cachedInputTokens = 60, outputTokens = 10, totalTokens = 110 } } }));
+
+            var after = new TurnWatch("thread", RunRecord.LoadTokens(directory, "ask-1", 1));
+            after.Follow("turn-1");
+            after.Observe("thread/tokenUsage/updated", Json(new { threadId = "thread", turnId = "turn-1", tokenUsage = new { last = new { inputTokens = 200, cachedInputTokens = 150, outputTokens = 20, totalTokens = 220 } } }));
+            Assert.Equal(new TurnTokens(300, 210, 30, 330), after.Tokens);
+        } finally {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void BootIdentitySurvivesServiceRestartsWithinOneBoot() {
         var directory = Path.Combine(Path.GetTempPath(), "ix-agent-boot-" + Guid.NewGuid().ToString("N"));
         try {

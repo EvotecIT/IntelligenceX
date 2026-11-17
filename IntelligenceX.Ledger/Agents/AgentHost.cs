@@ -90,6 +90,7 @@ internal sealed partial class AgentService {
     private readonly CodexRunner _codex;
     private readonly ClaudeSender _claude;
     private readonly ConcurrentDictionary<string, Task> _active = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _runs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _deferred = new(StringComparer.Ordinal);
     private readonly string _bootId;
     private AskPolicy _policy = new();
@@ -211,14 +212,16 @@ internal sealed partial class AgentService {
         }
     }
 
+    /// <summary>Reads every page of a feed. Items that stay pending (a delivery in progress, a held one) remain in the feed,
+    /// so stopping at a fixed page count would let older items hide newer ones. The cursor must move forward.</summary>
     private static async Task<List<TItem>> PageAsync<TPage, TItem>(Func<long, Task<TPage>> read, Func<TPage, TItem[]> items,
         Func<TPage, long?> next) {
         var all = new List<TItem>();
         long after = 0;
-        for (var page = 0; page < 16; page++) {
+        while (true) {
             var current = await read(after).ConfigureAwait(false);
             all.AddRange(items(current));
-            if (next(current) is not { } order) break;
+            if (next(current) is not { } order || order <= after) break;
             after = order;
         }
         return all;
@@ -228,16 +231,23 @@ internal sealed partial class AgentService {
     /// before a sweep tries it again, so a persistent fault is retried and logged once a minute rather than every sweep.</summary>
     private void Start(string key, Func<Task> operation) {
         if (_active.ContainsKey(key) || Deferred(key)) return;
+        // Registered before it runs, so a fast operation can't remove its key before the key is added.
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var task = Task.Run(async () => {
+            if (!await gate.Task.ConfigureAwait(false)) return;
             try { await operation().ConfigureAwait(false); }
             catch (OperationCanceledException) { }
             catch (Exception error) {
                 Defer(key);
                 Log("operation-held", key + " " + error.GetType().Name + ": " + error.Message);
             }
-            finally { _active.TryRemove(key, out _); }
         });
-        _active.TryAdd(key, task);
+        if (!_active.TryAdd(key, task)) {
+            gate.SetResult(false);
+            return;
+        }
+        _ = task.ContinueWith(done => _active.TryRemove(new KeyValuePair<string, Task>(key, done)), TaskScheduler.Default);
+        gate.SetResult(true);
     }
 
     /// <summary>Pauses retries of a delivery that reached nobody, so a closed session isn't retried every sweep.</summary>

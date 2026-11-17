@@ -160,7 +160,18 @@ internal static class AgentInstaller {
         var folder = Path.Combine(version, "tools", "mcp");
         return OperatingSystem.IsWindows()
             ? [Path.Combine(folder, "IntelligenceX.Ledger.Mcp.exe"), "--coordination-config", sessionsClient]
-            : [Environment.ProcessPath ?? "dotnet", Path.Combine(folder, "IntelligenceX.Ledger.Mcp.dll"), "--coordination-config", sessionsClient];
+            : [DotnetHost(), Path.Combine(folder, "IntelligenceX.Ledger.Mcp.dll"), "--coordination-config", sessionsClient];
+    }
+
+    /// <summary>The dotnet host: this process when it is dotnet, otherwise DOTNET_ROOT's, the user install's, or PATH's.</summary>
+    internal static string DotnetHost() {
+        if (Environment.ProcessPath is { } self && Path.GetFileNameWithoutExtension(self).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            return self;
+        var name = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+        foreach (var folder in new[] { Environment.GetEnvironmentVariable("DOTNET_ROOT"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet") })
+            if (!string.IsNullOrEmpty(folder) && File.Exists(Path.Combine(folder, name))) return Path.Combine(folder, name);
+        return "dotnet";
     }
 
     /// <summary>Whether the CLI already reports this exact MCP server command (read with its own `mcp get`).</summary>

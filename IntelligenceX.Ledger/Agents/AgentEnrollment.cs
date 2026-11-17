@@ -72,7 +72,7 @@ internal static class AgentEnrollment {
         if (local) endpoint = "http://127.0.0.1:" + port + "/";
         else {
             var address = service["lanAddress"]?.GetValue<string>() ?? throw new InvalidOperationException("The service has no lanAddress for other machines.");
-            endpoint = "https://" + address + ":" + port + "/";
+            endpoint = new UriBuilder(Uri.UriSchemeHttps, address, port, "/").Uri.ToString();
             using var certificate = X509CertificateLoader.LoadPkcs12FromFile(service["certificatePath"]!.GetValue<string>(),
                 service["certificatePassword"]?.GetValue<string>(), X509KeyStorageFlags.EphemeralKeySet);
             pin = Convert.ToHexString(SHA256.HashData(certificate.RawData));
