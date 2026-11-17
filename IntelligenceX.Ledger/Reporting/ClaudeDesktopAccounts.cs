@@ -97,15 +97,16 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
         return files;
     }
 
-    /// <summary>The source roots of the CLI's default profile (~/.claude), whose sessions belong to the account in
-    /// ~/.claude.json. None when CLAUDE_CONFIG_DIR points the CLI elsewhere.</summary>
+    /// <summary>The source root ids of the CLI's default profile (~/.claude), whose sessions belong to the account in
+    /// ~/.claude.json, computed the way root discovery names them, so a folder created later matches too. None when
+    /// CLAUDE_CONFIG_DIR points the CLI elsewhere.</summary>
     internal static HashSet<string> CliProfileRoots() {
         if (Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 }) return [];
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var defaults = new[] { Path.Combine(home, ".claude", "projects"), Path.Combine(home, ".config", "claude", "projects") }
-            .Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return new IntelligenceX.Telemetry.Usage.Claude.ClaudeDefaultSourceRootDiscovery().DiscoverRoots()
-            .Where(root => defaults.Contains(Path.GetFullPath(root.Path))).Select(root => root.Id).ToHashSet(StringComparer.Ordinal);
+        return new[] { Path.Combine(home, ".claude", "projects"), Path.Combine(home, ".config", "claude", "projects") }
+            .Select(path => IntelligenceX.Telemetry.Usage.SourceRootRecord.CreateStableId("claude",
+                IntelligenceX.Telemetry.Usage.UsageSourceKind.LocalLogs, IntelligenceX.Telemetry.Usage.UsageTelemetryIdentity.NormalizePath(path)))
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>The account the CLI is signed in to, from its settings' account id alone.</summary>
