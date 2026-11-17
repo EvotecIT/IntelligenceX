@@ -56,6 +56,18 @@ public sealed class AgentSetupTests : IDisposable {
     }
 
     [Fact]
+    public void RewrittenFilesKeepTheirOwnerOnlyPermissions() {
+        if (OperatingSystem.IsWindows()) return;
+        Directory.CreateDirectory(_root);
+        var path = Path.Combine(_root, "private.json");
+        LocalFiles.WriteAtomic(path, "{}");
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead);
+        LocalFiles.WriteAtomic(path, "{\"a\":1}");
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead, File.GetUnixFileMode(path));
+    }
+
+    [Fact]
     public void AStoredCliThatIsNotInstalledIsLeftOut() {
         var config = Reporter(new JsonObject { ["capabilities"] = new JsonArray("macos-shell"), ["workspaceRoot"] = "/work", ["claudeExecutable"] = "claude" });
         var options = new AgentInstaller.Options(config, null, null, [], null, null, false);

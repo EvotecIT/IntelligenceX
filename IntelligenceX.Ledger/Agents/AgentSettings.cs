@@ -62,10 +62,14 @@ internal static class BootIdentity {
 }
 
 internal static class LocalFiles {
+    /// <summary>Replaces a file in one step. On macOS and Linux the replacement keeps the original's permissions, and a
+    /// new file is readable by its owner only, since these files hold tokens and private state.</summary>
     public static void WriteAtomic(string path, string content) {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         File.WriteAllText(temporary, content);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(temporary, File.Exists(path) ? File.GetUnixFileMode(path) : UnixFileMode.UserRead | UnixFileMode.UserWrite);
         File.Move(temporary, path, overwrite: true);
     }
 
