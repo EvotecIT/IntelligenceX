@@ -42,16 +42,17 @@ public sealed partial class CoordinationEngine {
             w.SessionId == ask.ReturnSessionId)?.Id ?? ask.ReturnProvider + "-" + ask.ReturnSessionId;
         var machine = ask.MachineId is null ? null : state.Policy.Machines.FirstOrDefault(m => m.Id == ask.MachineId);
         Require(ask.MachineId is null || machine is not null, "ask-machine-unknown");
+        var capability = ask.Capability ?? machine?.Capabilities.FirstOrDefault();
+        Require(capability is not null, "ask-machine-or-capability-required");
+        // The provider has to be one a machine with the capability (the named one, if any) may create.
+        bool Offers(MachineCapacity m, string p) => m.Enabled && (machine is null || m.Id == machine.Id) &&
+            m.Capabilities.Contains(capability!) && (m.AllowedCreateProviders ?? []).Contains(p, StringComparer.Ordinal);
         var provider = ask.Provider;
         if (provider is null) {
             Require(state.Policy.Routing.TryGetValue(ask.Kind ?? state.Policy.Ask.DefaultKind, out var route), "ask-kind-not-routed");
-            provider = route.FirstOrDefault(p => state.Policy.Machines.Any(m => m.Enabled && (machine is null || m.Id == machine.Id) &&
-                (m.AllowedCreateProviders ?? []).Contains(p, StringComparer.Ordinal)));
+            provider = route.FirstOrDefault(p => state.Policy.Machines.Any(m => Offers(m, p)));
         }
-        Require(provider is not null && state.Policy.Machines.Any(m => m.Enabled && (machine is null || m.Id == machine.Id) &&
-            (m.AllowedCreateProviders ?? []).Contains(provider, StringComparer.Ordinal)), "ask-provider-unavailable");
-        var capability = ask.Capability ?? machine?.Capabilities.FirstOrDefault();
-        Require(capability is not null, "ask-machine-or-capability-required");
+        Require(provider is not null && state.Policy.Machines.Any(m => Offers(m, provider)), "ask-provider-unavailable");
         var checkpoint = new WorkCheckpoint(ask.Project, ask.Branch, ask.Commit, null, AskOrigin, AskOrigin);
         var goalId = "ask-" + ask.Id;
         var request = new CoordinationRequest(ask.Id, goalId, "help", capability, ask.MachineId, null, new(AgentSlots: 1),
@@ -192,9 +193,7 @@ public sealed partial class CoordinationEngine {
             r.SendingAtUtc is { } since && now - since > unconfirmed).ToArray()) {
             state.ResultOutbox[result.RequestId] = result with { State = "uncertain", EvidenceRef = "delivery-unconfirmed" };
             Note(result.RequestId, "result-uncertain", "service", result.Generation, "delivery-unconfirmed");
-            if (state.Work.TryGetValue(result.RequestId, out var asked) && IsAsk(asked))
-                AddQuestion(asked, "notice", "The result of your ask " + result.RequestId + " may not have reached this session. " +
-                    "Read it with request_result (requestId " + result.RequestId + ").");
+            NoticeUncertainResult(result.RequestId);
         }
         foreach (var question in state.Questions.Values.Where(q => q.Delivery is { Stage: "sending", AtUtc: { } since } &&
             now - since > unconfirmed).ToArray()) {
@@ -213,6 +212,14 @@ public sealed partial class CoordinationEngine {
             AddQuestion(work, "notice", "No machine has taken request " + work.Request.Id + " after " +
                 ask.AdmissionMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) + " minutes (" +
                 (work.Reason ?? "waiting") + "). It stays queued; cancel it if it is no longer needed.");
+    }
+
+    /// <summary>Tells an asker, once, that its result may not have arrived and where to read it.</summary>
+    private void NoticeUncertainResult(string requestId) {
+        if (!state.Work.TryGetValue(requestId, out var asked) || !IsAsk(asked)) return;
+        var text = "The result of your ask " + requestId + " may not have reached this session. Read it with request_result (requestId " + requestId + ").";
+        if (state.Questions.Values.Any(q => q.RequestId == requestId && q.Kind == "notice" && q.Text == text)) return;
+        AddQuestion(asked, "notice", text);
     }
 
     /// <summary>Records provider, model and tokens spent on behalf of one request by the host running or delivering it.

@@ -102,6 +102,32 @@ public sealed class CoordinationAskTests {
     }
 
     [Fact]
+    public void RoutingPicksAProviderThatAMachineWithTheCapabilityOffers() {
+        var state = new CoordinationState { Policy = new(1, [
+            new("pc", 1, 1, 4, 4096, ["windows-shell"], AllowedCreateProviders: ["claude"]),
+            new("mac", 2, 1, 4, 4096, ["macos-shell"], AllowedCreateProviders: ["codex"]) ]) };
+        state.Policy.Routing["engine"] = ["claude", "codex"];
+        var engine = new CoordinationEngine(state, Now);
+        Observe(engine, Now);
+        var work = engine.Ask(Ask(machine: null!) with { MachineId = null, Capability = "macos-shell" }, Sessions);
+        Assert.Equal(("codex", "macos-shell"), (work.Request.RequiredProvider, work.Request.Capability));
+    }
+
+    [Fact]
+    public void AResultAHostReportsUncertainTellsTheAskerOnceWhereToReadIt() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        var work = engine.Ask(Ask(), Sessions);
+        var receipt = StartHelper(engine, work);
+        engine.Receipt("ask-1", "terminal", receipt with { ResultRef = "result-1", Succeeded = true, ExclusionVerified = true }, MacHost);
+        engine.ObserveWorker(new("codex-requester-thread", "pc", "codex", true, null, Now, "requester-thread", BootId: "boot"), PcHost);
+        engine.BeginResultDelivery("ask-1", work.Generation, "deliver-1", PcHost);
+        engine.RecordResultDelivery("ask-1", work.Generation, new("deliver-1", "uncertain", "codex-delivery-unresolved"), PcHost);
+        engine.RecordResultDelivery("ask-1", work.Generation, new("deliver-1", "uncertain", "codex-delivery-unresolved"), PcHost);
+        Assert.Contains("request_result", Assert.Single(state.Questions.Values, q => q.Kind == "notice").Text);
+    }
+
+    [Fact]
     public void AnAskReturnsToTheWorkerTheSessionIsAlreadyEnrolledAs() {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);

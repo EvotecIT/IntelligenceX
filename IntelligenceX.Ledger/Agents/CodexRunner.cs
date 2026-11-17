@@ -340,6 +340,7 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
 
     private readonly Dictionary<string, TurnTokens> _early = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _earlyText = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string Status, string? Text, string? Error)> _earlyDone = new(StringComparer.Ordinal);
 
     /// <summary>Starts a new turn's count from zero; the checkpoint it was created with belonged to the previous turn.</summary>
     public void Reset() { lock (_gate) _tokens = TurnTokens.None; }
@@ -351,8 +352,11 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
             TurnId = turnId;
             if (_early.Remove(turnId, out var early)) now = _tokens = _tokens.Add(early);
             if (_earlyText.Remove(turnId, out var text)) LastMessage = text;
+            _earlyDone.Remove(turnId, out var done);
             _early.Clear();
             _earlyText.Clear();
+            _earlyDone.Clear();
+            if (done.Status is not null) Complete(done.Status, done.Text, done.Error);
         }
         if (now is not null) checkpoint?.Invoke(now);
     }
@@ -362,6 +366,17 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
     public void Observe(string method, JsonElement parameters) {
         if (parameters.ValueKind != JsonValueKind.Object || !parameters.TryGetProperty("threadId", out var thread) ||
             thread.GetString() != ThreadId) return;
+        if (TurnId is null && method == "turn/completed" && parameters.TryGetProperty("turn", out var earlyTurn) &&
+            earlyTurn.GetProperty("id").GetString() is { } earlyId) {
+            lock (_gate) {
+                if (TurnId is null) {
+                    var earlyError = earlyTurn.TryGetProperty("error", out var earlyFailure) && earlyFailure.ValueKind == JsonValueKind.Object &&
+                        earlyFailure.TryGetProperty("message", out var earlyMessage) ? earlyMessage.GetString() : null;
+                    _earlyDone[earlyId] = (CodexRunner.Status(earlyTurn), CodexRunner.FinalText(earlyTurn), earlyError);
+                    return;
+                }
+            }
+        }
         if (TurnId is null && parameters.TryGetProperty("turnId", out var pendingTurn) && pendingTurn.GetString() is { } early) {
             lock (_gate) {
                 if (TurnId is null) {

@@ -78,6 +78,7 @@ public sealed partial class CoordinationEngine {
         }
         state.ResultOutbox[id] = result;
         Note(id, "result-" + receipt.Stage, caller.Id, generation, receipt.EvidenceRef);
+        if (result.State == "uncertain") NoticeUncertainResult(id);
         if (result.ConsumedAtUtc is not null) Schedule();
         return result;
     }
