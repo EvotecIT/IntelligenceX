@@ -29,8 +29,12 @@ public sealed class LedgerTools(LedgerReadClient client) {
     public Task<MachineStatus> MachineStatus(string id, CancellationToken cancellationToken = default) => client.MachineStatusAsync(id, cancellationToken);
 
     [McpServerTool(Name = "budget_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Read observed usage-limit groups and the next policy provider suggested for those limited sessions. Credits/reset remain unknown. Unmapped accounts are session-scoped evidence. Routing is advice and any session can do any kind of work.")]
-    public Task<BudgetStatus> BudgetStatus(CancellationToken cancellationToken = default) => client.BudgetStatusAsync(cancellationToken);
+    [Description("Read observed usage-limit groups with the next policy provider suggested for limited sessions, plus this machine's own accounts: Codex's window use, reset time, credits and free resets from its app server, and Claude's 5-hour and weekly use from the last status line that saw them. Routing is advice and any session can do any kind of work.")]
+    public async Task<BudgetView> BudgetStatus(CancellationToken cancellationToken = default) {
+        var observed = client.BudgetStatusAsync(cancellationToken);
+        var local = AccountLimits.ReadAsync(cancellationToken);
+        return new BudgetView(await observed, await local);
+    }
 
     [McpServerTool(Name = "policy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read the current revisioned policy for session lifecycle, resource reservations, load and routing preferences.")]
