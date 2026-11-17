@@ -74,6 +74,14 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         } finally { _gate.Release(); }
     }
 
+    /// <summary>Reads the committed projection without waiting for a command in progress.</summary>
+    public async Task<T> ReadAsync<T>(Func<CoordinationState, T> read, CancellationToken token = default) {
+        if (_writerLease is null) throw new InvalidOperationException("Coordination store has not initialized.");
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var value = (string)(await db.ExecuteScalarAsync("SELECT json FROM coordination_state WHERE id=1", cancellationToken: token))!;
+        return read(JsonSerializer.Deserialize<CoordinationState>(value, Json)!);
+    }
+
     public async Task<CoordinationChange[]> ChangesAsync(long after, int limit, CancellationToken token = default) {
         await _gate.WaitAsync(token);
         try {

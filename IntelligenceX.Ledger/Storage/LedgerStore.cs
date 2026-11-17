@@ -293,27 +293,49 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         } finally { _gate.Release(); }
     }
 
+    /// <summary>Holds the single in-process writer, so tests can prove which paths never wait for it.</summary>
+    internal SemaphoreSlim WriterGate => _gate;
+
+    /// <summary>Runs after a full evaluation and before its changed rows are written.</summary>
+    internal Func<CancellationToken, Task>? BeforeEvaluationWrite { get; set; }
+
     public async Task<LedgerItem[]> EvaluateAllAsync(DateTimeOffset now, CancellationToken token = default, HashSet<string>? silentMachines = null) {
+        // The full evaluation reads one snapshot and computes without the writer. Holding it here made
+        // reporter ingest and health wait for every work view and shadow report, so their 10-second
+        // deliveries timed out and live sessions looked stale.
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var (stored, global) = await db.RunInTransactionAsync(SQLiteTransactionMode.Deferred, async (tx, ct) =>
+            (await tx.QueryAsListAsync("SELECT json FROM items ORDER BY id", r => r.GetString(0), cancellationToken: ct),
+             await ReadGlobalAsync(tx, ct)), token);
+        var rows = stored.Select(Read<LedgerItem>).ToArray();
+        var parents = rows.ToDictionary(row => row.Id, StringComparer.Ordinal);
+        var results = new LedgerItem[rows.Length];
+        var changed = new List<(string Stored, LedgerItem Item, string? Transition)>();
+        for (var index = 0; index < rows.Length; index++) {
+            token.ThrowIfCancellationRequested();
+            var row = rows[index];
+            var related = ApplyParent(row, row.ParentItemId is { } parentId ? parents.GetValueOrDefault(parentId) : null);
+            var (item, transition) = Reevaluate(ApplyGlobal(related, global, now), now, silentMachines?.Contains(row.MachineId) == true);
+            // Polling computes a fresh evaluation time without rewriting otherwise unchanged rows.
+            var previous = row with { Current = row.Current is null ? null : row.Current with { EvaluatedAtUtc = item.Current!.EvaluatedAtUtc } };
+            if (Json(previous) != Json(item)) changed.Add((stored[index], item, transition));
+            results[index] = item;
+        }
+        if (changed.Count == 0) return results;
+        if (BeforeEvaluationWrite is { } pending) await pending(token);
         await _gate.WaitAsync(token);
         try {
-            await using var db = await _database.OpenSessionAsync(path, token);
-            return await db.RunInTransactionAsync(async (tx, ct) => {
-                var rows = await tx.QueryAsListAsync("SELECT json FROM items ORDER BY id", r => Read<LedgerItem>(r.GetString(0)), cancellationToken: ct);
-                var global = await ReadGlobalAsync(tx, ct);
-                var parents = rows.ToDictionary(row => row.Id, StringComparer.Ordinal);
-                var results = new List<LedgerItem>();
-                foreach (var row in rows) {
-                    var related = ApplyParent(row, row.ParentItemId is { } parentId ? parents.GetValueOrDefault(parentId) : null);
-                    var item = await EvaluateAsync(tx, ApplyGlobal(related, global, now), now, ct, silentMachines?.Contains(row.MachineId) == true);
-                    // Polling computes a fresh evaluation time without rewriting otherwise unchanged rows.
-                    var previous = row with { Current = row.Current is null ? null : row.Current with { EvaluatedAtUtc = item.Current!.EvaluatedAtUtc } };
-                    if (Json(previous) != Json(item)) await tx.ExecuteNonQueryAsync("UPDATE items SET json=@json WHERE id=@id",
-                        new Dictionary<string, object?> { ["json"] = Json(item), ["id"] = item.Id }, ct);
-                    results.Add(item);
+            await db.RunInTransactionAsync(async (tx, ct) => {
+                foreach (var (previous, item, transition) in changed) {
+                    // Ingest may have stored newer evidence since the snapshot. Keep it; the next
+                    // evaluation reconsiders that row instead of overwriting it with older input.
+                    var written = await tx.ExecuteNonQueryAsync("UPDATE items SET json=@json WHERE id=@id AND json=@previous",
+                        new Dictionary<string, object?> { ["json"] = Json(item), ["id"] = item.Id, ["previous"] = previous }, ct);
+                    if (written != 0 && transition is not null) await InsertTransitionAsync(tx, item.Id, now, transition, ct);
                 }
-                return results.ToArray();
             }, token);
         } finally { _gate.Release(); }
+        return results;
     }
 
     private static async Task<GlobalSnapshot?> ReadGlobalAsync(SQLiteAsyncSession db, CancellationToken token) {
@@ -410,6 +432,17 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
     }
 
     private async Task<LedgerItem> EvaluateAsync(SQLiteAsyncSession tx, LedgerItem item, DateTimeOffset now, CancellationToken token, bool silent = false) {
+        var (evaluated, transition) = Reevaluate(item, now, silent);
+        if (transition is not null) await InsertTransitionAsync(tx, evaluated.Id, now, transition, token);
+        return evaluated;
+    }
+
+    private static Task<int> InsertTransitionAsync(SQLiteAsyncSession tx, string item, DateTimeOffset now, string transition, CancellationToken token) =>
+        tx.ExecuteNonQueryAsync("INSERT INTO transitions(item,recorded,json) VALUES(@item,@recorded,@json)",
+            new Dictionary<string, object?> { ["item"] = item, ["recorded"] = now.ToString("O"), ["json"] = transition }, token);
+
+    /// <summary>Evaluates one item and returns the transition record when its verdict changed.</summary>
+    private (LedgerItem Item, string? Transition) Reevaluate(LedgerItem item, DateTimeOffset now, bool silent = false) {
         var owned = item.Work?.OwnedPullRequests.Intersect(item.Work.OpenPullRequests).Order(StringComparer.Ordinal).ToArray() ?? [];
         var waits = new Dictionary<string, WaitFact>(item.InferredReviewWaits, StringComparer.Ordinal);
         if (item.Session?.Outcome == "completed" && item.Work?.Wait is null) {
@@ -423,25 +456,21 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         var inferred = item.Session?.Outcome == "completed" && item.Work?.Wait is null ? owned.Select(id => waits[id]).FirstOrDefault() : null;
         item = item with { InferredReviewWaits = waits, ImplicitReviewWait = inferred };
         var verdict = rules.Evaluate(item, now, silent);
+        string? transition = null;
         if (!item.IsMessageEvidence && (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode || item.Current.EpisodeId != verdict.EpisodeId ||
-            item.Current.SinceUtc != verdict.SinceUtc)) {
-            var transition = new { item.Id, item.MachineId, item.Provider, verdict,
-                evidence = item.Evidence() };
-            await tx.ExecuteNonQueryAsync("INSERT INTO transitions(item,recorded,json) VALUES(@item,@recorded,@json)",
-                new Dictionary<string, object?> { ["item"] = item.Id, ["recorded"] = now.ToString("O"), ["json"] = Json(transition) }, token);
-        }
-        return item with { Current = verdict };
+            item.Current.SinceUtc != verdict.SinceUtc))
+            transition = Json(new { item.Id, item.MachineId, item.Provider, verdict, evidence = item.Evidence() });
+        return (item with { Current = verdict }, transition);
     }
 
+    // Read paths use their own WAL snapshot. They never take the writer gate, so a slow
+    // writer cannot delay session lookups, machine rows, coverage or shadow reports.
     public async Task<object[]> HistoryAsync(string itemId, long after, int limit, CancellationToken token) {
-        await _gate.WaitAsync(token);
-        try {
-            await using var db = await _database.OpenSessionAsync(path, token);
-            var rows = await db.QueryAsListAsync("SELECT ordinal,received,json FROM events WHERE item=@id AND ordinal>@after ORDER BY ordinal LIMIT @limit",
-                r => (object)new { ordinal = r.GetInt64(0), receivedAtUtc = r.GetString(1), observation = Read<LedgerEvent>(r.GetString(2)) },
-                new Dictionary<string, object?> { ["id"] = itemId, ["after"] = after, ["limit"] = limit }, cancellationToken: token);
-            return rows.ToArray();
-        } finally { _gate.Release(); }
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var rows = await db.QueryAsListAsync("SELECT ordinal,received,json FROM events WHERE item=@id AND ordinal>@after ORDER BY ordinal LIMIT @limit",
+            r => (object)new { ordinal = r.GetInt64(0), receivedAtUtc = r.GetString(1), observation = Read<LedgerEvent>(r.GetString(2)) },
+            new Dictionary<string, object?> { ["id"] = itemId, ["after"] = after, ["limit"] = limit }, cancellationToken: token);
+        return rows.ToArray();
     }
 
     public async Task<Dictionary<string, DateTimeOffset>> HeartbeatsAsync(CancellationToken token) {
@@ -451,63 +480,61 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         return rows.ToDictionary(x => x.Item1, x => x.Item2);
     }
 
+    private Dictionary<string, DateTimeOffset>? _enrolled;
+
+    /// <summary>Records first enrollment once. Later machine reads reuse it without entering the writer.</summary>
     public async Task<Dictionary<string, DateTimeOffset>> EnrollAsync(IEnumerable<string> machines, CancellationToken token) {
+        var requested = machines.ToArray();
+        if (Volatile.Read(ref _enrolled) is { } known && requested.All(known.ContainsKey)) return new(known);
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
-            foreach (var machine in machines) await db.ExecuteNonQueryAsync("INSERT OR IGNORE INTO machines(id,firstseen) VALUES(@id,@time)",
+            foreach (var machine in requested) await db.ExecuteNonQueryAsync("INSERT OR IGNORE INTO machines(id,firstseen) VALUES(@id,@time)",
                 new Dictionary<string, object?> { ["id"] = machine, ["time"] = DateTimeOffset.UtcNow.ToString("O") }, token);
             var rows = await db.QueryAsListAsync("SELECT id,firstseen FROM machines", r => (r.GetString(0), DateTimeOffset.Parse(r.GetString(1))), cancellationToken: token);
-            return rows.ToDictionary(x => x.Item1, x => x.Item2);
+            var enrolled = rows.ToDictionary(x => x.Item1, x => x.Item2);
+            Volatile.Write(ref _enrolled, enrolled);
+            return new(enrolled);
         } finally { _gate.Release(); }
     }
 
     public async Task<LedgerEvent[]> CoverageAsync(CancellationToken token) {
-        await _gate.WaitAsync(token);
-        try {
-            await using var db = await _database.OpenSessionAsync(path, token);
-            var rows = await db.QueryAsListAsync("SELECT json FROM source_health WHERE reporter NOT IN (SELECT reporter FROM reporter_health)", r => Read<LedgerEvent>(r.GetString(0)), cancellationToken: token);
-            var health = await db.QueryAsListAsync("SELECT json,observed FROM reporter_health", r => Read<ReporterHealth>(r.GetString(0)) with {
-                ObservedAtUtc = DateTimeOffset.Parse(r.GetString(1)) }, cancellationToken: token);
-            return rows.Concat(health.Select(h => new LedgerEvent { EventId = Guid.Empty, Epoch = Guid.Empty, Sequence = 1,
-                ReporterId = h.ReporterId, MachineId = h.MachineId, ItemId = "source-health", Provider = "machine", Source = "watcher",
-                SourceVersion = h.SourceVersion, ObservedAtUtc = h.ObservedAtUtc, Coverage = h.Coverage })).ToArray();
-        } finally { _gate.Release(); }
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var rows = await db.QueryAsListAsync("SELECT json FROM source_health WHERE reporter NOT IN (SELECT reporter FROM reporter_health)", r => Read<LedgerEvent>(r.GetString(0)), cancellationToken: token);
+        var health = await db.QueryAsListAsync("SELECT json,observed FROM reporter_health", r => Read<ReporterHealth>(r.GetString(0)) with {
+            ObservedAtUtc = DateTimeOffset.Parse(r.GetString(1)) }, cancellationToken: token);
+        return rows.Concat(health.Select(h => new LedgerEvent { EventId = Guid.Empty, Epoch = Guid.Empty, Sequence = 1,
+            ReporterId = h.ReporterId, MachineId = h.MachineId, ItemId = "source-health", Provider = "machine", Source = "watcher",
+            SourceVersion = h.SourceVersion, ObservedAtUtc = h.ObservedAtUtc, Coverage = h.Coverage })).ToArray();
     }
 
     public async Task<object[]> DailyAsync(DateOnly date, CancellationToken token) {
-        await _gate.WaitAsync(token);
-        try {
-            await using var db = await _database.OpenSessionAsync(path, token);
-            var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
-            var rows = await db.QueryAsListAsync("""
-                SELECT t.ordinal,t.json,r.mark,i.json FROM transitions t
-                LEFT JOIN reviews r ON r.transition=t.ordinal LEFT JOIN items i ON i.id=t.item
-                WHERE t.recorded>=@start AND t.recorded<@end ORDER BY t.ordinal
-                """, r => (IsMessageEvidence: !r.IsDBNull(3) && Read<LedgerItem>(r.GetString(3)).IsMessageEvidence,
-                    Row: (object)new { transitionId = r.GetInt64(0), transition = JsonSerializer.Deserialize<JsonElement>(r.GetString(1)),
-                        mark = r.IsDBNull(2) ? "unmarked" : r.GetString(2) }), new Dictionary<string, object?> {
-                    ["start"] = start.ToString("O"), ["end"] = start.AddDays(1).ToString("O") }, cancellationToken: token);
-            return rows.Where(row => !row.IsMessageEvidence).Select(row => row.Row).ToArray();
-        } finally { _gate.Release(); }
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var rows = await db.QueryAsListAsync("""
+            SELECT t.ordinal,t.json,r.mark,i.json FROM transitions t
+            LEFT JOIN reviews r ON r.transition=t.ordinal LEFT JOIN items i ON i.id=t.item
+            WHERE t.recorded>=@start AND t.recorded<@end ORDER BY t.ordinal
+            """, r => (IsMessageEvidence: !r.IsDBNull(3) && Read<LedgerItem>(r.GetString(3)).IsMessageEvidence,
+                Row: (object)new { transitionId = r.GetInt64(0), transition = JsonSerializer.Deserialize<JsonElement>(r.GetString(1)),
+                    mark = r.IsDBNull(2) ? "unmarked" : r.GetString(2) }), new Dictionary<string, object?> {
+                ["start"] = start.ToString("O"), ["end"] = start.AddDays(1).ToString("O") }, cancellationToken: token);
+        return rows.Where(row => !row.IsMessageEvidence).Select(row => row.Row).ToArray();
     }
 
     public async Task<object> ReportAsync(DateOnly date, DateTimeOffset now, CancellationToken token) {
         var transitions = await DailyAsync(date, token);
         var reporterHealth = await HeartbeatsAsync(token);
-        await _gate.WaitAsync(token);
-        try {
-            await using var db = await _database.OpenSessionAsync(path, token);
-            var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
-            var bounds = await db.QueryAsListAsync("SELECT MIN(received),MAX(received),COUNT(*) FROM events WHERE received>=@start AND received<@end",
-                r => new { firstReceiptAtUtc = r.IsDBNull(0) ? (DateTimeOffset?)null : DateTimeOffset.Parse(r.GetString(0)),
-                    latestReceiptAtUtc = r.IsDBNull(1) ? (DateTimeOffset?)null : DateTimeOffset.Parse(r.GetString(1)), eventCount = r.GetInt64(2) },
-                new Dictionary<string, object?> { ["start"] = start.ToString("O"), ["end"] = start.AddDays(1).ToString("O") }, cancellationToken: token);
-            var unknowns = await db.QueryAsListAsync("SELECT json FROM items", r => Read<LedgerItem>(r.GetString(0)), cancellationToken: token);
-            return new { date, generatedAtUtc = now, coverage = "observed-only", observationCoverage = bounds.Single(), reporterHealthAsOfUtc = now, reporterHealth,
-                unresolvedUnknownsAsOfUtc = now, unresolvedUnknowns = unknowns.Where(i => !i.IsMessageEvidence && i.Current?.ReasonCode == "unknown")
-                    .Select(i => new { i.Id, i.MachineId, i.Provider, i.Current!.SinceUtc, i.Current.MissingFacts }).ToArray(), transitions };
-        } finally { _gate.Release(); }
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var bounds = await db.QueryAsListAsync("SELECT MIN(received),MAX(received),COUNT(*) FROM events WHERE received>=@start AND received<@end",
+            r => new { firstReceiptAtUtc = r.IsDBNull(0) ? (DateTimeOffset?)null : DateTimeOffset.Parse(r.GetString(0)),
+                latestReceiptAtUtc = r.IsDBNull(1) ? (DateTimeOffset?)null : DateTimeOffset.Parse(r.GetString(1)), eventCount = r.GetInt64(2) },
+            new Dictionary<string, object?> { ["start"] = start.ToString("O"), ["end"] = start.AddDays(1).ToString("O") }, cancellationToken: token);
+        var unknowns = await db.QueryAsListAsync("SELECT json FROM items", r => Read<LedgerItem>(r.GetString(0)), cancellationToken: token);
+        return new { date, generatedAtUtc = now, coverage = "observed-only", observationCoverage = bounds.Single(), reporterHealthAsOfUtc = now, reporterHealth,
+            unresolvedUnknownsAsOfUtc = now, unresolvedUnknowns = unknowns.Where(i => !i.IsMessageEvidence && i.Current?.ReasonCode == "unknown")
+                .Select(i => new { i.Id, i.MachineId, i.Provider, i.Current!.SinceUtc, i.Current.MissingFacts }).ToArray(), transitions };
     }
 
     public void Dispose() { _database.Dispose(); _gate.Dispose(); _leaseGate.Dispose(); }

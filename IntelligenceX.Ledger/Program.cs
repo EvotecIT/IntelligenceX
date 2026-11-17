@@ -49,8 +49,9 @@ public static class Program {
         using var coordinationStore = coordination is null ? null : new CoordinationStore(
             Path.Combine(settings.DataDirectory, "coordination.sqlite"), coordination.InitialPolicy, coordination.Principals);
         if (coordinationStore is not null) await coordinationStore.InitializeAsync();
+        // Session, machine, budget and repository reads need only the committed policy, not the command writer.
         async Task<CoordinationPolicy> ReadPolicy(CancellationToken ct) => coordinationStore is null
-            ? new(1, []) : await coordinationStore.ExecuteAsync((_, state) => state.Policy, DateTimeOffset.UtcNow, ct);
+            ? new(1, []) : await coordinationStore.ReadAsync(state => state.Policy, ct);
         using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules), ReadPolicy);
         await store.InitializeAsync();
         var builder = WebApplication.CreateSlimBuilder();
@@ -147,4 +148,5 @@ public static class Program {
         await app.RunAsync();
         return 0;
     }
+
 }
