@@ -30,4 +30,7 @@ public sealed record CoordinationConsumption(long Generation, string ResultRef, 
 
 /// <summary>One task answer spanning execution, substantive return and independent workspace retirement.</summary>
 public sealed record CoordinationRequestView(CoordinationWork Work, CoordinationSessionBinding? Attempt,
-    CoordinationResultOutbox? Result, CoordinationRetirement? Retirement);
+    CoordinationResultOutbox? Result, CoordinationRetirement? Retirement) {
+    /// <summary>Questions and notices for this request, oldest first.</summary>
+    public CoordinationQuestion[] Questions { get; init; } = [];
+}

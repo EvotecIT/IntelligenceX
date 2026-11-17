@@ -37,6 +37,11 @@ public static class CoordinationValidation {
             p.Load.HeavyMemoryPressure is { Length: <= 16 } && p.Load.HeavyMemoryPressure.All(Id), "invalid-load-policy");
         Require(p.Routing is { Count: > 0 and <= 64 } && p.Routing.All(pair => Id(pair.Key) &&
             pair.Value is { Length: > 0 and <= 64 } && Providers(pair.Value)), "invalid-routing-policy");
+        Require(p.Ask is not null && Id(p.Ask.DefaultKind) && Positive(p.Ask.QuestionWaitMinutes) &&
+            p.Ask.MaximumQuestions is >= 0 and <= 64 && Positive(p.Ask.AdmissionMinutes) && Positive(p.Ask.TurnMinutes) &&
+            p.Ask.ResumeAttempts is >= 0 and <= 8 && Positive(p.Ask.WakeUsageMinutes) &&
+            (p.Ask.CodexModel is null || Id(p.Ask.CodexModel)) && (p.Ask.CodexEffort is null or "low" or "medium" or "high" or "xhigh") &&
+            Id(p.Ask.ClaudeDeliveryModel), "invalid-ask-policy");
         Require(p.Priority is { Count: > 0 and <= 64 } && p.Priority.All(pair => Id(pair.Key) &&
             pair.Value is "low" or "normal" or "high"), "invalid-priority-policy");
     }

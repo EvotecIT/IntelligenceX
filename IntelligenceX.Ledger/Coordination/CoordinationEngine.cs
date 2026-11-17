@@ -8,7 +8,7 @@ namespace IntelligenceX.Ledger.Coordination;
 public sealed partial class CoordinationEngine(CoordinationState state, DateTimeOffset now,
     IReadOnlyCollection<CoordinationPrincipal>? configuredPrincipals = null) {
     public List<CoordinationChange> Changes { get; } = [];
-    private static readonly HashSet<string> Occupied = ["admitted", "submitted", "started", "reconcile"];
+    private static readonly HashSet<string> Occupied = ["admitted", "submitted", "started", "question", "reconcile"];
     private static readonly HashSet<string> Terminal = ["succeeded", "failed", "cancelled"];
     private static bool Same<T>(T left, T right) => JsonSerializer.Serialize(left) == JsonSerializer.Serialize(right);
     private void Note(string id, string stage, string principal, long generation, string? evidence = null,

@@ -33,6 +33,11 @@ public static class Program {
         }
         if (args.Length == 4 && args[0] == "hook" && args[1] == "--config")
             return await LocalReporter.RunAsync(args[2], hook: true, suppliedPayload: args[3]);
+        if (args.Length == 3 && args[0] == "agent-check" && args[1] == "--config") {
+            var reporter = JsonSerializer.Deserialize<ReporterSettings>(File.ReadAllText(args[2]), LedgerJson.Options)!;
+            if (reporter.Agent is null) { Console.Error.WriteLine("The reporter configuration has no agent section."); return 2; }
+            return await Agents.AgentHost.CheckAsync(reporter.Agent);
+        }
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
             return await LocalReporter.RunNotifyChainAsync(args[2], args[3]);
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {

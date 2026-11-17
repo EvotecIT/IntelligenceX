@@ -25,6 +25,10 @@ public sealed record CoordinationState {
     public Dictionary<string, CoordinationRetirement> Retirements { get; init; } = [];
     /// <summary>Exact negative exclusion receipts, retained independently from native retirement evidence.</summary>
     public Dictionary<string, CoordinationReconciliation> Reconciliations { get; init; } = [];
+    /// <summary>Questions and notices keyed by request and number, with both delivery sides.</summary>
+    public Dictionary<string, CoordinationQuestion> Questions { get; init; } = [];
+    /// <summary>Provider, model and tokens spent on behalf of each request.</summary>
+    public Dictionary<string, List<CoordinationUsage>> Usage { get; init; } = [];
 }
 
 /// <summary>All send identities reserved for one immutable result generation.</summary>

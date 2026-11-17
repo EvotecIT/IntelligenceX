@@ -9,6 +9,7 @@ public sealed record CoordinationPolicy(long Revision, MachineCapacity[] Machine
     public ResourceLeasePolicy Lease { get; set; } = new();
     public BenchmarkPolicy Bench { get; set; } = new();
     public MachineLoadPolicy Load { get; set; } = new();
+    public AskPolicy Ask { get; set; } = new();
     public Dictionary<string, string[]> Routing { get; set; } = new(StringComparer.Ordinal) {
         ["engine"] = ["claude", "codex"], ["visual"] = ["claude"],
         ["ciLoop"] = ["codex"], ["mergeLoop"] = ["codex"], ["review"] = ["claude", "codex"]
@@ -64,7 +65,11 @@ public sealed record CoordinationWork(CoordinationRequest Request, string Reques
     string? Assignee = null, string? GrantId = null, DateTimeOffset? RenewByUtc = null,
     string? BootId = null, string? ExecutionId = null, string? ResultRef = null,
     string? Reason = null, Dictionary<string, DateTimeOffset>? Stages = null, string? Provider = null,
-    long? AuthorizedControlRevision = null);
+    long? AuthorizedControlRevision = null) {
+    /// <summary>"ask" for work created by a single ask; null for ordinary submissions.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Origin { get; init; }
+}
 
 /// <summary>Current host's qualified negative native observation for one stranded grant. OriginalBootId names
 /// the grant; CurrentBootId must match a fresh host enrollment. NativeExclusionVerified must explicitly be true;

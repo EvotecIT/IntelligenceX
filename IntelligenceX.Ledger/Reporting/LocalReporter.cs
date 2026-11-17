@@ -24,6 +24,8 @@ public sealed record ReporterSettings {
     public bool GitHub { get; init; }
     public ProjectClaimsSettings? ProjectClaims { get; init; }
     public string? ProbeEndpoint { get; init; }
+    /// <summary>When set, this reporter also runs the machine's agent service.</summary>
+    public Agents.AgentSettings? Agent { get; init; }
 }
 
 /// <summary>Read-only watcher backstop with local durable delivery, usable on Windows, macOS and Linux.</summary>
@@ -164,6 +166,7 @@ public static class LocalReporter {
         }
         var uploader = UploadLoop();
         _ = uploader.ContinueWith(_ => stop.Cancel(), TaskContinuationOptions.OnlyOnFaulted);
+        var agent = settings.Agent is null ? Task.CompletedTask : Agents.AgentHost.RunAsync(settings.Agent, settings.MachineId, stop.Token);
         try {
         await watcher.StartAsync(stop.Token);
         watcher.SnapshotChanged += (_, change) => Capture(change.Snapshot);
@@ -243,6 +246,7 @@ public static class LocalReporter {
         } finally {
             stop.Cancel();
             try { await uploader; } catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            await agent;
         }
         return 0;
     }
