@@ -12,7 +12,7 @@ public sealed class ClaudeDesktopAccountsTests {
     public void SessionsFollowTheAccountTheDesktopAppFiledThemUnderAndTheRestTheCliAccount() {
         var root = Path.Combine(Path.GetTempPath(), "ix-claude-accounts-" + Guid.NewGuid().ToString("N"));
         try {
-            Write(root, Old, "org-a", "local_1.json", """{"cliSessionId":"aaaa-old","title":"Old work"}""");
+            Write(root, Old, "org-a", "local_1.json", """{"cliSessionId":"aaaa-old","title":"Old work","isArchived":true}""");
             Write(root, Current, "org-b", "local_2.json", """{"cliSessionId":"bbbb-new"}""");
             Write(root, Current, "org-b", "local_3.json", "not json");
             Write(root, "not-an-account", "org", "local_4.json", """{"cliSessionId":"cccc-ignored"}""");
@@ -22,6 +22,8 @@ public sealed class ClaudeDesktopAccountsTests {
             var accounts = new ClaudeDesktopAccounts(root, cli, clock);
 
             Assert.Equal(Old, accounts.For("AAAA-OLD"));
+            // The app's archive flag comes along; a session it never had has none.
+            Assert.Equal((true, false, (bool?)null), (accounts.Archived("aaaa-old"), accounts.Archived("bbbb-new"), accounts.Archived("started-from-the-cli")));
             Assert.Equal(Current, accounts.For("bbbb-new"));
             Assert.Equal(Current, accounts.For("cccc-ignored"));
             Assert.Equal(Current, accounts.For("started-from-the-cli"));
