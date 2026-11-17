@@ -16,7 +16,9 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         var sessions = items.Where(item => item.Kind == "session").ToDictionary(item => item.Id, StringComparer.Ordinal);
         var openIssues = catalog.Issues.Where(issue => !issue.PullRequest).DistinctBy(issue => issue.Url, StringComparer.OrdinalIgnoreCase).ToDictionary(issue => issue.Url, StringComparer.OrdinalIgnoreCase);
         var openPulls = catalog.PullRequests.DistinctBy(pull => pull.Url, StringComparer.OrdinalIgnoreCase).ToDictionary(pull => pull.Url, StringComparer.OrdinalIgnoreCase);
-        var context = new Context(catalog, sessions, openIssues, openPulls, worktrees, now, now.AddDays(-settings.StaleAfterDays));
+        var context = new Context(catalog, sessions, openIssues, openPulls, worktrees, now, now.AddDays(-settings.StaleAfterDays)) {
+            FreshStates = TimeSpan.FromMinutes(settings.RefreshMinutes * 2 + 5)
+        };
         var rows = new List<TaskVerdictRow>();
         var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in catalog.Board) {
@@ -31,7 +33,10 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
 
     private sealed record Context(WorkCatalogSnapshot Catalog, Dictionary<string, LedgerItem> Sessions,
         Dictionary<string, CatalogIssue> OpenIssues, Dictionary<string, CatalogPull> OpenPulls,
-        IReadOnlyCollection<Worktree> Worktrees, DateTimeOffset Now, DateTimeOffset StaleBefore);
+        IReadOnlyCollection<Worktree> Worktrees, DateTimeOffset Now, DateTimeOffset StaleBefore) {
+        /// <summary>Two refresh intervals plus the longest pass, so one slow pass doesn't age every state out.</summary>
+        internal TimeSpan FreshStates { get; init; } = TimeSpan.FromMinutes(25);
+    }
 
     private sealed class Draft {
         public List<string> Evidence { get; } = [];
@@ -162,16 +167,16 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         if (context.OpenPulls.ContainsKey(url)) return "open";
         if (!context.Catalog.PullStates.TryGetValue(url, out var state)) return null;
         if (state.State == "merged") return "merged";
-        return context.Catalog.CapturedAtUtc - state.CheckedAtUtc <= FreshStateWindow ? state.State : "stale";
+        // Open and closed count only when this pass confirmed them, and the pass itself is recent.
+        return !state.Retained && context.Now - state.CheckedAtUtc <= context.FreshStates ? state.State : "stale";
     }
-
-    internal static readonly TimeSpan FreshStateWindow = TimeSpan.FromMinutes(15);
 
     /// <summary>The most recently updated open PR, from the open lists or from an individual read (for example a PR
     /// in a repository outside the configured owners).</summary>
     private static CatalogPull? OpenPullRequest(IEnumerable<string> links, Context context, Draft draft) {
-        var pull = links.Select(url => context.OpenPulls.GetValueOrDefault(url) ?? FromState(url, context)).OfType<CatalogPull>()
-            .MaxBy(pull => pull.UpdatedAtUtc);
+        var open = links.Select(url => context.OpenPulls.GetValueOrDefault(url) ?? FromState(url, context)).OfType<CatalogPull>().ToArray();
+        var pull = open.Where(pull => LiveWorktree(pull.HeadRepo ?? pull.Repo, pull.HeadBranch, context) is not null)
+            .MaxBy(pull => pull.UpdatedAtUtc) ?? open.MaxBy(pull => pull.UpdatedAtUtc);
         if (pull is not null) draft.Evidence.Add("open-pull-request:" + pull.Url);
         return pull;
     }

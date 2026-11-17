@@ -114,7 +114,7 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
         foreach (var url in linked) {
             if (open.Contains(url)) continue; // The open list already describes it.
             if (previous.PullStates.TryGetValue(url, out var known) && known.State == "merged") { states[url] = known; continue; }
-            if (++reads > MaximumPullStateReads) { coverage.Add("pull-request-states-capped"); if (known is not null) states[url] = known; continue; }
+            if (++reads > MaximumPullStateReads) { coverage.Add("pull-request-states-capped"); if (known is not null) states[url] = known with { Retained = true }; continue; }
             if (!PullRequestCatalog.TryParse(url, out var repo, out var number)) continue;
             var gap = "pull-request-state-unavailable:" + repo + "#" + number;
             var row = await Guard(gap, async () => {
@@ -125,7 +125,7 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
                 return element.Deserialize<CatalogPullState>(Json)! with { CheckedAtUtc = _clock.GetUtcNow() };
             });
             if (row is not null) states[url] = row;
-            else if (known is not null) states[url] = known; // Kept with its old check time, so the reconciler treats it as stale.
+            else if (known is not null) states[url] = known with { Retained = true }; // Not confirmed by this pass.
         }
 
         if (budgetExhausted) coverage.Insert(0, "github-budget-exhausted");

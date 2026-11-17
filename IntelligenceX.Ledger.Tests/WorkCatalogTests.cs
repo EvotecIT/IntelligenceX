@@ -108,6 +108,7 @@ public sealed class WorkCatalogTests {
         const string outside = "https://github.com/Other/Elsewhere/pull/2";
         const string oldClosed = "https://github.com/Other/Elsewhere/pull/3";
         const string unknown = "https://github.com/Other/Elsewhere/pull/4";
+        const string retained = "https://github.com/Other/Elsewhere/pull/6";
         var tooLong = merged + " " + new string('x', WorkCatalogReader.MaximumLinkText);
         var catalog = new WorkCatalogSnapshot {
             CapturedAtUtc = Now,
@@ -116,13 +117,15 @@ public sealed class WorkCatalogTests {
                 Item(2, links: merged + " " + outside),       // The open PR was read individually, outside the open lists.
                 Item(3, links: merged + " " + oldClosed),     // Closed, but only from an observation older than this pass.
                 Item(4, links: merged + " " + unknown),       // GitHub gave no usable state.
-                Item(5, links: tooLong)                       // Links beyond the bound may hide an open PR.
+                Item(5, links: tooLong),                      // Links beyond the bound may hide an open PR.
+                Item(6, links: merged + " " + retained)       // Closed when last seen, but this pass failed to confirm it.
             ],
             PullStates = new(StringComparer.OrdinalIgnoreCase) {
                 [merged] = new("merged", Now.AddDays(-1), Now.AddDays(-3)),
                 [outside] = new("open", Now.AddHours(-2), Now) { HeadBranch = "fix/x" },
                 [oldClosed] = new("closed", Now.AddDays(-2), Now.AddHours(-2)),
-                [unknown] = new("unknown", Now, Now)
+                [unknown] = new("unknown", Now, Now),
+                [retained] = new("closed", Now, Now) { Retained = true }
             }
         };
         var rows = Reconcile(catalog).ToDictionary(row => row.Id);
@@ -137,6 +140,20 @@ public sealed class WorkCatalogTests {
         Assert.NotEqual(V.DoneClosable, rows["board:4"].Verdict);
         Assert.Contains("pull-request-links-capped", rows["board:5"].MissingFacts);
         Assert.NotEqual(V.DoneClosable, rows["board:5"].Verdict);
+        Assert.Contains("pull-request-state:" + retained, rows["board:6"].MissingFacts);
+        Assert.NotEqual(V.DoneClosable, rows["board:6"].Verdict);
+    }
+
+    [Fact]
+    public void AnyLinkedPullRequestWithALiveCheckoutKeepsTheTaskInProgress() {
+        var idle = new CatalogPull(Repo, 1, "Newer, nobody on it", "fix/a", false, Now.AddDays(-10));
+        var worked = new CatalogPull(Repo, 2, "Older, being worked", "fix/b", false, Now.AddDays(-12));
+        var checkout = new TaskReconciler.Worktree(Repo, new("a", "machine-a", "codex", "fix/b", "/work/b", null, [],
+            Now.AddMinutes(-1), null, false, null, "observed", Live: true));
+        var row = Assert.Single(new TaskReconciler(Settings, ["machine-a"]).Reconcile(
+            new() { Board = [Item(1, links: idle.Url + " " + worked.Url)], PullRequests = [idle, worked] }, [], [checkout], Now));
+        Assert.Equal((V.InProgress, "open-pull-request-live-worktree"), (row.Verdict, row.Reason));
+        Assert.Contains("/work/b", row.Where);
     }
 
     [Fact]

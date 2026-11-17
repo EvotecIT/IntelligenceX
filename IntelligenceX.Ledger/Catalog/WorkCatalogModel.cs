@@ -89,6 +89,8 @@ internal sealed record CatalogPullState(string State, DateTimeOffset? UpdatedAtU
     public bool Draft { get; init; }
     public string? HeadBranch { get; init; }
     public string? HeadRepo { get; init; }
+    /// <summary>The latest read of this PR failed and this earlier observation was kept.</summary>
+    public bool Retained { get; init; }
 }
 
 internal sealed record WorkCatalogSnapshot {
