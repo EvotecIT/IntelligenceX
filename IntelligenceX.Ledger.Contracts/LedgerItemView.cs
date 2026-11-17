@@ -18,6 +18,8 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
     public string? ParentItemId { get; init; }
     public string? TurnId { get; init; }
     public SafetyFact? Safety { get; init; }
+    /// <summary>For kind "sign-in": the provider, whether sign-in is required, why, and the command that signs in.</summary>
+    public SignInFact? SignIn { get; init; }
     public string? CandidateRef { get; init; }
     public SupersessionFact? Supersession { get; init; }
     public WorkerAvailabilityView? Availability { get; init; }
@@ -39,7 +41,7 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
                 NextActor = verdict.Hold?.NextActor ?? declaration?.NextActor ?? delivery?.NextActor,
                 AcceptanceBy = verdict.Hold?.AcceptanceBy ?? declaration?.AcceptanceBy ?? delivery?.AcceptanceBy,
                 ResultRef = verdict.Hold?.ResultRef ?? declaration?.ResultRef ?? delivery?.ResultRef,
-                ParentItemId = item.ParentItemId, TurnId = item.Session?.TurnId, Safety = item.Safety, CandidateRef = item.CandidateRef,
+                ParentItemId = item.ParentItemId, TurnId = item.Session?.TurnId, Safety = item.Safety, SignIn = item.SignIn, CandidateRef = item.CandidateRef,
                 Supersession = item.Supersession,
                 Session = item.Session, SessionEvidence = item.SessionEvidence,
                 Availability = new(verdict.LastKnown || item.Session is null ? "unknown" : item.Session?.Archived == true ? "archived" :

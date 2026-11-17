@@ -31,6 +31,13 @@ public sealed record NativeControlFact(TaskScope Scope, string EpisodeId, string
 public sealed record SafetyFact(TaskScope Scope, string EpisodeId, string Case, string PolicyId, int PolicyVersion,
     string EvidenceRef, DateTimeOffset AtUtc, string? ManualAction = null, bool Resolved = false);
 
+/// <summary>Whether a provider's CLI on a machine is signed in and usable by the agent service. Required is true while
+/// it isn't: Reason is signed-out, expired or usage-limit. Command is the one-step sign-in to run on that machine
+/// (for example "claude auth login" or "codex login"). SinceUtc is when the current state began; Held counts the
+/// deliveries waiting on it.</summary>
+public sealed record SignInFact(string Provider, bool Required, string Reason, string Command, DateTimeOffset SinceUtc,
+    DateTimeOffset AtUtc, int Held = 0);
+
 public sealed record DeclarationObservation(WorkerDeclaration Fact, EvidenceRef Evidence,
     DateTimeOffset? EpisodeStartedAtUtc = null, EvidenceRef? EpisodeEvidence = null);
 public sealed record SupersessionFact(TaskScope? Scope, DateTimeOffset AtUtc, string SinceBasis, EvidenceRef Evidence, string? TurnId = null);

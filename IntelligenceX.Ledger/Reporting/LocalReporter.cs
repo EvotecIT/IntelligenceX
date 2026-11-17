@@ -46,20 +46,27 @@ public static class LocalReporter {
         return result;
     }
 
-    public static async Task<int> RunAsync(string file, bool hook, string? suppliedPayload = null) {
-        var settings = JsonSerializer.Deserialize<ReporterSettings>(File.ReadAllText(file), LedgerJson.Options)!;
+    /// <summary>The reporter's authenticated Ledger client: https (or loopback http), no redirects or proxy, and the
+    /// configured certificate pin. The agent service uses it for its sign-in items too.</summary>
+    internal static HttpClient CreateClient(ReporterSettings settings) {
         var endpoint = new Uri(settings.Endpoint);
         if ((endpoint.Scheme != "https" && !(endpoint.Scheme == "http" && endpoint.IsLoopback)) ||
             endpoint.UserInfo.Length != 0 || endpoint.Query.Length != 0 || endpoint.Fragment.Length != 0 ||
             settings.Token.Length < 32 || settings.MaximumSpoolBytes < 1024 * 1024)
             throw new InvalidDataException("Invalid reporter transport configuration.");
-        using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false };
+        var handler = new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false };
         if (settings.CertificateSha256 is { } pin) handler.ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
             certificate is not null && certificate.NotBefore.ToUniversalTime() <= DateTime.UtcNow &&
             certificate.NotAfter.ToUniversalTime() > DateTime.UtcNow &&
             Convert.ToHexString(SHA256.HashData(certificate.RawData)).Equals(pin, StringComparison.OrdinalIgnoreCase);
-        using var client = new HttpClient(handler) { BaseAddress = endpoint, Timeout = TimeSpan.FromSeconds(10) };
+        var client = new HttpClient(handler, disposeHandler: true) { BaseAddress = endpoint, Timeout = TimeSpan.FromSeconds(10) };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.Token);
+        return client;
+    }
+
+    public static async Task<int> RunAsync(string file, bool hook, string? suppliedPayload = null) {
+        var settings = JsonSerializer.Deserialize<ReporterSettings>(File.ReadAllText(file), LedgerJson.Options)!;
+        using var client = CreateClient(settings);
         using var spool = new ReporterSpool(settings.SpoolDirectory, settings.MaximumSpoolBytes, ownsDelivery: !hook);
         var epoch = Guid.NewGuid();
         string sourceVersion;

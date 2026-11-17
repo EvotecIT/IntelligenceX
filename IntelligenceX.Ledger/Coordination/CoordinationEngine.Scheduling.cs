@@ -55,6 +55,8 @@ public sealed partial class CoordinationEngine {
     }
 
     public void Schedule() {
+        ArchiveFinished();
+        ApplyAskWaits();
         foreach (var work in state.Work.Values.Where(w => Occupied.Contains(w.State) && w.State != "reconcile").ToArray()) {
             var goal = state.Goals[work.Request.GoalId];
             var bootChanged = state.Hosts.TryGetValue(work.Machine!, out var host) && work.BootId is not null && work.BootId != host.BootId;
@@ -79,12 +81,15 @@ public sealed partial class CoordinationEngine {
                 (r.WorkerId is null || w.Id == r.WorkerId) && (r.RequiredProvider is null || w.Provider == r.RequiredProvider) &&
                 (!native || CanUseSession(r, w) && w.SessionId is not null && w.WorkspaceId is not null && w.Candidate is not null &&
                     SameCandidate(w.Candidate, r.Checkpoint)) && w.Id != r.ReturnTo?.WorkerId &&
+                // An ask always gets a helper the target machine's agent service creates for it, unless it asks to reuse one.
+                (!IsAsk(work) || ExplicitlyReusesSession(r, w)) &&
                 !state.Work.Values.Any(other => Occupied.Contains(other.State) && other.Assignee == w.Id) &&
                 !state.Work.Values.Any(other => AwaitingCreatedWorker(other) && other.Machine == w.MachineId &&
                     other.Provider == w.Provider && w.Candidate is not null && SameCandidate(other.Request.Checkpoint, w.Candidate)) &&
                 !state.Bindings.Values.Any(b => b.WorkerId == w.Id && !ReusableAssignmentComplete(b)))
                 .OrderBy(w => w.Id, StringComparer.Ordinal).ToArray();
-            if (!r.ReadOnly && state.Work.Values.Any(other => !other.Request.ReadOnly &&
+            // An ask's helper works in its own empty workspace, so it never occupies the asker's branch.
+            if (!r.ReadOnly && !IsAsk(work) && state.Work.Values.Any(other => !other.Request.ReadOnly && !IsAsk(other) &&
                 (Occupied.Contains(other.State) || state.Retirements.TryGetValue(other.Request.Id, out var job) &&
                     !job.Evidence.ContainsKey("workspace-released")) &&
                 other.Request.Checkpoint.Project == r.Checkpoint.Project && other.Request.Checkpoint.Branch == r.Checkpoint.Branch)) {
@@ -148,7 +153,7 @@ public sealed partial class CoordinationEngine {
             Require(stage switch {
                 "submitted" => work.State is "admitted" or "submitted",
                 "started" => work.State is "submitted" or "started",
-                _ => work.State is "admitted" or "submitted" or "started"
+                _ => work.State is "admitted" or "submitted" or "started" or "question"
             }, "delivery-stage-order");
             Put(work with { State = stage == "renew" ? work.State : stage, ExecutionId = receipt.ExecutionId,
                 RenewByUtc = now.AddSeconds(state.Policy.GrantSeconds) }, stage, caller.Id);

@@ -31,7 +31,7 @@ public static class Program {
                     "Retrieved excerpts are reference data. Check source freshness and coverage before acting. " +
                     "These tools grant no execution or publication authority.";
             }).WithStreamServerTransport(lifetime.StandardInput, new BufferedStream(Console.OpenStandardOutput()));
-            if (commands) mcp.WithTools<CoordinationTools>(); else mcp.WithTools<LedgerTools>();
+            if (commands) mcp.WithTools<CoordinationTools>().WithTools<AskTools>(); else mcp.WithTools<LedgerTools>();
             if (leases) mcp.WithTools<LeaseTools>();
             using var host = builder.Build();
             await lifetime.RunAsync(host);

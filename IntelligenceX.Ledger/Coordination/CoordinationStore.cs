@@ -10,6 +10,10 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
     private readonly SQLite _database = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private FileStream? _writerLease;
+
+    /// <summary>Called with the requests a command moved to the archive table, after it commits and before the next
+    /// command starts.</summary>
+    internal Action<IReadOnlyList<CoordinationArchiveEntry>>? Archived { get; set; }
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) {
         UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
         MaxDepth = 32
@@ -26,6 +30,8 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
             CREATE TABLE IF NOT EXISTS coordination_changes(sequence INTEGER PRIMARY KEY, request TEXT NOT NULL,
               stage TEXT NOT NULL, principal TEXT NOT NULL, recorded TEXT NOT NULL, json TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS coordination_changes_request ON coordination_changes(request,sequence);
+            CREATE TABLE IF NOT EXISTS coordination_archive(request TEXT PRIMARY KEY, finished TEXT NOT NULL, json TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS coordination_archive_finished ON coordination_archive(finished);
             """, cancellationToken: token);
         await db.ExecuteNonQueryAsync("INSERT OR IGNORE INTO coordination_state(id,json) VALUES(1,@json)",
             new Dictionary<string, object?> { ["json"] = JsonSerializer.Serialize(new CoordinationState {
@@ -34,13 +40,19 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         await ExecuteAsync((engine, _) => { engine.ValidateRequesterPrincipals(); return true; }, DateTimeOffset.UtcNow, token);
     }
 
-    public async Task<T> ExecuteAsync<T>(Func<CoordinationEngine, CoordinationState, T> command, DateTimeOffset now,
-        CancellationToken token = default) {
+    public Task<T> ExecuteAsync<T>(Func<CoordinationEngine, CoordinationState, T> command, DateTimeOffset now,
+        CancellationToken token = default) => ExecuteAsync(null, (engine, state, _) => command(engine, state), now, token);
+
+    /// <summary>Runs a command that creates request <paramref name="requestId"/>, with that id's archive entry read in the
+    /// same transaction, so an id archived meanwhile can't be taken again.</summary>
+    public async Task<T> ExecuteAsync<T>(string? requestId, Func<CoordinationEngine, CoordinationState, CoordinationArchiveEntry?, T> command,
+        DateTimeOffset now, CancellationToken token = default) {
         if (_writerLease is null) throw new InvalidOperationException("Coordination store has not initialized.");
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
-            return await db.RunInTransactionAsync(async (tx, ct) => {
+            List<CoordinationArchiveEntry>? archived = null;
+            var committed = await db.RunInTransactionAsync(async (tx, ct) => {
                 var value = (string)(await tx.ExecuteScalarAsync("SELECT json FROM coordination_state WHERE id=1", cancellationToken: ct))!;
                 var state = JsonSerializer.Deserialize<CoordinationState>(value, Json)!;
                 if (state.ResultDeliveryAttempts is null) {
@@ -56,11 +68,19 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
                         state.ResultDeliveryAttempts[outbox.RequestId] = new(outbox.Generation, ids);
                     }
                 }
+                CoordinationArchiveEntry? archivedEntry = null;
+                if (requestId is not null && await tx.ExecuteScalarAsync("SELECT json FROM coordination_archive WHERE request=@request",
+                    new Dictionary<string, object?> { ["request"] = requestId }, cancellationToken: ct) is string archivedJson)
+                    archivedEntry = JsonSerializer.Deserialize<CoordinationArchiveEntry>(archivedJson, Json);
                 var engine = new CoordinationEngine(state, now, configuredPrincipals);
-                var result = command(engine, state);
+                var result = command(engine, state, archivedEntry);
                 var updated = JsonSerializer.Serialize(state, Json);
                 if (updated != value) await tx.ExecuteNonQueryAsync("UPDATE coordination_state SET json=@json WHERE id=1",
                     new Dictionary<string, object?> { ["json"] = updated }, ct);
+                foreach (var entry in engine.Archived) await tx.ExecuteNonQueryAsync(
+                    "INSERT OR REPLACE INTO coordination_archive(request,finished,json) VALUES(@request,@finished,@json)",
+                    new Dictionary<string, object?> { ["request"] = entry.RequestId, ["finished"] = entry.FinishedAtUtc.UtcDateTime.ToString("O"),
+                        ["json"] = JsonSerializer.Serialize(entry, Json) }, ct);
                 foreach (var change in engine.Changes) await tx.ExecuteNonQueryAsync("""
                     INSERT INTO coordination_changes(sequence,request,stage,principal,recorded,json)
                     VALUES(@sequence,@request,@stage,@principal,@recorded,@json)
@@ -69,8 +89,11 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
                         ["principal"] = change.Principal, ["recorded"] = change.AtUtc.ToString("O"),
                         ["json"] = JsonSerializer.Serialize(change, Json)
                     }, ct);
+                archived = engine.Archived;
                 return result;
             }, token);
+            if (archived is { Count: > 0 }) Archived?.Invoke(archived);
+            return committed;
         } finally { _gate.Release(); }
     }
 
@@ -80,6 +103,23 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         await using var db = await _database.OpenSessionAsync(path, token);
         var value = (string)(await db.ExecuteScalarAsync("SELECT json FROM coordination_state WHERE id=1", cancellationToken: token))!;
         return read(JsonSerializer.Deserialize<CoordinationState>(value, Json)!);
+    }
+
+    /// <summary>One archived request, or null.</summary>
+    public async Task<CoordinationArchiveEntry?> ArchivedAsync(string requestId, CancellationToken token = default) {
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var value = await db.ExecuteScalarAsync("SELECT json FROM coordination_archive WHERE request=@request",
+            new Dictionary<string, object?> { ["request"] = requestId }, cancellationToken: token);
+        return value is string json ? JsonSerializer.Deserialize<CoordinationArchiveEntry>(json, Json) : null;
+    }
+
+    /// <summary>Archived requests that finished at or after a time, for usage totals of recent days.</summary>
+    public async Task<CoordinationArchiveEntry[]> ArchivedSinceAsync(DateTimeOffset since, CancellationToken token = default) {
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var rows = await db.QueryAsListAsync("SELECT json FROM coordination_archive WHERE finished>=@since ORDER BY finished LIMIT 10000",
+            r => JsonSerializer.Deserialize<CoordinationArchiveEntry>(r.GetString(0), Json)!,
+            new Dictionary<string, object?> { ["since"] = since.UtcDateTime.ToString("O") }, cancellationToken: token);
+        return rows.ToArray();
     }
 
     public async Task<CoordinationChange[]> ChangesAsync(long after, int limit, CancellationToken token = default) {

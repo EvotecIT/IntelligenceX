@@ -98,4 +98,8 @@ public sealed partial class LedgerReadClient {
     }
 }
 
-public sealed record CoordinationAcknowledgement(bool Acknowledged, int? GrantSeconds = null);
+public sealed record CoordinationAcknowledgement(bool Acknowledged, int? GrantSeconds = null) {
+    /// <summary>The current ask policy, returned to hosts with each heartbeat so their limits follow policy changes.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public AskPolicy? Ask { get; init; }
+}

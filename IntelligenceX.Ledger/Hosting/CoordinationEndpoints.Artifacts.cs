@@ -15,20 +15,22 @@ internal static partial class CoordinationEndpoints {
                     (work.BootId == command.BootId || work.State is "reconcile" or "cancelled") &&
                     (state.Bindings.TryGetValue(id, out var binding) && binding.Generation == command.Generation ||
                      work.State == "reconcile" || work.State == "cancelled" && work.Assignee is null && work.ExecutionId is null) &&
-                    (work.State is "submitted" or "started" or "reconcile" or "succeeded" or "failed" or "cancelled" ||
+                    (work.State is "submitted" or "started" or "question" or "reconcile" or "succeeded" or "failed" or "cancelled" ||
                      work.State == "admitted" && binding?.GrantId == command.GrantId), "result-content-owner-conflict");
                 var artifact = artifacts.Put(id, command.Generation, command.GrantId, command.Content, state);
                 CoordinationValidation.Require(work.ResultRef is null || work.ResultRef == artifact.ResultRef, "result-content-identity-conflict");
                 return artifact;
             }, DateTimeOffset.UtcNow, ct)));
-        app.MapGet(Prefix + "/requests/{id}/result/content", async (string id, HttpContext http, CancellationToken ct) =>
-            await store.ExecuteAsync((_, state) => {
-                if (!state.Work.TryGetValue(id, out var work) || work.ResultRef is null ||
-                    !state.ResultOutbox.TryGetValue(id, out var result) || !ResultVisible(result, work, Caller(http)))
-                    return Results.NotFound();
-                var artifact = artifacts.ReadForAssignment(id, work.Generation, work.GrantId!, work.ResultRef);
-                return artifact is null ? Results.NotFound() : Results.Ok(artifact);
-            }, DateTimeOffset.UtcNow, ct));
+        app.MapGet(Prefix + "/requests/{id}/result/content", async (string id, HttpContext http, CancellationToken ct) => {
+            var live = await store.ExecuteAsync((_, state) => state.Work.TryGetValue(id, out var work) &&
+                state.ResultOutbox.TryGetValue(id, out var result) ? (work, result) : ((CoordinationWork, CoordinationResultOutbox)?)null,
+                DateTimeOffset.UtcNow, ct);
+            // A request past retention is read from the archive, with the same visibility rule.
+            if (live is null && await store.ArchivedAsync(id, ct) is { Result: { } archivedResult } entry) live = (entry.Work, archivedResult);
+            if (live is not ({ ResultRef: not null } work, var outbox) || !ResultVisible(outbox, work, Caller(http))) return Results.NotFound();
+            var artifact = artifacts.ReadForAssignment(id, work.Generation, work.GrantId!, work.ResultRef);
+            return artifact is null ? Results.NotFound() : Results.Ok(artifact);
+        });
     }
 
     private static void RequireResultContent(CoordinationWork work, CoordinationArtifactStore artifacts) {

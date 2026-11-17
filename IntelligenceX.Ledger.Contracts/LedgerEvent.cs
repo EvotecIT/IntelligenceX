@@ -23,6 +23,8 @@ public sealed record LedgerEvent {
     public WorkerDeclaration? Declaration { get; init; }
     public NativeControlFact? Control { get; init; }
     public SafetyFact? Safety { get; init; }
+    /// <summary>A provider on this machine that needs its user to sign in before the agent service can use it.</summary>
+    public SignInFact? SignIn { get; init; }
     public DeliveryFact? Delivery { get; init; }
     public ReviewMarkFact? ReviewMark { get; init; }
     public GlobalWorkFact? GlobalWork { get; init; }

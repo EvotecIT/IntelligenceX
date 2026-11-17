@@ -9,6 +9,10 @@ public sealed record CoordinationPolicy(long Revision, MachineCapacity[] Machine
     public ResourceLeasePolicy Lease { get; set; } = new();
     public BenchmarkPolicy Bench { get; set; } = new();
     public MachineLoadPolicy Load { get; set; } = new();
+    public AskPolicy Ask { get; set; } = new();
+    /// <summary>Days a finished request (accepted, result consumed, helper retired) stays in the live state before it moves
+    /// to the archive, where its history and usage stay readable.</summary>
+    public double RetainFinishedDays { get; set; } = 14;
     public Dictionary<string, string[]> Routing { get; set; } = new(StringComparer.Ordinal) {
         ["engine"] = ["claude", "codex"], ["visual"] = ["claude"],
         ["ciLoop"] = ["codex"], ["mergeLoop"] = ["codex"], ["review"] = ["claude", "codex"]
@@ -64,7 +68,11 @@ public sealed record CoordinationWork(CoordinationRequest Request, string Reques
     string? Assignee = null, string? GrantId = null, DateTimeOffset? RenewByUtc = null,
     string? BootId = null, string? ExecutionId = null, string? ResultRef = null,
     string? Reason = null, Dictionary<string, DateTimeOffset>? Stages = null, string? Provider = null,
-    long? AuthorizedControlRevision = null);
+    long? AuthorizedControlRevision = null) {
+    /// <summary>"ask" for work created by a single ask; null for ordinary submissions.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Origin { get; init; }
+}
 
 /// <summary>Current host's qualified negative native observation for one stranded grant. OriginalBootId names
 /// the grant; CurrentBootId must match a fresh host enrollment. NativeExclusionVerified must explicitly be true;
@@ -114,7 +122,11 @@ public sealed record CoordinationWorker(string Id, string MachineId, string Prov
 /// <summary>Original enrolled requester and exact candidate. Parent request/generation identifies the spawning
 /// attempt when the requester is itself a helper; a root requester leaves these unset.</summary>
 public sealed record CoordinationReturnBinding(string WorkerId, string MachineId, string Provider, string SessionId,
-    WorkCheckpoint Candidate, string? ParentRequestId = null, long ParentGeneration = 0);
+    WorkCheckpoint Candidate, string? ParentRequestId = null, long ParentGeneration = 0) {
+    /// <summary>How the session is reached when its provider addresses sessions by name (Claude Code's SendMessage).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Address { get; init; }
+}
 
 /// <summary>Host-attested native session bound to one admitted assignment, never inferred from a transport ACK.
 /// WorkspaceId is an opaque managed-workspace identity, not permission to delete a path.</summary>
@@ -127,7 +139,7 @@ public sealed record CoordinationSessionBinding(string RequestId, long Generatio
 public sealed record CoordinationResultOutbox(string RequestId, long Generation, string ResultRef,
     WorkCheckpoint Candidate, CoordinationReturnBinding ReturnTo, string State = "intent",
     string? AttemptId = null, string? DeliveryHost = null, string? EvidenceRef = null, string? HeldOn = null,
-    DateTimeOffset? ConsumedAtUtc = null);
+    DateTimeOffset? ConsumedAtUtc = null, DateTimeOffset? SendingAtUtc = null);
 
 /// <summary>Receipt for one previously persisted delivery attempt. Not-submitted requires qualified negative
 /// reconciliation evidence; a timeout or missing response must instead be recorded as uncertain.</summary>

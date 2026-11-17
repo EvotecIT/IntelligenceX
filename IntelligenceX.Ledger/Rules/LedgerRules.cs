@@ -46,6 +46,14 @@ public sealed partial class LedgerRules(RuleSettings settings) {
                 WakeEligibility = new("suppressed", "superseded", null, [superseded.Evidence], [])
             };
         }
+        if (item.Kind == "sign-in" && item.SignIn is { } signIn) {
+            if (reporterSilent && item.Current is not null) return LastKnown(item.Current, now);
+            var state = Match(item, signIn.Required ? "needs-you" : "done", signIn.Required ? "sign-in-required" : "signed-in",
+                signIn.SinceUtc, "source-event", "sign-in:" + signIn.Provider + ":" + signIn.SinceUtc.ToUnixTimeSeconds(), item.SignInEvidence);
+            return new(state.Verdict, state.ReasonCode, state.SinceUtc, state.SinceBasis, now, Version, [], false) {
+                EpisodeId = state.EpisodeId, Matches = [state]
+            };
+        }
         var pause = item.Control?.State is "paused" or "stopped" or "budget";
         var declarations = item.Declarations.Values.OrderBy(d => d.Fact.RecordedAtUtc).ToArray();
         var hasDeclaredCondition = declarations.Any(d => !d.Fact.Resolved && (d.Fact.Blocking || item.Kind == "input"));

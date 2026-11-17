@@ -18,7 +18,8 @@ internal static partial class CoordinationEndpoints {
             p.Token.Any(char.IsWhiteSpace) || p.Token == settings.ReadToken || p.Token == settings.WriteToken ||
             p.Projects is null || !p.Projects.All(CoordinationValidation.Id) ||
             p.AllowRequesterEnrollment && (p.Role != "host" || p.Projects.Length == 0) ||
-            p.Role == "host" && !config.InitialPolicy.Machines.Any(m => m.Id == p.MachineId)) ||
+            // The live policy can add machines after first start; the engine checks a host's machine against it on each heartbeat.
+            p.Role == "host" && !CoordinationValidation.Id(p.MachineId)) ||
             config.Principals.Select(p => p.Id).Distinct().Count() != config.Principals.Length ||
             config.Principals.Select(p => p.Token).Distinct().Count() != config.Principals.Length)
             throw new InvalidDataException("Invalid scoped coordination principals.");
@@ -26,7 +27,7 @@ internal static partial class CoordinationEndpoints {
     }
 
     private static CoordinationPrincipal Caller(HttpContext context) => (CoordinationPrincipal)context.Items[typeof(CoordinationPrincipal)]!;
-    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements" }
+    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements", "/ask", "/questions", "/usage" }
         .Any(suffix => path.StartsWithSegments(Prefix + suffix));
 
     internal static async Task<bool> AuthenticateAsync(HttpContext context, string bearer, CoordinationConfiguration config,
@@ -46,9 +47,11 @@ internal static partial class CoordinationEndpoints {
 
     internal static void Map(WebApplication app, CoordinationStore store, string dataDirectory) {
         var artifacts = new CoordinationArtifactStore(Path.Combine(dataDirectory, "coordination-results"));
+        store.Archived = artifacts.ArchiveEntries;
         MapArtifacts(app, store, artifacts);
         MapRecovery(app, store, artifacts);
         MapLifecycle(app, store);
+        MapAsk(app, store);
         app.MapGet(Prefix + "/workers/{provider}/{sessionId}", async (string provider, string sessionId,
             HttpContext http, CancellationToken ct) => Results.Ok(await store.ExecuteAsync((e, _) =>
                 e.WorkerStatus(provider, sessionId, Caller(http)), DateTimeOffset.UtcNow, ct)));
@@ -60,17 +63,17 @@ internal static partial class CoordinationEndpoints {
             await store.ExecuteAsync((_, s) => s.Goals.TryGetValue(id, out var goal) &&
                 (goal.Owner == Caller(http).Id || Caller(http).Role == "operator") ? Results.Ok(goal) : Results.NotFound(), DateTimeOffset.UtcNow, ct));
         app.MapPost(Prefix + "/requests", async (CoordinationRequest request, HttpContext http, CancellationToken ct) =>
-            Results.Ok(await store.ExecuteAsync((e, _) => e.Submit(request, Caller(http)), DateTimeOffset.UtcNow, ct)));
+            Results.Ok(await store.ExecuteAsync(request?.Id, (e, _, archived) => e.Submit(request!, Caller(http), archived), DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/requests/preview", async (CoordinationRequest request, HttpContext http, CancellationToken ct) =>
-            Results.Ok(await store.ExecuteAsync((_, s) => {
+            Results.Ok(await store.ExecuteAsync(request?.Id, (_, s, archived) => {
                 var copy = JsonSerializer.Deserialize<CoordinationState>(JsonSerializer.Serialize(s))!;
-                return new CoordinationEngine(copy, DateTimeOffset.UtcNow).Submit(request, Caller(http));
+                return new CoordinationEngine(copy, DateTimeOffset.UtcNow).Submit(request!, Caller(http), archived);
             }, DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/requests", async (long? afterOrder, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, s) => {
                 var p = Caller(http);
                 var page = s.Work.Values.Where(w => w.Order > Math.Max(0, afterOrder ?? 0) && Visible(w, p) &&
-                    (p.Role != "host" || w.State is "admitted" or "submitted" or "started" or "reconcile"))
+                    (p.Role != "host" || w.State is "admitted" or "submitted" or "started" or "question" or "reconcile"))
                     .OrderBy(w => w.Order).Take(17).ToArray();
                 return new CoordinationWorkPage(page.Take(16).ToArray(), page.Length > 16 ? page[15].Order : null);
             }, DateTimeOffset.UtcNow, ct)));
@@ -79,11 +82,16 @@ internal static partial class CoordinationEndpoints {
                 DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/requests/{id}", async (string id, HttpContext http, CancellationToken ct) =>
             await store.ExecuteAsync((e, s) => {
+                if (!s.Work.ContainsKey(id)) return null;
                 if (!s.Work.TryGetValue(id, out var work) || !Visible(work, Caller(http))) return Results.NotFound();
                 if (s.Retirements.TryGetValue(id, out var retirement)) e.RequireTemporaryWorker(retirement.Binding);
                 return Results.Ok(new CoordinationRequestView(work, s.Bindings.GetValueOrDefault(id),
-                    s.ResultOutbox.GetValueOrDefault(id), retirement));
-            }, DateTimeOffset.UtcNow, ct));
+                    s.ResultOutbox.GetValueOrDefault(id), retirement) { Questions = e.QuestionsFor(id) });
+            }, DateTimeOffset.UtcNow, ct) ??
+            // A finished request that moved to the archive still answers, read-only.
+            (await store.ArchivedAsync(id, ct) is { } entry && Visible(entry.Work, Caller(http))
+                ? Results.Ok(new CoordinationRequestView(entry.Work, entry.Binding, entry.Result, entry.Retirement) { Questions = entry.Questions })
+                : Results.NotFound()));
         app.MapPost(Prefix + "/requests/{id}/receipts/{stage}", async (string id, string stage, ExecutionReceipt receipt, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => {
                 var work = e.Receipt(id, stage, receipt, Caller(http));
@@ -95,7 +103,7 @@ internal static partial class CoordinationEndpoints {
         app.MapPost(Prefix + "/hosts", async (CoordinationHost host, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, state) => {
                 e.ObserveHost(host, Caller(http));
-                return new CoordinationAcknowledgement(true, state.Policy.GrantSeconds);
+                return new CoordinationAcknowledgement(true, state.Policy.GrantSeconds) { Ask = state.Policy.Ask };
             }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/workers", async (CoordinationWorker worker, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => { e.ObserveWorker(worker, Caller(http)); return new { acknowledged = true }; }, DateTimeOffset.UtcNow, ct)));

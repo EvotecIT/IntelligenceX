@@ -20,6 +20,9 @@ Use these as the main entrypoints:
     - `-PublishNuget` forwards to `powerforge release --publish-nuget`, which pushes staged `.nupkg` files to the configured NuGet feed
     - `-Publish` enables both
   - `Frontend host` is no longer silently rerouted through a fallback path; use the advanced helpers directly until the unified config models that release flow
+- `Publish-LedgerAgent.ps1`
+  - one platform kit for the Ledger reporter and service with the agent service, its MCP server and the native inbox hook
+  - setup steps: `InternalDocs/ledger-agent-setup.md`
 - `Build-Workspace.ps1`
   - thin compatibility wrapper over `powerforge workspace validate`
 - `workspace.validation.json`

@@ -30,7 +30,7 @@ public sealed partial class CoordinationEngine {
         var work = state.Work[id];
         var goal = state.Goals[work.Request.GoalId];
         Require(!goal.Stopped && !goal.Paused && Authorized(work, goal) && RequesterReady(work) &&
-            MatchesRecipient(result.ReturnTo, out var recipient, RootRequesterRecipient(work.Requester, result.ReturnTo)) &&
+            MatchesRecipient(result.ReturnTo, out var recipient, IsAsk(work) || RootRequesterRecipient(work.Requester, result.ReturnTo)) &&
             Available(recipient), "result-recipient-held");
         if (result.ReturnTo.ParentRequestId is { } parentId) {
             Require(state.Work.TryGetValue(parentId, out var parent) &&
@@ -41,7 +41,8 @@ public sealed partial class CoordinationEngine {
         if (attempts is null || attempts.Generation != generation)
             state.ResultDeliveryAttempts[id] = attempts = new(generation, []);
         attempts.AttemptIds.Add(attemptId);
-        result = result with { State = "sending", AttemptId = attemptId, DeliveryHost = caller.Id, EvidenceRef = null, HeldOn = null };
+        result = result with { State = "sending", AttemptId = attemptId, DeliveryHost = caller.Id, EvidenceRef = null, HeldOn = null,
+            SendingAtUtc = now };
         state.ResultOutbox[id] = result;
         Note(id, "result-sending", caller.Id, generation, attemptId);
         return result;
@@ -70,8 +71,15 @@ public sealed partial class CoordinationEngine {
             result = result with { State = receipt.Stage == "not-submitted" ? "intent" : receipt.Stage,
                 EvidenceRef = receipt.EvidenceRef };
         }
+        // An ask ends when its result reaches the asking session; there is no separate consumption step.
+        if (IsAsk(state.Work[id]) && result.State == "submitted" && result.ConsumedAtUtc is null) {
+            result = result with { ConsumedAtUtc = now };
+            Put(state.Work[id], "accepted", caller.Id, result.ResultRef);
+        }
         state.ResultOutbox[id] = result;
         Note(id, "result-" + receipt.Stage, caller.Id, generation, receipt.EvidenceRef);
+        if (result.State == "uncertain") NoticeUncertainResult(id);
+        if (result.ConsumedAtUtc is not null) Schedule();
         return result;
     }
 

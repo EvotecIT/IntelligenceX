@@ -8,11 +8,12 @@ internal static class EventAdmission {
         bool Time(DateTimeOffset? value) => value is null || value.Value.Offset == TimeSpan.Zero && value <= now.AddMinutes(2);
         if (e is null || e.SchemaVersion != 1 || e.EventId == Guid.Empty || e.Epoch == Guid.Empty || e.Sequence < 1 ||
             !Id(e.ItemId) || !Id(e.MachineId) || !Id(e.Provider) || !Id(e.SourceVersion) || !Id(e.ReporterId) ||
-            e.ParentItemId is not null && (!Id(e.ParentItemId) || e.ParentItemId == e.ItemId) || e.ItemKind is not (null or "session" or "delivery" or "input") ||
+            e.ParentItemId is not null && (!Id(e.ParentItemId) || e.ParentItemId == e.ItemId) || e.ItemKind is not (null or "session" or "delivery" or "input" or "sign-in") ||
+            (e.SignIn is not null) != (e.ItemKind == "sign-in") ||
             !settings.ExpectedReporters.TryGetValue(e.MachineId, out var reporters) || !reporters.Contains(e.ReporterId) ||
             e.Source is not ("watcher" or "hook" or "notify" or "evidence") ||
             e.ObservedAtUtc.Offset != TimeSpan.Zero || e.ObservedAtUtc > now.AddMinutes(2) ||
-            new[] { e.Session is not null, e.Work is not null, e.Declaration is not null, e.Control is not null, e.Safety is not null,
+            new[] { e.Session is not null, e.Work is not null, e.Declaration is not null, e.Control is not null, e.Safety is not null, e.SignIn is not null,
                 e.Delivery is not null, e.GlobalWork is not null, e.ReviewMark is not null, e.Heartbeat, e.Coverage is not null }.Count(x => x) != 1)
             return false;
         if (e.Session is { } s && (s.Outcome is not ("unknown" or "completed" or "interrupted" or "failed" or "incomplete") ||
@@ -45,6 +46,10 @@ internal static class EventAdmission {
             safety.Case is not ("production-outside-authority" or "destructive-outside-scope" or "credential-exposure" or "human-stop") ||
             safety.PolicyId != "urgent-safety" || safety.PolicyVersion != 1 || !Id(safety.EvidenceRef) || !Time(safety.AtUtc) ||
             safety.ManualAction is not (null or "press-stop" or "press-app-button"))) return false;
+        if (e.SignIn is { } signIn && (signIn.Provider != e.Provider || !Id(signIn.Provider) ||
+            signIn.Reason is not ("signed-in" or "signed-out" or "expired" or "usage-limit") || signIn.Required == (signIn.Reason == "signed-in") ||
+            signIn.Command is not { Length: > 0 and <= 200 } || signIn.Command.Any(char.IsControl) || signIn.Held is < 0 or > 100000 ||
+            !Time(signIn.SinceUtc) || !Time(signIn.AtUtc) || signIn.SinceUtc > signIn.AtUtc)) return false;
         if (e.Delivery is { } d && (!DeclarationValidation.ValidScope(d.Scope) || !Id(d.DeliveryId) ||
             new[] { d.NextActor, d.AcceptanceBy, d.ResultRef }.Any(x => x is not null && !Id(x)) ||
             d.CauseCode is not null && !Id(d.CauseCode) || d.TargetItemId is not null && !Id(d.TargetItemId) || d.Stage is not

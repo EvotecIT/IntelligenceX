@@ -98,6 +98,25 @@ internal sealed class CoordinationArtifactStore(string root) {
         }
     }
 
+    /// <summary>Moves the result files of requests that left the live state to the archive tier. Reads resolve both tiers,
+    /// so a file shared with live work stays readable; a failed move leaves the file where reads still find it.</summary>
+    internal void ArchiveEntries(IReadOnlyList<CoordinationArchiveEntry> entries) {
+        if (!Directory.Exists(root)) return;
+        RejectLink(root);
+        var archive = Path.Combine(root, ArchiveDirectoryName);
+        foreach (var work in entries.Select(entry => entry.Work).Where(work => work.GrantId is not null && work.ResultRef is not null)) {
+            var assignment = Path.Combine(root, AssignmentName(work.Request.Id, work.Generation, work.GrantId!));
+            var content = Path.Combine(root, work.ResultRef + ".txt");
+            if (!Path.Exists(assignment) && !Path.Exists(content)) continue;
+            try {
+                Directory.CreateDirectory(archive);
+                RejectLink(archive);
+                MoveToArchive(content, archive);
+                MoveToArchive(assignment, archive);
+            } catch (Exception error) when (error is IOException or UnauthorizedAccessException or CoordinationConflictException) { }
+        }
+    }
+
     private static bool CanArchive(CoordinationWork work, CoordinationState state) {
         if (work.State is not ("succeeded" or "failed" or "cancelled") || work.Request.ReturnTo is null ||
             work.GrantId is null || work.ResultRef is null ||

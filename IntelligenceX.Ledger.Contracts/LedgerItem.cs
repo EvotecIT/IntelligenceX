@@ -54,6 +54,8 @@ public sealed record LedgerItem {
     public EvidenceRef? ControlEvidence { get; init; }
     public SafetyFact? Safety { get; init; }
     public EvidenceRef? SafetyEvidence { get; init; }
+    public SignInFact? SignIn { get; init; }
+    public EvidenceRef? SignInEvidence { get; init; }
     public Dictionary<string, DeclarationObservation> Declarations { get; init; } = [];
     public EvidenceRef? SessionEvidence { get; init; }
     public EvidenceRef? OwnershipEvidence { get; init; }
@@ -79,7 +81,7 @@ public sealed record LedgerItem {
 
     /// <summary>Direct observation references supporting this projection, without duplicating event payloads.</summary>
     public EvidenceRef[] Evidence() => new[] { SessionEvidence, OwnershipEvidence, WorkEvidence, ClaimEvidence, PullRequestEvidence,
-            ControlEvidence, SafetyEvidence, CandidateEvidence, ScopeEvidence, Supersession?.Evidence }.OfType<EvidenceRef>().Concat(WorkDimensionEvidence.Values).Concat(PullRequestProofEvidence)
+            ControlEvidence, SafetyEvidence, SignInEvidence, CandidateEvidence, ScopeEvidence, Supersession?.Evidence }.OfType<EvidenceRef>().Concat(WorkDimensionEvidence.Values).Concat(PullRequestProofEvidence)
         .Concat(Declarations.Values.SelectMany(d => new[] { d.Evidence, d.EpisodeEvidence }.OfType<EvidenceRef>())).Concat(Deliveries.Values.SelectMany(d => d.Stages.Values).SelectMany(s => s.Sources()))
         .DistinctBy(e => e.EventId).ToArray();
 }
