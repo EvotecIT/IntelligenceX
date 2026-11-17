@@ -82,7 +82,11 @@ internal sealed record CatalogBoardItem(long Id, string ContentType, string Titl
 }
 
 /// <summary>Observed state of a PR that a task links to. Merged is terminal and never read again.</summary>
-internal sealed record CatalogPullState(string State, DateTimeOffset? UpdatedAtUtc, DateTimeOffset CheckedAtUtc);
+internal sealed record CatalogPullState(string State, DateTimeOffset? UpdatedAtUtc, DateTimeOffset CheckedAtUtc) {
+    public string? Title { get; init; }
+    public bool Draft { get; init; }
+    public string? HeadBranch { get; init; }
+}
 
 internal sealed record WorkCatalogSnapshot {
     public DateTimeOffset CapturedAtUtc { get; init; }

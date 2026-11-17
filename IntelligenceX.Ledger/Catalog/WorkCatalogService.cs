@@ -104,7 +104,7 @@ internal sealed class WorkCatalogService : BackgroundService {
         string? repo, int limit, CancellationToken token) {
         if (verdict is not null && !V.All.Contains(verdict)) throw new ArgumentException("Unknown task verdict.");
         var now = _clock.GetUtcNow();
-        var (rows, coverage, catalogAt) = await RowsAsync(items, now, token);
+        var (rows, coverage, catalogAt) = await RowsAsync(items, now, token, Snapshot);
         if (repo is not null) rows = rows.Where(row => string.Equals(row.Repo, repo, StringComparison.OrdinalIgnoreCase)).ToArray();
         var counts = rows.GroupBy(row => row.Verdict).ToDictionary(group => group.Key, group => group.Count());
         var selected = rows.Where(row => verdict is null ? row.Verdict != V.Archived : row.Verdict == verdict).ToArray();
@@ -115,9 +115,9 @@ internal sealed class WorkCatalogService : BackgroundService {
     internal async Task<ProjectStatusView> ProjectsAsync(Func<DateTimeOffset, CancellationToken, Task<LedgerItem[]>> items, string? repo,
         int limit, CancellationToken token) {
         var now = _clock.GetUtcNow();
-        var (rows, coverage, catalogAt) = await RowsAsync(items, now, token);
         var catalog = Snapshot ?? new();
-        var worktrees = (await _store.CatalogWorktreesAsync(now - WorktreeWindow, token))
+        var (rows, coverage, catalogAt) = await RowsAsync(items, now, token, catalog);
+        var worktrees = (await _store.CatalogWorktreesAsync(now, now - WorktreeWindow, token))
             .GroupBy(row => row.Repo, StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
         var tasks = rows.Where(row => row.Repo is not null && row.Verdict != V.Archived)
             .GroupBy(row => row.Repo!, StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
@@ -146,15 +146,16 @@ internal sealed class WorkCatalogService : BackgroundService {
     }
 
     private async Task<(TaskVerdictRow[] Rows, string[] Coverage, DateTimeOffset? CatalogAt)> RowsAsync(
-        Func<DateTimeOffset, CancellationToken, Task<LedgerItem[]>> items, DateTimeOffset now, CancellationToken token) {
-        var catalog = Snapshot;
+        Func<DateTimeOffset, CancellationToken, Task<LedgerItem[]>> items, DateTimeOffset now, CancellationToken token,
+        WorkCatalogSnapshot? catalog) {
+        if (catalog is { CapturedAtUtc.Ticks: 0 }) catalog = null; // The empty placeholder used before the first read.
         var coverage = new List<string> { "worktrees:session-observed", "github:metadata-only" };
         if (Volatile.Read(ref _lastError) is { } error) coverage.Add(error);
         if (catalog is null) { coverage.Add("catalog-not-read-yet"); return ([], coverage.ToArray(), null); }
         coverage.AddRange(catalog.Coverage);
         if (now - catalog.CapturedAtUtc > TimeSpan.FromMinutes(_settings.RefreshMinutes * 3)) coverage.Add("catalog-stale");
         if (_settings.Board is not null && catalog.BoardReadAtUtc is null) coverage.Add("board-not-read");
-        var worktrees = (await _store.CatalogWorktreesAsync(now - WorktreeWindow, token))
+        var worktrees = (await _store.CatalogWorktreesAsync(now, now - WorktreeWindow, token))
             .Select(row => new TaskReconciler.Worktree(row.Repo, row.Session)).ToArray();
         var reconciler = new TaskReconciler(_settings, _ledger.ExpectedReporters.Keys.ToArray());
         return (reconciler.Reconcile(catalog, await items(now, token), worktrees, now), coverage.ToArray(), catalog.CapturedAtUtc);

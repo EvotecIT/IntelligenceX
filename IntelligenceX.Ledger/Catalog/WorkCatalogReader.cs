@@ -32,12 +32,17 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
 
         // Repositories, per owner. A failed owner keeps its previous repositories.
         var repositories = new List<CatalogRepository>();
-        foreach (var (owner, path) in settings.Organizations.Select(o => (o, "orgs/" + o + "/repos?type=all&per_page=100"))
-                     .Concat(settings.Users.Select(u => (u, "users/" + u + "/repos?type=owner&per_page=100")))) {
-            var rows = await Guard<List<JsonElement>>("repositories-incomplete:" + owner, async () => await github.ReadAllAsync(Api + path, MapRepository, 30, token));
-            repositories.AddRange(rows is null
-                ? previous.Repositories.Where(repo => repo.Owner.Equals(owner, StringComparison.OrdinalIgnoreCase))
-                : rows.Select(row => row.Deserialize<CatalogRepository>(Json)!));
+        // /users/{name}/repos lists only public repositories; /user/repos adds the token owner's private ones.
+        foreach (var (owner, paths) in settings.Organizations.Select(o => (o, new[] { "orgs/" + o + "/repos?type=all&per_page=100" }))
+                     .Concat(settings.Users.Select(u => (u, new[] { "users/" + u + "/repos?type=owner&per_page=100",
+                         "user/repos?affiliation=owner&visibility=all&per_page=100" })))) {
+            var rows = await Guard("repositories-incomplete:" + owner, async () => {
+                var all = new List<CatalogRepository>();
+                foreach (var path in paths)
+                    all.AddRange((await github.ReadAllAsync(Api + path, MapRepository, 30, token)).Select(row => row.Deserialize<CatalogRepository>(Json)!));
+                return all.Where(repo => repo.Owner.Equals(owner, StringComparison.OrdinalIgnoreCase)).ToList();
+            });
+            repositories.AddRange(rows ?? previous.Repositories.Where(repo => repo.Owner.Equals(owner, StringComparison.OrdinalIgnoreCase)));
         }
         repositories = repositories.DistinctBy(repo => repo.Repo, StringComparer.OrdinalIgnoreCase).OrderBy(repo => repo.Repo, StringComparer.OrdinalIgnoreCase).ToList();
 
@@ -66,8 +71,8 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
         }
 
         // Board items, all pages. A failed read keeps the previous board with its read time.
-        var board = previous.Board;
-        var boardReadAt = previous.BoardReadAtUtc;
+        var board = settings.Board is null ? [] : previous.Board;
+        var boardReadAt = settings.Board is null ? null : previous.BoardReadAtUtc;
         if (settings.Board is { } boardSettings) {
             var path = "orgs/" + boardSettings.Organization + "/projectsV2/" + boardSettings.ProjectNumber + "/items?per_page=100&fields=" +
                 string.Join("%2C", boardSettings.FieldIds());
@@ -84,6 +89,8 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
         var references = new Dictionary<string, string[]>(StringComparer.Ordinal);
         var taskIssues = issues.Where(issue => IsTaskIssue(settings, issue)).OrderByDescending(issue => issue.UpdatedAtUtc).ToArray();
         if (taskIssues.Length > MaximumTaskIssues) coverage.Add("task-issues-capped:" + MaximumTaskIssues);
+        foreach (var issue in taskIssues.Skip(MaximumTaskIssues))
+            if (previous.IssueReferences.TryGetValue(issue.Key, out var retained)) references[issue.Key] = retained;
         foreach (var issue in taskIssues.Take(MaximumTaskIssues)) {
             var urls = await Guard("issue-references-incomplete:" + issue.Key, async () =>
                 (await github.ReadAllAsync(Api + "repos/" + issue.Repo + "/issues/" + issue.Number + "/timeline?per_page=100", MapReference, 30, token))
@@ -101,15 +108,20 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
         var states = new Dictionary<string, CatalogPullState>(StringComparer.OrdinalIgnoreCase);
         var reads = 0;
         foreach (var url in linked) {
-            if (open.Contains(url)) { states[url] = new("open", null, _clock.GetUtcNow()); continue; }
+            if (open.Contains(url)) continue; // The open list already describes it.
             if (previous.PullStates.TryGetValue(url, out var known) && known.State == "merged") { states[url] = known; continue; }
             if (++reads > MaximumPullStateReads) { coverage.Add("pull-request-states-capped"); if (known is not null) states[url] = known; continue; }
             if (!PullRequestCatalog.TryParse(url, out var repo, out var number)) continue;
-            var row = await Guard("pull-request-state-unavailable:" + repo + "#" + number, async () =>
-                await github.ReadOneAsync(Api + "repos/" + repo + "/pulls/" + number, MapPullState, token) is { } element
-                    ? element.Deserialize<CatalogPullState>(Json) : null);
+            var gap = "pull-request-state-unavailable:" + repo + "#" + number;
+            var row = await Guard(gap, async () => {
+                if (await github.ReadOneAsync(Api + "repos/" + repo + "/pulls/" + number, MapPullState, token) is not { } element) {
+                    Gap(gap + ":not-found"); return null;
+                }
+                // A 304 returns the cached row; the check time is when this read confirmed it.
+                return element.Deserialize<CatalogPullState>(Json)! with { CheckedAtUtc = _clock.GetUtcNow() };
+            });
             if (row is not null) states[url] = row;
-            else if (known is not null) states[url] = known;
+            else if (known is not null) states[url] = known; // Kept with its old check time, so the reconciler treats it as stale.
         }
 
         if (budgetExhausted) coverage.Insert(0, "github-budget-exhausted");
@@ -164,7 +176,10 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
         row.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True, Time(row, "updated_at")!.Value));
 
     internal static JsonElement? MapPullState(JsonElement row) => Compact(new CatalogPullState(
-        Time(row, "merged_at") is not null ? "merged" : Text(row, "state") ?? "unknown", Time(row, "updated_at"), DateTimeOffset.UtcNow));
+        Time(row, "merged_at") is not null ? "merged" : Text(row, "state") ?? "unknown", Time(row, "updated_at"), DateTimeOffset.UtcNow) {
+        Title = Bound(Text(row, "title")), Draft = row.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True,
+        HeadBranch = row.TryGetProperty("head", out var head) ? Text(head, "ref") : null
+    });
 
     /// <summary>Only cross-references from PRs count; the referencing PR's body is dropped here.</summary>
     internal static JsonElement? MapReference(JsonElement row) =>
@@ -177,7 +192,9 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
         var values = row.TryGetProperty("fields", out var fields)
             ? fields.EnumerateArray().Where(field => field.TryGetProperty("id", out _)).ToDictionary(field => field.GetProperty("id").GetInt64())
             : [];
-        string? Value(long? id) {
+        // A requested field missing from the response is not the same as an empty one: the read is incomplete.
+        if (board.FieldIds().Any(id => !values.ContainsKey(id))) throw new InvalidDataException("Board fields are incomplete.");
+        string? Value(long? id, int bound = 300) {
             if (id is null || !values.TryGetValue(id.Value, out var field) || !field.TryGetProperty("value", out var value) ||
                 value.ValueKind == JsonValueKind.Null) return null;
             var raw = Text(field, "data_type") switch {
@@ -185,7 +202,7 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
                 "repository" => Text(value, "full_name"),
                 _ => value.ValueKind == JsonValueKind.Object ? Text(value, "raw") : value.ValueKind == JsonValueKind.String ? value.GetString() : null
             };
-            return string.IsNullOrWhiteSpace(raw) ? null : Bound(raw.Trim());
+            return string.IsNullOrWhiteSpace(raw) ? null : Bound(raw.Trim(), bound);
         }
         var content = row.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.Object ? c : default;
         var hasContent = content.ValueKind == JsonValueKind.Object;
@@ -195,10 +212,14 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
             Time(row, "updated_at") ?? DateTimeOffset.MinValue,
             row.TryGetProperty("archived_at", out var archived) && archived.ValueKind != JsonValueKind.Null) {
             Status = Value(board.StatusFieldId), Agent = Value(board.AgentFieldId), Machine = Value(board.MachineFieldId),
-            WorkRepo = Value(board.WorkRepoFieldId), Branch = Value(board.BranchFieldId), PullRequestLinks = Value(board.PullRequestFieldId),
+            WorkRepo = Value(board.WorkRepoFieldId), Branch = Value(board.BranchFieldId), PullRequestLinks = Value(board.PullRequestFieldId, MaximumLinkText + 1),
             NextActor = Value(board.NextActorFieldId), HoldReason = Value(board.HoldReasonFieldId)
         });
     }
 
-    private static string Bound(string? text) => text is null ? "" : text.Length <= 300 ? text : text[..300];
+    private static string Bound(string? text, int bound = 300) => text is null ? "" : text.Length <= bound ? text : text[..bound];
+
+    /// <summary>Links are associations, not display text, so they are kept whole up to this size. Longer link text
+    /// marks the item capped, and a capped item is never called finished on the links that fit.</summary>
+    internal const int MaximumLinkText = 8000;
 }

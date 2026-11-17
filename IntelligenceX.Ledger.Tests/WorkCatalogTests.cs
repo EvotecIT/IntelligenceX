@@ -103,6 +103,62 @@ public sealed class WorkCatalogTests {
     }
 
     [Fact]
+    public void UncertainEvidenceNeverMakesATaskClosable() {
+        const string merged = "https://github.com/Other/Elsewhere/pull/1";
+        const string outside = "https://github.com/Other/Elsewhere/pull/2";
+        const string oldClosed = "https://github.com/Other/Elsewhere/pull/3";
+        const string unknown = "https://github.com/Other/Elsewhere/pull/4";
+        var tooLong = merged + " " + new string('x', WorkCatalogReader.MaximumLinkText);
+        var catalog = new WorkCatalogSnapshot {
+            CapturedAtUtc = Now,
+            Board = [
+                Item(1, type: "Issue", url: "https://github.com/Other/Elsewhere/issues/5"), // State unread: not closed.
+                Item(2, links: merged + " " + outside),       // The open PR was read individually, outside the open lists.
+                Item(3, links: merged + " " + oldClosed),     // Closed, but only from an observation older than this pass.
+                Item(4, links: merged + " " + unknown),       // GitHub gave no usable state.
+                Item(5, links: tooLong)                       // Links beyond the bound may hide an open PR.
+            ],
+            PullStates = new(StringComparer.OrdinalIgnoreCase) {
+                [merged] = new("merged", Now.AddDays(-1), Now.AddDays(-3)),
+                [outside] = new("open", Now.AddHours(-2), Now) { HeadBranch = "fix/x" },
+                [oldClosed] = new("closed", Now.AddDays(-2), Now.AddHours(-2)),
+                [unknown] = new("unknown", Now, Now)
+            }
+        };
+        var rows = Reconcile(catalog).ToDictionary(row => row.Id);
+
+        Assert.NotEqual(V.DoneClosable, rows["board:1"].Verdict);
+        Assert.Contains("issue-state", rows["board:1"].MissingFacts);
+        Assert.Equal((V.InProgress, "open-pull-request"), (rows["board:2"].Verdict, rows["board:2"].Reason));
+        Assert.Equal(outside, rows["board:2"].Where);
+        Assert.NotEqual(V.DoneClosable, rows["board:3"].Verdict);
+        Assert.Contains("pull-request-state:" + oldClosed, rows["board:3"].MissingFacts);
+        Assert.Contains("pull-request-state:" + unknown, rows["board:4"].MissingFacts);
+        Assert.NotEqual(V.DoneClosable, rows["board:4"].Verdict);
+        Assert.Contains("pull-request-links-capped", rows["board:5"].MissingFacts);
+        Assert.NotEqual(V.DoneClosable, rows["board:5"].Verdict);
+    }
+
+    [Fact]
+    public void LastKnownSessionVerdictsStayQualified() {
+        var id = Guid.NewGuid();
+        var session = Session(id, "working");
+        session = session with { Current = session.Current! with { LastKnown = true } };
+        var row = Assert.Single(Reconcile(new() { Board = [Item(1, agent: "codex:" + id)] }, session));
+        Assert.Equal(V.InProgress, row.Verdict);
+        Assert.Contains("session-current-observation", row.MissingFacts);
+    }
+
+    [Fact]
+    public void BoardRowMissingARequestedFieldIsIncompleteNotEmpty() {
+        using var document = JsonDocument.Parse("""
+            {"id":6,"content_type":"DraftIssue","updated_at":"2026-11-10T00:00:00Z","content":{"title":"Draft"},
+             "fields":[{"id":1,"data_type":"single_select","value":{"name":{"raw":"Active"}}}]}
+            """);
+        Assert.Throws<InvalidDataException>(() => WorkCatalogReader.MapBoardItem(Settings.Board!, document.RootElement));
+    }
+
+    [Fact]
     public async Task UnchangedPagesAnswer304FromCacheWithoutSpendingTheBudget() {
         var handler = new PagedHandler();
         var cache = new ConcurrentDictionary<string, GitHubCatalogClient.Page>(StringComparer.Ordinal);

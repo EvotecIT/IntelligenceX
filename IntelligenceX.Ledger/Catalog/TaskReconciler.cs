@@ -60,8 +60,11 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         var board = settings.Board!;
         CatalogIssue? issue = item.ContentUrl is { } contentUrl && context.OpenIssues.TryGetValue(contentUrl, out var found) ? found : null;
         var issueOpen = issue is not null || item.ContentType == "Issue" && item.ContentState == "open";
+        var issueClosed = issue is null && item.ContentType == "Issue" && item.ContentState == "closed";
+        if (item.ContentType == "Issue" && !issueOpen && !issueClosed) draft.Missing.Add("issue-state");
         var repo = item.WorkRepo ?? issue?.Repo ?? RepoFromUrl(item.ContentUrl);
         var links = WorkCatalogReader.PullRequestLinks(item.PullRequestLinks).ToList();
+        if (item.PullRequestLinks?.Length > WorkCatalogReader.MaximumLinkText) draft.Missing.Add("pull-request-links-capped");
         if (issue is not null) links.AddRange(context.Catalog.IssueReferences.GetValueOrDefault(issue.Key, []));
         if (item.ContentType == "PullRequest" && item.ContentUrl is not null) links.Add(item.ContentUrl);
         links = links.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -77,7 +80,7 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         var markDone = done ? null : "mark-board-done:" + item.Id;
 
         if (item.Archived) return Finish(row, V.Archived, "board-item-archived", draft, null, null);
-        if (item.ContentType == "Issue" && !issueOpen) {
+        if (issueClosed) {
             draft.Evidence.Add("issue-closed");
             return done ? Finish(row, V.Archived, "issue-closed", draft, null, null)
                 : Finish(row, V.DoneClosable, "issue-closed-board-open", draft, null, markDone);
@@ -90,7 +93,8 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         if (done) return issueOpen
             ? Finish(row, V.DoneClosable, "board-done-issue-open", draft, item.ContentUrl, null)
             : Finish(row, V.Archived, "board-done", draft, null, null);
-        if (PullRequestsDone(links, context, draft, viaReferences: issue is not null && WorkCatalogReader.PullRequestLinks(item.PullRequestLinks).Count() == 0) is { } merged)
+        if (!draft.Missing.Contains("pull-request-links-capped") &&
+            PullRequestsDone(links, context, draft, viaReferences: issue is not null && WorkCatalogReader.PullRequestLinks(item.PullRequestLinks).Count() == 0) is { } merged)
             return Finish(row, V.DoneClosable, merged, draft, issueOpen ? item.ContentUrl : null, markDone);
         if (status is not null && board.WaitingStatuses.Contains(status, StringComparer.OrdinalIgnoreCase) ||
             item.NextActor is { } actor && board.WaitingMarkers.Contains(actor, StringComparer.OrdinalIgnoreCase) ||
@@ -103,6 +107,10 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         var claimed = !string.IsNullOrWhiteSpace(item.Agent);
         if (claimed && SessionFor(item, context, draft) is { } session) {
             row = row with { SessionItemId = session.Id, SessionVerdict = session.Current?.Value };
+            if (session.Current?.LastKnown == true) {
+                draft.Evidence.Add("session-verdict-last-known");
+                draft.Missing.Add("session-current-observation"); // Its reporter is silent; this is the last verdict seen.
+            }
             var where = Where(session);
             if (session.Session?.Archived == true) return Finish(row with { Where = where }, V.NeedsReplacement, "agent-archived", draft, null, "reassign:" + row.Id);
             switch (session.Current?.Value) {
@@ -139,20 +147,40 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
     /// <summary>All linked PRs merged or closed, at least one merged, none open. Unknown states are named, not guessed.</summary>
     private static string? PullRequestsDone(IReadOnlyCollection<string> links, Context context, Draft draft, bool viaReferences) {
         if (links.Count == 0) return null;
-        var states = links.Select(url => context.OpenPulls.ContainsKey(url) ? "open"
-            : context.Catalog.PullStates.TryGetValue(url, out var state) ? state.State : null).ToArray();
-        foreach (var url in links.Where((_, index) => states[index] is null)) draft.Missing.Add("pull-request-state:" + url);
-        if (states.Contains("open") || states.Contains(null) || !states.Contains("merged")) return null;
+        var states = links.Select(url => State(url, context)).ToArray();
+        foreach (var url in links.Where((_, index) => states[index] is not ("open" or "merged" or "closed")))
+            draft.Missing.Add("pull-request-state:" + url);
+        if (states.Any(state => state is not ("merged" or "closed")) || !states.Contains("merged")) return null;
         draft.Evidence.Add("pull-requests-merged:" + states.Count(state => state == "merged") + "/" + states.Length);
         if (viaReferences) draft.Missing.Add("completion-criteria-unverified"); // A referencing PR may not finish the task.
         return viaReferences ? "referencing-pull-requests-merged" : "pull-requests-merged";
     }
 
+    /// <summary>Merged is terminal. Open and closed must have been confirmed by the latest catalog pass; an older
+    /// observation kept after a failed read is reported as unknown rather than trusted.</summary>
+    private static string? State(string url, Context context) {
+        if (context.OpenPulls.ContainsKey(url)) return "open";
+        if (!context.Catalog.PullStates.TryGetValue(url, out var state)) return null;
+        if (state.State == "merged") return "merged";
+        return context.Catalog.CapturedAtUtc - state.CheckedAtUtc <= FreshStateWindow ? state.State : "stale";
+    }
+
+    internal static readonly TimeSpan FreshStateWindow = TimeSpan.FromMinutes(15);
+
+    /// <summary>The most recently updated open PR, from the open lists or from an individual read (for example a PR
+    /// in a repository outside the configured owners).</summary>
     private static CatalogPull? OpenPullRequest(IEnumerable<string> links, Context context, Draft draft) {
-        var pull = links.Select(url => context.OpenPulls.GetValueOrDefault(url)).OfType<CatalogPull>().MaxBy(pull => pull.UpdatedAtUtc);
+        var pull = links.Select(url => context.OpenPulls.GetValueOrDefault(url) ?? FromState(url, context)).OfType<CatalogPull>()
+            .MaxBy(pull => pull.UpdatedAtUtc);
         if (pull is not null) draft.Evidence.Add("open-pull-request:" + pull.Url);
         return pull;
     }
+
+    private static CatalogPull? FromState(string url, Context context) =>
+        State(url, context) == "open" && context.Catalog.PullStates[url] is var state &&
+        Reporting.PullRequestCatalog.TryParse(url, out var repo, out var number)
+            ? new CatalogPull(repo, number, state.Title ?? "", state.HeadBranch, state.Draft, state.UpdatedAtUtc ?? state.CheckedAtUtc)
+            : null;
 
     private static TaskVerdictRow Active(TaskVerdictRow row, CatalogPull pull, Context context, Draft draft) {
         var worktree = LiveWorktree(pull.Repo, pull.HeadBranch, context);
