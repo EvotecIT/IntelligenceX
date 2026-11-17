@@ -105,3 +105,58 @@ service, and adds three things:
 1. a `question` state with answer delivery;
 2. a single `ask` call that creates the goal and request together for a session that has no goal;
 3. Claude as a runner and as a receiver.
+
+## Phase 1 as built
+
+The reporter runs the agent service when its configuration has an `agent` section (`AgentSettings`: coordination
+client, local state, workspace root, capabilities, Codex and Claude executables). `IntelligenceX.Ledger agent-check
+--config <reporter.json>` checks the Codex and Claude routes on a machine without touching the Ledger.
+
+- **Host.** Heartbeats every grant/3 seconds with the attested capabilities and `codex` as a creatable provider when the
+  app server answers. The boot identity is kept in local state, so restarts within one boot keep their grants. Each
+  sweep reads the four feeds (assigned work, results, questions, retirements); no model is involved.
+- **Codex runner.** `codex app-server proxy` to the Codex app's daemon when its control socket answers (the Mac), or a
+  private `codex app-server` (Windows, where the app serves its threads over stdio). Helper threads get `thread/start`
+  in an empty workspace, are named `Auto: Ledger <id>: …`, and each turn uses an output schema that asks for either a
+  result or one question. Completion comes from `turn/completed`; a lost connection is reconnected and the turn read
+  once. Run records are written before each step, so a restart follows the same thread and turn.
+- **Ask.** `POST /api/coordination/v1/ask` (MCP `ask`) creates the goal `ask-<id>` and a `help` request for a client
+  principal scoped to one machine. Provider and capability fall back to policy routing and the target machine. Asks
+  don't hold the asker's branch: helpers work in their own workspace.
+- **Questions.** A helper's question moves the work to `question` (occupied, grant renewed). The requester's host
+  delivers it; the answer (MCP `ask_answer`) or the policy's expiry is delivered back into the same helper thread as
+  its next turn, which returns the work to `started`. Each side's delivery is begun before the send and never repeated
+  once sending or uncertain. Queued asks past `ask.admissionMinutes` produce a notice for the requester.
+- **Delivery.** Codex: `turn/start` in the requesting thread, `turn/steer` when a turn is running, and `codex queue`
+  when the Codex app holds the thread. Claude: a one-shot `claude -p` on `ask.claudeDeliveryModel` whose only tools are
+  SendMessage and ListAgents. SendMessage reaches sessions by the name and ref ListAgents shows, so a Claude asker
+  passes that address with its ask. An ask ends when its result is submitted to the asking session.
+- **Usage.** Every helper turn (`worker`), woken requester turn (`wake`) and Claude sender run (`delivery`) records
+  provider, model and tokens on its request. `GET /requests/{id}/usage` and `GET /usage?date=` give totals per request
+  and per day.
+- **Policy.** `ask.*`: default routing kind, question wait, question limit, admission wait, turn limit, resume attempts,
+  wake usage window, Codex model and effort, Claude delivery model.
+
+### Measured round trips (17 November 2026, gpt-6.1-sol helpers, Haiku sender)
+
+| Step | Machine | Tokens | Cached |
+| --- | --- | ---: | ---: |
+| Windows → Mac: helper turn that asked which volume | mac | 30,503 | 0 |
+| Windows → Mac: wake that answered with `ask_answer` | win-pc | 67,977 | 67,200 |
+| Windows → Mac: helper turn after the answer | mac | 61,473 | 60,800 |
+| Windows → Mac: wake for the result | win-pc | 34,228 | 33,920 |
+| Mac → Windows: helper turn | win-pc | 58,664 | 29,056 |
+| Mac → Windows: wake for the result | mac | 34,624 | 34,304 |
+| Claude delivery: one-shot sender (SendMessage) | win-pc | 8,456 ($0.00045) | 6,847 |
+
+Both Codex round trips completed in under a minute end to end. A Codex wake costs about 34k tokens, almost all of it
+cached context; the Claude sender costs about 8k tokens on Haiku.
+
+### Known limits
+
+- A Claude desktop session running in a different permission mode from the sender holds incoming SendMessage
+  deliveries for its user's approval. The delivery is recorded as submitted; the session sees it once approved.
+- `codex queue` hands a message to the Codex app, which runs it the next time it loads the thread.
+- After a reboot or a lapsed grant the helper is stopped and its work so far is returned as a failed result; it isn't
+  resumed in place.
+- Workspace content left by a helper holds its retirement for review instead of being deleted.
