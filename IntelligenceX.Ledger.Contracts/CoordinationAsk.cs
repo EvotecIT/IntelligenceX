@@ -26,10 +26,12 @@ public sealed record AskPolicy {
 
 /// <summary>One step from a session with no goal: "do this, on that machine, with that provider". The service creates the
 /// goal and the help request together. The asking session is the return destination and must be on the caller's machine.
-/// Source fields describe the asker's repository; the helper works in its own empty workspace.</summary>
+/// Source fields describe the asker's repository; the helper works in its own empty workspace. ReturnAddress is how the
+/// asking session is reached when its provider addresses sessions by name: for Claude Code, the "name [ref]" that
+/// ListAgents shows for the session itself.</summary>
 public sealed record CoordinationAsk(string Id, string Task, string Project, string Branch, string Commit,
     string ReturnProvider, string ReturnSessionId, string? MachineId = null, string? Provider = null,
-    string? Kind = null, string? Capability = null);
+    string? Kind = null, string? Capability = null, string? ReturnAddress = null);
 
 /// <summary>A question from a helper or a notice from the service to the requester. Notices need no answer.
 /// State is asked, answered, expired or resumed; Delivery carries the requester-side send, AnswerDelivery the

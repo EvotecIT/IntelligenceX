@@ -56,6 +56,17 @@ public sealed class CoordinationAskTests {
     }
 
     [Fact]
+    public void AskKeepsTheAddressAClaudeSessionIsReachedBy() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        var work = engine.Ask(Ask() with { ReturnProvider = "claude", ReturnSessionId = "cli-session", ReturnAddress = "Build the agent service [bba9bb]" }, Sessions);
+        Assert.Equal(("claude", "cli-session", "Build the agent service [bba9bb]"),
+            (work.Request.ReturnTo!.Provider, work.Request.ReturnTo.SessionId, work.Request.ReturnTo.Address));
+        Assert.Equal("invalid-ask", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("bad") with { ReturnAddress = "line\nbreak" }, Sessions)).Message);
+    }
+
+    [Fact]
     public void AskRoutesByPolicyAndRejectsWhatPolicyDoesNotAllow() {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);

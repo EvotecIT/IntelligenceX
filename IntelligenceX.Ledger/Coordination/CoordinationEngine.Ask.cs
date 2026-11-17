@@ -24,7 +24,8 @@ public sealed partial class CoordinationEngine {
         Require(caller.Role == "client" && Id(caller.MachineId) && caller.RequesterId is null, "ask-role-denied");
         Require(ask is not null && Id(ask.Id) && ask.Id.Length <= 120 && Text(ask.Task) && Id(ask.ReturnProvider) &&
             Id(ask.ReturnSessionId) && (ask.MachineId is null || Id(ask.MachineId)) && (ask.Provider is null || Id(ask.Provider)) &&
-            (ask.Kind is null || Id(ask.Kind)) && (ask.Capability is null || Id(ask.Capability)), "invalid-ask");
+            (ask.Kind is null || Id(ask.Kind)) && (ask.Capability is null || Id(ask.Capability)) &&
+            (ask.ReturnAddress is null || ask.ReturnAddress.Length is > 0 and <= 300 && !ask.ReturnAddress.Any(char.IsControl)), "invalid-ask");
         var returnWorker = ask.ReturnProvider + "-" + ask.ReturnSessionId;
         if (state.Work.TryGetValue(ask.Id, out var existing)) {
             Require(existing.Requester == caller.Id && IsAsk(existing) && existing.Request.TaskBrief == ask.Task &&
@@ -47,7 +48,7 @@ public sealed partial class CoordinationEngine {
         var goalId = "ask-" + ask.Id;
         var request = new CoordinationRequest(ask.Id, goalId, "help", capability, ask.MachineId, null, new(AgentSlots: 1),
             checkpoint, [], 1, AskOrigin, provider, ReturnTo: new(returnWorker, caller.MachineId!, ask.ReturnProvider,
-                ask.ReturnSessionId, checkpoint), TaskBrief: ask.Task);
+                ask.ReturnSessionId, checkpoint) { Address = ask.ReturnAddress }, TaskBrief: ask.Task);
         Request(request, caller);
         Require(!state.Goals.ContainsKey(goalId), "ask-goal-conflict");
         Require(state.Work.Values.Count(w => w.State == "queued") < state.Policy.MaximumQueued, "queue-full");

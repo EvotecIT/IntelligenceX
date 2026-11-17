@@ -43,7 +43,8 @@ internal sealed partial class AgentService {
     private async Task<(string Stage, string Evidence)> SendToSessionAsync(string requestId, CoordinationReturnBinding to, string text,
         CancellationToken stop) {
         if (to.Provider == "claude") {
-            var sent = await _claude.SendAsync(to.SessionId, text, _policy.ClaudeDeliveryModel, stop).ConfigureAwait(false);
+            // SendMessage addresses sessions by the name ListAgents shows; the asker supplied its own.
+            var sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop).ConfigureAwait(false);
             await RecordUsageAsync(requestId, "delivery", "claude", sent.Model, sent.Tokens, sent.CostUsd, to.SessionId, stop).ConfigureAwait(false);
             if (sent.Stage == "not-submitted") Defer("deliver:" + requestId);
             return (sent.Stage, sent.Evidence);

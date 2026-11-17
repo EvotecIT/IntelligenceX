@@ -119,7 +119,11 @@ public sealed record CoordinationWorker(string Id, string MachineId, string Prov
 /// <summary>Original enrolled requester and exact candidate. Parent request/generation identifies the spawning
 /// attempt when the requester is itself a helper; a root requester leaves these unset.</summary>
 public sealed record CoordinationReturnBinding(string WorkerId, string MachineId, string Provider, string SessionId,
-    WorkCheckpoint Candidate, string? ParentRequestId = null, long ParentGeneration = 0);
+    WorkCheckpoint Candidate, string? ParentRequestId = null, long ParentGeneration = 0) {
+    /// <summary>How the session is reached when its provider addresses sessions by name (Claude Code's SendMessage).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Address { get; init; }
+}
 
 /// <summary>Host-attested native session bound to one admitted assignment, never inferred from a transport ACK.
 /// WorkspaceId is an opaque managed-workspace identity, not permission to delete a path.</summary>

@@ -17,16 +17,17 @@ public sealed class AskTools(LedgerReadClient client) {
         "machine: win-pc, mac, mac-studio (policy machines). provider: codex or claude; omit to use policy routing for kind. " +
         "Source project/branch/commit default to this session's Git checkout. Reuse the same id when retrying after an error. " +
         "sessionId is this session's own id, where the answer is delivered; pass it when the tool reports session-unknown. " +
-        "Codex: the CODEX_THREAD_ID environment variable of your shell commands. Claude Code: CLAUDE_CODE_SESSION_ID.")]
+        "Codex: the CODEX_THREAD_ID environment variable of your shell commands. Claude Code: CLAUDE_CODE_SESSION_ID, and also " +
+        "sessionAddress: this session's own name and ref exactly as ListAgents shows it (\"This session is <name> [<ref>]\").")]
     public Task<CoordinationWork> Ask(string task, string? machine = null, string? provider = null, string? kind = null,
         string? capability = null, string? id = null, string? project = null, string? branch = null, string? commit = null,
-        string? sessionId = null, string? sessionProvider = null, CancellationToken token = default) {
+        string? sessionId = null, string? sessionProvider = null, string? sessionAddress = null, CancellationToken token = default) {
         var (returnProvider, session) = CurrentSession(sessionId, sessionProvider);
         var source = project is null || branch is null || commit is null ? GitSource() : default;
         return Command(client.AskAsync(new CoordinationAsk(id ?? "ask-" + Guid.NewGuid().ToString("N"), task,
             project ?? source.Project ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"project-required\"}"),
             branch ?? source.Branch ?? "main", commit ?? source.Commit ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"commit-required\"}"),
-            returnProvider, session, machine, provider, kind, capability), token));
+            returnProvider, session, machine, provider, kind, capability, sessionAddress), token));
     }
 
     [McpServerTool(Name = "ask_answer", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
