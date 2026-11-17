@@ -33,7 +33,9 @@ $app = Join-Path $Output $appFolder
 
 function Publish([string]$Project, [string]$Destination, [string[]]$Extra = @()) {
     $arguments = @('publish', (Join-Path $repository $Project), '-c', 'Release', '-r', $Runtime, '-o', $Destination, '--nologo') + $Extra
-    & dotnet @arguments | Out-Host
+    # Run from the repository so its SDK selection applies, not a global.json in the caller's folder.
+    Push-Location $repository
+    try { & dotnet @arguments | Out-Host } finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Project." }
 }
 
