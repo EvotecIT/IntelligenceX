@@ -38,6 +38,8 @@ public static class Program {
             if (reporter.Agent is null) { Console.Error.WriteLine("The reporter configuration has no agent section."); return 2; }
             return await Agents.AgentHost.CheckAsync(reporter.Agent);
         }
+        if (args.Length > 0 && args[0] == "agent-install") return await Agents.AgentInstaller.RunAsync(args);
+        if (args.Length > 0 && args[0] == "agent-enroll") return Agents.AgentEnrollment.Run(args);
         if (args.Length == 3 && args[0] == "inbox" && args[1] == "--config")
             return await LedgerInbox.RunAsync(args[2], Console.In, Console.Out);
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
@@ -45,6 +47,8 @@ public static class Program {
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {
             Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>\n" +
                 "       IntelligenceX.Ledger agent-check|inbox --config <reporter-json-file>\n" +
+                "       IntelligenceX.Ledger agent-install --config <reporter-json-file> [--tools <kit>] [--apply]\n" +
+                "       IntelligenceX.Ledger agent-enroll --service <service-json-file> --machine <id> --out <folder> [--local] [--apply]\n" +
                 "       IntelligenceX.Ledger backup --config <local-json-file> --out <new-backup-path>\n" +
                 "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>");
             return 2;

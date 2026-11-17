@@ -383,6 +383,7 @@ build/*
 !Build/Build-Project.ps1
 !Build/project.build.json
 !Build/Build-Workspace.ps1
+!Build/Publish-LedgerAgent.ps1
 !Build/Chat/
 !Build/Chat/**
 !Build/Internal/
