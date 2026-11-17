@@ -73,6 +73,26 @@ public sealed class AgentServiceTests {
     }
 
     [Fact]
+    public void AnUnreadableRunRecordIsSetAsideInsteadOfStoppingTheSweep() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
+        try {
+            var file = RunRecord.FileFor(directory, "ask-1", 1);
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.WriteAllText(file, "");
+            Assert.Null(RunRecord.Load(directory, "ask-1", 1));
+            Assert.False(File.Exists(file));
+            Assert.Single(Directory.EnumerateFiles(Path.GetDirectoryName(file)!, "*.unreadable-*"));
+        } finally {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TheInboxHookFinishesWithinTheTimeClaudeGivesIt() =>
+        Assert.True((IntelligenceX.Ledger.Contracts.LedgerInbox.CollectBudget + IntelligenceX.Ledger.Contracts.LedgerInbox.RecordBudget).TotalSeconds
+            < AgentInstaller.HookTimeoutSeconds - 2);
+
+    [Fact]
     public void ATurnFollowedAfterARestartKeepsTheTokensRecordedBeforeIt() {
         var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
         try {

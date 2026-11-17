@@ -71,10 +71,21 @@ internal static class LocalFiles {
     public static void WriteAtomic(string path, string content) {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllText(temporary, content);
+        using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+            stream.Write(Encoding.UTF8.GetBytes(content));
+            stream.Flush(flushToDisk: true);
+        }
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(temporary, File.Exists(path) ? File.GetUnixFileMode(path) : UnixFileMode.UserRead | UnixFileMode.UserWrite);
         File.Move(temporary, path, overwrite: true);
+    }
+
+    /// <summary>Reads a file another thread may be replacing at that moment (on Windows the replace briefly denies access).</summary>
+    public static string? ReadShared(string path) {
+        for (var attempt = 0; ; attempt++) {
+            try { return File.Exists(path) ? File.ReadAllText(path) : null; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException && attempt < 5) { Thread.Sleep(50); }
+        }
     }
 
     public static string Hash(params object?[] parts) =>
@@ -110,9 +121,33 @@ internal sealed record RunRecord {
     public static string FileFor(string stateDirectory, string requestId, long generation) =>
         Path.Combine(stateDirectory, "runs", LocalFiles.Hash(requestId, generation)[..32] + ".json");
 
+    /// <summary>The run's record, or null. A record that can't be parsed (cut short by a power loss) is renamed aside
+    /// and treated as missing, so one damaged file can't stop every sweep; the request is then reconciled.</summary>
     public static RunRecord? Load(string stateDirectory, string requestId, long generation) {
         var file = FileFor(stateDirectory, requestId, generation);
-        return File.Exists(file) ? JsonSerializer.Deserialize<RunRecord>(File.ReadAllText(file)) : null;
+        if (LocalFiles.ReadShared(file) is not { } text) return null;
+        try { return JsonSerializer.Deserialize<RunRecord>(text); }
+        catch (JsonException) {
+            File.Move(file, file + ".unreadable-" + DateTimeOffset.UtcNow.ToUnixTimeSeconds(), overwrite: true);
+            AgentService.Log("run-record-unreadable", requestId);
+            return null;
+        }
+    }
+
+    /// <summary>Removes finished run records, token files and set-aside records older than <paramref name="age"/>.</summary>
+    public static void Prune(string stateDirectory, TimeSpan age, Func<string, bool> active) {
+        var folder = Path.Combine(stateDirectory, "runs");
+        if (!Directory.Exists(folder)) return;
+        foreach (var file in Directory.EnumerateFiles(folder)) {
+            try {
+                if (DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < age) continue;
+                if (file.EndsWith(".json", StringComparison.Ordinal) && !file.EndsWith(".tokens.json", StringComparison.Ordinal)) {
+                    var record = JsonSerializer.Deserialize<RunRecord>(File.ReadAllText(file));
+                    if (record is null || record.Phase != "done" || active("run:" + record.RequestId + ":" + record.Generation)) continue;
+                }
+                File.Delete(file);
+            } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
+        }
     }
 
     public RunRecord Save(string stateDirectory) {
@@ -126,7 +161,13 @@ internal sealed record RunRecord {
         Path.ChangeExtension(FileFor(stateDirectory, requestId, generation), ".tokens.json");
 
     public static TurnTokens LoadTokens(string stateDirectory, string requestId, long generation) {
-        var file = TokensFile(stateDirectory, requestId, generation);
-        return File.Exists(file) ? JsonSerializer.Deserialize<TurnTokens>(File.ReadAllText(file)) ?? TurnTokens.None : TurnTokens.None;
+        try {
+            return LocalFiles.ReadShared(TokensFile(stateDirectory, requestId, generation)) is { } text
+                ? JsonSerializer.Deserialize<TurnTokens>(text) ?? TurnTokens.None : TurnTokens.None;
+        } catch (JsonException) { return TurnTokens.None; }
     }
+
+    /// <summary>When this turn's usage was first sent, so a retry sends the identical entry and the Ledger keeps one.</summary>
+    public string? UsageTurn { get; init; }
+    public DateTimeOffset? UsageAtUtc { get; init; }
 }

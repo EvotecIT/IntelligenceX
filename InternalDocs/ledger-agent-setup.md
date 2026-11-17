@@ -63,5 +63,5 @@ that, because the current reporter rejects a configuration that still has the se
   server) and which Claude CLI is used, without touching the Ledger.
 - The machine is fresh in `coordination_status`, and its `<machine>:sign-in:<provider>` items are `done`.
 - An `ask` from another machine to this one comes back with a result.
-- The agent's own log is `agent-service/agent.log` on macOS; on Windows it reports through the Ledger like the
-  reporter.
+- The agent's own log is `agent-service/agent.log`, with one previous copy kept as `agent.log.1`. A line is written when
+  something changes, not on every sweep.

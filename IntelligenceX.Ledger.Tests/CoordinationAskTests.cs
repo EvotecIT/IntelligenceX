@@ -76,6 +76,32 @@ public sealed class CoordinationAskTests {
     }
 
     [Fact]
+    public void ADeliveryLeftSendingBecomesUncertainAndTheRequesterIsToldWhereToReadIt() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        var work = engine.Ask(Ask(), Sessions);
+        var receipt = StartHelper(engine, work);
+        engine.RaiseQuestion("ask-1", new(work.Generation, work.GrantId!, "boot", "Which Xcode version?"), MacHost);
+        engine.RecordQuestionDelivery("ask-1", 1, new("question", "send-1", "sending"), PcHost);
+        engine.Answer("ask-1", 1, new("16.2"), Sessions);
+        engine.RecordQuestionDelivery("ask-1", 1, new("answer", "answer-1", "sending"), MacHost);
+        engine.RecordQuestionDelivery("ask-1", 1, new("answer", "answer-1", "submitted", "codex-turn-2"), MacHost);
+        engine.Receipt("ask-1", "terminal", receipt with { ResultRef = "result-1", Succeeded = true, ExclusionVerified = true }, MacHost);
+        engine.ObserveWorker(new("codex-requester-thread", "pc", "codex", true, null, Now, "requester-thread", BootId: "boot"), PcHost);
+        engine.BeginResultDelivery("ask-1", work.Generation, "deliver-1", PcHost);
+
+        var later = new CoordinationEngine(state, Now.AddMinutes(state.Policy.Ask.DeliveryUnconfirmedMinutes + 1));
+        later.Schedule();
+        Assert.Equal(("uncertain", "delivery-unconfirmed"), (state.ResultOutbox["ask-1"].State, state.ResultOutbox["ask-1"].EvidenceRef));
+        Assert.Equal("uncertain", state.Questions["ask-1#1"].Delivery!.Stage);
+        var notice = Assert.Single(state.Questions.Values, q => q.Kind == "notice");
+        Assert.Contains("request_result", notice.Text);
+        // A late receipt from the host that sent it still settles it.
+        later.RecordResultDelivery("ask-1", work.Generation, new("deliver-1", "submitted", "codex-turn"), PcHost);
+        Assert.NotNull(state.ResultOutbox["ask-1"].ConsumedAtUtc);
+    }
+
+    [Fact]
     public void AnAskReturnsToTheWorkerTheSessionIsAlreadyEnrolledAs() {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);

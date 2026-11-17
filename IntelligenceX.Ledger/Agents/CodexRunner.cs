@@ -74,7 +74,7 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         try {
             server.Notification += watch.Observe;
             var resumed = await ResumeAsync(server, threadId, cwd, token).ConfigureAwait(false);
-            var turns = await TurnIdsAsync(server, threadId, token).ConfigureAwait(false);
+            var turns = await TurnIdsAsync(server, threadId, knownTurns is > 0, token).ConfigureAwait(false);
             string turnId;
             if (knownTurns is { } known && turns.Count > known) turnId = turns[known];
             else {
@@ -158,13 +158,15 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         catch (Exception error) when (error is IOException or TimeoutException) { return false; }
     }
 
-    /// <summary>The thread's turn ids, oldest first. A thread with no turns yet may have nothing to read.</summary>
-    private static async Task<List<string>> TurnIdsAsync(CodexAppServer server, string threadId, CancellationToken token) {
+    /// <summary>The thread's turn ids, oldest first. A thread with no turns yet may have nothing to read; that counts as
+    /// none only when no turn could have been accepted before (a thread's first turn creates what the read finds), since
+    /// otherwise a failed read would submit the input twice.</summary>
+    private static async Task<List<string>> TurnIdsAsync(CodexAppServer server, string threadId, bool pending, CancellationToken token) {
         try {
             var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
             return read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
                 ? turns.EnumerateArray().Select(turn => turn.GetProperty("id").GetString()!).ToList() : [];
-        } catch (CodexRpcException) { return []; }
+        } catch (CodexRpcException) when (!pending) { return []; }
     }
 
     private static async Task WaitClosedAsync(CodexAppServer server, CancellationToken token) {

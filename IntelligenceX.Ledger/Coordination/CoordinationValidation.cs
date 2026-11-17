@@ -42,7 +42,8 @@ public static class CoordinationValidation {
             p.Ask.MaximumQuestions is >= 0 and <= 64 && Positive(p.Ask.AdmissionMinutes) && Positive(p.Ask.TurnMinutes) &&
             p.Ask.ResumeAttempts is >= 0 and <= 8 && Positive(p.Ask.WakeUsageMinutes) &&
             (p.Ask.CodexModel is null || Id(p.Ask.CodexModel)) && (p.Ask.CodexEffort is null or "low" or "medium" or "high" or "xhigh") &&
-            Id(p.Ask.ClaudeDeliveryModel), "invalid-ask-policy");
+            Id(p.Ask.ClaudeDeliveryModel) && Positive(p.Ask.DeliveryUnconfirmedMinutes) && Positive(p.Ask.UsageLimitProbeMinutes) &&
+            p.Ask.UnreachableRetries is >= 0 and <= 16 && Positive(p.Ask.UnreachableRetryMinutes), "invalid-ask-policy");
         Require(p.Priority is { Count: > 0 and <= 64 } && p.Priority.All(pair => Id(pair.Key) &&
             pair.Value is "low" or "normal" or "high"), "invalid-priority-policy");
     }

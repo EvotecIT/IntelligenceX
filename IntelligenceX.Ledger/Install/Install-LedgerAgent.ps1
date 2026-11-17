@@ -44,7 +44,14 @@ $AgentConfig = Join-Path $Root 'agent.json'
 $ServiceRoot = Join-Path $Root 'agent-service'
 $Versions = Join-Path $ServiceRoot 'versions'
 $Receipt = Join-Path $ServiceRoot 'install.json'
-$Dotnet = if ($IsWindows) { (Get-Command dotnet -ErrorAction Stop).Source } else { Join-Path $HOME '.dotnet/dotnet' }
+$Dotnet = if ($IsWindows) { (Get-Command dotnet -ErrorAction Stop).Source } else {
+    # The LaunchAgent gets no shell PATH, so the host is resolved here and written into its plist.
+    @($env:DOTNET_ROOT ? (Join-Path $env:DOTNET_ROOT 'dotnet') : $null; (Join-Path $HOME '.dotnet/dotnet'); '/usr/local/share/dotnet/dotnet'
+        '/opt/homebrew/bin/dotnet'; (Get-Command dotnet -ErrorAction SilentlyContinue)?.Source) |
+        Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+}
+if (-not $Dotnet) { throw 'No dotnet host found; install the .NET runtime or set DOTNET_ROOT.' }
+$Log = Join-Path $ServiceRoot 'agent.log'
 $Uid = if ($IsWindows) { $null } else { (& /usr/bin/id -u).Trim() }
 $Plist = if ($IsWindows) { $null } else { Join-Path $HOME "Library/LaunchAgents/$Label.plist" }
 
@@ -118,10 +125,14 @@ function Stop-Agent {
 
 function Start-Agent([string]$Version) {
     $assembly = Get-Assembly $Version
+    # One previous log is kept; the agent writes a line only when something changes.
+    if ((Test-Path -LiteralPath $Log) -and (Get-Item -LiteralPath $Log).Length -gt 10MB) { Move-Item -LiteralPath $Log -Destination "$Log.1" -Force }
     if ($IsWindows) {
-        # wscript runs the agent without a console window and returns its exit code, so the task restarts it on failure.
+        # wscript runs the agent without a console window and returns its exit code, so the task restarts it on failure;
+        # cmd appends its output to agent.log.
         $launcher = Join-Path $ServiceRoot 'Start-LedgerAgent.vbs'
-        $command = '"""' + $Dotnet + '"" ""' + $assembly + '"" agent --config ""' + $AgentConfig + '"""'
+        $inner = "`"$Dotnet`" `"$assembly`" agent --config `"$AgentConfig`" >> `"$Log`" 2>&1"
+        $command = '"' + ("cmd.exe /d /s /c `"$inner`"").Replace('"', '""') + '"'
         Set-Content -LiteralPath $launcher -Encoding ascii -Value @(
             'Set shell = CreateObject("WScript.Shell")',
             "WScript.Quit shell.Run($command, 0, True)")
@@ -134,7 +145,6 @@ function Start-Agent([string]$Version) {
         Start-ScheduledTask -TaskName $TaskName
     } else {
         $escape = { param($v) [Security.SecurityElement]::Escape($v) }
-        $log = Join-Path $ServiceRoot 'agent.log'
         $null = New-Item -ItemType Directory -Force -Path (Split-Path $Plist)
         Set-Content -LiteralPath $Plist -Encoding utf8NoBOM -Value @"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -144,7 +154,7 @@ function Start-Agent([string]$Version) {
 <key>ProgramArguments</key><array><string>$(& $escape $Dotnet)</string><string>$(& $escape $assembly)</string><string>agent</string><string>--config</string><string>$(& $escape $AgentConfig)</string></array>
 <key>EnvironmentVariables</key><dict><key>DOTNET_ROOT</key><string>$(& $escape (Split-Path $Dotnet))</string><key>HOME</key><string>$(& $escape $HOME)</string></dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>30</integer><key>ProcessType</key><string>Background</string>
-<key>StandardOutPath</key><string>$(& $escape $log)</string><key>StandardErrorPath</key><string>$(& $escape $log)</string>
+<key>StandardOutPath</key><string>$(& $escape $Log)</string><key>StandardErrorPath</key><string>$(& $escape $Log)</string>
 </dict></plist>
 "@
         & /bin/launchctl bootstrap "gui/$Uid" $Plist
@@ -152,7 +162,7 @@ function Start-Agent([string]$Version) {
     }
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds(60)
     while (-not (Get-AgentProcess) -and [DateTimeOffset]::UtcNow -lt $deadline) { Start-Sleep -Seconds 2 }
-    if (-not (Get-AgentProcess)) { throw 'The agent service did not start within a minute; see its log.' }
+    if (-not (Get-AgentProcess)) { throw "The agent service did not start within a minute; see $Log." }
 }
 
 # Older builds ran the agent inside the reporter. Restart it once its agent section is gone, before the new process starts.
@@ -160,7 +170,11 @@ function Restart-Reporter {
     if ($IsWindows) {
         $receipt = Read-Json (Join-Path $Root 'reporter-process.json')
         $before = $receipt.process.pid
-        Stop-Process -Id $before -ErrorAction SilentlyContinue
+        # Only the process the receipt names: a reused process id belongs to something else.
+        $process = Get-Process -Id $before -ErrorAction SilentlyContinue
+        if ($process -and [Math]::Abs(($process.StartTime.ToUniversalTime() - ([DateTimeOffset]$receipt.process.startedAtUtc).UtcDateTime).TotalSeconds) -le 2) {
+            Stop-Process -Id $before
+        } else { throw 'The reporter in reporter-process.json is not running; start its task, then run this again.' }
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(150)
         do { Start-Sleep -Seconds 5; $now = (Read-Json (Join-Path $Root 'reporter-process.json')).process.pid }
         while ($now -eq $before -and [DateTimeOffset]::UtcNow -lt $deadline)

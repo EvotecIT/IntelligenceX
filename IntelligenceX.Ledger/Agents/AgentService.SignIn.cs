@@ -10,9 +10,51 @@ internal sealed record ProviderSignIn(string Provider, bool Ready, string Reason
 internal sealed partial class AgentService {
     private const string SignInHold = "claude-sign-in-required";
     private const string UnreachableHold = "claude-session-unreachable";
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _unreachable = new(StringComparer.Ordinal);
+    private readonly object _unreachableGate = new();
+    private DateTimeOffset _probeAt = DateTimeOffset.MinValue;
 
-    private bool Unreachable(string requestId) => _unreachable.TryGetValue(requestId, out var at) && DateTimeOffset.UtcNow - at < TimeSpan.FromMinutes(30);
+    /// <summary>When SendMessage last couldn't reach a request's session and how many times it tried, kept on disk so a
+    /// restart doesn't resend everything at once.</summary>
+    internal sealed record UnreachableEntry(DateTimeOffset AtUtc, int Attempts);
+
+    private string UnreachableFile => Path.Combine(_settings.StateDirectory, "unreachable.json");
+
+    private Dictionary<string, UnreachableEntry> LoadUnreachable() {
+        try {
+            return File.Exists(UnreachableFile)
+                ? JsonSerializer.Deserialize<Dictionary<string, UnreachableEntry>>(File.ReadAllText(UnreachableFile)) ?? []
+                : [];
+        } catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { return []; }
+    }
+
+    private void MarkUnreachable(string requestId) {
+        lock (_unreachableGate) {
+            var entries = LoadUnreachable();
+            entries[requestId] = new(DateTimeOffset.UtcNow, (entries.GetValueOrDefault(requestId)?.Attempts ?? 0) + 1);
+            LocalFiles.WriteAtomic(UnreachableFile, JsonSerializer.Serialize(entries));
+        }
+    }
+
+    /// <summary>A session SendMessage couldn't reach waits for its next turn; it is sent again at most the policy's number
+    /// of retries, the policy's interval apart.</summary>
+    private bool Unreachable(string requestId) {
+        lock (_unreachableGate) {
+            if (LoadUnreachable().GetValueOrDefault(requestId) is not { } entry) return false;
+            return entry.Attempts > _policy.UnreachableRetries ||
+                DateTimeOffset.UtcNow - entry.AtUtc < TimeSpan.FromMinutes(_policy.UnreachableRetryMinutes);
+        }
+    }
+
+    /// <summary>Forgets requests whose deliveries are settled, so the file holds only what is still waiting.</summary>
+    private void ForgetUnreachable(IEnumerable<string> waiting) {
+        lock (_unreachableGate) {
+            var entries = LoadUnreachable();
+            var keep = waiting.ToHashSet(StringComparer.Ordinal);
+            if (entries.Keys.All(keep.Contains)) return;
+            LocalFiles.WriteAtomic(UnreachableFile, JsonSerializer.Serialize(entries.Where(pair => keep.Contains(pair.Key))
+                .ToDictionary(pair => pair.Key, pair => pair.Value)));
+        }
+    }
     private readonly Dictionary<string, ProviderSignIn> _signIn = new(StringComparer.Ordinal);
     private readonly object _signInGate = new();
     private DateTimeOffset _signInCheckedAt = DateTimeOffset.MinValue;
@@ -22,9 +64,18 @@ internal sealed partial class AgentService {
     internal static string SignInCommand(string provider) => provider == "claude" ? "claude auth login" : "codex login";
 
     private bool Ready(string provider) {
-        lock (_signInGate) return !_signIn.TryGetValue(provider, out var state) || state.Ready ||
-            // A usage limit can only be seen by trying; one delivery attempt every 15 minutes probes it.
-            state.Reason == "usage-limit" && DateTimeOffset.UtcNow - state.SinceUtc > TimeSpan.FromMinutes(15);
+        lock (_signInGate) return !_signIn.TryGetValue(provider, out var state) || state.Ready;
+    }
+
+    /// <summary>A usage limit can only be seen to pass by trying, so while Claude is at its limit one held delivery is
+    /// let through per the policy's probe interval.</summary>
+    private bool ProbeUsageLimit() {
+        lock (_signInGate) {
+            if (!_signIn.TryGetValue("claude", out var state) || state.Ready || state.Reason != "usage-limit") return false;
+            if (DateTimeOffset.UtcNow - _probeAt < TimeSpan.FromMinutes(_policy.UsageLimitProbeMinutes)) return false;
+            _probeAt = DateTimeOffset.UtcNow;
+            return true;
+        }
     }
 
     /// <summary>Checks sign-in for Claude and Codex every five minutes, or every minute while one needs it.</summary>

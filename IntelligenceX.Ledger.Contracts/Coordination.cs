@@ -139,7 +139,7 @@ public sealed record CoordinationSessionBinding(string RequestId, long Generatio
 public sealed record CoordinationResultOutbox(string RequestId, long Generation, string ResultRef,
     WorkCheckpoint Candidate, CoordinationReturnBinding ReturnTo, string State = "intent",
     string? AttemptId = null, string? DeliveryHost = null, string? EvidenceRef = null, string? HeldOn = null,
-    DateTimeOffset? ConsumedAtUtc = null);
+    DateTimeOffset? ConsumedAtUtc = null, DateTimeOffset? SendingAtUtc = null);
 
 /// <summary>Receipt for one previously persisted delivery attempt. Not-submitted requires qualified negative
 /// reconciliation evidence; a timeout or missing response must instead be recorded as uncertain.</summary>

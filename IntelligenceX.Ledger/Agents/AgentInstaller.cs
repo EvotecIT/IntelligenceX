@@ -174,6 +174,9 @@ internal static class AgentInstaller {
         return "dotnet";
     }
 
+    /// <summary>How long Claude lets the inbox hook run; the hook's own budgets stay inside it (LedgerInbox).</summary>
+    internal const int HookTimeoutSeconds = 15;
+
     /// <summary>Whether the CLI already reports this exact MCP server command (read with its own `mcp get`).</summary>
     private static bool Registered(string cli, string[] command) {
         try {
@@ -212,7 +215,7 @@ internal static class AgentInstaller {
                     entries.Remove(entry);
                 if (entries.Count == 0) groups.Remove(group);
             }
-            groups.Add(new JsonObject { ["hooks"] = new JsonArray(new JsonObject { ["type"] = "command", ["command"] = command, ["timeout"] = 15 }) });
+            groups.Add(new JsonObject { ["hooks"] = new JsonArray(new JsonObject { ["type"] = "command", ["command"] = command, ["timeout"] = HookTimeoutSeconds }) });
         }
         LocalFiles.WriteAtomic(settingsPath, settings.ToJsonString(Indented) + "\n");
     }

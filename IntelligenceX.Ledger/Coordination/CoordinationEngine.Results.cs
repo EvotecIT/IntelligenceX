@@ -41,7 +41,8 @@ public sealed partial class CoordinationEngine {
         if (attempts is null || attempts.Generation != generation)
             state.ResultDeliveryAttempts[id] = attempts = new(generation, []);
         attempts.AttemptIds.Add(attemptId);
-        result = result with { State = "sending", AttemptId = attemptId, DeliveryHost = caller.Id, EvidenceRef = null, HeldOn = null };
+        result = result with { State = "sending", AttemptId = attemptId, DeliveryHost = caller.Id, EvidenceRef = null, HeldOn = null,
+            SendingAtUtc = now };
         state.ResultOutbox[id] = result;
         Note(id, "result-sending", caller.Id, generation, attemptId);
         return result;

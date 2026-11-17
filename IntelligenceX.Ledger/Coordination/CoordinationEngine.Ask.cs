@@ -137,7 +137,7 @@ public sealed partial class CoordinationEngine {
             if (current is { Stage: "sending" } && current.AttemptId == command.AttemptId && current.Host == caller.Id) return question;
             Require(current is null || current.Stage == "held", "delivery-needs-reconciliation");
             Require(current?.AttemptId != command.AttemptId, "delivery-needs-reconciliation");
-            next = new(command.AttemptId, "sending", caller.Id);
+            next = new(command.AttemptId, "sending", caller.Id, AtUtc: now);
         } else if (command.Stage == "held") {
             if (current is { Stage: "held" } && current.EvidenceRef == command.EvidenceRef) return question;
             Require(current is null || current.Stage == "held", "delivery-needs-reconciliation");
@@ -182,9 +182,26 @@ public sealed partial class CoordinationEngine {
         return new(items.Take(16).ToArray(), items.Count > 16 ? items[15].Question.Order : null);
     }
 
-    /// <summary>Applies the ask policy's waits: expired questions release the helper and overdue asks tell the requester.</summary>
+    /// <summary>Applies the ask policy's waits: expired questions release the helper, overdue asks tell the requester, and
+    /// a delivery left sending (its host stopped before recording what happened) becomes uncertain. For a result the
+    /// requester is told where to read it, since it may never have arrived.</summary>
     private void ApplyAskWaits() {
         var ask = state.Policy.Ask;
+        var unconfirmed = TimeSpan.FromMinutes(ask.DeliveryUnconfirmedMinutes);
+        foreach (var result in state.ResultOutbox.Values.Where(r => r.State == "sending" && r.ConsumedAtUtc is null &&
+            r.SendingAtUtc is { } since && now - since > unconfirmed).ToArray()) {
+            state.ResultOutbox[result.RequestId] = result with { State = "uncertain", EvidenceRef = "delivery-unconfirmed" };
+            Note(result.RequestId, "result-uncertain", "service", result.Generation, "delivery-unconfirmed");
+            if (state.Work.TryGetValue(result.RequestId, out var asked) && IsAsk(asked))
+                AddQuestion(asked, "notice", "The result of your ask " + result.RequestId + " may not have reached this session. " +
+                    "Read it with request_result (requestId " + result.RequestId + ").");
+        }
+        foreach (var question in state.Questions.Values.Where(q => q.Delivery is { Stage: "sending", AtUtc: { } since } &&
+            now - since > unconfirmed).ToArray()) {
+            state.Questions[QuestionKey(question.RequestId, question.Number)] = question with {
+                Delivery = question.Delivery! with { Stage = "uncertain", EvidenceRef = "delivery-unconfirmed" } };
+            Note(question.RequestId, "question-uncertain", "service", question.Generation, "delivery-unconfirmed");
+        }
         foreach (var question in state.Questions.Values.Where(q => q.Kind == "question" && q.State == "asked" &&
             now - q.AskedAtUtc > TimeSpan.FromMinutes(ask.QuestionWaitMinutes)).ToArray()) {
             state.Questions[QuestionKey(question.RequestId, question.Number)] = question with { State = "expired" };

@@ -39,7 +39,8 @@ public static class LedgerInbox {
 
     private static async Task<int> RunAsync(string machineId, string coordinationConfig, string stateDirectory, TextReader input, TextWriter output) {
         try {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            // Claude stops the hook after 15 s (agent-install registers that); collecting gets 8 s and recording 4 s.
+            using var timeout = new CancellationTokenSource(CollectBudget);
             var payload = await input.ReadToEndAsync(timeout.Token).ConfigureAwait(false);
             using var hook = JsonDocument.Parse(payload.Length > 1024 * 1024 ? "{}" : payload);
             if (!hook.RootElement.TryGetProperty("session_id", out var id) || id.GetString() is not { Length: > 0 } session) return 0;
@@ -66,8 +67,11 @@ public static class LedgerInbox {
         }
     }
 
+    public static readonly TimeSpan CollectBudget = TimeSpan.FromSeconds(8);
+    public static readonly TimeSpan RecordBudget = TimeSpan.FromSeconds(4);
+
     private static async Task RecordAsync(List<Func<CancellationToken, Task>> receipts) {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(RecordBudget);
         foreach (var receipt in receipts) {
             try { await receipt(timeout.Token).ConfigureAwait(false); }
             catch (Exception error) when (error is IOException or HttpRequestException or CoordinationCommandRejectedException or

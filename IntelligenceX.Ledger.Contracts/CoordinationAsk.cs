@@ -22,6 +22,15 @@ public sealed record AskPolicy {
     public string? CodexEffort { get; set; }
     /// <summary>Model for the one-shot <c>claude -p</c> that only sends a message with SendMessage.</summary>
     public string ClaudeDeliveryModel { get; set; } = "haiku";
+    /// <summary>How long a delivery may stay in sending before the service marks it uncertain and tells the requester
+    /// where to read the result.</summary>
+    public double DeliveryUnconfirmedMinutes { get; set; } = 30;
+    /// <summary>While the Claude CLI is at its usage limit, one held delivery is tried this often to see if it has passed.</summary>
+    public double UsageLimitProbeMinutes { get; set; } = 15;
+    /// <summary>How many more times a delivery is sent to a Claude session SendMessage couldn't reach, and how long apart;
+    /// after that it waits for the session's next turn (inbox hook).</summary>
+    public int UnreachableRetries { get; set; } = 1;
+    public double UnreachableRetryMinutes { get; set; } = 30;
 }
 
 /// <summary>One step from a session with no goal: "do this, on that machine, with that provider". The service creates the
@@ -41,7 +50,8 @@ public sealed record CoordinationQuestion(string RequestId, long Generation, int
     CoordinationDelivery? Delivery = null, CoordinationDelivery? AnswerDelivery = null, long Order = 0);
 
 /// <summary>One send through a supported client. Stage is sending, submitted, uncertain or held.</summary>
-public sealed record CoordinationDelivery(string AttemptId, string Stage, string Host, string? EvidenceRef = null);
+public sealed record CoordinationDelivery(string AttemptId, string Stage, string Host, string? EvidenceRef = null,
+    DateTimeOffset? AtUtc = null);
 
 /// <summary>A helper's question for its requester, raised by the host running the helper for its exact grant.</summary>
 public sealed record CoordinationQuestionCommand(long Generation, string GrantId, string BootId, string Text);

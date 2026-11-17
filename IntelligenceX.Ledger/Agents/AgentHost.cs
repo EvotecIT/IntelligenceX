@@ -111,28 +111,49 @@ internal sealed partial class AgentService {
         _bootId = BootIdentity.Get(settings.StateDirectory, machineId);
     }
 
-    internal static void Log(string code, string? detail = null) =>
-        Console.Error.WriteLine(JsonSerializer.Serialize(new { atUtc = DateTimeOffset.UtcNow, agent = code, detail }));
+    private static (string Line, DateTimeOffset At) _lastLog;
 
+    /// <summary>One JSON line on standard error. The same line repeated within ten minutes is written once.</summary>
+    internal static void Log(string code, string? detail = null) {
+        var line = code + "|" + detail;
+        var now = DateTimeOffset.UtcNow;
+        lock (typeof(AgentService)) {
+            if (_lastLog.Line == line && now - _lastLog.At < TimeSpan.FromMinutes(10)) return;
+            _lastLog = (line, now);
+        }
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { atUtc = now, agent = code, detail }));
+    }
+
+    /// <summary>Heartbeats and sweeps until stopped. A failing pass is logged and the next one runs; nothing escapes the
+    /// loop but cancellation, and on the way out every operation this instance started is cancelled and awaited, so a
+    /// restarted service never runs beside its predecessor's helpers.</summary>
     public async Task RunAsync(CancellationToken stop) {
         Log("agent-service-started", _machineId);
-        var nextHeartbeat = DateTimeOffset.MinValue;
-        while (!stop.IsCancellationRequested) {
-            if (DateTimeOffset.UtcNow >= nextHeartbeat) {
-                await HeartbeatAsync(stop).ConfigureAwait(false);
-                nextHeartbeat = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(_grantSeconds / 3.0, 5, 10));
+        using var life = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        try {
+            var nextHeartbeat = DateTimeOffset.MinValue;
+            var nextPrune = DateTimeOffset.MinValue;
+            while (!stop.IsCancellationRequested) {
+                try {
+                    if (DateTimeOffset.UtcNow >= nextHeartbeat) {
+                        await HeartbeatAsync(life.Token).ConfigureAwait(false);
+                        nextHeartbeat = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(_grantSeconds / 3.0, 5, 10));
+                    }
+                    await CheckSignInAsync(life.Token).ConfigureAwait(false);
+                    await SweepAsync(life.Token).ConfigureAwait(false);
+                    if (DateTimeOffset.UtcNow >= nextPrune) {
+                        RunRecord.Prune(_settings.StateDirectory, TimeSpan.FromDays(14), key => _active.ContainsKey(key));
+                        nextPrune = DateTimeOffset.UtcNow.AddHours(1);
+                    }
+                } catch (Exception error) when (!stop.IsCancellationRequested) {
+                    Log("sweep-unavailable", error.GetType().Name + ": " + error.Message);
+                }
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _settings.SweepSeconds)), stop).ConfigureAwait(false);
             }
-            try {
-                await CheckSignInAsync(stop).ConfigureAwait(false);
-                await SweepAsync(stop).ConfigureAwait(false);
-            }
-            catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or
-                CoordinationCommandRejectedException or JsonException or InvalidDataException && !stop.IsCancellationRequested) {
-                Log("sweep-unavailable", error.GetType().Name + ": " + error.Message);
-            }
-            await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _settings.SweepSeconds)), stop).ConfigureAwait(false);
+        } finally {
+            await life.CancelAsync().ConfigureAwait(false);
+            await Task.WhenAll(_active.Values.Select(task => task.ContinueWith(_ => { }, TaskScheduler.Default))).ConfigureAwait(false);
         }
-        await Task.WhenAll(_active.Values.Select(task => task.ContinueWith(_ => { }, TaskScheduler.Default))).ConfigureAwait(false);
     }
 
     private async Task HeartbeatAsync(CancellationToken stop) {
@@ -162,12 +183,22 @@ internal sealed partial class AgentService {
             else if (creation || record is not null && record.Phase != "done")
                 Start("run:" + work.Request.Id + ":" + work.Generation, () => RunHelperAsync(work, stop));
         }
+        await RetryReceiptsAsync(stop).ConfigureAwait(false);
         var claudeReady = Ready("claude");
+        var probe = !claudeReady && ProbeUsageLimit();
         var held = 0;
+        var waiting = new List<string>();
         foreach (var result in await PageAsync(after => _ledger.ResultsAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
             if (result.ReturnTo.MachineId != _machineId || result.ConsumedAtUtc is not null || result.State is not ("intent" or "held") ||
                 result.ReturnTo.Provider is not ("codex" or "claude")) continue;
+            waiting.Add(result.RequestId);
             // Until the Claude CLI can send, a Claude delivery is held in the Ledger, never dropped; sign-in releases it.
+            // At a usage limit one delivery goes through now and then to see whether the limit has passed.
+            if (result.ReturnTo.Provider == "claude" && !claudeReady && probe && !Unreachable(result.RequestId) && !Deferred("deliver:" + result.RequestId)) {
+                probe = false;
+                Start("result:" + result.RequestId + ":" + result.Generation, () => DeliverResultAsync(result, stop));
+                continue;
+            }
             if (result.ReturnTo.Provider == "claude" && !claudeReady) {
                 held++;
                 if (result.State != "held" || result.HeldOn != SignInHold)
@@ -189,6 +220,7 @@ internal sealed partial class AgentService {
             // Answer-side items are delivered by the helper's own run, which waits for them.
             if (item.Target != "question" || item.ReturnTo.Provider is not ("codex" or "claude")) continue;
             var question = item.Question;
+            waiting.Add(question.RequestId);
             if (item.ReturnTo.Provider == "claude" && !claudeReady) {
                 held++;
                 if (question.Delivery?.EvidenceRef != SignInHold)
@@ -206,6 +238,7 @@ internal sealed partial class AgentService {
             Start("question:" + question.RequestId + "#" + question.Number, () => DeliverQuestionAsync(item, stop));
         }
         CountHeld(held);
+        ForgetUnreachable(waiting);
         foreach (var job in await PageAsync(after => _ledger.RetirementsAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
             if (job.Binding.MachineId != _machineId || job.Binding.Provider != "codex" || job.CompletedAtUtc is not null) continue;
             Start("retire:" + job.Binding.RequestId, () => RetireAsync(job, stop));
@@ -255,10 +288,10 @@ internal sealed partial class AgentService {
     private bool Deferred(string key) => _deferred.TryGetValue(key, out var until) && until > DateTimeOffset.UtcNow;
 
     private async Task RecordUsageAsync(string requestId, string kind, string provider, string model, TurnTokens tokens,
-        double? cost, string? sessionId, CancellationToken stop) {
+        double? cost, string? sessionId, CancellationToken stop, DateTimeOffset? at = null) {
         try {
             await _ledger.RecordUsageAsync(requestId, new CoordinationUsage(kind, provider, Safe(model), tokens.Input, tokens.CachedInput,
-                tokens.Output, tokens.Total, _machineId, DateTimeOffset.UtcNow, cost, sessionId), stop).ConfigureAwait(false);
+                tokens.Output, tokens.Total, _machineId, at ?? DateTimeOffset.UtcNow, cost, sessionId), stop).ConfigureAwait(false);
         } catch (Exception error) when (error is HttpRequestException or IOException or CoordinationCommandRejectedException or TaskCanceledException) {
             Log("usage-unrecorded", requestId + " " + kind + " " + error.Message);
         }

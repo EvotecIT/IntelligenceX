@@ -152,11 +152,13 @@ internal sealed partial class AgentService {
             }
             async Task Started(string turnId) {
                 record = (record with { Phase = "turn", TurnId = turnId, KnownTurns = null }).Save(_settings.StateDirectory);
+                // These run while the turn is live; on Windows a failure here would close the private app server and the
+                // turn with it, so a passing Ledger outage is waited out instead.
                 if (!record.Started) {
-                    await _ledger.ReceiptAsync(id, "started", receipt, stop).ConfigureAwait(false);
+                    await PersistAsync(() => _ledger.ReceiptAsync(id, "started", receipt, stop), stop).ConfigureAwait(false);
                     record = (record with { Started = true }).Save(_settings.StateDirectory);
                 }
-                await AnswerSubmittedAsync(turnId).ConfigureAwait(false);
+                await PersistAsync(() => AnswerSubmittedAsync(turnId), stop).ConfigureAwait(false);
             }
             // The answer's delivery is recorded as submitted once its turn exists, including after a restart in between.
             async Task AnswerSubmittedAsync(string turnId) {
@@ -195,7 +197,9 @@ internal sealed partial class AgentService {
                 outcome = await _codex.RunTurnAsync(threadId, record.Workspace, prompt, HelperOutputSchema, _policy.CodexModel,
                     _policy.CodexEffort, limit, record.KnownTurns, Submitting, Started, watch, stop).ConfigureAwait(false);
             }
-            await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop).ConfigureAwait(false);
+            if (record.UsageTurn != outcome.TurnId)
+                record = (record with { UsageTurn = outcome.TurnId, UsageAtUtc = DateTimeOffset.UtcNow }).Save(_settings.StateDirectory);
+            await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop, record.UsageAtUtc).ConfigureAwait(false);
             File.Delete(tokensFile);
             var (kind, text) = ParseAnswer(outcome.FinalText);
             if (outcome.Status == "completed" && kind == "question") {
@@ -220,6 +224,21 @@ internal sealed partial class AgentService {
                 (outcome.Error is null ? "" : ": " + outcome.Error) + "). Codex thread " + threadId + " has the details." +
                 (string.IsNullOrWhiteSpace(outcome.FinalText) ? "" : "\n\nIts last message:\n" + outcome.FinalText);
             return await PublishAsync(work, record, Bound(failure, threadId), succeeded: false, stop).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Retries a Ledger write through transient failures (network, timeout, a restarting service) for up to five
+    /// minutes. A rejection is not transient and is thrown at once.</summary>
+    private static async Task PersistAsync(Func<Task> write, CancellationToken stop) {
+        var deadline = DateTimeOffset.UtcNow.AddMinutes(5);
+        while (true) {
+            try { await write().ConfigureAwait(false); return; }
+            catch (Exception error) when (error is HttpRequestException or IOException ||
+                error is TaskCanceledException && !stop.IsCancellationRequested) {
+                if (DateTimeOffset.UtcNow > deadline) throw;
+                Log("ledger-write-retry", error.Message);
+                await Task.Delay(TimeSpan.FromSeconds(10), stop).ConfigureAwait(false);
+            }
         }
     }
 
