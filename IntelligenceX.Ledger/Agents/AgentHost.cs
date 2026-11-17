@@ -59,8 +59,6 @@ internal sealed partial class AgentService {
     private readonly string _bootId;
     private AskPolicy _policy = new();
     private int _grantSeconds = 120;
-    private bool _codexAvailable;
-    private DateTimeOffset _codexCheckedAt = DateTimeOffset.MinValue;
 
     private readonly Action<SignInFact> _publishSignIn;
 
@@ -102,13 +100,14 @@ internal sealed partial class AgentService {
     }
 
     private async Task HeartbeatAsync(CancellationToken stop) {
-        if (DateTimeOffset.UtcNow - _codexCheckedAt > TimeSpan.FromMinutes(1)) {
-            _codexAvailable = await _codex.AvailableAsync(stop).ConfigureAwait(false);
-            _codexCheckedAt = DateTimeOffset.UtcNow;
-        }
+        // Codex is offered while `codex login status` says it is signed in. Starting an app server just to prove it
+        // answers cost a process per machine every minute; a helper that can't start one fails and is retried instead.
+        await CheckSignInAsync(stop).ConfigureAwait(false);
+        bool codexReady;
+        lock (_signInGate) codexReady = _signIn.TryGetValue("codex", out var codex) && codex.Ready;
         try {
             var ack = await _ledger.HostAsync(new CoordinationHost(_machineId, _bootId, DateTimeOffset.UtcNow, _settings.Capabilities,
-                CreatableProviders: _codexAvailable ? ["codex"] : []), stop).ConfigureAwait(false);
+                CreatableProviders: codexReady ? ["codex"] : []), stop).ConfigureAwait(false);
             if (ack.GrantSeconds is > 0) _grantSeconds = ack.GrantSeconds.Value;
             if (ack.Ask is not null) _policy = ack.Ask;
         } catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or

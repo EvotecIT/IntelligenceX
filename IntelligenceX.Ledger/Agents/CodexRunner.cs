@@ -25,15 +25,6 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
 
     public Task<CodexAppServer> OpenAsync(CancellationToken token) => CodexAppServer.OpenAsync(executable, controlSocket, token);
 
-    /// <summary>Whether the app server answers at all on this machine; used to attest the creatable provider.</summary>
-    public async Task<bool> AvailableAsync(CancellationToken token) {
-        try {
-            await using var server = await OpenAsync(token).ConfigureAwait(false);
-            return true;
-        } catch (Exception error) when (error is IOException or TimeoutException or System.ComponentModel.Win32Exception or
-            InvalidOperationException or System.Net.WebSockets.WebSocketException) { return false; }
-    }
-
     public async Task<string> StartThreadAsync(string cwd, string? model, string title, CancellationToken token) {
         await using var server = await OpenAsync(token).ConfigureAwait(false);
         var parameters = new JsonObject { ["cwd"] = cwd, ["ephemeral"] = false, ["approvalPolicy"] = "never" };

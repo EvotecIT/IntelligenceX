@@ -55,6 +55,7 @@ public sealed partial class CoordinationEngine {
     }
 
     public void Schedule() {
+        ArchiveFinished();
         ApplyAskWaits();
         foreach (var work in state.Work.Values.Where(w => Occupied.Contains(w.State) && w.State != "reconcile").ToArray()) {
             var goal = state.Goals[work.Request.GoalId];

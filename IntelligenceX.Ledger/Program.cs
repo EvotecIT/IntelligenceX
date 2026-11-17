@@ -38,12 +38,8 @@ public static class Program {
             if (reporter.Agent is null) { Console.Error.WriteLine("The reporter configuration has no agent section."); return 2; }
             return await Agents.AgentHost.CheckAsync(reporter.Agent);
         }
-        if (args.Length == 3 && args[0] == "inbox" && args[1] == "--config") {
-            ReporterSettings? reporter = null;
-            try { reporter = JsonSerializer.Deserialize<ReporterSettings>(File.ReadAllText(args[2]), LedgerJson.Options); }
-            catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) { }
-            return reporter?.Agent is null ? 0 : await Agents.AgentInbox.RunAsync(reporter.Agent, reporter.MachineId, Console.In, Console.Out);
-        }
+        if (args.Length == 3 && args[0] == "inbox" && args[1] == "--config")
+            return await LedgerInbox.RunAsync(args[2], Console.In, Console.Out);
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
             return await LocalReporter.RunNotifyChainAsync(args[2], args[3]);
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {

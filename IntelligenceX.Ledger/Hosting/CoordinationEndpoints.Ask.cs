@@ -24,12 +24,15 @@ internal static partial class CoordinationEndpoints {
         app.MapGet(Prefix + "/requests/{id}/usage", async (string id, HttpContext http, CancellationToken ct) =>
             await store.ExecuteAsync((_, state) => state.Work.TryGetValue(id, out var work) && UsageVisible(work, Caller(http))
                 ? Results.Ok(new CoordinationUsageView(id, state.Usage.TryGetValue(id, out var items) ? items.ToArray() : []))
-                : Results.NotFound(), DateTimeOffset.UtcNow, ct));
-        app.MapGet(Prefix + "/usage", async (string date, HttpContext http, CancellationToken ct) =>
-            DateOnly.TryParseExact(date, "yyyy-MM-dd", out var day)
-                ? Results.Ok(await store.ExecuteAsync((engine, _) => engine.UsageReport(day, work => UsageVisible(work, Caller(http))),
-                    DateTimeOffset.UtcNow, ct))
-                : Results.BadRequest(new { error = "invalid-date" }));
+                : null, DateTimeOffset.UtcNow, ct) ?? (await store.ArchivedAsync(id, ct) is { } entry && UsageVisible(entry.Work, Caller(http))
+                    ? Results.Ok(new CoordinationUsageView(id, entry.Usage)) : Results.NotFound()));
+        app.MapGet(Prefix + "/usage", async (string date, HttpContext http, CancellationToken ct) => {
+            if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", out var day)) return Results.BadRequest(new { error = "invalid-date" });
+            // Usage happens before a request finishes, so archived requests that finished on or after the day cover it.
+            var archived = await store.ArchivedSinceAsync(new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), ct);
+            return Results.Ok(await store.ExecuteAsync((engine, _) => engine.UsageReport(day, work => UsageVisible(work, Caller(http)), archived),
+                DateTimeOffset.UtcNow, ct));
+        });
     }
 
     private static bool UsageVisible(CoordinationWork work, CoordinationPrincipal caller) =>

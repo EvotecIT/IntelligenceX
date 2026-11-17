@@ -167,8 +167,22 @@ one needs attention), and learns of a Claude usage limit or lapsed login from th
 - When the next check or send succeeds, the item is cleared and held deliveries go out.
 - A session the sender can't reach (ended or closed) gets its message held as `claude-session-unreachable` and offered
   again every half hour.
-- `IntelligenceX.Ledger inbox --config <reporter.json>`, run as a Claude Code SessionStart or UserPromptSubmit hook,
-  hands the session whatever is waiting for it as hook context, begun before it prints and recorded as submitted after.
+- `IntelligenceX.Ledger.Hook inbox --config <reporter.json>`, run as a Claude Code SessionStart and UserPromptSubmit
+  hook, hands the session whatever is waiting for it as hook context, begun before it prints and recorded as submitted
+  after. It is a separate Native AOT executable that references only the contracts, so a run with nothing waiting takes
+  about 0.1 s instead of the 1.5–4 s the full Ledger program needs to start. `IntelligenceX.Ledger inbox` runs the same
+  code.
+
+### Keeping the live state small
+
+The coordination state is one document rewritten by every command. Requests that finished (accepted, result consumed,
+helper retired) more than `retainFinishedDays` (policy, default 14) ago move to the `coordination_archive` table, with
+their binding, result, retirement, questions, usage and an ask's own goal. A request still named by live work as a
+dependency, predecessor or parent stays. Request views and usage totals read the archive, so nothing disappears from
+them. Workers last observed before the same cutoff that nothing references are dropped.
+
+Codex availability for the host heartbeat comes from `codex login status`, checked with sign-in, rather than from
+starting an app server every minute.
 
 ### Known limits
 

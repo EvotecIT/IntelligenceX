@@ -10,6 +10,9 @@ public sealed record CoordinationPolicy(long Revision, MachineCapacity[] Machine
     public BenchmarkPolicy Bench { get; set; } = new();
     public MachineLoadPolicy Load { get; set; } = new();
     public AskPolicy Ask { get; set; } = new();
+    /// <summary>Days a finished request (accepted, result consumed, helper retired) stays in the live state before it moves
+    /// to the archive, where its history and usage stay readable.</summary>
+    public double RetainFinishedDays { get; set; } = 14;
     public Dictionary<string, string[]> Routing { get; set; } = new(StringComparer.Ordinal) {
         ["engine"] = ["claude", "codex"], ["visual"] = ["claude"],
         ["ciLoop"] = ["codex"], ["mergeLoop"] = ["codex"], ["review"] = ["claude", "codex"]

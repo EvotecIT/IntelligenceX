@@ -209,9 +209,13 @@ public sealed partial class CoordinationEngine {
     }
 
     /// <summary>Totals for one UTC day by request and by kind/provider/model, limited to what the caller may see.</summary>
-    public CoordinationUsageReport UsageReport(DateOnly day, Func<CoordinationWork, bool> visible) {
+    public CoordinationUsageReport UsageReport(DateOnly day, Func<CoordinationWork, bool> visible,
+        IEnumerable<CoordinationArchiveEntry>? archived = null) {
         var rows = state.Usage.Where(pair => state.Work.TryGetValue(pair.Key, out var work) && visible(work))
-            .SelectMany(pair => pair.Value.Where(u => DateOnly.FromDateTime(u.AtUtc.UtcDateTime) == day).Select(u => (pair.Key, u)))
+            .Select(pair => (Key: pair.Key, Items: (IEnumerable<CoordinationUsage>)pair.Value))
+            .Concat((archived ?? []).Where(entry => !state.Work.ContainsKey(entry.RequestId) && visible(entry.Work))
+                .Select(entry => (Key: entry.RequestId, Items: (IEnumerable<CoordinationUsage>)entry.Usage)))
+            .SelectMany(pair => pair.Items.Where(u => DateOnly.FromDateTime(u.AtUtc.UtcDateTime) == day).Select(u => (pair.Key, u)))
             .ToArray();
         static CoordinationUsageTotal Total(string key, IEnumerable<CoordinationUsage> items) {
             var list = items.ToArray();

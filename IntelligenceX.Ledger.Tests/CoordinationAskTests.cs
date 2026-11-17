@@ -180,6 +180,83 @@ public sealed class CoordinationAskTests {
         Assert.Equal("question", Assert.Single(check.QuestionsToDeliver(PcHost, 0).Items).Target);
     }
 
+    /// <summary>Runs an ask to a delivered result and a retired helper, as the two hosts do.</summary>
+    internal static void Complete(CoordinationEngine engine, CoordinationState state, string id) {
+        var work = engine.Ask(Ask(id), Sessions);
+        var receipt = StartHelper(engine, work, "thread-" + id);
+        engine.Receipt(id, "terminal", receipt with { ResultRef = "result-" + id, Succeeded = true, ExclusionVerified = true }, MacHost);
+        engine.ObserveWorker(new("codex-requester-thread", "pc", "codex", true, null, Now, "requester-thread", BootId: "boot"), PcHost);
+        engine.BeginResultDelivery(id, work.Generation, "deliver-" + id, PcHost);
+        engine.RecordResultDelivery(id, work.Generation, new("deliver-" + id, "submitted", "codex-turn"), PcHost);
+        engine.RecordUsage(id, new("worker", "codex", "gpt-6", 10, 0, 1, 11, "mac", Now), MacHost);
+        var binding = state.Bindings[id];
+        foreach (var stage in new[] { "processes-released", "descendants-resolved", "archived", "source-preserved", "workspace-released", "verified" })
+            engine.Retire(new(binding, stage, stage + "-" + id, Dirty: stage is not ("source-preserved" or "workspace-released" or "verified"),
+                Unpublished: stage is not ("source-preserved" or "workspace-released" or "verified")), MacHost);
+    }
+
+    [Fact]
+    public void FinishedRequestsLeaveTheLiveStateAfterTheRetentionPeriod() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        Complete(engine, state, "done-1");
+        Assert.NotNull(state.Retirements["done-1"].CompletedAtUtc);
+        var early = new CoordinationEngine(state, Now.AddDays(state.Policy.RetainFinishedDays - 1));
+        early.Schedule();
+        Assert.Empty(early.Archived);
+        var later = Now.AddDays(state.Policy.RetainFinishedDays + 1);
+        var archiving = new CoordinationEngine(state, later);
+        archiving.Schedule();
+        var entry = Assert.Single(archiving.Archived);
+        Assert.Equal(("done-1", "succeeded", 1), (entry.RequestId, entry.Work.State, entry.Usage.Length));
+        Assert.NotNull(entry.Retirement);
+        Assert.NotNull(entry.Goal);
+        Assert.False(state.Work.ContainsKey("done-1"));
+        Assert.False(state.Goals.ContainsKey("ask-done-1") || state.Bindings.ContainsKey("done-1") || state.ResultOutbox.ContainsKey("done-1") ||
+            state.Retirements.ContainsKey("done-1") || state.Usage.ContainsKey("done-1"));
+        // Workers last seen before the cutoff with nothing pointing at them go too.
+        Assert.DoesNotContain("codex-thread-done-1", state.Workers.Keys);
+    }
+
+    [Fact]
+    public void ARequestStillNamedByLiveWorkStaysInTheLiveState() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        Complete(engine, state, "base");
+        state.Work["follow-up"] = state.Work["base"] with { Request = state.Work["base"].Request with { Id = "follow-up", Dependencies = ["base"] },
+            State = "queued", Order = 999 };
+        var archiving = new CoordinationEngine(state, Now.AddDays(state.Policy.RetainFinishedDays + 1));
+        archiving.Schedule();
+        Assert.DoesNotContain(archiving.Archived, entry => entry.RequestId == "base");
+        Assert.True(state.Work.ContainsKey("base"));
+    }
+
+    [Fact]
+    public async Task ArchivedRequestsStayReadableWithTheirUsage() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
+        try {
+            using var store = new CoordinationStore(Path.Combine(directory, "coordination.sqlite"), CreateState().Policy);
+            await store.InitializeAsync();
+            await store.ExecuteAsync((engine, state) => {
+                Observe(engine, Now);
+                Complete(engine, state, "kept");
+                return true;
+            }, Now);
+            var later = Now.AddDays(15);
+            var bytesBefore = await store.ReadAsync(state => System.Text.Json.JsonSerializer.Serialize(state).Length);
+            var archivedCount = await store.ExecuteAsync((engine, _) => { engine.Schedule(); return engine.Archived.Count; }, later);
+            Assert.Equal(1, archivedCount);
+            Assert.True(await store.ReadAsync(state => System.Text.Json.JsonSerializer.Serialize(state).Length) < bytesBefore);
+            var entry = await store.ArchivedAsync("kept");
+            Assert.Equal(("kept", 1), (entry!.RequestId, entry.Usage.Length));
+            var since = await store.ArchivedSinceAsync(Now.AddDays(-1));
+            var report = await store.ExecuteAsync((engine, _) => engine.UsageReport(DateOnly.FromDateTime(Now.UtcDateTime), _ => true, since), later);
+            Assert.Equal(11, Assert.Single(report.ByRequest).TotalTokens);
+        } finally {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public void UsageIsRecordedOnceAndTotalledByDay() {
         var state = CreateState();

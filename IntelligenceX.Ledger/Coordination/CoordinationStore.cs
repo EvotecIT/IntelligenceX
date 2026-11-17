@@ -26,6 +26,8 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
             CREATE TABLE IF NOT EXISTS coordination_changes(sequence INTEGER PRIMARY KEY, request TEXT NOT NULL,
               stage TEXT NOT NULL, principal TEXT NOT NULL, recorded TEXT NOT NULL, json TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS coordination_changes_request ON coordination_changes(request,sequence);
+            CREATE TABLE IF NOT EXISTS coordination_archive(request TEXT PRIMARY KEY, finished TEXT NOT NULL, json TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS coordination_archive_finished ON coordination_archive(finished);
             """, cancellationToken: token);
         await db.ExecuteNonQueryAsync("INSERT OR IGNORE INTO coordination_state(id,json) VALUES(1,@json)",
             new Dictionary<string, object?> { ["json"] = JsonSerializer.Serialize(new CoordinationState {
@@ -61,6 +63,10 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
                 var updated = JsonSerializer.Serialize(state, Json);
                 if (updated != value) await tx.ExecuteNonQueryAsync("UPDATE coordination_state SET json=@json WHERE id=1",
                     new Dictionary<string, object?> { ["json"] = updated }, ct);
+                foreach (var entry in engine.Archived) await tx.ExecuteNonQueryAsync(
+                    "INSERT OR REPLACE INTO coordination_archive(request,finished,json) VALUES(@request,@finished,@json)",
+                    new Dictionary<string, object?> { ["request"] = entry.RequestId, ["finished"] = entry.FinishedAtUtc.UtcDateTime.ToString("O"),
+                        ["json"] = JsonSerializer.Serialize(entry, Json) }, ct);
                 foreach (var change in engine.Changes) await tx.ExecuteNonQueryAsync("""
                     INSERT INTO coordination_changes(sequence,request,stage,principal,recorded,json)
                     VALUES(@sequence,@request,@stage,@principal,@recorded,@json)
@@ -80,6 +86,23 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         await using var db = await _database.OpenSessionAsync(path, token);
         var value = (string)(await db.ExecuteScalarAsync("SELECT json FROM coordination_state WHERE id=1", cancellationToken: token))!;
         return read(JsonSerializer.Deserialize<CoordinationState>(value, Json)!);
+    }
+
+    /// <summary>One archived request, or null.</summary>
+    public async Task<CoordinationArchiveEntry?> ArchivedAsync(string requestId, CancellationToken token = default) {
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var value = await db.ExecuteScalarAsync("SELECT json FROM coordination_archive WHERE request=@request",
+            new Dictionary<string, object?> { ["request"] = requestId }, cancellationToken: token);
+        return value is string json ? JsonSerializer.Deserialize<CoordinationArchiveEntry>(json, Json) : null;
+    }
+
+    /// <summary>Archived requests that finished at or after a time, for usage totals of recent days.</summary>
+    public async Task<CoordinationArchiveEntry[]> ArchivedSinceAsync(DateTimeOffset since, CancellationToken token = default) {
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var rows = await db.QueryAsListAsync("SELECT json FROM coordination_archive WHERE finished>=@since ORDER BY finished LIMIT 10000",
+            r => JsonSerializer.Deserialize<CoordinationArchiveEntry>(r.GetString(0), Json)!,
+            new Dictionary<string, object?> { ["since"] = since.UtcDateTime.ToString("O") }, cancellationToken: token);
+        return rows.ToArray();
     }
 
     public async Task<CoordinationChange[]> ChangesAsync(long after, int limit, CancellationToken token = default) {

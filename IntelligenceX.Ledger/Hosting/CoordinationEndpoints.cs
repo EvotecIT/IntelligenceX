@@ -80,11 +80,16 @@ internal static partial class CoordinationEndpoints {
                 DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/requests/{id}", async (string id, HttpContext http, CancellationToken ct) =>
             await store.ExecuteAsync((e, s) => {
+                if (!s.Work.ContainsKey(id)) return null;
                 if (!s.Work.TryGetValue(id, out var work) || !Visible(work, Caller(http))) return Results.NotFound();
                 if (s.Retirements.TryGetValue(id, out var retirement)) e.RequireTemporaryWorker(retirement.Binding);
                 return Results.Ok(new CoordinationRequestView(work, s.Bindings.GetValueOrDefault(id),
                     s.ResultOutbox.GetValueOrDefault(id), retirement) { Questions = e.QuestionsFor(id) });
-            }, DateTimeOffset.UtcNow, ct));
+            }, DateTimeOffset.UtcNow, ct) ??
+            // A finished request that moved to the archive still answers, read-only.
+            (await store.ArchivedAsync(id, ct) is { } entry && Visible(entry.Work, Caller(http))
+                ? Results.Ok(new CoordinationRequestView(entry.Work, entry.Binding, entry.Result, entry.Retirement) { Questions = entry.Questions })
+                : Results.NotFound()));
         app.MapPost(Prefix + "/requests/{id}/receipts/{stage}", async (string id, string stage, ExecutionReceipt receipt, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => {
                 var work = e.Receipt(id, stage, receipt, Caller(http));

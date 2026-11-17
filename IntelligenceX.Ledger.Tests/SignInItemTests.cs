@@ -59,7 +59,7 @@ public sealed class SignInItemTests : IDisposable {
 
     [Fact]
     public void TheInboxHookAddsHeldMessagesAsSessionContext() {
-        using var json = JsonDocument.Parse(AgentInbox.Format("SessionStart", "Result of your ask a-1:\n\nDone."));
+        using var json = JsonDocument.Parse(LedgerInbox.Format("SessionStart", "Result of your ask a-1:\n\nDone."));
         var output = json.RootElement.GetProperty("hookSpecificOutput");
         Assert.Equal("SessionStart", output.GetProperty("hookEventName").GetString());
         Assert.Contains("Done.", output.GetProperty("additionalContext").GetString());
