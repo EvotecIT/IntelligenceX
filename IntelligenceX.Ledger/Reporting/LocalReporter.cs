@@ -105,6 +105,7 @@ public static class LocalReporter {
         ClaimSnapshot? claimSnapshot = null;
         AgentSourceDiagnostic[] metadataDiagnostics = [];
         var archives = new SessionArchiveCache();
+        var claudeAccounts = new ClaudeDesktopAccounts();
         await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
             readMetadataAsync: async ct => {
                 var available = await IntelligenceX.Codex.CodexAgentSessionMetadataReader.ReadAvailableAsync(
@@ -131,6 +132,9 @@ public static class LocalReporter {
                 var fact = SessionEvidence(settings, session, archives.For(session)) with {
                     Repository = workspaces.For(session, settings.GitHub && snapshot.GitHubCheckedAtUtc.HasValue)
                 };
+                // Claude sessions follow the account that ran them, so a switch of account can be seen and taken over.
+                if (fact.AccountId is null && session.Provider == "claude" && claudeAccounts.For(session.Id) is { } account)
+                    fact = fact with { AccountId = "claude:" + account };
                 changes.TryAppend(Event(id, session.Provider, fact));
                 if (fact.SourceMessageId is not null || session.PeerMessages.Count > 0)
                     foreach (var messageEvent in SessionMessageEvents(Event(id, session.Provider, fact), session.PeerMessages))
