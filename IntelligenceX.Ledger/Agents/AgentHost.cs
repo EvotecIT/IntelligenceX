@@ -251,7 +251,8 @@ internal sealed partial class AgentService {
             .Select(key => key[(key.IndexOf(':') + 1)..].Split(['#', ':'])[0]));
         ForgetUnreachable(waiting);
         foreach (var job in await PageAsync(after => _ledger.RetirementsAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
-            if (job.Binding.MachineId != _machineId || job.Binding.Provider != "codex" || job.CompletedAtUtc is not null) continue;
+            if (job.Binding.MachineId != _machineId || job.Binding.Provider != "codex" || job.CompletedAtUtc is not null ||
+                Deferred("retire:" + job.Binding.RequestId)) continue;
             Start("retire:" + job.Binding.RequestId, () => RetireAsync(job, stop));
         }
     }

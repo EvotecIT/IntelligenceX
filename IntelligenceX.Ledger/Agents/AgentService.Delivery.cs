@@ -160,8 +160,13 @@ internal sealed partial class AgentService {
     private async Task RetireAsync(CoordinationRetirement job, CancellationToken stop) {
         var b = job.Binding;
         var key = LocalFiles.Hash(b.RequestId, b.Generation, b.GrantId)[..24];
-        var workspace = RunRecord.Load(_settings.StateDirectory, b.RequestId, b.Generation)?.Workspace ??
-            Path.Combine(_settings.WorkspaceRoot, LocalFiles.Hash(b.RequestId, b.Generation)[..24]);
+        // A helper this service didn't create has no run record here; its workspace can't be checked, so it stays held.
+        if (RunRecord.Load(_settings.StateDirectory, b.RequestId, b.Generation) is not { ThreadId: { } thread } run ||
+            thread != b.SessionId || b.WorkspaceId != "ledger-workspace-" + LocalFiles.Hash(b.RequestId, b.Generation)[..40]) {
+            Log("retirement-not-owned", b.RequestId);
+            return;
+        }
+        var workspace = run.Workspace;
         async Task Step(string stage, string evidence, bool clean = false, string? waitingOn = null) =>
             job = await _ledger.RetireAsync(new CoordinationRetirementReceipt(b, stage, evidence, !clean, !clean, waitingOn, job.Revision),
                 stop).ConfigureAwait(false);

@@ -237,7 +237,8 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 await server.DisposeAsync().ConfigureAwait(false);
                 await QueueAsync(threadId, text, token).ConfigureAwait(false);
                 return (new("queue", "queued", model), server, watch);
-            } catch (Exception error) when (error is TimeoutException or IOException and not CodexRpcException) {
+            } catch (Exception error) when (error is TimeoutException or System.Net.WebSockets.WebSocketException ||
+                error is IOException and not CodexRpcException) {
                 // The request was written; whether the thread took it is unknown.
                 throw new DeliveryUncertainException("Codex delivery outcome unknown.", error);
             }
@@ -357,8 +358,8 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
             _earlyText.Clear();
             _earlyDone.Clear();
             if (done.Status is not null) Complete(done.Status, done.Text, done.Error);
+            if (now is not null) checkpoint?.Invoke(now);
         }
-        if (now is not null) checkpoint?.Invoke(now);
     }
     public void Complete(string status, string? text, string? error) => _completed.TrySetResult((status, text ?? LastMessage, error));
     public void MarkServerRequest() => ServerRequested = true;
@@ -394,9 +395,11 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
         switch (method) {
             case "thread/tokenUsage/updated" when Matches(parameters, "turnId") &&
                 parameters.TryGetProperty("tokenUsage", out var usage) && usage.TryGetProperty("last", out var last):
-                TurnTokens now;
-                lock (_gate) now = _tokens = _tokens.Add(last);
-                checkpoint?.Invoke(now);
+                // The checkpoint is written under the same lock, so an older total can't overwrite a newer one.
+                lock (_gate) {
+                    _tokens = _tokens.Add(last);
+                    checkpoint?.Invoke(_tokens);
+                }
                 break;
             case "item/completed" when Matches(parameters, "turnId") && parameters.TryGetProperty("item", out var item) &&
                 item.TryGetProperty("type", out var type) && type.GetString() == "agentMessage" &&
