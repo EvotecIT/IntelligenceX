@@ -7,12 +7,18 @@ namespace IntelligenceX.Ledger.Hosting;
 
 /// <summary>Reevaluates aging rules and writes daily shadow reports locally without waking any client.</summary>
 internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings settings, TimeProvider? timeProvider = null) : BackgroundService {
+    /// <summary>
+    /// Every pass re-evaluates every item and rereads two days of report; readers rebuild what they need themselves,
+    /// so this only has to keep aging rules and the daily file current, which five minutes does.
+    /// </summary>
+    internal static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         var directory = Path.Combine(settings.DataDirectory, "shadow");
         Directory.CreateDirectory(directory);
         var written = new Dictionary<DateOnly, string>();
         var clock = timeProvider ?? TimeProvider.System;
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), clock);
+        using var timer = new PeriodicTimer(Interval, clock);
         do {
             var now = clock.GetUtcNow();
             await store.PruneEventsAsync(now, token: stoppingToken);
