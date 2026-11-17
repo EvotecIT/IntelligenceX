@@ -71,12 +71,14 @@ internal static class LocalFiles {
     public static void WriteAtomic(string path, string content) {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+        // Created owner-only, so no other user can read the content while it is written; then given the original's mode.
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        using (var stream = new FileStream(temporary, options)) {
             stream.Write(Encoding.UTF8.GetBytes(content));
             stream.Flush(flushToDisk: true);
         }
-        if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(temporary, File.Exists(path) ? File.GetUnixFileMode(path) : UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        if (!OperatingSystem.IsWindows() && File.Exists(path)) File.SetUnixFileMode(temporary, File.GetUnixFileMode(path));
         File.Move(temporary, path, overwrite: true);
     }
 

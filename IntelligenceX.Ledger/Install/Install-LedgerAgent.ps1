@@ -232,6 +232,10 @@ switch ($Action) {
             Move-Item -LiteralPath $staging -Destination $version
         }
         $null = Assert-Kit $version
+        if ($current -eq $commit -and (Get-AgentProcess) -and @((Invoke-AgentInstall $version).steps).Count -eq 0) {
+            [pscustomobject]@{ Installed = $commit; Previous = $recordedPrevious; Running = $true; Changed = $false }
+            return
+        }
         Switch-Version $version $previous
         [pscustomobject]@{ Installed = $commit; Previous = $previous; Running = [bool](Get-AgentProcess) }
     }

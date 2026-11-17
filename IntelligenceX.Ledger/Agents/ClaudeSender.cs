@@ -29,6 +29,7 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
             "--setting-sources", "", "--no-session-persistence", "--system-prompt", SystemPrompt })
             start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new IOException("claude did not start.");
+        using var end = token.Register(() => AgentService.Stop(process));
         await process.StandardInput.WriteAsync(new StringBuilder()
             .Append("Recipient: ").AppendLine(sessionId)
             .AppendLine("Message text (between the markers, send it unchanged):")

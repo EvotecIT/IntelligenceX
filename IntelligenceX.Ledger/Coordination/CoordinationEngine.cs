@@ -46,10 +46,11 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
         return next;
     }
 
-    public CoordinationWork Submit(CoordinationRequest request, CoordinationPrincipal caller) {
+    public CoordinationWork Submit(CoordinationRequest request, CoordinationPrincipal caller, CoordinationArchiveEntry? archived = null) {
         Require(caller.Role == "client", "submit-role-denied");
         Request(request, caller);
-        if (state.Work.TryGetValue(request.Id, out var existing)) {
+        // An archived request keeps its id: an identical retry gets the archived work back, anything else is rejected.
+        if (state.Work.TryGetValue(request.Id, out var existing) || archived?.RequestId == request.Id && (existing = archived.Work) is not null) {
             Require(existing.Requester == caller.Id && Same(existing.Request, request), "request-id-conflict");
             return existing;
         }

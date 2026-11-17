@@ -40,8 +40,13 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         await ExecuteAsync((engine, _) => { engine.ValidateRequesterPrincipals(); return true; }, DateTimeOffset.UtcNow, token);
     }
 
-    public async Task<T> ExecuteAsync<T>(Func<CoordinationEngine, CoordinationState, T> command, DateTimeOffset now,
-        CancellationToken token = default) {
+    public Task<T> ExecuteAsync<T>(Func<CoordinationEngine, CoordinationState, T> command, DateTimeOffset now,
+        CancellationToken token = default) => ExecuteAsync(null, (engine, state, _) => command(engine, state), now, token);
+
+    /// <summary>Runs a command that creates request <paramref name="requestId"/>, with that id's archive entry read in the
+    /// same transaction, so an id archived meanwhile can't be taken again.</summary>
+    public async Task<T> ExecuteAsync<T>(string? requestId, Func<CoordinationEngine, CoordinationState, CoordinationArchiveEntry?, T> command,
+        DateTimeOffset now, CancellationToken token = default) {
         if (_writerLease is null) throw new InvalidOperationException("Coordination store has not initialized.");
         await _gate.WaitAsync(token);
         try {
@@ -63,8 +68,12 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
                         state.ResultDeliveryAttempts[outbox.RequestId] = new(outbox.Generation, ids);
                     }
                 }
+                CoordinationArchiveEntry? archivedEntry = null;
+                if (requestId is not null && await tx.ExecuteScalarAsync("SELECT json FROM coordination_archive WHERE request=@request",
+                    new Dictionary<string, object?> { ["request"] = requestId }, cancellationToken: ct) is string archivedJson)
+                    archivedEntry = JsonSerializer.Deserialize<CoordinationArchiveEntry>(archivedJson, Json);
                 var engine = new CoordinationEngine(state, now, configuredPrincipals);
-                var result = command(engine, state);
+                var result = command(engine, state, archivedEntry);
                 var updated = JsonSerializer.Serialize(state, Json);
                 if (updated != value) await tx.ExecuteNonQueryAsync("UPDATE coordination_state SET json=@json WHERE id=1",
                     new Dictionary<string, object?> { ["json"] = updated }, ct);

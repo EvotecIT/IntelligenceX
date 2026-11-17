@@ -102,7 +102,7 @@ internal sealed partial class AgentService {
         if (changed is null) return;
         Publish(changed);
         Log(ready ? "sign-in-ok" : "sign-in-required", provider + " " + changed.Reason);
-        if (!ready && OperatingSystem.IsMacOS()) Start("prompt:" + provider, () => PromptSignInAsync(provider, CancellationToken.None));
+        if (!ready && OperatingSystem.IsMacOS()) Start("prompt:" + provider, () => PromptSignInAsync(provider, _life));
     }
 
     private void Publish(ProviderSignIn state) {
@@ -153,6 +153,7 @@ internal sealed partial class AgentService {
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
             using var process = Process.Start(start);
             if (process is null) return (null, "");
+            using var end = stop.Register(() => Stop(process));
             process.StandardInput.Close();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
             deadline.CancelAfter(TimeSpan.FromSeconds(30));
@@ -185,6 +186,11 @@ internal sealed partial class AgentService {
             await RunAsync("/usr/bin/open", ["-a", "Terminal", script], stop).ConfigureAwait(false);
     }
 
+    /// <summary>Ends a child process that outlived its wait (or the service), with anything it started.</summary>
+    internal static void Stop(Process process) {
+        try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+    }
+
     private static async Task<(int? Code, string Output)> RunDialogAsync(string message, CancellationToken stop) {
         using var hour = CancellationTokenSource.CreateLinkedTokenSource(stop);
         hour.CancelAfter(TimeSpan.FromMinutes(61));
@@ -195,6 +201,7 @@ internal sealed partial class AgentService {
         try {
             using var process = Process.Start(start);
             if (process is null) return (null, "");
+            using var end = hour.Token.Register(() => Stop(process));
             var output = await process.StandardOutput.ReadToEndAsync(hour.Token).ConfigureAwait(false);
             await process.WaitForExitAsync(hour.Token).ConfigureAwait(false);
             return (process.ExitCode, output);

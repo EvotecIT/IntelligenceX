@@ -5,11 +5,9 @@ namespace IntelligenceX.Ledger.Hosting;
 
 internal static partial class CoordinationEndpoints {
     private static void MapAsk(WebApplication app, CoordinationStore store) {
-        app.MapPost(Prefix + "/ask", async (CoordinationAsk ask, HttpContext http, CancellationToken ct) => {
-            // Archived requests keep their ids: a retry gets the archived work back, a different ask with the id is rejected.
-            var archived = ask?.Id is { Length: > 0 } id ? await store.ArchivedAsync(id, ct) : null;
-            return Results.Ok(await store.ExecuteAsync((engine, _) => engine.Ask(ask!, Caller(http), archived), DateTimeOffset.UtcNow, ct));
-        });
+        // Archived requests keep their ids: a retry gets the archived work back, a different ask with the id is rejected.
+        app.MapPost(Prefix + "/ask", async (CoordinationAsk ask, HttpContext http, CancellationToken ct) =>
+            Results.Ok(await store.ExecuteAsync(ask?.Id, (engine, _, archived) => engine.Ask(ask!, Caller(http), archived), DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/questions", async (long? afterOrder, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((engine, _) => engine.QuestionsToDeliver(Caller(http), Math.Max(0, afterOrder ?? 0)),
                 DateTimeOffset.UtcNow, ct)));

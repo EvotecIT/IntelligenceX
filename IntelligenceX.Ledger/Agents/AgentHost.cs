@@ -93,6 +93,7 @@ internal sealed partial class AgentService {
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _runs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _deferred = new(StringComparer.Ordinal);
     private readonly string _bootId;
+    private CancellationToken _life;
     private AskPolicy _policy = new();
     private int _grantSeconds = 120;
 
@@ -130,6 +131,7 @@ internal sealed partial class AgentService {
     public async Task RunAsync(CancellationToken stop) {
         Log("agent-service-started", _machineId);
         using var life = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        _life = life.Token;
         try {
             var nextHeartbeat = DateTimeOffset.MinValue;
             var nextPrune = DateTimeOffset.MinValue;
@@ -184,6 +186,7 @@ internal sealed partial class AgentService {
                 Start("run:" + work.Request.Id + ":" + work.Generation, () => RunHelperAsync(work, stop));
         }
         await RetryReceiptsAsync(stop).ConfigureAwait(false);
+        await RetryUsageAsync(stop).ConfigureAwait(false);
         var claudeReady = Ready("claude");
         var probe = !claudeReady && ProbeUsageLimit();
         var held = 0;
@@ -221,6 +224,12 @@ internal sealed partial class AgentService {
             if (item.Target != "question" || item.ReturnTo.Provider is not ("codex" or "claude")) continue;
             var question = item.Question;
             waiting.Add(question.RequestId);
+            if (item.ReturnTo.Provider == "claude" && !claudeReady && probe && !Unreachable(question.RequestId) &&
+                !Deferred("deliver:" + question.RequestId)) {
+                probe = false;
+                Start("question:" + question.RequestId + "#" + question.Number, () => DeliverQuestionAsync(item, stop));
+                continue;
+            }
             if (item.ReturnTo.Provider == "claude" && !claudeReady) {
                 held++;
                 if (question.Delivery?.EvidenceRef != SignInHold)
@@ -238,6 +247,9 @@ internal sealed partial class AgentService {
             Start("question:" + question.RequestId + "#" + question.Number, () => DeliverQuestionAsync(item, stop));
         }
         CountHeld(held);
+        // Deliveries in progress aren't in the feeds; their entries stay until the outcome is known.
+        waiting.AddRange(_active.Keys.Where(key => key.StartsWith("result:", StringComparison.Ordinal) || key.StartsWith("question:", StringComparison.Ordinal))
+            .Select(key => key[(key.IndexOf(':') + 1)..].Split(['#', ':'])[0]));
         ForgetUnreachable(waiting);
         foreach (var job in await PageAsync(after => _ledger.RetirementsAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
             if (job.Binding.MachineId != _machineId || job.Binding.Provider != "codex" || job.CompletedAtUtc is not null) continue;
@@ -287,13 +299,41 @@ internal sealed partial class AgentService {
     private void Defer(string key) => _deferred[key] = DateTimeOffset.UtcNow.AddMinutes(1);
     private bool Deferred(string key) => _deferred.TryGetValue(key, out var until) && until > DateTimeOffset.UtcNow;
 
+    internal sealed record PendingUsage(string RequestId, CoordinationUsage Usage);
+
+    private string UsageFolder => Path.Combine(_settings.StateDirectory, "usage");
+
+    /// <summary>Records tokens spent for a request. The entry is written locally first and removed once the Ledger has
+    /// it, so an outage delays usage instead of losing it; a resend is identical and the Ledger keeps it once.</summary>
     private async Task RecordUsageAsync(string requestId, string kind, string provider, string model, TurnTokens tokens,
         double? cost, string? sessionId, CancellationToken stop, DateTimeOffset? at = null) {
+        var usage = new CoordinationUsage(kind, provider, Safe(model), tokens.Input, tokens.CachedInput,
+            tokens.Output, tokens.Total, _machineId, at ?? DateTimeOffset.UtcNow, cost, sessionId);
+        var file = Path.Combine(UsageFolder, LocalFiles.Hash(requestId, kind, sessionId, usage.AtUtc.ToString("O"))[..32] + ".json");
+        LocalFiles.WriteAtomic(file, JsonSerializer.Serialize(new PendingUsage(requestId, usage)));
+        await SendUsageAsync(file, requestId, usage, stop).ConfigureAwait(false);
+    }
+
+    private async Task RetryUsageAsync(CancellationToken stop) {
+        if (!Directory.Exists(UsageFolder)) return;
+        foreach (var file in Directory.EnumerateFiles(UsageFolder, "*.json")) {
+            PendingUsage? pending;
+            try { pending = JsonSerializer.Deserialize<PendingUsage>(File.ReadAllText(file)); } catch (JsonException) { pending = null; }
+            if (pending is null) { File.Delete(file); continue; }
+            await SendUsageAsync(file, pending.RequestId, pending.Usage, stop).ConfigureAwait(false);
+        }
+    }
+
+    private async Task SendUsageAsync(string file, string requestId, CoordinationUsage usage, CancellationToken stop) {
         try {
-            await _ledger.RecordUsageAsync(requestId, new CoordinationUsage(kind, provider, Safe(model), tokens.Input, tokens.CachedInput,
-                tokens.Output, tokens.Total, _machineId, at ?? DateTimeOffset.UtcNow, cost, sessionId), stop).ConfigureAwait(false);
-        } catch (Exception error) when (error is HttpRequestException or IOException or CoordinationCommandRejectedException or TaskCanceledException) {
-            Log("usage-unrecorded", requestId + " " + kind + " " + error.Message);
+            await _ledger.RecordUsageAsync(requestId, usage, stop).ConfigureAwait(false);
+            File.Delete(file);
+        } catch (CoordinationCommandRejectedException error) {
+            Log("usage-rejected", requestId + " " + usage.Kind + " " + error.Message);
+            File.Delete(file);
+        } catch (Exception error) when (error is HttpRequestException or IOException || error is TaskCanceledException && !stop.IsCancellationRequested) {
+            // Kept on disk; the next sweep sends it again.
+            Log("usage-unrecorded", requestId + " " + usage.Kind + " " + error.Message);
         }
     }
 

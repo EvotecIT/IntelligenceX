@@ -51,7 +51,8 @@ internal sealed class CodexAppServer : IAsyncDisposable {
         var socketPath = controlSocket ?? DefaultControlSocket();
         if (File.Exists(socketPath)) {
             try { return await OpenAsync(codex, socketPath, live: true, token).ConfigureAwait(false); }
-            catch (Exception error) when (error is IOException or TimeoutException or WebSocketException && !token.IsCancellationRequested) { }
+            catch (Exception error) when (error is IOException or TimeoutException or WebSocketException or OperationCanceledException &&
+                !token.IsCancellationRequested) { }
         }
         return await OpenAsync(codex, socketPath, live: false, token).ConfigureAwait(false);
     }

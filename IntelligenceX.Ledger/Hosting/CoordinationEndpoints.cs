@@ -63,11 +63,11 @@ internal static partial class CoordinationEndpoints {
             await store.ExecuteAsync((_, s) => s.Goals.TryGetValue(id, out var goal) &&
                 (goal.Owner == Caller(http).Id || Caller(http).Role == "operator") ? Results.Ok(goal) : Results.NotFound(), DateTimeOffset.UtcNow, ct));
         app.MapPost(Prefix + "/requests", async (CoordinationRequest request, HttpContext http, CancellationToken ct) =>
-            Results.Ok(await store.ExecuteAsync((e, _) => e.Submit(request, Caller(http)), DateTimeOffset.UtcNow, ct)));
+            Results.Ok(await store.ExecuteAsync(request?.Id, (e, _, archived) => e.Submit(request!, Caller(http), archived), DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/requests/preview", async (CoordinationRequest request, HttpContext http, CancellationToken ct) =>
-            Results.Ok(await store.ExecuteAsync((_, s) => {
+            Results.Ok(await store.ExecuteAsync(request?.Id, (_, s, archived) => {
                 var copy = JsonSerializer.Deserialize<CoordinationState>(JsonSerializer.Serialize(s))!;
-                return new CoordinationEngine(copy, DateTimeOffset.UtcNow).Submit(request, Caller(http));
+                return new CoordinationEngine(copy, DateTimeOffset.UtcNow).Submit(request!, Caller(http), archived);
             }, DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/requests", async (long? afterOrder, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, s) => {

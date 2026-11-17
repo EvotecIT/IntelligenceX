@@ -147,10 +147,12 @@ internal static class AgentInstaller {
     /// absolute because a LaunchAgent starts with a minimal PATH.</summary>
     internal static string? Find(string name) {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var names = OperatingSystem.IsWindows() ? new[] { name + ".exe", name + ".cmd" } : [name];
+        var names = OperatingSystem.IsWindows() ? new[] { name + ".exe" } : [name];
         var folders = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
             .Concat([Path.Combine(home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin",
-                "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS"]);
+                "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "node_modules", "@openai", "codex",
+                    "node_modules", "@openai", "codex-win32-x64", "vendor", "x86_64-pc-windows-msvc", "bin")]);
         return folders.SelectMany(folder => names.Select(file => Path.Combine(folder, file))).FirstOrDefault(File.Exists);
     }
 

@@ -48,13 +48,16 @@ public static class LedgerInbox {
             if (BootId(stateDirectory) is not { } bootId) return 0;
             var ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(coordinationConfig));
             var collected = new Collected();
+            var writing = false;
             try {
                 await CollectAsync(ledger, machineId, bootId, session, eventName, collected, timeout.Token).ConfigureAwait(false);
                 if (collected.Parts.Count == 0) return 0;
+                writing = true;
                 await output.WriteLineAsync(Format(eventName, collected.Text())).ConfigureAwait(false);
                 await output.FlushAsync(timeout.Token).ConfigureAwait(false);
-            } catch {
+            } catch when (!writing) {
                 // Nothing reached the session: every delivery begun here goes back to pending for the next turn or the service.
+                // Once writing has started the session may have the text, so those deliveries stay sending.
                 await RecordAsync(collected.Undo).ConfigureAwait(false);
                 throw;
             }

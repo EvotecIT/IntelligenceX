@@ -339,6 +339,10 @@ public sealed class CoordinationAskTests {
             Assert.True(await store.ReadAsync(state => System.Text.Json.JsonSerializer.Serialize(state).Length) < bytesBefore);
             var entry = await store.ArchivedAsync("kept");
             Assert.Equal(("kept", 1), (entry!.RequestId, entry.Usage.Length));
+            // The archived id stays taken: the store reads the archive inside the command that would reuse it.
+            Assert.Equal("succeeded", (await store.ExecuteAsync("kept", (engine, _, archived) => engine.Ask(Ask("kept"), Sessions, archived), later)).State);
+            await Assert.ThrowsAsync<CoordinationConflictException>(() =>
+                store.ExecuteAsync("kept", (engine, _, archived) => engine.Ask(Ask("kept") with { Task = "Something else." }, Sessions, archived), later));
             var since = await store.ArchivedSinceAsync(Now.AddDays(-1));
             var report = await store.ExecuteAsync((engine, _) => engine.UsageReport(DateOnly.FromDateTime(Now.UtcDateTime), _ => true, since), later);
             Assert.Equal(11, Assert.Single(report.ByRequest).TotalTokens);
