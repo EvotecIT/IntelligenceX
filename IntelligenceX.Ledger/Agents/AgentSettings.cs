@@ -119,6 +119,9 @@ internal sealed record RunRecord {
     /// <summary>Result content chosen before it is published, so a retry or reconciliation publishes the same content.</summary>
     public string? PendingResult { get; init; }
     public bool PendingSucceeded { get; init; }
+    /// <summary>Set once the helper's retirement is verified; until then the record is what proves this service owns its
+    /// thread and workspace, so it is kept however long the workspace waits for review.</summary>
+    public bool Retired { get; init; }
 
     public static string FileFor(string stateDirectory, string requestId, long generation) =>
         Path.Combine(stateDirectory, "runs", LocalFiles.Hash(requestId, generation)[..32] + ".json");
@@ -136,7 +139,8 @@ internal sealed record RunRecord {
         }
     }
 
-    /// <summary>Removes finished run records, token files and set-aside records older than <paramref name="age"/>.</summary>
+    /// <summary>Removes run records older than <paramref name="age"/> once the run is done and its helper retired (or it
+    /// never had a thread), with their token files and set-aside records.</summary>
     public static void Prune(string stateDirectory, TimeSpan age, Func<string, bool> active) {
         var folder = Path.Combine(stateDirectory, "runs");
         if (!Directory.Exists(folder)) return;
@@ -145,8 +149,11 @@ internal sealed record RunRecord {
                 if (DateTime.UtcNow - File.GetLastWriteTimeUtc(file) < age) continue;
                 if (file.EndsWith(".json", StringComparison.Ordinal) && !file.EndsWith(".tokens.json", StringComparison.Ordinal)) {
                     var record = JsonSerializer.Deserialize<RunRecord>(File.ReadAllText(file));
-                    if (record is null || record.Phase != "done" || active("run:" + record.RequestId + ":" + record.Generation)) continue;
+                    if (record is null || record.Phase != "done" || record.ThreadId is not null && !record.Retired ||
+                        active("run:" + record.RequestId + ":" + record.Generation)) continue;
                 }
+                // A token file or set-aside record goes only with (or after) its run record.
+                else if (File.Exists(Path.Combine(folder, Path.GetFileName(file)[..32] + ".json"))) continue;
                 File.Delete(file);
             } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
         }

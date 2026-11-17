@@ -88,6 +88,25 @@ public sealed class AgentServiceTests {
     }
 
     [Fact]
+    public void RunRecordsStayUntilTheirHelperIsRetired() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
+        try {
+            RunRecord Done(string id, bool retired) => new RunRecord { RequestId = id, Generation = 1, GrantId = "grant", Workspace = "w",
+                ThreadId = "thread-" + id, Phase = "done", Retired = retired }.Save(directory);
+            Done("waiting-review", retired: false);
+            Done("retired", retired: true);
+            File.WriteAllText(RunRecord.TokensFile(directory, "waiting-review", 1), "{}");
+            foreach (var file in Directory.EnumerateFiles(Path.Combine(directory, "runs"))) File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddDays(-30));
+            RunRecord.Prune(directory, TimeSpan.FromDays(14), _ => false);
+            Assert.NotNull(RunRecord.Load(directory, "waiting-review", 1));
+            Assert.True(File.Exists(RunRecord.TokensFile(directory, "waiting-review", 1)));
+            Assert.Null(RunRecord.Load(directory, "retired", 1));
+        } finally {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void TheInboxHookFinishesWithinTheTimeClaudeGivesIt() =>
         Assert.True((IntelligenceX.Ledger.Contracts.LedgerInbox.CollectBudget + IntelligenceX.Ledger.Contracts.LedgerInbox.RecordBudget).TotalSeconds
             < AgentInstaller.HookTimeoutSeconds - 2);

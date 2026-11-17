@@ -170,6 +170,10 @@ internal sealed partial class AgentService {
         async Task Step(string stage, string evidence, bool clean = false, string? waitingOn = null) =>
             job = await _ledger.RetireAsync(new CoordinationRetirementReceipt(b, stage, evidence, !clean, !clean, waitingOn, job.Revision),
                 stop).ConfigureAwait(false);
+        if (job.Evidence.ContainsKey("verified")) {
+            run.With(r => r with { Retired = true }).Save(_settings.StateDirectory);
+            return;
+        }
         if (!job.Evidence.ContainsKey("processes-released")) {
             if (!await _codex.IdleAsync(b.SessionId, stop).ConfigureAwait(false)) return;
             await Step("processes-released", "codex-idle-" + key).ConfigureAwait(false);
@@ -201,6 +205,7 @@ internal sealed partial class AgentService {
             await Step("workspace-released", "workspace-removed-" + key, clean: true).ConfigureAwait(false);
         }
         await Step("verified", "retired-" + key, clean: true).ConfigureAwait(false);
+        run.With(r => r with { Retired = true }).Save(_settings.StateDirectory);
         Log("helper-retired", b.RequestId);
     }
 }
