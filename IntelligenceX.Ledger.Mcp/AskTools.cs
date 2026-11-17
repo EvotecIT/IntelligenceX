@@ -15,11 +15,13 @@ public sealed class AskTools(LedgerReadClient client) {
     [Description("Ask Codex or Claude on a named machine (or any machine with the capability) to do a task. One call creates the goal and the request. " +
         "The answer, any question from the helper and any service notice arrive in this session as a new message; do not poll. " +
         "machine: win-pc, mac, mac-studio (policy machines). provider: codex or claude; omit to use policy routing for kind. " +
-        "Source project/branch/commit default to this session's Git checkout. Reuse the same id when retrying after an error.")]
+        "Source project/branch/commit default to this session's Git checkout. Reuse the same id when retrying after an error. " +
+        "sessionId is this session's own id, where the answer is delivered; pass it when the tool reports session-unknown. " +
+        "Codex: the CODEX_THREAD_ID environment variable of your shell commands. Claude Code: CLAUDE_CODE_SESSION_ID.")]
     public Task<CoordinationWork> Ask(string task, string? machine = null, string? provider = null, string? kind = null,
         string? capability = null, string? id = null, string? project = null, string? branch = null, string? commit = null,
-        CancellationToken token = default) {
-        var (returnProvider, session) = CurrentSession();
+        string? sessionId = null, string? sessionProvider = null, CancellationToken token = default) {
+        var (returnProvider, session) = CurrentSession(sessionId, sessionProvider);
         var source = GitSource();
         return Command(client.AskAsync(new CoordinationAsk(id ?? "ask-" + Guid.NewGuid().ToString("N"), task,
             project ?? source.Project ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"project-required\"}"),
@@ -40,8 +42,14 @@ public sealed class AskTools(LedgerReadClient client) {
                 : DateOnly.ParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), token).ConfigureAwait(false);
 
     /// <summary>The session that launched this server: Codex sets CODEX_THREAD_ID and Claude Code CLAUDE_CODE_SESSION_ID.</summary>
-    internal static (string Provider, string SessionId) CurrentSession(Func<string, string?>? environment = null) {
+    internal static (string Provider, string SessionId) CurrentSession(string? sessionId = null, string? sessionProvider = null,
+        Func<string, string?>? environment = null) {
         environment ??= Environment.GetEnvironmentVariable;
+        if (sessionId is { Length: > 0 }) {
+            var provider = sessionProvider ?? (environment("CLAUDECODE") is { Length: > 0 } ? "claude" : "codex");
+            if (provider is not ("codex" or "claude")) throw new McpException("{\"outcome\":\"rejected\",\"error\":\"session-provider-unknown\"}");
+            return (provider, provider == "codex" ? sessionId.ToLowerInvariant() : sessionId);
+        }
         if (environment("CODEX_THREAD_ID") is { Length: > 0 } codex) return ("codex", codex.ToLowerInvariant());
         if (environment("CLAUDE_CODE_SESSION_ID") is { Length: > 0 } claude) return ("claude", claude);
         throw new McpException("{\"outcome\":\"rejected\",\"error\":\"session-unknown\"}");
