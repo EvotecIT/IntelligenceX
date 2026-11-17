@@ -1,5 +1,5 @@
 using System.Text.Json;
-using IntelligenceX.Ledger.Mcp;
+using IntelligenceX.Ledger.Hosting;
 using Xunit;
 
 namespace IntelligenceX.Ledger.Tests;

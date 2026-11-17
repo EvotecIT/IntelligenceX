@@ -59,6 +59,28 @@ public sealed record ProbeVolumeView(string Mount, long FreeBytes, long TotalByt
 public sealed record BudgetLimit(string Machine, string Provider, string? Account, int Sessions);
 public sealed record BudgetStatus(BudgetLimit[] Limits, int TotalGroups, string Coverage = "observed-session-limits;credits-and-reset-unknown") {
     public Dictionary<string, string?> RoutingSuggestions { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>The Ledger host's own accounts as their clients report them; other machines' accounts aren't reported yet.</summary>
+    public AccountLimit[] Accounts { get; init; } = [];
+}
+
+/// <summary>
+/// One provider account's usage: how much of its window is used, when it resets and what credit is left, as the
+/// provider's own client reports it. Null fields are ones the provider didn't report.
+/// </summary>
+public sealed record AccountLimit(string Provider, string Source, DateTimeOffset ObservedAtUtc) {
+    public string? Machine { get; init; }
+    public string? Plan { get; init; }
+    public double? UsedPercent { get; init; }
+    public int? WindowMinutes { get; init; }
+    public DateTimeOffset? ResetsAtUtc { get; init; }
+    public double? ShortUsedPercent { get; init; }
+    public DateTimeOffset? ShortResetsAtUtc { get; init; }
+    public bool? HasCredits { get; init; }
+    public string? CreditBalance { get; init; }
+    public int? FreeResets { get; init; }
+    public bool? LimitReached { get; init; }
+    public string? Note { get; init; }
 }
 
 /// <summary>Separate local write configuration for lease tools. Read credentials stay read-only.</summary>

@@ -2,35 +2,16 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
-namespace IntelligenceX.Ledger.Mcp;
+using IntelligenceX.Ledger.Contracts;
+
+namespace IntelligenceX.Ledger.Hosting;
 
 /// <summary>
-/// One provider account's usage on this machine: how much of its window is used, when it resets and what credit is
-/// left, as the provider's own client reports it. Null fields are ones the provider didn't report.
-/// </summary>
-public sealed record AccountLimit(string Provider, string Source, DateTimeOffset ObservedAtUtc) {
-    public string? Plan { get; init; }
-    public double? UsedPercent { get; init; }
-    public int? WindowMinutes { get; init; }
-    public DateTimeOffset? ResetsAtUtc { get; init; }
-    public double? ShortUsedPercent { get; init; }
-    public DateTimeOffset? ShortResetsAtUtc { get; init; }
-    public bool? HasCredits { get; init; }
-    public string? CreditBalance { get; init; }
-    public int? FreeResets { get; init; }
-    public bool? LimitReached { get; init; }
-    public string? Note { get; init; }
-}
-
-/// <summary>The service's observed usage-limit groups, plus what this machine's own clients say about their accounts.</summary>
-public sealed record BudgetView(IntelligenceX.Ledger.Contracts.BudgetStatus Observed, AccountLimit[] ThisMachine);
-
-/// <summary>
-/// Reads this machine's account limits through supported client interfaces only: the Codex app server's
+/// Reads the Ledger host's account limits through supported client interfaces only: the Codex app server's
 /// <c>account/rateLimits/read</c>, and the last Claude Code status line input saved by the status line recorder. Never
 /// reads credentials. Codex answers are cached for a minute so repeated questions don't start a server each time.
 /// </summary>
-internal static class AccountLimits {
+public static class AccountLimits {
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static (DateTimeOffset At, AccountLimit? Value)? _codex;
     internal static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(1);
@@ -39,7 +20,8 @@ internal static class AccountLimits {
     public static async Task<AccountLimit[]> ReadAsync(CancellationToken token) {
         var codex = await CodexAsync(token).ConfigureAwait(false);
         var claude = Claude(ClaudeSnapshotPath(), DateTimeOffset.UtcNow);
-        return new[] { codex, claude }.OfType<AccountLimit>().ToArray();
+        var machine = Environment.GetEnvironmentVariable("EVOTEC_MACHINE") is { Length: > 0 } named ? named : Environment.MachineName.ToLowerInvariant();
+        return new[] { codex, claude }.OfType<AccountLimit>().Select(limit => limit with { Machine = machine }).ToArray();
     }
 
     private static async Task<AccountLimit?> CodexAsync(CancellationToken token) {

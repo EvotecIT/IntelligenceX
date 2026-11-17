@@ -23,7 +23,16 @@ internal static class LeaseEndpoints {
                 ? "healthy" : expected.Any(health.ContainsKey) ? "reporter-silent" : "not-enrolled";
             return Results.Ok(await store.MachineStatusAsync(id, state, now, ct));
         });
-        app.MapGet(api + "/budget-status", async (CancellationToken ct) => Results.Ok(await store.BudgetStatusAsync(ct)));
+        app.MapGet(api + "/budget-status", async (CancellationToken ct) => {
+            // Session limits are observed from every reporter; account windows and credits come from this host's own clients.
+            var observed = store.BudgetStatusAsync(ct);
+            var accounts = AccountLimits.ReadAsync(ct);
+            var status = await observed;
+            return Results.Ok(status with {
+                Accounts = await accounts,
+                Coverage = status.Coverage.Replace("credits-and-reset-unknown", "accounts:ledger-host-only", StringComparison.Ordinal)
+            });
+        });
         async Task<string[]> RepositoryCoverage(CancellationToken ct) {
             var reporting = await store.ReportedRepositoryMachinesAsync(ct);
             var health = await store.HeartbeatsAsync(ct);
