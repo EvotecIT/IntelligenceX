@@ -341,6 +341,9 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
     private readonly Dictionary<string, TurnTokens> _early = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _earlyText = new(StringComparer.Ordinal);
 
+    /// <summary>Starts a new turn's count from zero; the checkpoint it was created with belonged to the previous turn.</summary>
+    public void Reset() { lock (_gate) _tokens = TurnTokens.None; }
+
     /// <summary>Follows a turn, taking any usage and message that arrived for it before its id was known.</summary>
     public void Follow(string turnId) {
         TurnTokens? now = null;

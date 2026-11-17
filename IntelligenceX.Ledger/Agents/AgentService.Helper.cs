@@ -148,7 +148,10 @@ internal sealed partial class AgentService {
                 tokens => LocalFiles.WriteAtomic(tokensFile, JsonSerializer.Serialize(tokens)));
             Task Submitting(int turns) {
                 // The previous turn's usage is recorded by now; its checkpoint goes before a new turn adds to it.
-                if (record.KnownTurns is null) File.Delete(tokensFile);
+                if (record.KnownTurns is null) {
+                    File.Delete(tokensFile);
+                    watch.Reset();
+                }
                 record = (record with { KnownTurns = turns }).Save(_settings.StateDirectory);
                 return Task.CompletedTask;
             }

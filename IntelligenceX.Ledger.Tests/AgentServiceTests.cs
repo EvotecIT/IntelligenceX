@@ -99,6 +99,12 @@ public sealed class AgentServiceTests {
         watch.Observe("thread/tokenUsage/updated", Json(new { threadId = "thread", turnId = "turn-0", tokenUsage = new { last = new { inputTokens = 999, totalTokens = 999 } } }));
         watch.Follow("turn-1");
         Assert.Equal(new TurnTokens(100, 0, 0, 110), watch.Tokens);
+        // A new turn starts from zero rather than adding to the turn before it.
+        var next = new TurnWatch("thread", watch.Tokens);
+        next.Reset();
+        next.Follow("turn-2");
+        next.Observe("thread/tokenUsage/updated", Json(new { threadId = "thread", turnId = "turn-2", tokenUsage = new { last = new { inputTokens = 5, totalTokens = 6 } } }));
+        Assert.Equal(new TurnTokens(5, 0, 0, 6), next.Tokens);
     }
 
     [Fact]
