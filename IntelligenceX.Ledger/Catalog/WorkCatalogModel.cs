@@ -68,6 +68,8 @@ internal sealed record CatalogIssue(string Repo, int Number, string Title, strin
 internal sealed record CatalogPull(string Repo, int Number, string Title, string? HeadBranch, bool Draft, DateTimeOffset UpdatedAtUtc) {
     /// <summary>Repository the head branch lives in; differs from <see cref="Repo"/> for a PR from a fork.</summary>
     public string? HeadRepo { get; init; }
+    /// <summary>The repository's PR list failed this pass and this row is from an earlier one.</summary>
+    public bool Retained { get; init; }
     internal string Url => "https://github.com/" + Repo + "/pull/" + Number;
 }
 
@@ -102,6 +104,8 @@ internal sealed record WorkCatalogSnapshot {
     public DateTimeOffset? BoardReadAtUtc { get; init; }
     /// <summary>Issue key → PR URLs that referenced it (timeline cross-references).</summary>
     public Dictionary<string, string[]> IssueReferences { get; init; } = new(StringComparer.Ordinal);
+    /// <summary>Issue keys whose references were kept from an earlier pass (failed or capped read).</summary>
+    public string[] UnconfirmedReferences { get; init; } = [];
     /// <summary>PR URL → state, for PRs linked from tasks.</summary>
     public Dictionary<string, CatalogPullState> PullStates { get; init; } = new(StringComparer.Ordinal);
     public string[] Coverage { get; init; } = [];

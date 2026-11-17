@@ -62,7 +62,8 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
                         openPulls = await Guard("pull-requests-incomplete:" + repo.Repo, async () =>
                             (await github.ReadAllAsync(Api + "repos/" + repo.Repo + "/pulls?state=open&per_page=100", row => MapPull(repo.Repo, row), 30, token))
                                 .Select(row => row.Deserialize<CatalogPull>(Json)!).ToList());
-                        openPulls ??= previous.PullRequests.Where(pull => pull.Repo.Equals(repo.Repo, StringComparison.OrdinalIgnoreCase)).ToList();
+                        openPulls ??= previous.PullRequests.Where(pull => pull.Repo.Equals(repo.Repo, StringComparison.OrdinalIgnoreCase))
+                            .Select(pull => pull with { Retained = true }).ToList();
                     }
                     return (openIssues, openPulls);
                 } finally { limit.Release(); }
@@ -90,20 +91,26 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
 
         // Addressed issues: which PRs referenced them. Metadata of the referencing PR only.
         var references = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        var unconfirmed = new List<string>();
         var taskIssues = issues.Where(issue => IsTaskIssue(settings, issue)).OrderByDescending(issue => issue.UpdatedAtUtc).ToArray();
         if (taskIssues.Length > MaximumTaskIssues) coverage.Add("task-issues-capped:" + MaximumTaskIssues);
-        foreach (var issue in taskIssues.Skip(MaximumTaskIssues))
+        foreach (var issue in taskIssues.Skip(MaximumTaskIssues)) {
+            unconfirmed.Add(issue.Key);
             if (previous.IssueReferences.TryGetValue(issue.Key, out var retained)) references[issue.Key] = retained;
+        }
         foreach (var issue in taskIssues.Take(MaximumTaskIssues)) {
             var urls = await Guard("issue-references-incomplete:" + issue.Key, async () =>
                 (await github.ReadAllAsync(Api + "repos/" + issue.Repo + "/issues/" + issue.Number + "/timeline?per_page=100", MapReference, 30, token))
                     .Select(row => row.GetString()!).Distinct(StringComparer.Ordinal).ToArray());
-            if (urls is null && previous.IssueReferences.TryGetValue(issue.Key, out var kept)) urls = kept;
+            if (urls is null) {
+                unconfirmed.Add(issue.Key);
+                if (previous.IssueReferences.TryGetValue(issue.Key, out var kept)) urls = kept;
+            }
             if (urls is { Length: > 0 }) references[issue.Key] = urls;
         }
 
         // State of every PR a task links to that is not in the open list. Merged is terminal.
-        var open = pulls.Select(pull => pull.Url).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var open = pulls.Where(pull => !pull.Retained).Select(pull => pull.Url).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var done = settings.Board?.DoneStatuses ?? [];
         var linked = board.Where(item => !item.Archived && !(item.Status is { } status && done.Contains(status, StringComparer.OrdinalIgnoreCase)))
             .SelectMany(item => PullRequestLinks(item.PullRequestLinks)
@@ -133,7 +140,7 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
             CapturedAtUtc = _clock.GetUtcNow(), Repositories = repositories.ToArray(),
             Issues = issues.OrderBy(issue => issue.Repo, StringComparer.OrdinalIgnoreCase).ThenBy(issue => issue.Number).ToArray(),
             PullRequests = pulls.OrderBy(pull => pull.Repo, StringComparer.OrdinalIgnoreCase).ThenBy(pull => pull.Number).ToArray(),
-            Board = board, BoardReadAtUtc = boardReadAt, IssueReferences = references, PullStates = states,
+            Board = board, BoardReadAtUtc = boardReadAt, IssueReferences = references, UnconfirmedReferences = unconfirmed.ToArray(), PullStates = states,
             Coverage = coverage.Distinct(StringComparer.Ordinal).ToArray(), Requests = github.Requests, NotModified = github.NotModified
         };
     }

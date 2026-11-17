@@ -15,7 +15,7 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         IReadOnlyCollection<Worktree> worktrees, DateTimeOffset now) {
         var sessions = items.Where(item => item.Kind == "session").ToDictionary(item => item.Id, StringComparer.Ordinal);
         var openIssues = catalog.Issues.Where(issue => !issue.PullRequest).DistinctBy(issue => issue.Url, StringComparer.OrdinalIgnoreCase).ToDictionary(issue => issue.Url, StringComparer.OrdinalIgnoreCase);
-        var openPulls = catalog.PullRequests.DistinctBy(pull => pull.Url, StringComparer.OrdinalIgnoreCase).ToDictionary(pull => pull.Url, StringComparer.OrdinalIgnoreCase);
+        var openPulls = catalog.PullRequests.Where(pull => !pull.Retained).DistinctBy(pull => pull.Url, StringComparer.OrdinalIgnoreCase).ToDictionary(pull => pull.Url, StringComparer.OrdinalIgnoreCase);
         var context = new Context(catalog, sessions, openIssues, openPulls, worktrees, now, now.AddDays(-settings.StaleAfterDays)) {
             FreshStates = TimeSpan.FromMinutes(settings.RefreshMinutes * 2 + 5)
         };
@@ -50,11 +50,13 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         draft.Evidence.Add("labels:" + string.Join(",", issue.Labels.Where(label => label.StartsWith(settings.TaskLabelPrefix, StringComparison.OrdinalIgnoreCase))));
         draft.Missing.Add("agent-claim");
         var references = context.Catalog.IssueReferences.GetValueOrDefault(issue.Key, []);
+        var referencesConfirmed = !context.Catalog.UnconfirmedReferences.Contains(issue.Key, StringComparer.Ordinal);
+        if (!referencesConfirmed) draft.Missing.Add("issue-references-unconfirmed");
         var row = new TaskVerdictRow {
             Id = "issue:" + issue.Key, Source = "issue", Title = issue.Title, Url = issue.Url, Repo = issue.Repo,
             Verdict = "", Reason = "", PullRequests = references, UpdatedAtUtc = issue.UpdatedAtUtc
         };
-        if (PullRequestsDone(references, context, draft, viaReferences: true) is { } done) return Finish(row, V.DoneClosable, done, draft, issue.Url, null);
+        if (referencesConfirmed && PullRequestsDone(references, context, draft, viaReferences: true) is { } done) return Finish(row, V.DoneClosable, done, draft, issue.Url, null);
         if (OpenPullRequest(references, context, draft) is { } pull) return Active(row, pull, context, draft);
         return Finish(row, issue.UpdatedAtUtc < context.StaleBefore ? V.Stale : V.NotStarted,
             issue.UpdatedAtUtc < context.StaleBefore ? "no-activity" : "unclaimed", draft, null, null);
@@ -74,6 +76,8 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         var links = WorkCatalogReader.PullRequestLinks(item.PullRequestLinks).ToList();
         if (item.PullRequestLinks?.Length > WorkCatalogReader.MaximumLinkText) draft.Missing.Add("pull-request-links-capped");
         if (issue is not null) links.AddRange(context.Catalog.IssueReferences.GetValueOrDefault(issue.Key, []));
+        if (issue is not null && context.Catalog.UnconfirmedReferences.Contains(issue.Key, StringComparer.Ordinal))
+            draft.Missing.Add("issue-references-unconfirmed");
         if (item.ContentType == "PullRequest" && item.ContentUrl is not null) links.Add(item.ContentUrl);
         links = links.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var updated = new[] { item.UpdatedAtUtc, issue?.UpdatedAtUtc ?? DateTimeOffset.MinValue }.Max();
@@ -106,7 +110,7 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         if (done) return issueOpen
             ? Finish(row, V.DoneClosable, "board-done-issue-open", draft, item.ContentUrl, null)
             : Finish(row, V.Archived, "board-done", draft, null, null);
-        if (!draft.Missing.Contains("pull-request-links-capped") &&
+        if (!draft.Missing.Contains("pull-request-links-capped") && !draft.Missing.Contains("issue-references-unconfirmed") &&
             PullRequestsDone(links, context, draft, viaReferences: issue is not null && WorkCatalogReader.PullRequestLinks(item.PullRequestLinks).Count() == 0) is { } merged)
             return Finish(row, V.DoneClosable, merged, draft, issueOpen ? item.ContentUrl : null, markDone);
         if (status is not null && board.WaitingStatuses.Contains(status, StringComparer.OrdinalIgnoreCase) ||

@@ -187,6 +187,24 @@ public sealed class WorkCatalogTests {
     }
 
     [Fact]
+    public void RetainedListsAndReferencesAreNotTreatedAsCurrent() {
+        const string merged = "https://github.com/Sample/Project/pull/1";
+        var retainedOpen = new CatalogPull(Repo, 2, "Merged since, list read failed", "fix/x", false, Now.AddHours(-1)) { Retained = true };
+        var catalog = new WorkCatalogSnapshot {
+            CapturedAtUtc = Now, Issues = [Issue(20)], PullRequests = [retainedOpen],
+            Board = [Item(1, links: retainedOpen.Url)],
+            IssueReferences = new(StringComparer.Ordinal) { ["Sample/Project#20"] = [merged] },
+            UnconfirmedReferences = ["Sample/Project#20"],
+            PullStates = new(StringComparer.OrdinalIgnoreCase) { [merged] = new("merged", Now, Now) }
+        };
+        var rows = Reconcile(catalog).ToDictionary(row => row.Id);
+        Assert.NotEqual(V.DoneClosable, rows["issue:Sample/Project#20"].Verdict);
+        Assert.Contains("issue-references-unconfirmed", rows["issue:Sample/Project#20"].MissingFacts);
+        Assert.NotEqual(V.InProgress, rows["board:1"].Verdict); // A retained list row isn't proof the PR is open.
+        Assert.Contains("pull-request-state:" + retainedOpen.Url, rows["board:1"].MissingFacts);
+    }
+
+    [Fact]
     public void LastKnownSessionVerdictsStayQualified() {
         var id = Guid.NewGuid();
         var session = Session(id, "working");
