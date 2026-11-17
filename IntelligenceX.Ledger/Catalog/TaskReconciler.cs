@@ -65,7 +65,10 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
         var board = settings.Board!;
         CatalogIssue? issue = item.ContentUrl is { } contentUrl && context.OpenIssues.TryGetValue(contentUrl, out var found) ? found : null;
         var issueOpen = issue is not null || item.ContentType == "Issue" && item.ContentState == "open";
-        var issueClosed = issue is null && item.ContentType == "Issue" && item.ContentState == "closed";
+        // Board content and status are only as current as the last successful board read.
+        var boardFresh = context.Catalog.BoardReadAtUtc is { } read && context.Now - read <= context.FreshStates;
+        if (!boardFresh) draft.Missing.Add("board-observation-stale");
+        var issueClosed = boardFresh && issue is null && item.ContentType == "Issue" && item.ContentState == "closed";
         if (item.ContentType == "Issue" && !issueOpen && !issueClosed) draft.Missing.Add("issue-state");
         var repo = item.WorkRepo ?? issue?.Repo ?? RepoFromUrl(item.ContentUrl);
         var links = WorkCatalogReader.PullRequestLinks(item.PullRequestLinks).ToList();
@@ -90,11 +93,16 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
             return done ? Finish(row, V.Archived, "issue-closed", draft, null, null)
                 : Finish(row, V.DoneClosable, "issue-closed-board-open", draft, null, markDone);
         }
-        if (item.ContentType == "PullRequest" && item.ContentState is "merged" or "closed") {
-            draft.Evidence.Add("pull-request-" + item.ContentState);
-            return done ? Finish(row, V.Archived, "pull-request-" + item.ContentState, draft, null, null)
-                : Finish(row, V.DoneClosable, "pull-request-" + item.ContentState + "-board-open", draft, null, markDone);
+        // The PR's own current state wins over the board's copy of it; the copy counts only from a fresh board read.
+        var contentState = item.ContentType == "PullRequest" && item.ContentUrl is { } prUrl
+            ? State(prUrl, context) switch { "merged" => "merged", "closed" => "closed", "open" => "open", _ => boardFresh ? item.ContentState : null }
+            : null;
+        if (contentState is "merged" or "closed") {
+            draft.Evidence.Add("pull-request-" + contentState);
+            return done ? Finish(row, V.Archived, "pull-request-" + contentState, draft, null, null)
+                : Finish(row, V.DoneClosable, "pull-request-" + contentState + "-board-open", draft, null, markDone);
         }
+        if (done && !boardFresh) return Finish(row, V.Archived, "board-done-last-known", draft, null, null);
         if (done) return issueOpen
             ? Finish(row, V.DoneClosable, "board-done-issue-open", draft, item.ContentUrl, null)
             : Finish(row, V.Archived, "board-done", draft, null, null);

@@ -36,7 +36,7 @@ public sealed class WorkCatalogTests {
     };
 
     private static TaskVerdictRow[] Reconcile(WorkCatalogSnapshot catalog, params LedgerItem[] sessions) =>
-        new TaskReconciler(Settings, ["machine-a"]).Reconcile(catalog, sessions, [], Now);
+        new TaskReconciler(Settings, ["machine-a"]).Reconcile(catalog with { BoardReadAtUtc = catalog.BoardReadAtUtc ?? Now }, sessions, [], Now);
 
     [Fact]
     public void FinishedWorkIsClosableButNeverClosedAndUnknownPullRequestStatesBlockThatClaim() {
@@ -169,6 +169,21 @@ public sealed class WorkCatalogTests {
         // The base repository's main checkout is not where a fork's main branch is worked on.
         Assert.Equal((V.Stale, "pull-request-idle"), (rows["board:1"].Verdict, rows["board:1"].Reason));
         Assert.Single(rows.Keys, key => key == "issue:Sample/Project#3");
+    }
+
+    [Fact]
+    public void BoardCopiesFromAFailedReadNeverCloseATask() {
+        const string reopened = "https://github.com/Sample/Project/pull/9";
+        var reopenedPull = new CatalogPull(Repo, 9, "Reopened", "fix/r", false, Now.AddHours(-1));
+        var catalog = new WorkCatalogSnapshot {
+            CapturedAtUtc = Now, BoardReadAtUtc = Now.AddHours(-3), PullRequests = [reopenedPull],
+            Board = [Item(1, type: "PullRequest", url: reopened, state: "closed"),
+                Item(2, status: "Done", type: "Issue", url: "https://github.com/Sample/Project/issues/4", state: "open")]
+        };
+        var rows = new TaskReconciler(Settings, ["machine-a"]).Reconcile(catalog, [], [], Now).ToDictionary(row => row.Id);
+        Assert.Equal(V.InProgress, rows["board:1"].Verdict); // The PR itself is open again.
+        Assert.Contains("board-observation-stale", rows["board:2"].MissingFacts);
+        Assert.NotEqual(V.DoneClosable, rows["board:2"].Verdict);
     }
 
     [Fact]
