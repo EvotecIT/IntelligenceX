@@ -109,7 +109,9 @@ function Get-AgentProcess {
     $receipt = Read-Json (Join-Path $agent.stateDirectory 'agent-process.json')
     if (-not $receipt) { return $null }
     $process = Get-Process -Id $receipt.pid -ErrorAction SilentlyContinue
-    if (-not $process -or [Math]::Abs(($process.StartTime.ToUniversalTime() - ([DateTimeOffset]$receipt.startedAtUtc).UtcDateTime).TotalSeconds) -gt 2) { return $null }
+    # A process that exits while it is being looked at (launchctl bootout stops it) has no start time on macOS.
+    if (-not $process -or $process.HasExited -or -not $process.StartTime) { return $null }
+    if ([Math]::Abs(($process.StartTime.ToUniversalTime() - ([DateTimeOffset]$receipt.startedAtUtc).UtcDateTime).TotalSeconds) -gt 2) { return $null }
     return $process
 }
 
@@ -123,7 +125,7 @@ function Stop-Agent {
     } else {
         & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null
         if ($process = Get-AgentProcess) {
-            & /bin/kill -TERM $process.Id
+            & /bin/kill -TERM $process.Id 2>$null
             if (-not $process.WaitForExit(30000)) { throw "The agent service (process $($process.Id)) did not stop; nothing was changed." }
         }
     }
