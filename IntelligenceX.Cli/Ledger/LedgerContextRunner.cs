@@ -11,6 +11,11 @@ internal static class LedgerContextRunner {
             var command = args[..^2];
             var json = command switch {
                 ["work"] => JsonSerializer.Serialize(await client.WorkAsync(), LedgerReadJson.Default.LedgerWorkView),
+                ["project_status"] => JsonSerializer.Serialize(await client.ProjectStatusAsync(), LedgerReadJson.Default.ProjectStatusView),
+                ["project_status", var repo] => JsonSerializer.Serialize(await client.ProjectStatusAsync(repo), LedgerReadJson.Default.ProjectStatusView),
+                ["work_reconcile"] => JsonSerializer.Serialize(await client.WorkReconcileAsync(limit: 200), LedgerReadJson.Default.WorkReconcileView),
+                ["work_reconcile", var verdict] => JsonSerializer.Serialize(await client.WorkReconcileAsync(verdict, limit: 500), LedgerReadJson.Default.WorkReconcileView),
+                ["work_reconcile", var verdict, var repo] => JsonSerializer.Serialize(await client.WorkReconcileAsync(verdict, repo, 500), LedgerReadJson.Default.WorkReconcileView),
                 ["projects"] => JsonSerializer.Serialize(await client.ProjectsAsync(), LedgerReadJson.Default.ProjectDirectoryView),
                 ["context", var project] => JsonSerializer.Serialize(await client.ProjectAsync(project), LedgerReadJson.Default.ProjectContextView),
                 ["context", var project, var query] => JsonSerializer.Serialize(await client.ProjectAsync(project, query), LedgerReadJson.Default.ProjectContextView),

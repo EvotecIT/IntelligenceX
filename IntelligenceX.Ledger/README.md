@@ -171,6 +171,47 @@ and state evaluation remain service-owned and make no model calls. These tools
 grant no execution or publication authority. Register the host through the
 client's supported MCP settings after reviewing the exact configuration change.
 
+## Projects and task verdicts
+
+With an optional `workCatalog` section in the service settings, the service keeps
+a catalog of every repository of the configured owners, their open issues and
+PRs, the items of a GitHub project board and the checkouts sessions used. It reads
+GitHub metadata only (never bodies or comments), follows every page, keeps each
+page's ETag so unchanged pages answer 304, and shares one hourly request budget
+(`hourlyRequestBudget`) that pauses while GitHub reports fewer than
+`minimumRemaining` requests left. The catalog and its page cache are saved to
+`work-catalog.json` in the data directory, so a restart doesn't re-read
+everything. A failed or limited read keeps the previous data and names the gap
+in `coverage`.
+
+```json
+"workCatalog": {
+  "organizations": ["example"], "users": [], "taskLabelPrefix": "to:",
+  "taskRepositories": ["example/coordination"], "staleAfterDays": 7, "refreshMinutes": 10,
+  "board": { "organization": "example", "projectNumber": 1, "statusFieldId": 1, "agentFieldId": 2,
+    "machineFieldId": 3, "workRepoFieldId": 4, "branchFieldId": 5, "pullRequestFieldId": 6,
+    "nextActorFieldId": 7, "holdReasonFieldId": 8, "machineAliases": { "PC": "pc" } }
+}
+```
+
+Tasks are board items and open issues with a `to:` label. Each gets one verdict:
+`not-started`, `in-progress`, `waiting-on-you`, `done-closable`, `stale`,
+`needs-replacement` or `archived`, with its evidence, `missingFacts` and
+suggested actions (close an issue, mark a board item done, reassign, ask for an
+update). Suggested actions are never applied by the service. A claimed task
+follows its session's own verdict: stuck or archived sessions mean the task
+needs a replacement, a session that needs you makes the task wait on you.
+
+```text
+GET /api/ledger/v1/projects/status[?repo=owner/name][&limit=40]
+GET /api/ledger/v1/work/reconcile[?verdict=done-closable][&repo=owner/name][&limit=50]
+ix ledger project_status [owner/repo] --config <client.json>
+ix ledger work_reconcile [verdict] [owner/repo] --config <client.json>
+```
+
+The MCP tools are `project_status` and `work_reconcile`. Worktrees are those a
+session has used; a full per-machine worktree listing is not part of the catalog yet.
+
 ## Backup and restore
 
 An observation-only service supports a DbaClientX online snapshot while it runs.

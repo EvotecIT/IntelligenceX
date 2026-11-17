@@ -84,6 +84,8 @@ public static class Program {
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(settings);
         builder.Services.AddHostedService<ShadowReportWorker>();
+        var catalog = settings.WorkCatalog is null ? null : new Catalog.WorkCatalogService(settings.WorkCatalog, store, settings);
+        if (catalog is not null) builder.Services.AddHostedService(_ => catalog);
         var app = builder.Build();
         var runtime = new LedgerRuntime(store, settings);
         var contextService = new ProjectContextService(settings.ProjectCatalogPath);
@@ -118,6 +120,7 @@ public static class Program {
                 machines.Where(machine => machine.State != "healthy").Select(machine => machine.Id).ToHashSet(StringComparer.Ordinal)));
         });
         LeaseEndpoints.Map(app, store, settings);
+        Catalog.WorkCatalogEndpoints.Map(app, catalog, runtime);
         if (coordinationStore is not null) {
             CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory);
         }
