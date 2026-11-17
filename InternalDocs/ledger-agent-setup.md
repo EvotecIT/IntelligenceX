@@ -57,6 +57,10 @@ agent themselves from an `agent` section in the reporter configuration: the firs
 the reporter with its platform installer (`Update-LedgerRuntime.ps1` or `Install-MacLedgerReporter.ps1`) only after
 that, because the current reporter rejects a configuration that still has the section.
 
+On Windows the agent keeps its state under the Ledger folder, which `Update-LedgerRuntime.ps1` reads in full, and the
+running agent holds a lock file there. Stop the agent first (`Stop-ScheduledTask EvotecIT-IX-Ledger-agent` and its
+process), run the runtime update, then install the agent from the same kit, which starts it again.
+
 ## Check
 
 - `IntelligenceX.Ledger agent-check --config <agent.json>` shows whether Codex answers (live daemon or private
