@@ -97,25 +97,34 @@ public static class AccountLimits {
     /// <summary>The Codex app server's rate limits: the main window, credits and the free full resets left.</summary>
     internal static AccountLimit Codex(JsonElement result, DateTimeOffset observed) {
         var limits = result.TryGetProperty("rateLimits", out var value) && value.ValueKind == JsonValueKind.Object ? value : default;
-        var primary = Child(limits, "primary");
-        var secondary = Child(limits, "secondary");
+        // The longer window is the main one (weekly), the shorter one the short window (five hours), as for Claude.
+        var windows = new[] { Child(limits, "primary"), Child(limits, "secondary") }.Where(w => w.ValueKind == JsonValueKind.Object)
+            .OrderByDescending(w => Number(w, "windowDurationMins") ?? 0).ToArray();
+        var main = windows.FirstOrDefault();
+        var short_ = windows.Skip(1).FirstOrDefault();
         var credits = Child(limits, "credits");
         var resets = Child(result, "rateLimitResetCredits");
+        var reached = Text(limits, "rateLimitReachedType") is not null || Bool(limits, "spendControlReached") == true || Bool(result, "ordinaryUsageAllowed") == false;
         return new AccountLimit("codex", "codex-app-server", observed) {
             Plan = Text(limits, "planType"),
-            UsedPercent = Number(primary, "usedPercent"),
-            WindowMinutes = (int?)Number(primary, "windowDurationMins"),
-            ResetsAtUtc = Number(primary, "resetsAt") is { } at ? DateTimeOffset.FromUnixTimeSeconds((long)at) : null,
-            ShortUsedPercent = Number(secondary, "usedPercent"),
-            ShortResetsAtUtc = Number(secondary, "resetsAt") is { } shortAt ? DateTimeOffset.FromUnixTimeSeconds((long)shortAt) : null,
+            UsedPercent = Number(main, "usedPercent"),
+            WindowMinutes = (int?)Number(main, "windowDurationMins"),
+            ResetsAtUtc = Number(main, "resetsAt") is { } at ? DateTimeOffset.FromUnixTimeSeconds((long)at) : null,
+            ShortUsedPercent = Number(short_, "usedPercent"),
+            ShortResetsAtUtc = Number(short_, "resetsAt") is { } shortAt ? DateTimeOffset.FromUnixTimeSeconds((long)shortAt) : null,
             HasCredits = Bool(credits, "hasCredits"),
             CreditBalance = Text(credits, "balance"),
             FreeResets = (int?)Number(resets, "availableCount"),
-            LimitReached = Text(limits, "rateLimitReachedType") is not null || Bool(limits, "spendControlReached") == true || Bool(result, "ordinaryUsageAllowed") == false,
+            // Not reached only when Codex says ordinary usage is allowed; otherwise unknown stays unknown.
+            LimitReached = reached ? true : Bool(result, "ordinaryUsageAllowed") == true ? false : null,
         };
     }
 
-    /// <summary>Where the status line recorder saves the last Claude Code status line input's rate limits.</summary>
+    /// <summary>
+    /// Where a Claude Code status line command saves the <c>rate_limits</c> of its last input, as
+    /// <c>{"observedAtUtc": "...", "rate_limits": {...}}</c>. Claude Code passes those figures only to a session's status
+    /// line, so the machine's status line has to write this file; without it, Claude limits are left out.
+    /// </summary>
     internal static string ClaudeSnapshotPath() =>
         Path.Combine(Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } dir ? dir
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude"), "usage-limits.json");
@@ -129,7 +138,10 @@ public static class AccountLimits {
             if (!File.Exists(path)) return null;
             using var json = JsonDocument.Parse(File.ReadAllText(path));
             var root = json.RootElement;
-            var at = root.TryGetProperty("observedAtUtc", out var seen) && seen.TryGetDateTimeOffset(out var when) ? when : File.GetLastWriteTimeUtc(path);
+            if (root.ValueKind != JsonValueKind.Object)
+                return new AccountLimit("claude", "claude-status-line", now) { Note = "The saved status line snapshot couldn't be read." };
+            var at = root.TryGetProperty("observedAtUtc", out var seen) && seen.ValueKind == JsonValueKind.String &&
+                seen.TryGetDateTimeOffset(out var when) ? when : File.GetLastWriteTimeUtc(path);
             var limits = Child(root, "rate_limits");
             var week = Child(limits, "seven_day");
             var five = Child(limits, "five_hour");

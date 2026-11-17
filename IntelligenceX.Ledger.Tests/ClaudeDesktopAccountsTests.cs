@@ -39,6 +39,31 @@ public sealed class ClaudeDesktopAccountsTests {
     }
 
     [Fact]
+    public void ArchiveStateSurvivesARereadThatCantReadTheFileAndOtherProfilesGetNoCliAccount() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-claude-accounts-" + Guid.NewGuid().ToString("N"));
+        try {
+            Write(root, Old, "org-a", "local_1.json", """{"cliSessionId":"aaaa-old","isArchived":true}""");
+            Write(root, Old, "org-a", "local_2.json", "[]");
+            var cli = Path.Combine(root, "claude.json");
+            File.WriteAllText(cli, "[]");
+            var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 17, 10, 0, 0, TimeSpan.Zero));
+            var accounts = new ClaudeDesktopAccounts(root, cli, clock);
+            Assert.True(accounts.Archived("aaaa-old"));
+            Assert.Null(accounts.For("started-from-the-cli"));
+
+            // The app is mid-write: the file reads as broken JSON, and what was known about it stays.
+            Write(root, Old, "org-a", "local_1.json", """{"cliSessionId":"aaaa-o""");
+            File.WriteAllText(cli, $$$"""{"oauthAccount":{"accountUuid":"{{{Current}}}"}}""");
+            clock.Advance(ClaudeDesktopAccounts.RereadAfter);
+            Assert.Equal((true, Old), (accounts.Archived("aaaa-old"), accounts.For("aaaa-old")));
+            Assert.Equal(Current, accounts.For("started-from-the-cli"));
+            Assert.Null(accounts.For("started-from-the-cli", cliProfile: false));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void NoDesktopAppAndNoCliSignInMeansNoAccount() {
         var missing = Path.Combine(Path.GetTempPath(), "ix-no-claude-" + Guid.NewGuid().ToString("N"));
         Assert.Null(new ClaudeDesktopAccounts(missing, Path.Combine(missing, "claude.json")).For("any"));

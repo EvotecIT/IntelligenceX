@@ -13,11 +13,23 @@ internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings setti
     /// </summary>
     internal static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
 
+    /// <summary>Queued lease waiters are promoted when a holder's lease lapses; reads don't do that, so it runs every minute.</summary>
+    internal static readonly TimeSpan LeaseInterval = TimeSpan.FromMinutes(1);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
+        var clock = timeProvider ?? TimeProvider.System;
+        await Task.WhenAll(ReportAsync(clock, stoppingToken), LeasesAsync(clock, stoppingToken));
+    }
+
+    private async Task LeasesAsync(TimeProvider clock, CancellationToken stoppingToken) {
+        using var timer = new PeriodicTimer(LeaseInterval, clock);
+        while (await timer.WaitForNextTickAsync(stoppingToken)) await store.MaintainLeasesAsync(clock.GetUtcNow(), stoppingToken);
+    }
+
+    private async Task ReportAsync(TimeProvider clock, CancellationToken stoppingToken) {
         var directory = Path.Combine(settings.DataDirectory, "shadow");
         Directory.CreateDirectory(directory);
         var written = new Dictionary<DateOnly, string>();
-        var clock = timeProvider ?? TimeProvider.System;
         using var timer = new PeriodicTimer(Interval, clock);
         do {
             var now = clock.GetUtcNow();
