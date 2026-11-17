@@ -70,8 +70,7 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
                         if (block.TryGetProperty("type", out var kind) && kind.GetString() == "tool_result" &&
                             block.TryGetProperty("tool_use_id", out var id) && calls.Contains(id.GetString()!)) {
                             var error = block.TryGetProperty("is_error", out var flag) && flag.ValueKind == JsonValueKind.True;
-                            var body = block.TryGetProperty("content", out var value) ? value.ToString() : "";
-                            var ok = !error && body.Contains("\"success\":true", StringComparison.Ordinal);
+                            var ok = !error && Succeeded(block.TryGetProperty("content", out var value) ? value : default);
                             succeeded = (succeeded ?? false) || ok;
                         }
                     break;
@@ -86,6 +85,23 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
         }
         var stage = calls.Count == 0 ? "not-submitted" : succeeded == true ? "submitted" : "uncertain";
         return new(stage, "claude-sendmessage-" + stage, model, tokens, cost);
+    }
+
+    /// <summary>SendMessage answers with a JSON object, as a string or inside text blocks; only success:true counts.</summary>
+    private static bool Succeeded(JsonElement content) {
+        IEnumerable<string?> texts = content.ValueKind switch {
+            JsonValueKind.String => [content.GetString()],
+            JsonValueKind.Array => content.EnumerateArray().Where(b => b.TryGetProperty("text", out _)).Select(b => b.GetProperty("text").GetString()),
+            _ => []
+        };
+        foreach (var text in texts) {
+            try {
+                using var json = JsonDocument.Parse(text ?? "");
+                if (json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("success", out var flag) &&
+                    flag.ValueKind == JsonValueKind.True) return true;
+            } catch (JsonException) { }
+        }
+        return false;
     }
 
     private static JsonElement? Content(JsonElement root) => root.TryGetProperty("message", out var message) &&

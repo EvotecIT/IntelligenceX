@@ -30,7 +30,8 @@ public sealed class AgentServiceTests {
             Line(new { type = "assistant", message = new { model = "claude-haiku-5-5", content = new object[] {
                 new { type = "tool_use", id = "tool-1", name = "SendMessage", input = new { to = "session" } } } } }),
             Line(new { type = "user", message = new { content = new object[] {
-                new { type = "tool_result", tool_use_id = "tool-1", content = "{\"success\":true,\"message\":\"delivered\"}" } } } }),
+                new { type = "tool_result", tool_use_id = "tool-1", content = new object[] {
+                    new { type = "text", text = "{\"success\":true,\"message\":\"delivered\"}" } } } } } }),
             Line(new { type = "result", total_cost_usd = 0.0031, usage = new {
                 input_tokens = 20, cache_creation_input_tokens = 100, cache_read_input_tokens = 5000, output_tokens = 30 } })
         ];
@@ -45,7 +46,8 @@ public sealed class AgentServiceTests {
         string[] failed = [
             Line(new { type = "assistant", message = new { content = new object[] { new { type = "tool_use", id = "t", name = "SendMessage" } } } }),
             Line(new { type = "user", message = new { content = new object[] {
-                new { type = "tool_result", tool_use_id = "t", is_error = true, content = "recipient not found" } } } })
+                new { type = "tool_result", tool_use_id = "t", content = new object[] {
+                    new { type = "text", text = "{\"success\":false,\"message\":\"No agent named 'x' is reachable.\"}" } } } } } })
         ];
         Assert.Equal("uncertain", ClaudeSender.Parse(failed, "haiku").Stage);
     }
