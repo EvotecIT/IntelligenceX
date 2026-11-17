@@ -67,7 +67,10 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
                     return (openIssues, openPulls);
                 } finally { limit.Release(); }
             }).ToArray();
-            foreach (var (openIssues, openPulls) in await Task.WhenAll(repositoryReads)) { issues.AddRange(openIssues); pulls.AddRange(openPulls); }
+            foreach (var (openIssues, openPulls) in await Task.WhenAll(repositoryReads)) {
+                issues.AddRange(openIssues.DistinctBy(issue => issue.Number));
+                pulls.AddRange(openPulls.DistinctBy(pull => pull.Number));
+            }
         }
 
         // Board items, all pages. A failed read keeps the previous board with its read time.
@@ -103,7 +106,8 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
         var open = pulls.Select(pull => pull.Url).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var done = settings.Board?.DoneStatuses ?? [];
         var linked = board.Where(item => !item.Archived && !(item.Status is { } status && done.Contains(status, StringComparer.OrdinalIgnoreCase)))
-            .SelectMany(item => PullRequestLinks(item.PullRequestLinks))
+            .SelectMany(item => PullRequestLinks(item.PullRequestLinks)
+                .Concat(item.ContentType == "PullRequest" && item.ContentUrl is { } url && PullRequestCatalog.TryParse(url, out _, out _) ? [url] : []))
             .Concat(references.Values.SelectMany(urls => urls)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var states = new Dictionary<string, CatalogPullState>(StringComparer.OrdinalIgnoreCase);
         var reads = 0;
@@ -173,13 +177,17 @@ internal sealed class WorkCatalogReader(GitHubCatalogClient github, WorkCatalogS
     internal static JsonElement? MapPull(string repo, JsonElement row) => Compact(new CatalogPull(repo,
         row.GetProperty("number").GetInt32(), Bound(row.GetProperty("title").GetString()),
         row.TryGetProperty("head", out var head) ? Text(head, "ref") : null,
-        row.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True, Time(row, "updated_at")!.Value));
+        row.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True, Time(row, "updated_at")!.Value) { HeadRepo = HeadRepo(row) });
 
     internal static JsonElement? MapPullState(JsonElement row) => Compact(new CatalogPullState(
         Time(row, "merged_at") is not null ? "merged" : Text(row, "state") ?? "unknown", Time(row, "updated_at"), DateTimeOffset.UtcNow) {
         Title = Bound(Text(row, "title")), Draft = row.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True,
-        HeadBranch = row.TryGetProperty("head", out var head) ? Text(head, "ref") : null
+        HeadBranch = row.TryGetProperty("head", out var head) ? Text(head, "ref") : null, HeadRepo = HeadRepo(row)
     });
+
+    private static string? HeadRepo(JsonElement row) =>
+        row.TryGetProperty("head", out var head) && head.TryGetProperty("repo", out var repo) && repo.ValueKind == JsonValueKind.Object
+            ? Text(repo, "full_name") : null;
 
     /// <summary>Only cross-references from PRs count; the referencing PR's body is dropped here.</summary>
     internal static JsonElement? MapReference(JsonElement row) =>

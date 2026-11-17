@@ -14,8 +14,8 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
     internal TaskVerdictRow[] Reconcile(WorkCatalogSnapshot catalog, IReadOnlyCollection<LedgerItem> items,
         IReadOnlyCollection<Worktree> worktrees, DateTimeOffset now) {
         var sessions = items.Where(item => item.Kind == "session").ToDictionary(item => item.Id, StringComparer.Ordinal);
-        var openIssues = catalog.Issues.Where(issue => !issue.PullRequest).ToDictionary(issue => issue.Url, StringComparer.OrdinalIgnoreCase);
-        var openPulls = catalog.PullRequests.ToDictionary(pull => pull.Url, StringComparer.OrdinalIgnoreCase);
+        var openIssues = catalog.Issues.Where(issue => !issue.PullRequest).DistinctBy(issue => issue.Url, StringComparer.OrdinalIgnoreCase).ToDictionary(issue => issue.Url, StringComparer.OrdinalIgnoreCase);
+        var openPulls = catalog.PullRequests.DistinctBy(pull => pull.Url, StringComparer.OrdinalIgnoreCase).ToDictionary(pull => pull.Url, StringComparer.OrdinalIgnoreCase);
         var context = new Context(catalog, sessions, openIssues, openPulls, worktrees, now, now.AddDays(-settings.StaleAfterDays));
         var rows = new List<TaskVerdictRow>();
         var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -23,7 +23,7 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
             if (item.ContentUrl is { } url && item.ContentType == "Issue") covered.Add(url);
             rows.Add(Board(item, context));
         }
-        foreach (var issue in catalog.Issues.Where(issue => WorkCatalogReader.IsTaskIssue(settings, issue)).Where(issue => !covered.Contains(issue.Url)))
+        foreach (var issue in openIssues.Values.Where(issue => WorkCatalogReader.IsTaskIssue(settings, issue)).Where(issue => !covered.Contains(issue.Url)))
             rows.Add(Issue(issue, context));
         return rows.OrderBy(row => Array.IndexOf(V.All, row.Verdict)).ThenByDescending(row => row.UpdatedAtUtc)
             .ThenBy(row => row.Id, StringComparer.Ordinal).ToArray();
@@ -179,11 +179,11 @@ internal sealed class TaskReconciler(WorkCatalogSettings settings, IReadOnlyColl
     private static CatalogPull? FromState(string url, Context context) =>
         State(url, context) == "open" && context.Catalog.PullStates[url] is var state &&
         Reporting.PullRequestCatalog.TryParse(url, out var repo, out var number)
-            ? new CatalogPull(repo, number, state.Title ?? "", state.HeadBranch, state.Draft, state.UpdatedAtUtc ?? state.CheckedAtUtc)
+            ? new CatalogPull(repo, number, state.Title ?? "", state.HeadBranch, state.Draft, state.UpdatedAtUtc ?? state.CheckedAtUtc) { HeadRepo = state.HeadRepo }
             : null;
 
     private static TaskVerdictRow Active(TaskVerdictRow row, CatalogPull pull, Context context, Draft draft) {
-        var worktree = LiveWorktree(pull.Repo, pull.HeadBranch, context);
+        var worktree = LiveWorktree(pull.HeadRepo ?? pull.Repo, pull.HeadBranch, context);
         row = row with { Where = worktree ?? pull.Url, Branch = row.Branch ?? pull.HeadBranch };
         if (worktree is not null) return Finish(row, V.InProgress, "open-pull-request-live-worktree", draft, null, null);
         return pull.UpdatedAtUtc < context.StaleBefore

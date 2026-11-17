@@ -66,6 +66,8 @@ internal sealed record CatalogIssue(string Repo, int Number, string Title, strin
 }
 
 internal sealed record CatalogPull(string Repo, int Number, string Title, string? HeadBranch, bool Draft, DateTimeOffset UpdatedAtUtc) {
+    /// <summary>Repository the head branch lives in; differs from <see cref="Repo"/> for a PR from a fork.</summary>
+    public string? HeadRepo { get; init; }
     internal string Url => "https://github.com/" + Repo + "/pull/" + Number;
 }
 
@@ -86,6 +88,7 @@ internal sealed record CatalogPullState(string State, DateTimeOffset? UpdatedAtU
     public string? Title { get; init; }
     public bool Draft { get; init; }
     public string? HeadBranch { get; init; }
+    public string? HeadRepo { get; init; }
 }
 
 internal sealed record WorkCatalogSnapshot {

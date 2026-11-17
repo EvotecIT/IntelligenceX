@@ -140,6 +140,21 @@ public sealed class WorkCatalogTests {
     }
 
     [Fact]
+    public void ForkPullRequestsMatchTheirOwnCheckoutAndRepeatedRowsDoNotBreakTheView() {
+        var fork = new CatalogPull(Repo, 8, "From a fork", "main", false, Now.AddDays(-20)) { HeadRepo = "Someone/Project" };
+        var catalog = new WorkCatalogSnapshot {
+            Board = [Item(1, links: fork.Url)], PullRequests = [fork, fork], Issues = [Issue(3), Issue(3)]
+        };
+        var baseCheckout = new TaskReconciler.Worktree(Repo, new("a", "machine-a", "codex", "main", "/work/project", null, [],
+            Now.AddMinutes(-1), null, false, null, "observed", Live: true));
+        var rows = new TaskReconciler(Settings, ["machine-a"]).Reconcile(catalog, [], [baseCheckout], Now).ToDictionary(row => row.Id);
+
+        // The base repository's main checkout is not where a fork's main branch is worked on.
+        Assert.Equal((V.Stale, "pull-request-idle"), (rows["board:1"].Verdict, rows["board:1"].Reason));
+        Assert.Single(rows.Keys, key => key == "issue:Sample/Project#3");
+    }
+
+    [Fact]
     public void LastKnownSessionVerdictsStayQualified() {
         var id = Guid.NewGuid();
         var session = Session(id, "working");
