@@ -310,7 +310,9 @@ internal sealed partial class AgentService {
         var usage = new CoordinationUsage(kind, provider, Safe(model), tokens.Input, tokens.CachedInput,
             tokens.Output, tokens.Total, _machineId, at ?? DateTimeOffset.UtcNow, cost, sessionId);
         var file = Path.Combine(UsageFolder, LocalFiles.Hash(requestId, kind, sessionId, usage.AtUtc.ToString("O"))[..32] + ".json");
-        LocalFiles.WriteAtomic(file, JsonSerializer.Serialize(new PendingUsage(requestId, usage)));
+        // Accounting runs after a delivery or turn has happened, so its own failures are logged, never thrown.
+        try { LocalFiles.WriteAtomic(file, JsonSerializer.Serialize(new PendingUsage(requestId, usage))); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Log("usage-unsaved", requestId + " " + error.Message); }
         await SendUsageAsync(file, requestId, usage, stop).ConfigureAwait(false);
     }
 
@@ -327,14 +329,19 @@ internal sealed partial class AgentService {
     private async Task SendUsageAsync(string file, string requestId, CoordinationUsage usage, CancellationToken stop) {
         try {
             await _ledger.RecordUsageAsync(requestId, usage, stop).ConfigureAwait(false);
-            File.Delete(file);
+            TryDelete(file);
         } catch (CoordinationCommandRejectedException error) {
             Log("usage-rejected", requestId + " " + usage.Kind + " " + error.Message);
-            File.Delete(file);
-        } catch (Exception error) when (error is HttpRequestException or IOException || error is TaskCanceledException && !stop.IsCancellationRequested) {
+            TryDelete(file);
+        } catch (Exception error) when (error is HttpRequestException or IOException or UnauthorizedAccessException ||
+            error is TaskCanceledException && !stop.IsCancellationRequested) {
             // Kept on disk; the next sweep sends it again.
             Log("usage-unrecorded", requestId + " " + usage.Kind + " " + error.Message);
         }
+    }
+
+    private static void TryDelete(string file) {
+        try { File.Delete(file); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     /// <summary>Model names may carry characters the Ledger's identifier rule doesn't allow.</summary>

@@ -213,7 +213,7 @@ internal sealed partial class AgentService {
                     kind = "result";
                 }
             }
-            if (outcome.Status == "completed" && kind == "result" && text.Length > 0)
+            if (outcome.Status == "completed" && kind == "result" && !string.IsNullOrWhiteSpace(text))
                 return await PublishAsync(work, record, Bound(text, threadId), succeeded: true, stop).ConfigureAwait(false);
             if (record.Resumes < _policy.ResumeAttempts) {
                 record = (record with { Resumes = record.Resumes + 1, TurnId = null, Phase = "turn" }).Save(_settings.StateDirectory);

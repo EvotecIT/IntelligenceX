@@ -153,10 +153,10 @@ internal sealed partial class AgentService {
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
             using var process = Process.Start(start);
             if (process is null) return (null, "");
-            using var end = stop.Register(() => Stop(process));
             process.StandardInput.Close();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
             deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            using var end = deadline.Token.Register(() => Stop(process));
             var error = process.StandardError.ReadToEndAsync(deadline.Token);
             var output = await process.StandardOutput.ReadToEndAsync(deadline.Token).ConfigureAwait(false);
             await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
