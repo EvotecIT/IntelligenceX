@@ -293,8 +293,16 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(60));
         var error = process.StandardError.ReadToEndAsync(deadline.Token);
-        await process.StandardOutput.ReadToEndAsync(deadline.Token).ConfigureAwait(false);
-        await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+        try {
+            await process.StandardOutput.ReadToEndAsync(deadline.Token).ConfigureAwait(false);
+            await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+        } catch (OperationCanceledException error2) {
+            // A queue that outlives its wait (or the service) is ended, so it can't hand the message over later.
+            AgentService.Stop(process);
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+            if (token.IsCancellationRequested) throw;
+            throw new DeliveryUncertainException("codex queue did not finish within a minute.", error2);
+        }
         if (process.ExitCode != 0) throw new DeliveryUncertainException("codex queue exited with " + process.ExitCode + ".",
             new IOException((await error.ConfigureAwait(false)).Trim()));
     }

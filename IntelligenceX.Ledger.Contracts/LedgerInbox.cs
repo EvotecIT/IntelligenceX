@@ -99,6 +99,7 @@ public static class LedgerInbox {
     private static async Task CollectAsync(LedgerReadClient ledger, string machineId, string bootId, string session, string eventName,
         Collected collected, CancellationToken token) {
         var attested = false;
+        var run = Guid.NewGuid().ToString("N");
         var evidence = "claude-hook-" + (eventName == "UserPromptSubmit" ? "prompt" : "start");
         long after = 0;
         for (var page = 0; page < 8; page++) {
@@ -132,7 +133,8 @@ public static class LedgerInbox {
             foreach (var item in questions.Items.Where(i => i.Target == "question" && i.ReturnTo.MachineId == machineId &&
                 i.ReturnTo.Provider == "claude" && i.ReturnTo.SessionId == session)) {
                 var q = item.Question;
-                var attempt = "hook-" + Hash(q.RequestId, q.Number, q.Delivery?.AttemptId)[..32];
+                // Unique to this run: a second hook running at the same moment gets a different attempt and is refused.
+                var attempt = "hook-" + Hash(q.RequestId, q.Number, q.Delivery?.AttemptId, run)[..32];
                 Func<CancellationToken, Task> undo = t => ledger.QuestionDeliveryAsync(q.RequestId, q.Number, new("question", attempt, "not-submitted", evidence), t);
                 collected.Undo.Add(undo);
                 try { await ledger.QuestionDeliveryAsync(q.RequestId, q.Number, new("question", attempt, "sending"), token).ConfigureAwait(false); }
