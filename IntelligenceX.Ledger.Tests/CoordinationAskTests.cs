@@ -128,6 +128,16 @@ public sealed class CoordinationAskTests {
     }
 
     [Fact]
+    public void AnAskGetsANewHelperEvenWhenAnIdleTemporaryWorkerMatches() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        engine.ObserveWorker(new("codex-idle", "mac", "codex", true, null, Now, "idle", "workspace-idle",
+            new WorkCheckpoint("sample", "main", Commit, null, "ask", "ask"), "boot", TemporaryWorker: true), MacHost);
+        var work = engine.Ask(Ask(), Sessions);
+        Assert.Equal(("admitted", null, "worker-creation-required"), (work.State, work.Assignee, work.Reason));
+    }
+
+    [Fact]
     public void AnAskReturnsToTheWorkerTheSessionIsAlreadyEnrolledAs() {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);

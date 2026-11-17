@@ -81,6 +81,8 @@ public sealed partial class CoordinationEngine {
                 (r.WorkerId is null || w.Id == r.WorkerId) && (r.RequiredProvider is null || w.Provider == r.RequiredProvider) &&
                 (!native || CanUseSession(r, w) && w.SessionId is not null && w.WorkspaceId is not null && w.Candidate is not null &&
                     SameCandidate(w.Candidate, r.Checkpoint)) && w.Id != r.ReturnTo?.WorkerId &&
+                // An ask always gets a helper the target machine's agent service creates for it, unless it asks to reuse one.
+                (!IsAsk(work) || ExplicitlyReusesSession(r, w)) &&
                 !state.Work.Values.Any(other => Occupied.Contains(other.State) && other.Assignee == w.Id) &&
                 !state.Work.Values.Any(other => AwaitingCreatedWorker(other) && other.Machine == w.MachineId &&
                     other.Provider == w.Provider && w.Candidate is not null && SameCandidate(other.Request.Checkpoint, w.Candidate)) &&
