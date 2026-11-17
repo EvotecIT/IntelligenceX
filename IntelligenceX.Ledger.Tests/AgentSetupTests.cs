@@ -56,6 +56,14 @@ public sealed class AgentSetupTests : IDisposable {
     }
 
     [Fact]
+    public void AStoredCliThatIsNotInstalledIsLeftOut() {
+        var config = Reporter(new JsonObject { ["capabilities"] = new JsonArray("macos-shell"), ["workspaceRoot"] = "/work", ["claudeExecutable"] = "claude" });
+        var options = new AgentInstaller.Options(config, null, null, [], null, null, false);
+        var agent = AgentInstaller.AgentSection(options, JsonNode.Parse(File.ReadAllText(config))!["agent"]!.AsObject(), _root, "host.json", NoClis);
+        Assert.Null(agent["claudeExecutable"]);
+    }
+
+    [Fact]
     public void InstallNeedsTheMachineClientFilesAndACapability() {
         var config = Reporter();
         File.Delete(Path.Combine(_root, "coordination", "sessions-client.json"));

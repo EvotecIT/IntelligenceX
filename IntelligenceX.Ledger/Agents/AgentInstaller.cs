@@ -146,8 +146,10 @@ internal static class AgentInstaller {
             ["workspaceRoot"] = workspace,
             ["capabilities"] = new JsonArray(capabilities.Select(c => (JsonNode)c).ToArray())
         };
-        if ((options.Codex ?? Existing("codexExecutable") ?? find("codex")) is { } codex) agent["codexExecutable"] = codex;
-        if ((options.Claude ?? Existing("claudeExecutable") ?? find("claude")) is { } claude) agent["claudeExecutable"] = claude;
+        // A stored path that no longer exists (or a bare name) is looked up again; a CLI that isn't installed is left out.
+        string? Cli(string? chosen, string? stored, string name) => chosen ?? (stored is not null && Path.IsPathFullyQualified(stored) && File.Exists(stored) ? stored : find(name));
+        if (Cli(options.Codex, Existing("codexExecutable"), "codex") is { } codex) agent["codexExecutable"] = codex;
+        if (Cli(options.Claude, Existing("claudeExecutable"), "claude") is { } claude) agent["claudeExecutable"] = claude;
         return agent;
     }
 
