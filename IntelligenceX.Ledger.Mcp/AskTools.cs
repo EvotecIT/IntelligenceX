@@ -22,7 +22,7 @@ public sealed class AskTools(LedgerReadClient client) {
         string? capability = null, string? id = null, string? project = null, string? branch = null, string? commit = null,
         string? sessionId = null, string? sessionProvider = null, CancellationToken token = default) {
         var (returnProvider, session) = CurrentSession(sessionId, sessionProvider);
-        var source = GitSource();
+        var source = project is null || branch is null || commit is null ? GitSource() : default;
         return Command(client.AskAsync(new CoordinationAsk(id ?? "ask-" + Guid.NewGuid().ToString("N"), task,
             project ?? source.Project ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"project-required\"}"),
             branch ?? source.Branch ?? "main", commit ?? source.Commit ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"commit-required\"}"),
@@ -62,14 +62,26 @@ public sealed class AskTools(LedgerReadClient client) {
         return (project, branch is null or "HEAD" ? null : branch, Git("rev-parse", "HEAD"));
     }
 
+    /// <summary>Runs git with its own stdin and both outputs drained, so it can neither read the MCP channel nor block on
+    /// a full pipe; it is stopped after five seconds.</summary>
     private static string? Git(params string[] arguments) {
         try {
-            var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+            var start = new ProcessStartInfo("git") {
+                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+                UseShellExecute = false, CreateNoWindow = true
+            };
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
             using var process = Process.Start(start);
             if (process is null) return null;
-            var output = process.StandardOutput.ReadToEnd().Trim();
-            return process.WaitForExit(5000) && process.ExitCode == 0 && output.Length > 0 ? output : null;
+            process.StandardInput.Close();
+            var output = process.StandardOutput.ReadToEndAsync();
+            _ = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(5000)) {
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                return null;
+            }
+            var text = output.Wait(1000) ? output.Result.Trim() : "";
+            return process.ExitCode == 0 && text.Length > 0 ? text : null;
         } catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { return null; }
     }
 
