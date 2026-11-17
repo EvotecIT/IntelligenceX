@@ -29,16 +29,24 @@ them; changing them needs no rebuild.
 Each agent service:
 
 1. **Reports** sessions, accounts, archive state and machine load (today's reporter).
-2. **Registers live sessions' inboxes.** Codex threads are reached through the Codex app server. A Claude Code session
-   registers its documented cross-session inbox (`CLAUDE_CODE_MESSAGING_SOCKET`, and on Windows the session's
-   messaging token) through a session-start hook that hands them to the local service over a private local channel.
-   The token never leaves the machine or the service's private state.
+2. **Knows how to reach each live session.** Codex threads are reached through the Codex app server. Claude Code
+   sessions are reached through Claude Code's own cross-session messaging (`SendMessage`), which is documented within
+   a machine and across machines. The documented inbox socket specifies only its auth line, not the message frame, so
+   the service doesn't write to it; it runs a one-shot `claude -p` on the cheapest model whose only job is to send the
+   message with `SendMessage`. The model and token count of every such delivery go into the Ledger, so the cost is
+   measured rather than assumed. If the inbox frame is documented later, the service writes to it directly instead.
 3. **Takes requests for its machine** from the Ledger and holds the machine's lease while working.
 4. **Runs them through official clients**: the Codex app server (`thread/start`, `turn/start`) or Claude Code
    (`claude -p` for new work; the session inbox for an existing session).
 5. **Returns results and questions** to the Ledger, and **delivers** them to the requester: a Codex `turn/start` in
-   the requesting thread, or a message into the requesting Claude session's inbox. A session that has ended gets the
+   the requesting thread, or a `SendMessage` into the requesting Claude session. A session that has ended gets the
    answer at its next start through the session-start hook, and Marquee shows it either way.
+
+## Measuring cost
+
+Waiting costs nothing: no session polls with a model. Every wake and every Claude delivery records its provider,
+model and tokens in the Ledger with the request it belongs to, and the Ledger reports totals per request and per day.
+Acceptance for each phase includes these figures from real round trips, not estimates.
 
 ## Detecting and fixing failures
 
@@ -53,9 +61,9 @@ Each agent service:
 
 ## Order of work
 
-1. Prove delivery into a Claude session through its inbox on this PC, against the real client, and confirm the message
-   format the documentation leaves out.
-2. Requests between the Windows PC and the Mac mini through the services, with Codex as the runner, round trip both ways.
+1. Requests between the Windows PC and the Mac mini through the services, with Codex as the runner, round trip both
+   ways, with the cost of each wake recorded.
+2. Delivery into a Claude session through a one-shot `claude -p` and `SendMessage` on the cheapest model, measured.
 3. Claude as a runner and delivery into Claude sessions across machines.
 4. The Mac Studio; Marquee's view of requests and answers.
 5. Retire the Node coordination host and agent-to-agent issues.
@@ -63,4 +71,5 @@ Each agent service:
 ## Not used
 
 Hooks can't wake an idle session. Claude Code channels are a research preview and terminal-only. `claude -p --resume`
-on a session the desktop app has open isn't documented as safe. Undocumented session files and keys are not read.
+on a session the desktop app has open isn't documented as safe. The inbox socket's message frame isn't documented, so
+it isn't written to. Undocumented session files and keys are not read.
