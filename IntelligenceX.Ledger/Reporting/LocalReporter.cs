@@ -398,7 +398,11 @@ public static class LocalReporter {
                 Console.Error.WriteLine("ledger-transport-unavailable:" + error.HttpRequestError + ":" + code);
                 return;
             }
-            catch (TaskCanceledException) when (!token.IsCancellationRequested) { return; }
+            catch (TaskCanceledException) when (!token.IsCancellationRequested) {
+                // A slow service leaves events spooled; say so instead of looking healthy.
+                Console.Error.WriteLine("ledger-ingress-timeout");
+                return;
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
                 Console.Error.WriteLine("ledger-spool-delivery-pending");
                 return;
