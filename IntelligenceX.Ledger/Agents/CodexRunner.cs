@@ -238,12 +238,17 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         return turns.EnumerateArray().Select(FinalText).LastOrDefault(text => text is not null);
     }
 
-    /// <summary>True when the thread has no running turn, so its helper holds no process.</summary>
+    /// <summary>True when the thread has no running turn, so its helper holds no process. An archived thread has none.</summary>
     public async Task<bool> IdleAsync(string threadId, CancellationToken token) {
         await using var server = await OpenAsync(token).ConfigureAwait(false);
-        var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
-        return !read.GetProperty("thread").TryGetProperty("turns", out var turns) || turns.ValueKind != JsonValueKind.Array ||
-            turns.EnumerateArray().All(turn => Status(turn) != "inProgress");
+        try {
+            var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
+            return !read.GetProperty("thread").TryGetProperty("turns", out var turns) || turns.ValueKind != JsonValueKind.Array ||
+                turns.EnumerateArray().All(turn => Status(turn) != "inProgress");
+        } catch (CodexRpcException) {
+            if (await ArchivedAsync(server, threadId, token).ConfigureAwait(false)) return true;
+            throw;
+        }
     }
 
     private async Task QueueAsync(string threadId, string text, CancellationToken token) {
@@ -260,11 +265,29 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             new IOException((await error.ConfigureAwait(false)).Trim()));
     }
 
+    /// <summary>Archives the thread. One that is already archived (for example by a pass interrupted before it recorded
+    /// the step) counts as archived once the archived list shows it.</summary>
     public async Task ArchiveAsync(string threadId, CancellationToken token) {
         await using var server = await OpenAsync(token).ConfigureAwait(false);
         try {
             await server.CallAsync("thread/archive", new JsonObject { ["threadId"] = threadId }, CallTimeout, token).ConfigureAwait(false);
-        } catch (CodexRpcException error) when (error.Message.Contains("archived", StringComparison.OrdinalIgnoreCase)) { }
+        } catch (CodexRpcException) {
+            if (!await ArchivedAsync(server, threadId, token).ConfigureAwait(false)) throw;
+        }
+    }
+
+    private static async Task<bool> ArchivedAsync(CodexAppServer server, string threadId, CancellationToken token) {
+        string? cursor = null;
+        for (var page = 0; page < 100; page++) {
+            var parameters = new JsonObject { ["archived"] = true, ["limit"] = 200 };
+            if (cursor is not null) parameters["cursor"] = cursor;
+            var listed = await server.CallAsync("thread/list", parameters, CallTimeout, token).ConfigureAwait(false);
+            if (listed.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array &&
+                data.EnumerateArray().Any(thread => thread.TryGetProperty("id", out var id) && id.GetString() == threadId)) return true;
+            cursor = listed.TryGetProperty("nextCursor", out var next) && next.ValueKind == JsonValueKind.String ? next.GetString() : null;
+            if (cursor is null) return false;
+        }
+        return false;
     }
 }
 

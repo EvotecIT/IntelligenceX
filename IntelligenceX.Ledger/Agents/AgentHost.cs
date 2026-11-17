@@ -149,12 +149,17 @@ internal sealed partial class AgentService {
         return all;
     }
 
+    /// <summary>Starts one operation unless it is running or paused after a failure; a failed operation waits a minute
+    /// before a sweep tries it again, so a persistent fault is retried and logged once a minute rather than every sweep.</summary>
     private void Start(string key, Func<Task> operation) {
-        if (_active.ContainsKey(key)) return;
+        if (_active.ContainsKey(key) || Deferred(key)) return;
         var task = Task.Run(async () => {
             try { await operation().ConfigureAwait(false); }
             catch (OperationCanceledException) { }
-            catch (Exception error) { Log("operation-held", key + " " + error.GetType().Name + ": " + error.Message); }
+            catch (Exception error) {
+                Defer(key);
+                Log("operation-held", key + " " + error.GetType().Name + ": " + error.Message);
+            }
             finally { _active.TryRemove(key, out _); }
         });
         _active.TryAdd(key, task);
