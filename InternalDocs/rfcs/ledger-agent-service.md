@@ -22,8 +22,8 @@ them; changing them needs no rebuild.
 ## Shape
 
 - **The Ledger service** on the Windows PC stays the hub: the request queue, goals, results and every machine's state.
-- **The agent service** on each machine is the existing reporter grown into the machine's one long-running agent
-  process: the same .NET program everywhere, running as the signed-in user so it can start that user's Codex and
+- **The agent service** on each machine is one long-running agent process next to the reporter: the same .NET
+  program everywhere, running as the signed-in user so it can start that user's Codex and
   Claude. Windows: a sign-in task. macOS: a LaunchAgent in the login session. The platform restarts it when it exits.
 
 Each agent service:
@@ -108,11 +108,12 @@ service, and adds three things:
 
 ## Phase 1 as built
 
-Setting up a machine (enroll, kit, platform installer, `agent-install`) is in [ledger-agent-setup.md](../ledger-agent-setup.md).
+Setting up a machine (enroll, kit, `Install-LedgerAgent.ps1`) is in [ledger-agent-setup.md](../ledger-agent-setup.md).
 
-The reporter runs the agent service when its configuration has an `agent` section (`AgentSettings`: coordination
-client, local state, workspace root, capabilities, Codex and Claude executables). `IntelligenceX.Ledger agent-check
---config <reporter.json>` checks the Codex and Claude routes on a machine without touching the Ledger.
+`IntelligenceX.Ledger agent --config <agent.json>` runs the agent service (`AgentSettings`: machine, reporter
+configuration for the Ledger address and credentials, coordination client, local state, workspace root, capabilities,
+Codex and Claude executables). One lock file keeps it to one process per machine. `IntelligenceX.Ledger agent-check
+--config <agent.json>` checks the Codex and Claude routes on a machine without touching the Ledger.
 
 - **Host.** Heartbeats every grant/3 seconds with the attested capabilities and `codex` as a creatable provider when the
   app server answers. The boot identity is kept in local state, so restarts within one boot keep their grants. Each

@@ -21,38 +21,36 @@ public sealed class AgentSetupTests : IDisposable {
         return path;
     }
 
-    private string Kit(bool hook) {
-        var kit = Path.Combine(_root, "kit");
-        Directory.CreateDirectory(Path.Combine(kit, "tools", "mcp"));
-        File.WriteAllText(Path.Combine(kit, "tools", "mcp", "IntelligenceX.Ledger.Mcp.dll"), "mcp");
+    /// <summary>An installed version folder as Install-LedgerAgent.ps1 leaves it.</summary>
+    private string Version(bool hook) {
+        var version = Path.Combine(_root, "agent-service", "versions", new string('a', 40));
+        Directory.CreateDirectory(Path.Combine(version, "tools", "mcp"));
+        File.WriteAllText(Path.Combine(version, "tools", "mcp", "IntelligenceX.Ledger.Mcp.dll"), "mcp");
         if (hook) {
-            Directory.CreateDirectory(Path.Combine(kit, "tools", "hook"));
-            File.WriteAllText(Path.Combine(kit, "tools", "hook", OperatingSystem.IsWindows() ? "IntelligenceX.Ledger.Hook.exe" : "IntelligenceX.Ledger.Hook"), "hook");
+            Directory.CreateDirectory(Path.Combine(version, "tools", "hook"));
+            File.WriteAllText(Path.Combine(version, "tools", "hook", OperatingSystem.IsWindows() ? "IntelligenceX.Ledger.Hook.exe" : "IntelligenceX.Ledger.Hook"), "hook");
         }
-        File.WriteAllText(Path.Combine(kit, "manifest.json"), "{\"sourceCommit\":\"" + new string('a', 40) + "\"}");
-        return kit;
+        return version;
     }
 
+    private AgentInstaller.Options Options(string reporter, string version, string[] capabilities) =>
+        new(reporter, version, Path.Combine(_root, "agent.json"), Path.Combine(_root, "work"), capabilities, null, null, Apply: true);
+
     [Fact]
-    public async Task InstallSetsTheAgentSectionAndToolsOnceAndAgainIsANoOp() {
-        var config = Reporter();
-        var options = new AgentInstaller.Options(config, Kit(hook: false), Path.Combine(_root, "work"), ["macos-shell"],
-            Codex: null, Claude: null, Apply: true);
+    public async Task InstallMovesTheAgentSettingsOutOfTheReporterOnceAndAgainIsANoOp() {
+        var config = Reporter(new JsonObject { ["stateDirectory"] = "/state", ["capabilities"] = new JsonArray("macos-shell"), ["sweepSeconds"] = 5 });
+        var options = Options(config, Version(hook: false), []);
         var steps = AgentInstaller.Plan(options, _root, NoClis);
         Assert.DoesNotContain(steps, s => s.Action.StartsWith("register-", StringComparison.Ordinal));
-        Assert.Contains(steps, s => s.Action == "update-reporter-agent-section");
-        Assert.Contains(steps, s => s.Action == "restart-reporter");
-        Assert.Contains(steps, s => s.Action == "install-tools");
+        Assert.Equal(["write-agent-config", "remove-reporter-agent-section", "restart-reporter"], steps.Select(s => s.Action).ToArray());
         foreach (var step in steps.Where(s => s.Apply is not null)) await step.Apply!();
 
-        var agent = JsonNode.Parse(File.ReadAllText(config))!["agent"]!;
-        Assert.Equal(Path.Combine(_root, "coordination", "host-client.json"), agent["coordinationConfig"]!.GetValue<string>());
-        Assert.Equal("macos-shell", agent["capabilities"]![0]!.GetValue<string>());
-        Assert.True(File.Exists(Path.Combine(_root, "tools", "aaaaaaaaaaaa", "mcp", "IntelligenceX.Ledger.Mcp.dll")));
+        Assert.Null(JsonNode.Parse(File.ReadAllText(config))!["agent"]);
         Assert.True(File.Exists(config + ".before-agent-install"));
-
-        var again = AgentInstaller.Plan(options with { Capabilities = [] }, _root, NoClis);
-        Assert.DoesNotContain(again, s => s.Apply is not null && s.Action is "update-reporter-agent-section" or "install-tools");
+        var agent = AgentHost.Load(Path.Combine(_root, "agent.json"));
+        Assert.Equal(("mac", config, "/state", 5d), (agent.MachineId, agent.ReporterConfig, agent.StateDirectory, agent.SweepSeconds));
+        Assert.Equal(Path.Combine(_root, "coordination", "host-client.json"), agent.CoordinationConfig);
+        Assert.Empty(AgentInstaller.Plan(options, _root, NoClis));
     }
 
     [Fact]
@@ -69,17 +67,20 @@ public sealed class AgentSetupTests : IDisposable {
 
     [Fact]
     public void AStoredCliThatIsNotInstalledIsLeftOut() {
-        var config = Reporter(new JsonObject { ["capabilities"] = new JsonArray("macos-shell"), ["workspaceRoot"] = "/work", ["claudeExecutable"] = "claude" });
-        var options = new AgentInstaller.Options(config, null, null, [], null, null, false);
-        var agent = AgentInstaller.AgentSection(options, JsonNode.Parse(File.ReadAllText(config))!["agent"]!.AsObject(), _root, "host.json", NoClis);
+        var config = Reporter();
+        var reporter = JsonNode.Parse(File.ReadAllText(config))!.AsObject();
+        var existing = new JsonObject { ["capabilities"] = new JsonArray("macos-shell"), ["claudeExecutable"] = "claude" };
+        var agent = AgentInstaller.AgentSettings(Options(config, Version(hook: false), []), existing, reporter, _root, "host.json", NoClis);
         Assert.Null(agent["claudeExecutable"]);
     }
 
     [Fact]
-    public void InstallNeedsTheMachineClientFilesAndACapability() {
+    public void InstallNeedsTheMachineClientFilesAnInstalledVersionAndACapability() {
         var config = Reporter();
+        var options = Options(config, Path.Combine(_root, "missing"), ["macos-shell"]);
+        Assert.Contains("tools/mcp", Assert.Throws<InvalidOperationException>(() => AgentInstaller.Plan(options, _root, NoClis)).Message);
+        options = options with { Version = Version(hook: false) };
         File.Delete(Path.Combine(_root, "coordination", "sessions-client.json"));
-        var options = new AgentInstaller.Options(config, null, Path.Combine(_root, "work"), ["macos-shell"], null, null, false);
         Assert.Contains("agent-enroll", Assert.Throws<InvalidOperationException>(() => AgentInstaller.Plan(options, _root, NoClis)).Message);
         File.WriteAllText(Path.Combine(_root, "coordination", "sessions-client.json"), "{}");
         Assert.Contains("--capability", Assert.Throws<InvalidOperationException>(() =>

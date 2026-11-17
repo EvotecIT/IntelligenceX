@@ -33,11 +33,8 @@ public static class Program {
         }
         if (args.Length == 4 && args[0] == "hook" && args[1] == "--config")
             return await LocalReporter.RunAsync(args[2], hook: true, suppliedPayload: args[3]);
-        if (args.Length == 3 && args[0] == "agent-check" && args[1] == "--config") {
-            var reporter = JsonSerializer.Deserialize<ReporterSettings>(File.ReadAllText(args[2]), LedgerJson.Options)!;
-            if (reporter.Agent is null) { Console.Error.WriteLine("The reporter configuration has no agent section."); return 2; }
-            return await Agents.AgentHost.CheckAsync(reporter.Agent);
-        }
+        if (args.Length == 3 && args[0] == "agent" && args[1] == "--config") return await Agents.AgentHost.RunProcessAsync(args[2]);
+        if (args.Length == 3 && args[0] == "agent-check" && args[1] == "--config") return await Agents.AgentHost.CheckAsync(Agents.AgentHost.Load(args[2]));
         if (args.Length > 0 && args[0] == "agent-install") return await Agents.AgentInstaller.RunAsync(args);
         if (args.Length > 0 && args[0] == "agent-enroll") return Agents.AgentEnrollment.Run(args);
         if (args.Length == 3 && args[0] == "inbox" && args[1] == "--config")
@@ -46,8 +43,8 @@ public static class Program {
             return await LocalReporter.RunNotifyChainAsync(args[2], args[3]);
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {
             Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>\n" +
-                "       IntelligenceX.Ledger agent-check|inbox --config <reporter-json-file>\n" +
-                "       IntelligenceX.Ledger agent-install --config <reporter-json-file> [--tools <kit>] [--apply]\n" +
+                "       IntelligenceX.Ledger agent|agent-check|inbox --config <agent-json-file>\n" +
+                "       IntelligenceX.Ledger agent-install --reporter <reporter-json-file> --version <installed-version> [--apply]\n" +
                 "       IntelligenceX.Ledger agent-enroll --service <service-json-file> --machine <id> --out <folder> [--local] [--apply]\n" +
                 "       IntelligenceX.Ledger backup --config <local-json-file> --out <new-backup-path>\n" +
                 "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>");

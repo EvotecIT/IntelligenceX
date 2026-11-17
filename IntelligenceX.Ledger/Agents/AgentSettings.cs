@@ -5,9 +5,12 @@ using System.Text.Json;
 
 namespace IntelligenceX.Ledger.Agents;
 
-/// <summary>Machine-local settings for the agent service inside the reporter. Limits and routing come from the Ledger
+/// <summary>Machine-local settings for the agent service (its own agent.json). Limits and routing come from the Ledger
 /// policy at run time; these settings only say where things are on this machine.</summary>
 public sealed record AgentSettings {
+    public required string MachineId { get; init; }
+    /// <summary>The machine reporter's configuration, whose identity and credentials carry the sign-in items.</summary>
+    public required string ReporterConfig { get; init; }
     /// <summary>Coordination client settings (endpoint and token) for this machine's host principal.</summary>
     public required string CoordinationConfig { get; init; }
     /// <summary>Private local state: run records and the boot identity.</summary>
@@ -26,6 +29,7 @@ public sealed record AgentSettings {
 
 /// <summary>A stable identity for the current OS boot, kept across service restarts within that boot.</summary>
 internal static class BootIdentity {
+    // Kept beside the run records so the inbox hook can attest the session with the same identity.
     public static string Get(string stateDirectory, string machineId) {
         var boot = BootTime();
         var file = Path.Combine(stateDirectory, "boot.json");

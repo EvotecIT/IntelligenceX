@@ -11,14 +11,14 @@ namespace IntelligenceX.Ledger.Contracts;
 /// SendMessage. Any failure prints nothing: a hook must never stop the session. Reflection-free, so the hook can be a
 /// Native AOT executable that starts in milliseconds.</summary>
 public static class LedgerInbox {
-    /// <summary>Reads the reporter configuration's machine id and agent section, then runs the hook.</summary>
-    public static async Task<int> RunAsync(string reporterConfig, TextReader input, TextWriter output) {
+    /// <summary>Reads the agent service's configuration (machine id, coordination client, state folder), then runs the hook.</summary>
+    public static async Task<int> RunAsync(string agentConfig, TextReader input, TextWriter output) {
         string machineId, coordinationConfig, stateDirectory;
         try {
-            using var reporter = JsonDocument.Parse(File.ReadAllText(reporterConfig));
-            var root = reporter.RootElement;
-            if (!root.TryGetProperty("machineId", out var machine) || !root.TryGetProperty("agent", out var agent) ||
-                !agent.TryGetProperty("coordinationConfig", out var config) || !agent.TryGetProperty("stateDirectory", out var state)) return 0;
+            using var settings = JsonDocument.Parse(File.ReadAllText(agentConfig));
+            var root = settings.RootElement;
+            if (!root.TryGetProperty("machineId", out var machine) || !root.TryGetProperty("coordinationConfig", out var config) ||
+                !root.TryGetProperty("stateDirectory", out var state)) return 0;
             (machineId, coordinationConfig, stateDirectory) = (machine.GetString()!, config.GetString()!, state.GetString()!);
         } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException or InvalidOperationException) {
             return 0;

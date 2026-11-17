@@ -108,7 +108,7 @@ internal sealed class ReporterChangeTracker {
         observation.MachineId, observation.ReporterId, observation.ItemId, observation.ItemKind,
         observation.ParentItemId, observation.Provider, observation.Source,
         Dimension = observation.Session is not null ? "session" : observation.Work is not null ? "work" :
-            observation.GlobalWork is not null ? "global" : observation.SignIn is not null ? "sign-in" : "delivery-" + observation.Delivery?.Stage
+            observation.GlobalWork is not null ? "global" : "delivery-" + observation.Delivery?.Stage
     });
 
     private static string Signature(LedgerEvent observation) => Hash(new {
@@ -123,8 +123,6 @@ internal sealed class ReporterChangeTracker {
             CancelledPullRequests = Ordered(work.CancelledPullRequests)
         } : null,
         observation.Delivery,
-        // A sign-in state is sent again only when it changes, not each time it is checked.
-        SignIn = observation.SignIn is { } signIn ? signIn with { AtUtc = default } : null,
         GlobalWork = observation.GlobalWork is { } global ? ComparableGlobal(global) : null
     });
 

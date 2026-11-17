@@ -1,14 +1,49 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
 
 namespace IntelligenceX.Ledger.Agents;
 
-/// <summary>The machine's agent service, running inside the reporter as the signed-in user. It heartbeats this host,
+/// <summary>The machine's agent service, its own process running as the signed-in user. It heartbeats this host,
 /// runs helper requests admitted to this machine through the Codex app server, delivers results, questions, notices and
 /// answers through the supported clients, retires finished helpers, and records tokens for every turn it causes.
 /// Waiting is plain HTTP reads and app-server notifications; no model is ever used to wait or poll.</summary>
 public static class AgentHost {
+    public static AgentSettings Load(string path) =>
+        JsonSerializer.Deserialize<AgentSettings>(File.ReadAllText(path), new JsonSerializerOptions(JsonSerializerDefaults.Web) {
+            UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow
+        }) ?? throw new InvalidDataException("Missing agent configuration.");
+
+    /// <summary>Runs the agent service as its own process until Ctrl+C or SIGTERM. One instance runs per state folder
+    /// (a held lock file), and agent-process.json records its process for the installer.</summary>
+    public static async Task<int> RunProcessAsync(string configPath) {
+        var settings = Load(configPath);
+        Directory.CreateDirectory(settings.StateDirectory);
+        FileStream instance;
+        try {
+            instance = new FileStream(Path.Combine(settings.StateDirectory, "agent.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        } catch (IOException) {
+            Console.Error.WriteLine("The agent service is already running for " + settings.StateDirectory + ".");
+            return 1;
+        }
+        using (instance) {
+            using var self = Process.GetCurrentProcess();
+            LocalFiles.WriteAtomic(Path.Combine(settings.StateDirectory, "agent-process.json"), JsonSerializer.Serialize(new {
+                pid = self.Id, startedAtUtc = self.StartTime.ToUniversalTime(), config = Path.GetFullPath(configPath)
+            }));
+            using var stop = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
+            using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context => { context.Cancel = true; stop.Cancel(); });
+            using var publisher = new SignInPublisher(settings.ReporterConfig);
+            var publishing = publisher.RunAsync(stop.Token);
+            await RunAsync(settings, settings.MachineId, stop.Token, publisher.Publish).ConfigureAwait(false);
+            try { await publishing.ConfigureAwait(false); } catch (OperationCanceledException) { }
+            return 0;
+        }
+    }
+
     /// <summary>Checks this machine's routes without touching the Ledger: the Codex app server (live daemon or private)
     /// and the Claude executable. Prints one JSON line; exit code 0 only when Codex answers.</summary>
     public static async Task<int> CheckAsync(AgentSettings settings) {
