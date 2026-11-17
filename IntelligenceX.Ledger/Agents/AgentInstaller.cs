@@ -100,21 +100,23 @@ internal static class AgentInstaller {
         var mcp = McpCommand(tools, sessionsClient);
         var codex = agent["codexExecutable"]?.GetValue<string>();
         var claude = agent["claudeExecutable"]?.GetValue<string>();
-        if (codex is not null)
+        if (codex is not null && !Registered(codex, ["mcp", "get", McpName], mcp))
             steps.Add(new("register-mcp-codex", string.Join(' ', mcp), async () => {
                 await RunAsync(codex, ["mcp", "remove", McpName], allowFailure: true).ConfigureAwait(false);
                 await RunAsync(codex, ["mcp", "add", McpName, "--", .. mcp]).ConfigureAwait(false);
             }));
         if (claude is not null) {
-            steps.Add(new("register-mcp-claude", string.Join(' ', mcp), async () => {
-                await RunAsync(claude, ["mcp", "remove", McpName, "--scope", "user"], allowFailure: true).ConfigureAwait(false);
-                await RunAsync(claude, ["mcp", "add", McpName, "--scope", "user", "--", .. mcp]).ConfigureAwait(false);
-            }));
+            if (!Registered(claude, ["mcp", "get", McpName], mcp))
+                steps.Add(new("register-mcp-claude", string.Join(' ', mcp), async () => {
+                    await RunAsync(claude, ["mcp", "remove", McpName, "--scope", "user"], allowFailure: true).ConfigureAwait(false);
+                    await RunAsync(claude, ["mcp", "add", McpName, "--scope", "user", "--", .. mcp]).ConfigureAwait(false);
+                }));
             var hookName = OperatingSystem.IsWindows() ? "IntelligenceX.Ledger.Hook.exe" : "IntelligenceX.Ledger.Hook";
             if (File.Exists(Path.Combine(kitTools, "hook", hookName))) {
                 var hook = "\"" + Path.Combine(tools, "hook", hookName) + "\" inbox --config \"" + options.ReporterConfig + "\"";
                 var settings = Path.Combine(home, ".claude", "settings.json");
-                steps.Add(new("register-claude-inbox-hook", hook, () => { RegisterHook(settings, hook); return Task.CompletedTask; }));
+                if (!HookRegistered(settings, hook))
+                    steps.Add(new("register-claude-inbox-hook", hook, () => { RegisterHook(settings, hook); return Task.CompletedTask; }));
             } else steps.Add(new("claude-inbox-hook-missing", "The kit has no native hook for this platform; build it on this OS."));
         }
         // A folder still in use by a running MCP server stays until the next run.
@@ -166,6 +168,29 @@ internal static class AgentInstaller {
         return OperatingSystem.IsWindows()
             ? [Path.Combine(folder, "IntelligenceX.Ledger.Mcp.exe"), "--coordination-config", sessionsClient]
             : [Environment.ProcessPath ?? "dotnet", Path.Combine(folder, "IntelligenceX.Ledger.Mcp.dll"), "--coordination-config", sessionsClient];
+    }
+
+    /// <summary>Whether the CLI already reports this exact MCP server command (read with its own `mcp get`).</summary>
+    private static bool Registered(string cli, string[] get, string[] command) {
+        try {
+            var start = new ProcessStartInfo(cli) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            foreach (var argument in get) start.ArgumentList.Add(argument);
+            using var process = Process.Start(start);
+            if (process is null) return false;
+            _ = process.StandardError.ReadToEndAsync();
+            var output = process.StandardOutput.ReadToEnd();
+            return process.WaitForExit(30000) && process.ExitCode == 0 && command.All(part => output.Contains(part, StringComparison.OrdinalIgnoreCase));
+        } catch (System.ComponentModel.Win32Exception) { return false; }
+    }
+
+    /// <summary>Whether SessionStart and UserPromptSubmit each run exactly this inbox hook and no other.</summary>
+    internal static bool HookRegistered(string settingsPath, string command) {
+        if (!File.Exists(settingsPath)) return false;
+        var hooks = JsonNode.Parse(File.ReadAllText(settingsPath))?["hooks"] as JsonObject;
+        return new[] { "SessionStart", "UserPromptSubmit" }.All(name => (hooks?[name] as JsonArray)?.OfType<JsonObject>()
+            .SelectMany(group => group["hooks"] as JsonArray ?? []).OfType<JsonObject>()
+            .Select(entry => entry["command"]?.GetValue<string>()).Where(c => c?.Contains(" inbox --config ", StringComparison.Ordinal) == true)
+            .SequenceEqual([command]) == true);
     }
 
     /// <summary>Replaces any earlier inbox hook in Claude's settings with this one, on SessionStart and UserPromptSubmit,

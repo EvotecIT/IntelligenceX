@@ -81,6 +81,8 @@ public sealed class AgentSetupTests : IDisposable {
         var start = hooks["SessionStart"]!.AsArray().SelectMany(g => g!["hooks"]!.AsArray()).Select(h => h!["command"]!.GetValue<string>()).ToArray();
         Assert.Equal(["dotnet ledger.dll hook --config r.json", "\"new/hook\" inbox --config \"r.json\""], start);
         Assert.Single(hooks["UserPromptSubmit"]!.AsArray());
+        Assert.True(AgentInstaller.HookRegistered(settings, "\"new/hook\" inbox --config \"r.json\""));
+        Assert.False(AgentInstaller.HookRegistered(settings, "\"other/hook\" inbox --config \"r.json\""));
         Assert.Equal("opus", JsonNode.Parse(File.ReadAllText(settings))!["model"]!.GetValue<string>());
     }
 
