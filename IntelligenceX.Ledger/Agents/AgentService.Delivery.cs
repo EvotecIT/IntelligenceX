@@ -95,7 +95,6 @@ internal sealed partial class AgentService {
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException) {
                 // The CLI didn't start, so nothing was sent: the delivery returns to pending and is retried after a pause.
                 Log("delivery-not-submitted", requestId + " claude " + error.Message);
-                Observe("claude", false, "launch-failed");
                 Defer("deliver:" + requestId);
                 return ("not-submitted", "claude-cli-unavailable");
             }

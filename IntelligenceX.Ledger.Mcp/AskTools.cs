@@ -24,10 +24,12 @@ public sealed class AskTools(LedgerReadClient client) {
         string? sessionId = null, string? sessionProvider = null, string? sessionAddress = null, CancellationToken token = default) {
         var (returnProvider, session) = CurrentSession(sessionId, sessionProvider);
         var source = project is null || branch is null || commit is null ? GitSource() : default;
-        return Command(client.AskAsync(new CoordinationAsk(id ?? "ask-" + Guid.NewGuid().ToString("N"), task,
+        // An uncertain outcome names the id, so a retry with it returns the ask the service may already have taken.
+        var askId = id ?? "ask-" + Guid.NewGuid().ToString("N");
+        return Command(client.AskAsync(new CoordinationAsk(askId, task,
             project ?? source.Project ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"project-required\"}"),
             branch ?? source.Branch ?? "main", commit ?? source.Commit ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"commit-required\"}"),
-            returnProvider, session, machine, provider, kind, capability, sessionAddress), token));
+            returnProvider, session, machine, provider, kind, capability, sessionAddress), token), askId);
     }
 
     [McpServerTool(Name = "ask_answer", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -86,13 +88,14 @@ public sealed class AskTools(LedgerReadClient client) {
         } catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { return null; }
     }
 
-    private static async Task<T> Command<T>(Task<T> command) {
+    private static async Task<T> Command<T>(Task<T> command, string? retryId = null) {
         try { return await command.ConfigureAwait(false); }
         catch (CoordinationCommandRejectedException error) {
             throw new McpException(JsonSerializer.Serialize(new { outcome = "rejected", error = error.ErrorCode }));
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
             JsonException or ArgumentException or HttpRequestException or TaskCanceledException) {
-            throw new McpException("{\"outcome\":\"uncertain\"}");
+            throw new McpException(retryId is null ? "{\"outcome\":\"uncertain\"}"
+                : JsonSerializer.Serialize(new { outcome = "uncertain", id = retryId, retry = "Call ask again with this id." }));
         }
     }
 }
