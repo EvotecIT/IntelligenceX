@@ -6,6 +6,7 @@ namespace IntelligenceX.Ledger.Agents;
 /// <summary>Tokens for one turn, summed from the app server's per-response usage updates.</summary>
 internal sealed record TurnTokens(long Input, long CachedInput, long Output, long Total) {
     public static TurnTokens None { get; } = new(0, 0, 0, 0);
+    public TurnTokens Add(TurnTokens other) => new(Input + other.Input, CachedInput + other.CachedInput, Output + other.Output, Total + other.Total);
     public TurnTokens Add(JsonElement breakdown) => new(Input + Long(breakdown, "inputTokens"),
         CachedInput + Long(breakdown, "cachedInputTokens"), Output + Long(breakdown, "outputTokens"), Total + Long(breakdown, "totalTokens"));
     private static long Long(JsonElement value, string name) =>
@@ -74,7 +75,7 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         try {
             server.Notification += watch.Observe;
             var resumed = await ResumeAsync(server, threadId, cwd, token).ConfigureAwait(false);
-            var turns = await TurnIdsAsync(server, threadId, knownTurns is > 0, token).ConfigureAwait(false);
+            var turns = await TurnIdsAsync(server, threadId, knownTurns.HasValue, token).ConfigureAwait(false);
             string turnId;
             if (knownTurns is { } known && turns.Count > known) turnId = turns[known];
             else {
@@ -158,15 +159,14 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         catch (Exception error) when (error is IOException or TimeoutException) { return false; }
     }
 
-    /// <summary>The thread's turn ids, oldest first. A thread with no turns yet may have nothing to read; that counts as
-    /// none only when no turn could have been accepted before (a thread's first turn creates what the read finds), since
-    /// otherwise a failed read would submit the input twice.</summary>
+    /// <summary>The thread's turn ids, oldest first. A failed read counts as no turns only for a fresh submission, or when
+    /// Codex says the thread has no rollout yet (no turn was ever accepted); otherwise it could submit the input twice.</summary>
     private static async Task<List<string>> TurnIdsAsync(CodexAppServer server, string threadId, bool pending, CancellationToken token) {
         try {
             var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
             return read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
                 ? turns.EnumerateArray().Select(turn => turn.GetProperty("id").GetString()!).ToList() : [];
-        } catch (CodexRpcException) when (!pending) { return []; }
+        } catch (CodexRpcException error) when (!pending || error.Message.Contains("no rollout", StringComparison.OrdinalIgnoreCase)) { return []; }
     }
 
     private static async Task WaitClosedAsync(CodexAppServer server, CancellationToken token) {
@@ -338,13 +338,41 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
     public TurnTokens Tokens { get { lock (_gate) return _tokens; } }
     public Task<(string Status, string? Text, string? Error)> Completed => _completed.Task;
 
-    public void Follow(string turnId) => TurnId = turnId;
+    private readonly Dictionary<string, TurnTokens> _early = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _earlyText = new(StringComparer.Ordinal);
+
+    /// <summary>Follows a turn, taking any usage and message that arrived for it before its id was known.</summary>
+    public void Follow(string turnId) {
+        TurnTokens? now = null;
+        lock (_gate) {
+            TurnId = turnId;
+            if (_early.Remove(turnId, out var early)) now = _tokens = _tokens.Add(early);
+            if (_earlyText.Remove(turnId, out var text)) LastMessage = text;
+            _early.Clear();
+            _earlyText.Clear();
+        }
+        if (now is not null) checkpoint?.Invoke(now);
+    }
     public void Complete(string status, string? text, string? error) => _completed.TrySetResult((status, text ?? LastMessage, error));
     public void MarkServerRequest() => ServerRequested = true;
 
     public void Observe(string method, JsonElement parameters) {
         if (parameters.ValueKind != JsonValueKind.Object || !parameters.TryGetProperty("threadId", out var thread) ||
             thread.GetString() != ThreadId) return;
+        if (TurnId is null && parameters.TryGetProperty("turnId", out var pendingTurn) && pendingTurn.GetString() is { } early) {
+            lock (_gate) {
+                if (TurnId is null) {
+                    if (method == "thread/tokenUsage/updated" && parameters.TryGetProperty("tokenUsage", out var earlyUsage) &&
+                        earlyUsage.TryGetProperty("last", out var earlyLast))
+                        _early[early] = (_early.GetValueOrDefault(early) ?? TurnTokens.None).Add(earlyLast);
+                    else if (method == "item/completed" && parameters.TryGetProperty("item", out var earlyItem) &&
+                        earlyItem.TryGetProperty("type", out var earlyType) && earlyType.GetString() == "agentMessage" &&
+                        earlyItem.TryGetProperty("text", out var earlyText) && earlyText.GetString() is { Length: > 0 } message)
+                        _earlyText[early] = message;
+                    return;
+                }
+            }
+        }
         switch (method) {
             case "thread/tokenUsage/updated" when Matches(parameters, "turnId") &&
                 parameters.TryGetProperty("tokenUsage", out var usage) && usage.TryGetProperty("last", out var last):

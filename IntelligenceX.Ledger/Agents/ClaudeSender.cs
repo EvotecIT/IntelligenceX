@@ -7,6 +7,9 @@ namespace IntelligenceX.Ledger.Agents;
 /// <summary>What one sender run did. Stage is submitted (SendMessage reported success), uncertain (it was called but
 /// its outcome is unknown) or not-submitted (it was never called).
 /// Failure is signed-out, expired or usage-limit when the CLI couldn't run at all, so the message waits for sign-in.</summary>
+/// <summary>The Claude CLI couldn't be started, so nothing was sent.</summary>
+internal sealed class ClaudeLaunchException(string message, Exception? inner = null) : IOException(message, inner);
+
 internal sealed record ClaudeSendOutcome(string Stage, string Evidence, string Model, TurnTokens Tokens, double? CostUsd,
     string? Failure = null);
 
@@ -28,7 +31,10 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
             "--tools", "SendMessage,ListAgents", "--allowedTools", "SendMessage,ListAgents", "--strict-mcp-config",
             "--setting-sources", "", "--no-session-persistence", "--system-prompt", SystemPrompt })
             start.ArgumentList.Add(argument);
-        using var process = Process.Start(start) ?? throw new IOException("claude did not start.");
+        Process process;
+        try { process = Process.Start(start) ?? throw new ClaudeLaunchException("claude did not start."); }
+        catch (System.ComponentModel.Win32Exception error) { throw new ClaudeLaunchException(error.Message, error); }
+        using var started = process;
         using var end = token.Register(() => AgentService.Stop(process));
         await process.StandardInput.WriteAsync(new StringBuilder()
             .Append("Recipient: ").AppendLine(sessionId)
@@ -45,6 +51,11 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
             await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
         } catch (OperationCanceledException) when (!token.IsCancellationRequested) {
             try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+        } catch (IOException) {
+            // The CLI ran; whether SendMessage went out is only known if the transcript so far shows it.
+            AgentService.Stop(process);
+            var partial = Parse(lines, model);
+            return partial.Stage == "submitted" ? partial : partial with { Stage = "uncertain", Evidence = "claude-transcript-unreadable" };
         }
         return Parse(lines, model);
     }

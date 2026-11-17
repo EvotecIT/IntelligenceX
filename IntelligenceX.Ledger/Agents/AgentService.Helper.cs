@@ -48,7 +48,7 @@ internal sealed partial class AgentService {
         try {
             using var document = JsonDocument.Parse(text);
             var root = document.RootElement;
-            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("outcome", out var outcome) &&
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("outcome", out var outcome) && outcome.ValueKind == JsonValueKind.String &&
                 root.TryGetProperty("text", out var body) && outcome.GetString() is "result" or "question" && body.ValueKind == JsonValueKind.String)
                 return (outcome.GetString()!, body.GetString()!);
         } catch (JsonException) { }
@@ -147,6 +147,8 @@ internal sealed partial class AgentService {
             var watch = new TurnWatch(threadId, RunRecord.LoadTokens(_settings.StateDirectory, id, work.Generation),
                 tokens => LocalFiles.WriteAtomic(tokensFile, JsonSerializer.Serialize(tokens)));
             Task Submitting(int turns) {
+                // The previous turn's usage is recorded by now; its checkpoint goes before a new turn adds to it.
+                if (record.KnownTurns is null) File.Delete(tokensFile);
                 record = (record with { KnownTurns = turns }).Save(_settings.StateDirectory);
                 return Task.CompletedTask;
             }
@@ -200,7 +202,6 @@ internal sealed partial class AgentService {
             if (record.UsageTurn != outcome.TurnId)
                 record = (record with { UsageTurn = outcome.TurnId, UsageAtUtc = DateTimeOffset.UtcNow }).Save(_settings.StateDirectory);
             await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop, record.UsageAtUtc).ConfigureAwait(false);
-            File.Delete(tokensFile);
             var (kind, text) = ParseAnswer(outcome.FinalText);
             if (kind == "question" && (string.IsNullOrWhiteSpace(text) || System.Text.Encoding.UTF8.GetByteCount(text) > MaximumResultBytes)) kind = "none";
             if (outcome.Status == "completed" && kind == "question") {

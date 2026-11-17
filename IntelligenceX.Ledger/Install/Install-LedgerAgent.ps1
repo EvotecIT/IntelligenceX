@@ -116,10 +116,16 @@ function Get-AgentProcess {
 function Stop-Agent {
     if ($IsWindows) {
         if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $TaskName }
-        if ($process = Get-AgentProcess) { Stop-Process -Id $process.Id; $process.WaitForExit(15000) | Out-Null }
+        if ($process = Get-AgentProcess) {
+            Stop-Process -Id $process.Id
+            if (-not $process.WaitForExit(15000)) { throw "The agent service (process $($process.Id)) did not stop; nothing was changed." }
+        }
     } else {
         & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null
-        if ($process = Get-AgentProcess) { & /bin/kill -TERM $process.Id; $process.WaitForExit(15000) | Out-Null }
+        if ($process = Get-AgentProcess) {
+            & /bin/kill -TERM $process.Id
+            if (-not $process.WaitForExit(30000)) { throw "The agent service (process $($process.Id)) did not stop; nothing was changed." }
+        }
     }
 }
 

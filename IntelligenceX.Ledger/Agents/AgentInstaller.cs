@@ -79,16 +79,6 @@ internal static class AgentInstaller {
         var agent = AgentSettings(options, existing ?? legacy, reporter, root, hostClient, find);
         if (!JsonNode.DeepEquals(existing, agent))
             steps.Add(new("write-agent-config", options.AgentConfig, () => { LocalFiles.WriteAtomic(options.AgentConfig, agent.ToJsonString(Indented)); return Task.CompletedTask; }));
-        if (legacy is not null) {
-            steps.Add(new("remove-reporter-agent-section", options.ReporterConfig, () => {
-                File.Copy(options.ReporterConfig, options.ReporterConfig + ".before-agent-install", overwrite: true);
-                reporter.Remove("agent");
-                LocalFiles.WriteAtomic(options.ReporterConfig, reporter.ToJsonString(Indented));
-                return Task.CompletedTask;
-            }));
-            steps.Add(new("restart-reporter", "The reporter must restart so it stops running the agent service itself."));
-        }
-
         var mcp = McpCommand(options.Version, sessionsClient);
         var codex = agent["codexExecutable"]?.GetValue<string>();
         var claude = agent["claudeExecutable"]?.GetValue<string>();
@@ -110,6 +100,16 @@ internal static class AgentInstaller {
                 if (!HookRegistered(settings, hook))
                     steps.Add(new("register-claude-inbox-hook", hook, () => { RegisterHook(settings, hook); return Task.CompletedTask; }));
             } else steps.Add(new("claude-inbox-hook-missing", "This version has no native hook for this platform; build its kit on this OS."));
+        }
+        // Last, so a step that fails leaves the section (and with it the pending reporter restart) for the retry.
+        if (legacy is not null) {
+            steps.Add(new("remove-reporter-agent-section", options.ReporterConfig, () => {
+                File.Copy(options.ReporterConfig, options.ReporterConfig + ".before-agent-install", overwrite: true);
+                reporter.Remove("agent");
+                LocalFiles.WriteAtomic(options.ReporterConfig, reporter.ToJsonString(Indented));
+                return Task.CompletedTask;
+            }));
+            steps.Add(new("restart-reporter", "The reporter must restart so it stops running the agent service itself."));
         }
         return steps;
     }

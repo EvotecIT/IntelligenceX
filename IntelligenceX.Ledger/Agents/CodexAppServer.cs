@@ -116,10 +116,10 @@ internal sealed class CodexAppServer : IAsyncDisposable {
         var id = Interlocked.Increment(ref _next);
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[id] = completion;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(timeout);
         try {
-            await SendAsync(new JsonObject { ["id"] = id, ["method"] = method, ["params"] = parameters ?? new JsonObject() }, token).ConfigureAwait(false);
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-            deadline.CancelAfter(timeout);
+            await SendAsync(new JsonObject { ["id"] = id, ["method"] = method, ["params"] = parameters ?? new JsonObject() }, deadline.Token).ConfigureAwait(false);
             return await completion.Task.WaitAsync(deadline.Token).ConfigureAwait(false);
         } catch (OperationCanceledException) when (!token.IsCancellationRequested) {
             throw new TimeoutException("Codex app server did not answer " + method + ".");
@@ -190,7 +190,10 @@ internal sealed class CodexAppServer : IAsyncDisposable {
         } catch (Exception) { /* Observers own their failures; the connection keeps reading. */ }
     }
 
+    private int _disposed;
+
     public async ValueTask DisposeAsync() {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _closing.Cancel();
         try {
             if (_socket is { State: WebSocketState.Open }) {

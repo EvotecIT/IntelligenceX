@@ -93,6 +93,15 @@ public sealed class AgentServiceTests {
             < AgentInstaller.HookTimeoutSeconds - 2);
 
     [Fact]
+    public void UsageThatArrivesBeforeTheTurnIdIsKnownCountsForThatTurn() {
+        var watch = new TurnWatch("thread");
+        watch.Observe("thread/tokenUsage/updated", Json(new { threadId = "thread", turnId = "turn-1", tokenUsage = new { last = new { inputTokens = 100, totalTokens = 110 } } }));
+        watch.Observe("thread/tokenUsage/updated", Json(new { threadId = "thread", turnId = "turn-0", tokenUsage = new { last = new { inputTokens = 999, totalTokens = 999 } } }));
+        watch.Follow("turn-1");
+        Assert.Equal(new TurnTokens(100, 0, 0, 110), watch.Tokens);
+    }
+
+    [Fact]
     public void ATurnFollowedAfterARestartKeepsTheTokensRecordedBeforeIt() {
         var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
         try {

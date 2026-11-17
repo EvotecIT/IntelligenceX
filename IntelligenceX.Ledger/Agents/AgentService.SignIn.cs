@@ -97,10 +97,11 @@ internal sealed partial class AgentService {
             if (prior is { Ready: false, Reason: "usage-limit" } && ready && reason == "status") return;
             if (prior is null || prior.Ready != ready || !ready && prior.Reason != reason) {
                 _signIn[provider] = changed = new(provider, ready, ready ? "signed-in" : reason, DateTimeOffset.UtcNow);
+                // Inside the lock, so the publisher sees states in the order they changed.
+                Publish(changed);
             }
         }
         if (changed is null) return;
-        Publish(changed);
         Log(ready ? "sign-in-ok" : "sign-in-required", provider + " " + changed.Reason);
         if (!ready && OperatingSystem.IsMacOS()) Start("prompt:" + provider, () => PromptSignInAsync(provider, _life));
     }
@@ -117,9 +118,7 @@ internal sealed partial class AgentService {
     /// <summary>Updates the count of Claude deliveries held for sign-in, republishing the state when it changes.</summary>
     private void CountHeld(int held) {
         if (Interlocked.Exchange(ref _claudeHeld, held) == held) return;
-        ProviderSignIn? state;
-        lock (_signInGate) state = _signIn.GetValueOrDefault("claude");
-        if (state is { Ready: false }) Publish(state);
+        lock (_signInGate) if (_signIn.GetValueOrDefault("claude") is { Ready: false } state) Publish(state);
     }
 
     /// <summary>`claude auth status --json`. Null when the Claude CLI isn't installed here.</summary>

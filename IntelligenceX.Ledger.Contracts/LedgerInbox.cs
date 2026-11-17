@@ -115,11 +115,13 @@ public static class LedgerInbox {
                 }
                 // Content first: a failed read leaves the result untouched.
                 var content = await ledger.ResultContentAsync(result.RequestId, token).ConfigureAwait(false);
+                // Registered first: if the begin commits but its reply is lost, the undo still releases it.
+                Func<CancellationToken, Task> undo = t => ledger.ResultReceiptAsync(result.RequestId, new(result.Generation, new(attempt, "not-submitted", evidence)), t);
+                collected.Undo.Add(undo);
                 try { await ledger.BeginResultAsync(result.RequestId, new(result.Generation, attempt), token).ConfigureAwait(false); }
-                catch (CoordinationCommandRejectedException) { continue; }
+                catch (CoordinationCommandRejectedException) { collected.Undo.Remove(undo); continue; }
                 collected.Parts.Add("Result of your ask " + result.RequestId + ":\n\n" + content.Content);
                 collected.Receipts.Add(t => ledger.ResultReceiptAsync(result.RequestId, new(result.Generation, new(attempt, "submitted", evidence)), t));
-                collected.Undo.Add(t => ledger.ResultReceiptAsync(result.RequestId, new(result.Generation, new(attempt, "not-submitted", evidence)), t));
             }
             if (results.NextOrder is not { } next) break;
             after = next;
@@ -131,13 +133,14 @@ public static class LedgerInbox {
                 i.ReturnTo.Provider == "claude" && i.ReturnTo.SessionId == session)) {
                 var q = item.Question;
                 var attempt = "hook-" + Hash(q.RequestId, q.Number, q.Delivery?.AttemptId)[..32];
+                Func<CancellationToken, Task> undo = t => ledger.QuestionDeliveryAsync(q.RequestId, q.Number, new("question", attempt, "not-submitted", evidence), t);
+                collected.Undo.Add(undo);
                 try { await ledger.QuestionDeliveryAsync(q.RequestId, q.Number, new("question", attempt, "sending"), token).ConfigureAwait(false); }
-                catch (CoordinationCommandRejectedException) { continue; }
+                catch (CoordinationCommandRejectedException) { collected.Undo.Remove(undo); continue; }
                 collected.Parts.Add(q.Kind == "notice" ? "Notice about your ask " + q.RequestId + ": " + q.Text
                     : "Question " + q.Number + " from the helper working on your ask " + q.RequestId + " (" + item.HelperProvider + " on " +
                       item.HelperMachine + "):\n\n" + q.Text + "\n\nAnswer with the ask_answer tool (requestId " + q.RequestId + ", number " + q.Number + ").");
                 collected.Receipts.Add(t => ledger.QuestionDeliveryAsync(q.RequestId, q.Number, new("question", attempt, "submitted", evidence), t));
-                collected.Undo.Add(t => ledger.QuestionDeliveryAsync(q.RequestId, q.Number, new("question", attempt, "not-submitted", evidence), t));
             }
             if (questions.NextOrder is not { } next) break;
             after = next;
