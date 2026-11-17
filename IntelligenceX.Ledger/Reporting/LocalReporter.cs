@@ -105,6 +105,8 @@ public static class LocalReporter {
         ClaimSnapshot? claimSnapshot = null;
         AgentSourceDiagnostic[] metadataDiagnostics = [];
         var archives = new SessionArchiveCache();
+        var claudeAccounts = new ClaudeDesktopAccounts();
+        var claudeCliRoots = ClaudeDesktopAccounts.CliProfileRoots();
         await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
             readMetadataAsync: async ct => {
                 var available = await IntelligenceX.Codex.CodexAgentSessionMetadataReader.ReadAvailableAsync(
@@ -131,6 +133,12 @@ public static class LocalReporter {
                 var fact = SessionEvidence(settings, session, archives.For(session)) with {
                     Repository = workspaces.For(session, settings.GitHub && snapshot.GitHubCheckedAtUtc.HasValue)
                 };
+                // Claude sessions follow the account that ran them, so a switch of account can be seen and taken over.
+                if (fact.AccountId is null && session.Provider == "claude" && claudeAccounts.For(session.Id,
+                    session.SourceRootId is { } root && claudeCliRoots.Contains(root)) is { } account)
+                    fact = fact with { AccountId = "claude:" + account };
+                if (fact.Archived is null && session.Provider == "claude" && claudeAccounts.Archived(session.Id) is { } archived)
+                    fact = fact with { Archived = archived, ArchiveObservedAtUtc = DateTimeOffset.UtcNow };
                 changes.TryAppend(Event(id, session.Provider, fact));
                 if (fact.SourceMessageId is not null || session.PeerMessages.Count > 0)
                     foreach (var messageEvent in SessionMessageEvents(Event(id, session.Provider, fact), session.PeerMessages))
@@ -398,7 +406,11 @@ public static class LocalReporter {
                 Console.Error.WriteLine("ledger-transport-unavailable:" + error.HttpRequestError + ":" + code);
                 return;
             }
-            catch (TaskCanceledException) when (!token.IsCancellationRequested) { return; }
+            catch (TaskCanceledException) when (!token.IsCancellationRequested) {
+                // A slow service leaves events spooled; say so instead of looking healthy.
+                Console.Error.WriteLine("ledger-ingress-timeout");
+                return;
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
                 Console.Error.WriteLine("ledger-spool-delivery-pending");
                 return;

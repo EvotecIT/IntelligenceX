@@ -65,7 +65,7 @@ public sealed class LedgerHostingRegressionTests : IDisposable {
                 FileShare.ReadWrite | FileShare.Delete);
             var received = now.AddMinutes(1);
             await store.IngestAsync([Heartbeat(received)], received);
-            clock.Advance(TimeSpan.FromMinutes(1));
+            clock.Advance(ShadowReportWorker.Interval);
             while (await LatestHeartbeat() != received) await Task.Delay(50, deadline.Token);
             using var report = JsonDocument.Parse(await File.ReadAllBytesAsync(path));
             Assert.Equal(received, report.RootElement.GetProperty("reporterHealth").GetProperty("synthetic-first-reporter").GetDateTimeOffset());
