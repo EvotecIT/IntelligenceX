@@ -1,7 +1,6 @@
 using IntelligenceX.Ledger.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace IntelligenceX.Ledger.Mcp;
 
@@ -16,9 +15,7 @@ public static class Program {
         try {
             var commands = args[0] == "--coordination-config";
             var leases = args[0] == "--lease-config";
-            var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { Args = [] });
-            builder.Logging.ClearProviders();
-            builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = McpProcessLifetime.ShutdownTimeout);
+            var builder = CreateHostBuilder();
             builder.Services.AddSingleton(args[0] switch {
                 "--coordination-config" => LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(args[1])),
                 "--lease-config" => LedgerReadClient.ForLeases(LeaseClientSettings.Load(args[1])),
@@ -44,5 +41,16 @@ public static class Program {
             Console.Error.WriteLine("Ledger MCP could not load its local configuration.");
             return 2;
         }
+    }
+
+    /// <summary>
+    /// Clients keep one stdio server per loaded thread for hours. The default host adds reloadable
+    /// appsettings files under the working directory, which watches that whole tree and spends CPU
+    /// on every file change in the client's repository. This host reads no configuration files.
+    /// </summary>
+    internal static HostApplicationBuilder CreateHostBuilder() {
+        var builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings { Args = [] });
+        builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = McpProcessLifetime.ShutdownTimeout);
+        return builder;
     }
 }

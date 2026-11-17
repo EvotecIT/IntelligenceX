@@ -11,5 +11,6 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="ModelContextProtocol" Version="2.3.1" />
     <ProjectReference Include="../IntelligenceX.Ledger.Contracts/IntelligenceX.Ledger.Contracts.csproj" />
+    <InternalsVisibleTo Include="IntelligenceX.Ledger.Tests" />
   </ItemGroup>
 </Project>

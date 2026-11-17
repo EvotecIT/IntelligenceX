@@ -54,7 +54,7 @@ public static class Program {
             ? new(1, []) : await coordinationStore.ReadAsync(state => state.Policy, ct);
         using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules), ReadPolicy);
         await store.InitializeAsync();
-        var builder = WebApplication.CreateSlimBuilder();
+        var builder = CreateWebBuilder();
         builder.Logging.ClearProviders(); // Payloads, paths and credentials never enter request logs.
         // Windows Schannel requires a key container for a configured server PFX. The default
         // temporary container is owned by this certificate and removed on disposal; no store is opened.
@@ -149,4 +149,12 @@ public static class Program {
         return 0;
     }
 
+    /// <summary>
+    /// The scheduled task starts the service in the runtime root, where the reporter spool changes every few
+    /// seconds. Anchor the content root to the application and keep appsettings files static, so the host does
+    /// not watch that tree.
+    /// </summary>
+    internal static WebApplicationBuilder CreateWebBuilder() => WebApplication.CreateSlimBuilder(new WebApplicationOptions {
+        ContentRootPath = AppContext.BaseDirectory, Args = ["--hostBuilder:reloadConfigOnChange=false"]
+    });
 }
