@@ -202,6 +202,7 @@ internal sealed partial class AgentService {
             await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop, record.UsageAtUtc).ConfigureAwait(false);
             File.Delete(tokensFile);
             var (kind, text) = ParseAnswer(outcome.FinalText);
+            if (kind == "question" && (string.IsNullOrWhiteSpace(text) || System.Text.Encoding.UTF8.GetByteCount(text) > MaximumResultBytes)) kind = "none";
             if (outcome.Status == "completed" && kind == "question") {
                 try {
                     var question = await _ledger.RaiseQuestionAsync(id, new(work.Generation, record.GrantId, _bootId, text), stop).ConfigureAwait(false);

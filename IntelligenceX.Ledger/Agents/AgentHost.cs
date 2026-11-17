@@ -141,7 +141,7 @@ internal sealed partial class AgentService {
                         await HeartbeatAsync(life.Token).ConfigureAwait(false);
                         nextHeartbeat = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(_grantSeconds / 3.0, 5, 10));
                     }
-                    await CheckSignInAsync(life.Token).ConfigureAwait(false);
+                    Start("sign-in-check", () => CheckSignInAsync(life.Token));
                     await SweepAsync(life.Token).ConfigureAwait(false);
                     if (DateTimeOffset.UtcNow >= nextPrune) {
                         RunRecord.Prune(_settings.StateDirectory, TimeSpan.FromDays(14), key => _active.ContainsKey(key));
@@ -161,7 +161,6 @@ internal sealed partial class AgentService {
     private async Task HeartbeatAsync(CancellationToken stop) {
         // Codex is offered while `codex login status` says it is signed in. Starting an app server just to prove it
         // answers cost a process per machine every minute; a helper that can't start one fails and is retried instead.
-        await CheckSignInAsync(stop).ConfigureAwait(false);
         bool codexReady;
         lock (_signInGate) codexReady = _signIn.TryGetValue("codex", out var codex) && codex.Ready;
         try {

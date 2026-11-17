@@ -138,9 +138,12 @@ internal sealed partial class AgentService {
         CancellationToken stop) {
         await using (server) {
             await Task.WhenAny(watch.Completed, Task.Delay(TimeSpan.FromMinutes(_policy.WakeUsageMinutes), stop)).ConfigureAwait(false);
+            await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, watch.Tokens, null, sessionId, stop).ConfigureAwait(false);
+            Log("wake-recorded", requestId + " " + watch.Tokens.Total + " tokens" + (watch.Completed.IsCompleted ? "" : " (partial)"));
+            // Closing a private server ends its turn, so it stays open until the requester's turn finishes (or the service stops).
+            if (!server.Live && !watch.Completed.IsCompleted)
+                try { await watch.Completed.WaitAsync(stop).ConfigureAwait(false); } catch (OperationCanceledException) { }
         }
-        await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, watch.Tokens, null, sessionId, stop).ConfigureAwait(false);
-        Log("wake-recorded", requestId + " " + watch.Tokens.Total + " tokens" + (watch.Completed.IsCompleted ? "" : " (partial)"));
     }
 
     /// <summary>Attests the asking session as a current worker on this machine just before delivering to it, keeping an
