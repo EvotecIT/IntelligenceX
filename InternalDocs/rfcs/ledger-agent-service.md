@@ -73,3 +73,35 @@ Acceptance for each phase includes these figures from real round trips, not esti
 Hooks can't wake an idle session. Claude Code channels are a research preview and terminal-only. `claude -p --resume`
 on a session the desktop app has open isn't documented as safe. The inbox socket's message frame isn't documented, so
 it isn't written to. Undocumented session files and keys are not read.
+
+## What exists today
+
+The Ledger's coordination engine already has the request queue, and it doesn't depend on any provider. States are
+`queued`, `admitted`, `submitted`, `started`, `reconcile`, then `succeeded`, `failed` or `cancelled`. Every route is
+under `/api/coordination/v1`, authenticated as a `client`, `host` or `operator` principal or as an enrolled
+requester.
+
+- **Submitting** needs an existing goal owned by the caller. The request must carry the goal's `ControlRevision` and
+  `AuthorizationRef`, a `Checkpoint` (project, branch, commit) and resources. `help` and `review` also need `ReturnTo`.
+  The Node requester creates the goal and enrolls itself automatically.
+- **Admission** is internal scheduling that assigns a machine, generation, grant and assignee.
+- **A host** pages `/requests`, `/results` and `/retirements`, sends a heartbeat to `/hosts`, announces workers, binds
+  a helper to the grant, sends `submitted`, `started`, `renew` and `terminal` receipts, stores the result (8 KB at most)
+  and runs delivery (`result/begin`, then delivery receipts). The requester consumes the result, and the host retires
+  the helper.
+- **The Node host and worker** (`host-service`, `host-controller`, `run-worker`, `assigned-worker`, `codex-worker`,
+  `result-return`, `retire-worker`, `codex-requester`) drive all of this:
+  - a one-second tick;
+  - Codex helpers through `thread/start` and `turn/start`;
+  - completion by polling `thread/turns/list`;
+  - results delivered by queueing a message into the requester's thread.
+
+  The host and worker side handles Codex only, and parts of it only work on Windows: boot id through `pwsh`, ACL
+  checks, the sandbox mode and the scheduled-task launcher.
+- **There is no question channel.** A worker can only end as succeeded or failed.
+
+The agent service keeps the engine and its routes. It replaces the Node host and worker with .NET in the machine
+service, and adds three things:
+1. a `question` state with answer delivery;
+2. a single `ask` call that creates the goal and request together for a session that has no goal;
+3. Claude as a runner and as a receiver.
