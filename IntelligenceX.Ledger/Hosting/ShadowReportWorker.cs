@@ -18,7 +18,14 @@ internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings setti
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         var clock = timeProvider ?? TimeProvider.System;
-        await Task.WhenAll(ReportAsync(clock, stoppingToken), LeasesAsync(clock, stoppingToken));
+        // Either loop failing ends the worker (and with it the host), instead of the other loop hiding the failure.
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var loops = new[] { ReportAsync(clock, stop.Token), LeasesAsync(clock, stop.Token) };
+        var first = await Task.WhenAny(loops);
+        await stop.CancelAsync();
+        try { await Task.WhenAll(loops); }
+        catch (OperationCanceledException) when (!first.IsFaulted) { }
+        await first;
     }
 
     private async Task LeasesAsync(TimeProvider clock, CancellationToken stoppingToken) {
