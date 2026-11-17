@@ -108,6 +108,8 @@ service, and adds three things:
 
 ## Phase 1 as built
 
+Setting up a machine (enroll, kit, platform installer, `agent-install`) is in [ledger-agent-setup.md](../ledger-agent-setup.md).
+
 The reporter runs the agent service when its configuration has an `agent` section (`AgentSettings`: coordination
 client, local state, workspace root, capabilities, Codex and Claude executables). `IntelligenceX.Ledger agent-check
 --config <reporter.json>` checks the Codex and Claude routes on a machine without touching the Ledger.
