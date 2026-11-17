@@ -82,7 +82,7 @@ public sealed class LedgerReadConcurrencyTests : IDisposable {
         using var release = new ManualResetEventSlim();
         var command = Task.Run(() => store.ExecuteAsync((_, state) => {
             entered.Set();
-            release.Wait(Bound);
+            release.Wait();
             return state.Policy.Revision;
         }, DateTimeOffset.UtcNow));
         try {

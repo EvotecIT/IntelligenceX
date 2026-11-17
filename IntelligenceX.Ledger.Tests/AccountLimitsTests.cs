@@ -30,6 +30,18 @@ public sealed class AccountLimitsTests {
     }
 
     [Fact]
+    public void CodexWindowsAreSortedByDurationAndAnUnreportedStateStaysUnknown() {
+        using var json = JsonDocument.Parse("""
+            {"rateLimits":{"primary":{"usedPercent":12,"windowDurationMins":300,"resetsAt":1795300000},
+             "secondary":{"usedPercent":41,"windowDurationMins":10080,"resetsAt":1795900000}}}
+            """);
+        var limit = AccountLimits.Codex(json.RootElement, Now);
+        Assert.Equal((41.0, 10080, 12.0), (limit.UsedPercent, limit.WindowMinutes, limit.ShortUsedPercent));
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1795300000), limit.ShortResetsAtUtc);
+        Assert.Null(limit.LimitReached);
+    }
+
+    [Fact]
     public void ClaudeLimitsComeFromTheLastStatusLineAndAgeIsNamed() {
         var path = Path.Combine(Path.GetTempPath(), "ix-claude-limits-" + Guid.NewGuid().ToString("N") + ".json");
         try {
@@ -42,8 +54,11 @@ public sealed class AccountLimitsTests {
             Assert.Equal("Last seen by a status line 49 h ago.", limit.Note);
 
             Assert.Null(AccountLimits.Claude(path + ".missing", Now));
-            File.WriteAllText(path, "not json");
-            Assert.Equal("The saved status line snapshot couldn't be read.", AccountLimits.Claude(path, Now)!.Note);
+            foreach (var unreadable in new[] { "not json", "[]", """{"observedAtUtc":null}""" }) {
+                File.WriteAllText(path, unreadable);
+                Assert.Equal(unreadable == """{"observedAtUtc":null}""" ? null : "The saved status line snapshot couldn't be read.",
+                    AccountLimits.Claude(path, Now)!.Note);
+            }
         } finally {
             File.Delete(path);
         }

@@ -500,9 +500,14 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
 
     public async Task<LedgerEvent[]> CoverageAsync(CancellationToken token) {
         await using var db = await _database.OpenSessionAsync(path, token);
-        var rows = await db.QueryAsListAsync("SELECT json FROM source_health WHERE reporter NOT IN (SELECT reporter FROM reporter_health)", r => Read<LedgerEvent>(r.GetString(0)), cancellationToken: token);
-        var health = await db.QueryAsListAsync("SELECT json,observed FROM reporter_health", r => Read<ReporterHealth>(r.GetString(0)) with {
-            ObservedAtUtc = DateTimeOffset.Parse(r.GetString(1)) }, cancellationToken: token);
+        // One statement, so the fallback rows and the health rows they give way to come from the same snapshot.
+        var all = await db.QueryAsListAsync("""
+            SELECT json,NULL FROM source_health WHERE reporter NOT IN (SELECT reporter FROM reporter_health)
+            UNION ALL SELECT json,observed FROM reporter_health
+            """, r => (Json: r.GetString(0), Observed: r.IsDBNull(1) ? null : r.GetString(1)), cancellationToken: token);
+        var rows = all.Where(row => row.Observed is null).Select(row => Read<LedgerEvent>(row.Json));
+        var health = all.Where(row => row.Observed is not null).Select(row => Read<ReporterHealth>(row.Json) with {
+            ObservedAtUtc = DateTimeOffset.Parse(row.Observed!) });
         return rows.Concat(health.Select(h => new LedgerEvent { EventId = Guid.Empty, Epoch = Guid.Empty, Sequence = 1,
             ReporterId = h.ReporterId, MachineId = h.MachineId, ItemId = "source-health", Provider = "machine", Source = "watcher",
             SourceVersion = h.SourceVersion, ObservedAtUtc = h.ObservedAtUtc, Coverage = h.Coverage })).ToArray();

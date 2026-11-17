@@ -16,6 +16,7 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private Dictionary<string, string> _accounts = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _archived = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, (string Session, string Account, bool Archived)> _files = new(StringComparer.OrdinalIgnoreCase);
     private string? _cliAccount;
     private DateTimeOffset _readAt = DateTimeOffset.MinValue;
 
@@ -23,10 +24,11 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "Claude", "claude-code-sessions")
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Claude", "claude-code-sessions");
 
-    /// <summary>The account id for a Claude Code session id, or null when neither the desktop app nor the CLI says.</summary>
-    public string? For(string sessionId) {
+    /// <summary>The account id for a Claude Code session id, or null when neither the desktop app nor the CLI says. The CLI's
+    /// signed-in account applies only to a session from the CLI's default profile (<paramref name="cliProfile"/>).</summary>
+    public string? For(string sessionId, bool cliProfile = true) {
         if (_clock.GetUtcNow() - _readAt >= RereadAfter) Reread();
-        return _accounts.TryGetValue(sessionId, out var account) ? account : _cliAccount;
+        return _accounts.TryGetValue(sessionId, out var account) ? account : cliProfile ? _cliAccount : null;
     }
 
     /// <summary>Whether the desktop app archived the session; null when the app doesn't know it.</summary>
@@ -37,7 +39,13 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
 
     private void Reread() {
         _readAt = _clock.GetUtcNow();
-        (_accounts, _archived) = ReadWithArchive(_root);
+        _files = ReadFiles(_root, _files);
+        _accounts = new(StringComparer.OrdinalIgnoreCase);
+        _archived = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var (session, account, archived) in _files.Values) {
+            _accounts[session] = account;
+            if (archived) _archived.Add(session);
+        }
         _cliAccount = CliAccount(_cli);
     }
 
@@ -48,23 +56,56 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
     internal static (Dictionary<string, string> Accounts, HashSet<string> Archived) ReadWithArchive(string root) {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var archived = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!Directory.Exists(root)) return (map, archived);
-        foreach (var account in Directory.EnumerateDirectories(root)) {
-            var accountId = Path.GetFileName(account);
-            if (!Guid.TryParse(accountId, out _)) continue;
-            foreach (var file in Directory.EnumerateFiles(account, "local_*.json", SearchOption.AllDirectories)) {
-                try {
-                    using var json = JsonDocument.Parse(File.ReadAllBytes(file));
-                    if (json.RootElement.TryGetProperty("cliSessionId", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } session) {
-                        map[session] = accountId;
-                        if (json.RootElement.TryGetProperty("isArchived", out var flag) && flag.ValueKind == JsonValueKind.True) archived.Add(session);
-                    }
-                } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) {
-                    // A file the app is rewriting is read again on the next pass.
-                }
-            }
+        foreach (var (session, account, isArchived) in ReadFiles(root, []).Values) {
+            map[session] = account;
+            if (isArchived) archived.Add(session);
         }
         return (map, archived);
+    }
+
+    /// <summary>Each session file's session, account and archive flag. A file that can't be read this pass (the app is
+    /// rewriting it) keeps what <paramref name="previous"/> had for it; a folder that can't be listed is skipped.</summary>
+    internal static Dictionary<string, (string Session, string Account, bool Archived)> ReadFiles(string root,
+        Dictionary<string, (string Session, string Account, bool Archived)> previous) {
+        var files = new Dictionary<string, (string Session, string Account, bool Archived)>(StringComparer.OrdinalIgnoreCase);
+        try {
+            if (!Directory.Exists(root)) return files;
+            foreach (var account in Directory.EnumerateDirectories(root)) {
+                var accountId = Path.GetFileName(account);
+                if (!Guid.TryParse(accountId, out _)) continue;
+                try {
+                    foreach (var file in Directory.EnumerateFiles(account, "local_*.json", SearchOption.AllDirectories)) {
+                        try {
+                            using var json = JsonDocument.Parse(File.ReadAllBytes(file));
+                            var rootElement = json.RootElement;
+                            if (rootElement.ValueKind == JsonValueKind.Object && rootElement.TryGetProperty("cliSessionId", out var id) &&
+                                id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } session)
+                                files[file] = (session, accountId, rootElement.TryGetProperty("isArchived", out var flag) && flag.ValueKind == JsonValueKind.True);
+                        } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) {
+                            if (previous.TryGetValue(file, out var known)) files[file] = known;
+                        }
+                    }
+                } catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
+                    // An account folder that vanished or can't be listed keeps what was known about its files.
+                    foreach (var pair in previous.Where(p => p.Key.StartsWith(account + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+                        files[pair.Key] = pair.Value;
+                }
+            }
+        } catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
+            return previous;
+        }
+        return files;
+    }
+
+    /// <summary>The source roots of the CLI's default profile (~/.claude), whose sessions belong to the account in
+    /// ~/.claude.json. None when CLAUDE_CONFIG_DIR points the CLI elsewhere.</summary>
+    internal static HashSet<string> CliProfileRoots() {
+        if (Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 }) return [];
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var defaults = new[] { Path.Combine(home, ".claude", "projects"), Path.Combine(home, ".config", "claude", "projects") }
+            .Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new IntelligenceX.Telemetry.Usage.Claude.ClaudeDefaultSourceRootDiscovery().DiscoverRoots()
+            .Where(root => defaults.Contains(Path.GetFullPath(root.Path))).Select(root => root.Id).ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>The account the CLI is signed in to, from its settings' account id alone.</summary>
@@ -72,7 +113,7 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
         try {
             if (!File.Exists(settings)) return null;
             using var json = JsonDocument.Parse(File.ReadAllBytes(settings));
-            return json.RootElement.TryGetProperty("oauthAccount", out var account) && account.ValueKind == JsonValueKind.Object
+            return json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("oauthAccount", out var account) && account.ValueKind == JsonValueKind.Object
                 && account.TryGetProperty("accountUuid", out var id) && id.ValueKind == JsonValueKind.String && Guid.TryParse(id.GetString(), out _)
                 ? id.GetString() : null;
         } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) {
