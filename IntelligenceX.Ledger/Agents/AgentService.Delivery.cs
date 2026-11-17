@@ -46,7 +46,14 @@ internal sealed partial class AgentService {
             // SendMessage addresses sessions by the name ListAgents shows; the asker supplied its own.
             var sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop).ConfigureAwait(false);
             await RecordUsageAsync(requestId, "delivery", "claude", sent.Model, sent.Tokens, sent.CostUsd, to.SessionId, stop).ConfigureAwait(false);
-            if (sent.Stage == "not-submitted") Defer("deliver:" + requestId);
+            if (sent.Failure is { } failure) Observe("claude", false, failure);
+            else if (sent.Stage == "submitted") Observe("claude", true, "sent");
+            if (sent.Stage == "not-submitted") {
+                Defer("deliver:" + requestId);
+                // The CLI worked but the session didn't answer: it has ended or isn't open. The message waits for the
+                // session's next start (inbox hook) and is offered again every half hour.
+                if (sent.Failure is null) _unreachable[requestId] = DateTimeOffset.UtcNow;
+            }
             return (sent.Stage, sent.Evidence);
         }
         try {

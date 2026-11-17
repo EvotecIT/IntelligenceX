@@ -41,7 +41,7 @@ public sealed class AgentServiceTests {
     }
 
     [Fact]
-    public void ClaudeSenderNeverReportsAMissingOrFailedSendAsSubmitted() {
+    public void ClaudeSenderReportsARefusedSendAsNotSubmittedAndAnUnreadableOneAsUncertain() {
         Assert.Equal("not-submitted", ClaudeSender.Parse([Line(new { type = "result", usage = new { input_tokens = 1 } })], "haiku").Stage);
         string[] failed = [
             Line(new { type = "assistant", message = new { content = new object[] { new { type = "tool_use", id = "t", name = "SendMessage" } } } }),
@@ -49,7 +49,10 @@ public sealed class AgentServiceTests {
                 new { type = "tool_result", tool_use_id = "t", content = new object[] {
                     new { type = "text", text = "{\"success\":false,\"message\":\"No agent named 'x' is reachable.\"}" } } } } } })
         ];
-        Assert.Equal("uncertain", ClaudeSender.Parse(failed, "haiku").Stage);
+        Assert.Equal(("not-submitted", (string?)null), (ClaudeSender.Parse(failed, "haiku").Stage, ClaudeSender.Parse(failed, "haiku").Failure));
+        string[] unknown = [failed[0], Line(new { type = "user", message = new { content = new object[] {
+            new { type = "tool_result", tool_use_id = "t", content = "connection reset" } } } })];
+        Assert.Equal("uncertain", ClaudeSender.Parse(unknown, "haiku").Stage);
     }
 
     [Fact]

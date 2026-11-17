@@ -166,7 +166,14 @@ public static class LocalReporter {
         }
         var uploader = UploadLoop();
         _ = uploader.ContinueWith(_ => stop.Cancel(), TaskContinuationOptions.OnlyOnFaulted);
-        var agent = settings.Agent is null ? Task.CompletedTask : Agents.AgentHost.RunAsync(settings.Agent, settings.MachineId, stop.Token);
+        void PublishSignIn(SignInFact fact) {
+            lock (captureGate) {
+                if (changes.TryAppend(Event(settings.MachineId + ":sign-in:" + fact.Provider, fact.Provider) with { ItemKind = "sign-in", SignIn = fact }))
+                    changes.Checkpoint();
+            }
+        }
+        var agent = settings.Agent is null ? Task.CompletedTask :
+            Agents.AgentHost.RunAsync(settings.Agent, settings.MachineId, stop.Token, PublishSignIn);
         try {
         await watcher.StartAsync(stop.Token);
         watcher.SnapshotChanged += (_, change) => Capture(change.Snapshot);

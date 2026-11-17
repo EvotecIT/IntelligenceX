@@ -32,10 +32,11 @@ public static class AgentHost {
     }
 
     /// <summary>Runs until stopped. A failure restarts the service loop after a pause, so one bad sweep never ends it.</summary>
-    public static async Task RunAsync(AgentSettings settings, string machineId, CancellationToken stop) {
+    public static async Task RunAsync(AgentSettings settings, string machineId, CancellationToken stop,
+        Action<SignInFact>? publishSignIn = null) {
         while (!stop.IsCancellationRequested) {
             try {
-                await new AgentService(settings, machineId).RunAsync(stop).ConfigureAwait(false);
+                await new AgentService(settings, machineId, publishSignIn: publishSignIn).RunAsync(stop).ConfigureAwait(false);
             } catch (OperationCanceledException) when (stop.IsCancellationRequested) {
                 return;
             } catch (Exception error) {
@@ -61,7 +62,11 @@ internal sealed partial class AgentService {
     private bool _codexAvailable;
     private DateTimeOffset _codexCheckedAt = DateTimeOffset.MinValue;
 
-    internal AgentService(AgentSettings settings, string machineId, LedgerReadClient? ledger = null) {
+    private readonly Action<SignInFact> _publishSignIn;
+
+    internal AgentService(AgentSettings settings, string machineId, LedgerReadClient? ledger = null,
+        Action<SignInFact>? publishSignIn = null) {
+        _publishSignIn = publishSignIn ?? (_ => { });
         _settings = settings;
         _machineId = machineId;
         _ledger = ledger ?? LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(settings.CoordinationConfig));
@@ -83,7 +88,10 @@ internal sealed partial class AgentService {
                 await HeartbeatAsync(stop).ConfigureAwait(false);
                 nextHeartbeat = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(_grantSeconds / 3.0, 5, 10));
             }
-            try { await SweepAsync(stop).ConfigureAwait(false); }
+            try {
+                await CheckSignInAsync(stop).ConfigureAwait(false);
+                await SweepAsync(stop).ConfigureAwait(false);
+            }
             catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or
                 CoordinationCommandRejectedException or JsonException or InvalidDataException && !stop.IsCancellationRequested) {
                 Log("sweep-unavailable", error.GetType().Name + ": " + error.Message);
@@ -119,17 +127,50 @@ internal sealed partial class AgentService {
             else if (creation || record is not null && record.Phase != "done")
                 Start("run:" + work.Request.Id + ":" + work.Generation, () => RunHelperAsync(work, stop));
         }
+        var claudeReady = Ready("claude");
+        var held = 0;
         foreach (var result in await PageAsync(after => _ledger.ResultsAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
             if (result.ReturnTo.MachineId != _machineId || result.ConsumedAtUtc is not null || result.State is not ("intent" or "held") ||
-                result.ReturnTo.Provider is not ("codex" or "claude") || Deferred("deliver:" + result.RequestId)) continue;
+                result.ReturnTo.Provider is not ("codex" or "claude")) continue;
+            // Until the Claude CLI can send, a Claude delivery is held in the Ledger, never dropped; sign-in releases it.
+            if (result.ReturnTo.Provider == "claude" && !claudeReady) {
+                held++;
+                if (result.State != "held" || result.HeldOn != SignInHold)
+                    Start("hold:" + result.RequestId, () => _ledger.ResultReceiptAsync(result.RequestId, new CoordinationDeliveryCommand(result.Generation,
+                        new CoordinationDeliveryReceipt("hold-" + LocalFiles.Hash(result.RequestId, result.Generation)[..24], "held", SignInHold)), stop));
+                continue;
+            }
+            if (result.ReturnTo.Provider == "claude" && Unreachable(result.RequestId)) {
+                if (result.State != "held" || result.HeldOn != UnreachableHold)
+                    Start("hold:" + result.RequestId, () => _ledger.ResultReceiptAsync(result.RequestId, new CoordinationDeliveryCommand(result.Generation,
+                        new CoordinationDeliveryReceipt("hold-" + LocalFiles.Hash(result.RequestId, result.Generation)[..24], "held", UnreachableHold)), stop));
+                continue;
+            }
+            if (Deferred("deliver:" + result.RequestId)) continue;
             Start("result:" + result.RequestId + ":" + result.Generation, () => DeliverResultAsync(result, stop));
         }
         foreach (var item in await PageAsync(after => _ledger.QuestionsAsync(stop, after), page => page.Items,
             page => page.NextOrder).ConfigureAwait(false)) {
-            if (item.Target == "question" && item.ReturnTo.Provider is "codex" or "claude" && !Deferred("deliver:" + item.Question.RequestId))
-                Start("question:" + item.Question.RequestId + "#" + item.Question.Number, () => DeliverQuestionAsync(item, stop));
             // Answer-side items are delivered by the helper's own run, which waits for them.
+            if (item.Target != "question" || item.ReturnTo.Provider is not ("codex" or "claude")) continue;
+            var question = item.Question;
+            if (item.ReturnTo.Provider == "claude" && !claudeReady) {
+                held++;
+                if (question.Delivery?.EvidenceRef != SignInHold)
+                    Start("hold:" + question.RequestId + "#" + question.Number, () => _ledger.QuestionDeliveryAsync(question.RequestId, question.Number,
+                        new("question", "hold-" + LocalFiles.Hash(question.RequestId, question.Number)[..24], "held", SignInHold), stop));
+                continue;
+            }
+            if (item.ReturnTo.Provider == "claude" && Unreachable(question.RequestId)) {
+                if (question.Delivery?.EvidenceRef != UnreachableHold)
+                    Start("hold:" + question.RequestId + "#" + question.Number, () => _ledger.QuestionDeliveryAsync(question.RequestId, question.Number,
+                        new("question", "hold-" + LocalFiles.Hash(question.RequestId, question.Number)[..24], "held", UnreachableHold), stop));
+                continue;
+            }
+            if (Deferred("deliver:" + question.RequestId)) continue;
+            Start("question:" + question.RequestId + "#" + question.Number, () => DeliverQuestionAsync(item, stop));
         }
+        CountHeld(held);
         foreach (var job in await PageAsync(after => _ledger.RetirementsAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
             if (job.Binding.MachineId != _machineId || job.Binding.Provider != "codex" || job.CompletedAtUtc is not null) continue;
             Start("retire:" + job.Binding.RequestId, () => RetireAsync(job, stop));

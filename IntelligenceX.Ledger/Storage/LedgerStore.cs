@@ -217,6 +217,11 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                         if (observation.Session.RepositoryBranchKey is { } branchKey && !item.RepositoryBranchKeys.Contains(branchKey))
                             item = item with { RepositoryBranchKeys = item.RepositoryBranchKeys.Append(branchKey).ToArray() };
                     }
+                    if (observation.SignIn is { } signIn && (item.SignIn is null || signIn.AtUtc >= item.SignIn.AtUtc)) {
+                        decisionChanged |= item.SignIn is null || item.SignIn.Required != signIn.Required || item.SignIn.Reason != signIn.Reason ||
+                            item.SignIn.Held != signIn.Held;
+                        item = item with { SignIn = signIn, SignInEvidence = evidence };
+                    }
                     if (observation.Work is not null) {
                         var old = Json(item.ReportedWork);
                         item = MergeWork(item, observation.Work, evidence);

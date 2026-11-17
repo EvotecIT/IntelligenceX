@@ -152,6 +152,24 @@ client, local state, workspace root, capabilities, Codex and Claude executables)
 Both Codex round trips completed in under a minute end to end. A Codex wake costs about 34k tokens, almost all of it
 cached context; the Claude sender costs about 8k tokens on Haiku.
 
+### Sign-in
+
+The agent service checks `claude auth status --json` and `codex login status` every five minutes (every minute while
+one needs attention), and learns of a Claude usage limit or lapsed login from the sender's own failure.
+
+- While the Claude CLI can't send, Claude deliveries are held in the Ledger (`claude-sign-in-required`), never dropped.
+- The reporter publishes a `sign-in` item per provider and machine (`<machine>:sign-in:<provider>`). It is needs-you with
+  reason `sign-in-required` while sign-in is needed and done with `signed-in` afterwards. Its `signIn` field carries
+  `provider`, `required`, `reason` (signed-out, expired, usage-limit), `command` (`claude auth login` or `codex login`),
+  `sinceUtc`, `atUtc` and `held` (Claude deliveries waiting on it).
+- On a Mac the service shows a notification and a dialog whose "Sign in" button opens Terminal running that command.
+  AppleScript notifications can't carry an action of their own, so the dialog is the one-tap route.
+- When the next check or send succeeds, the item is cleared and held deliveries go out.
+- A session the sender can't reach (ended or closed) gets its message held as `claude-session-unreachable` and offered
+  again every half hour.
+- `IntelligenceX.Ledger inbox --config <reporter.json>`, run as a Claude Code SessionStart or UserPromptSubmit hook,
+  hands the session whatever is waiting for it as hook context, begun before it prints and recorded as submitted after.
+
 ### Known limits
 
 - A Claude desktop session running in a different permission mode from the sender holds incoming SendMessage

@@ -5,8 +5,10 @@ using System.Text.Json;
 namespace IntelligenceX.Ledger.Agents;
 
 /// <summary>What one sender run did. Stage is submitted (SendMessage reported success), uncertain (it was called but
-/// its outcome is unknown) or not-submitted (it was never called).</summary>
-internal sealed record ClaudeSendOutcome(string Stage, string Evidence, string Model, TurnTokens Tokens, double? CostUsd);
+/// its outcome is unknown) or not-submitted (it was never called).
+/// Failure is signed-out, expired or usage-limit when the CLI couldn't run at all, so the message waits for sign-in.</summary>
+internal sealed record ClaudeSendOutcome(string Stage, string Evidence, string Model, TurnTokens Tokens, double? CostUsd,
+    string? Failure = null);
 
 /// <summary>Delivers text into a Claude Code session with a one-shot <c>claude -p</c> on the cheapest model whose only
 /// tool is SendMessage. The inbox socket's message frame isn't documented, so it isn't written to directly.</summary>
@@ -50,8 +52,10 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
     internal static ClaudeSendOutcome Parse(IEnumerable<string> lines, string requestedModel) {
         var calls = new HashSet<string>(StringComparer.Ordinal);
         bool? succeeded = null;
+        var answered = 0;
         var tokens = TurnTokens.None;
         double? cost = null;
+        string? failure = null;
         var model = requestedModel;
         foreach (var line in lines) {
             JsonElement root;
@@ -70,8 +74,9 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
                         if (block.TryGetProperty("type", out var kind) && kind.GetString() == "tool_result" &&
                             block.TryGetProperty("tool_use_id", out var id) && calls.Contains(id.GetString()!)) {
                             var error = block.TryGetProperty("is_error", out var flag) && flag.ValueKind == JsonValueKind.True;
-                            var ok = !error && Succeeded(block.TryGetProperty("content", out var value) ? value : default);
-                            succeeded = (succeeded ?? false) || ok;
+                            var answer = Answer(block.TryGetProperty("content", out var value) ? value : default);
+                            if (answer is not null) answered++;
+                            succeeded = (succeeded ?? false) || !error && answer == true;
                         }
                     break;
                 case "result":
@@ -80,15 +85,30 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
                             Long(usage, "output_tokens"), Long(usage, "input_tokens") + Long(usage, "cache_creation_input_tokens") +
                             Long(usage, "cache_read_input_tokens") + Long(usage, "output_tokens"));
                     if (root.TryGetProperty("total_cost_usd", out var total) && total.TryGetDouble(out var dollars)) cost = dollars;
+                    if (root.TryGetProperty("is_error", out var isError) && isError.ValueKind == JsonValueKind.True) failure = Failure(root);
                     break;
             }
         }
-        var stage = calls.Count == 0 ? "not-submitted" : succeeded == true ? "submitted" : "uncertain";
-        return new(stage, "claude-sendmessage-" + stage, model, tokens, cost);
+        // SendMessage saying success:false to every call is an explicit no (the session isn't reachable): nothing was sent.
+        var stage = calls.Count == 0 || succeeded != true && answered == calls.Count ? "not-submitted" :
+            succeeded == true ? "submitted" : "uncertain";
+        return new(stage, "claude-sendmessage-" + stage, model, tokens, cost, calls.Count == 0 ? failure : null);
     }
 
-    /// <summary>SendMessage answers with a JSON object, as a string or inside text blocks; only success:true counts.</summary>
-    private static bool Succeeded(JsonElement content) {
+    /// <summary>Why the CLI couldn't run: the API status when it gives one, otherwise its error text.</summary>
+    private static string? Failure(JsonElement result) {
+        if (result.TryGetProperty("api_error_status", out var status) && status.TryGetInt32(out var code))
+            return code is 401 or 403 ? "signed-out" : code == 429 ? "usage-limit" : null;
+        var text = result.TryGetProperty("result", out var message) ? message.GetString() ?? "" : "";
+        if (text.Contains("expired", StringComparison.OrdinalIgnoreCase)) return "expired";
+        if (text.Contains("authenticate", StringComparison.OrdinalIgnoreCase) || text.Contains("log in", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("login", StringComparison.OrdinalIgnoreCase)) return "signed-out";
+        return text.Contains("limit", StringComparison.OrdinalIgnoreCase) ? "usage-limit" : null;
+    }
+
+    /// <summary>SendMessage answers with a JSON object, as a string or inside text blocks: its success flag, or null when
+    /// the answer can't be read.</summary>
+    private static bool? Answer(JsonElement content) {
         IEnumerable<string?> texts = content.ValueKind switch {
             JsonValueKind.String => [content.GetString()],
             JsonValueKind.Array => content.EnumerateArray().Where(b => b.TryGetProperty("text", out _)).Select(b => b.GetProperty("text").GetString()),
@@ -98,10 +118,10 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
             try {
                 using var json = JsonDocument.Parse(text ?? "");
                 if (json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("success", out var flag) &&
-                    flag.ValueKind == JsonValueKind.True) return true;
+                    flag.ValueKind is JsonValueKind.True or JsonValueKind.False) return flag.ValueKind == JsonValueKind.True;
             } catch (JsonException) { }
         }
-        return false;
+        return null;
     }
 
     private static JsonElement? Content(JsonElement root) => root.TryGetProperty("message", out var message) &&
