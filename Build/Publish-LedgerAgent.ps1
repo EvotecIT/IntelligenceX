@@ -40,9 +40,9 @@ Publish 'IntelligenceX.Ledger/IntelligenceX.Ledger.csproj' $app @('--self-contai
 Publish 'IntelligenceX.Ledger.Mcp/IntelligenceX.Ledger.Mcp.csproj' (Join-Path $Output 'tools/mcp') @('--self-contained', 'false')
 if (-not $NoHook) {
     # The native linker on Windows is found through vswhere, which the Visual Studio installer doesn't put on PATH.
-    $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
-    if ($IsWindows -and (Test-Path (Join-Path $installer 'vswhere.exe')) -and -not (Get-Command vswhere -ErrorAction SilentlyContinue)) {
-        $env:PATH = $installer + [IO.Path]::PathSeparator + $env:PATH
+    if ($IsWindows -and -not (Get-Command vswhere -ErrorAction SilentlyContinue)) {
+        $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
+        if (Test-Path (Join-Path $installer 'vswhere.exe')) { $env:PATH = $installer + [IO.Path]::PathSeparator + $env:PATH }
     }
     $hook = Join-Path $Output 'tools/hook'
     Publish 'IntelligenceX.Ledger.Hook/IntelligenceX.Ledger.Hook.csproj' $hook
