@@ -18,7 +18,8 @@ internal static partial class CoordinationEndpoints {
             p.Token.Any(char.IsWhiteSpace) || p.Token == settings.ReadToken || p.Token == settings.WriteToken ||
             p.Projects is null || !p.Projects.All(CoordinationValidation.Id) ||
             p.AllowRequesterEnrollment && (p.Role != "host" || p.Projects.Length == 0) ||
-            p.Role == "host" && !config.InitialPolicy.Machines.Any(m => m.Id == p.MachineId)) ||
+            // The live policy can add machines after first start; the engine checks a host's machine against it on each heartbeat.
+            p.Role == "host" && !CoordinationValidation.Id(p.MachineId)) ||
             config.Principals.Select(p => p.Id).Distinct().Count() != config.Principals.Length ||
             config.Principals.Select(p => p.Token).Distinct().Count() != config.Principals.Length)
             throw new InvalidDataException("Invalid scoped coordination principals.");

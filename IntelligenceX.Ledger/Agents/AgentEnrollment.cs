@@ -8,7 +8,8 @@ namespace IntelligenceX.Ledger.Agents;
 /// <summary>On the machine that hosts the Ledger service, gives another machine what its agent service needs: a host
 /// principal for its agent service and a client principal for its sessions' ask tools, both scoped to that machine, and
 /// the two client files (endpoint, token and certificate pin) to copy to it privately. Existing principals are reused.
-/// Preview is the default. The service reads principals when it starts, so a new one needs a service restart.</summary>
+/// Preview is the default. The service reads principals when it starts, so a new one needs a service restart, and the
+/// machine must be in the live coordination policy for its heartbeats to be accepted.</summary>
 internal static class AgentEnrollment {
     private const string Usage = "Usage: IntelligenceX.Ledger agent-enroll --service <service.json> --machine <id> --out <folder> [--local] [--apply]";
     private static readonly JsonSerializerOptions Indented = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -46,8 +47,7 @@ internal static class AgentEnrollment {
             ?? throw new InvalidOperationException("The service has no coordinationConfigPath.");
         var configuration = JsonNode.Parse(File.ReadAllText(configurationPath))!.AsObject();
         var principals = configuration["principals"]!.AsArray();
-        if (configuration["initialPolicy"]?["machines"]?.AsArray().Any(m => m?["id"]?.GetValue<string>() == machine) != true)
-            throw new InvalidOperationException("Machine " + machine + " is not in the coordination policy.");
+        if (!Coordination.CoordinationValidation.Id(machine)) throw new InvalidOperationException("Invalid machine id " + machine + ".");
         var projects = principals.Select(p => p!.AsObject()).Where(p => p["role"]?.GetValue<string>() == "host")
             .SelectMany(p => p["projects"]!.AsArray().Select(x => x!.GetValue<string>())).Distinct(StringComparer.Ordinal).ToArray();
         var changed = false;

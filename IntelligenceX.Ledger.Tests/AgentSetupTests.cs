@@ -107,7 +107,7 @@ public sealed class AgentSetupTests : IDisposable {
 
         Assert.False(AgentEnrollment.Enroll(service, "mac-studio", output, local: true, apply: true).ConfigurationChanged);
         Assert.Equal("pc-host", AgentEnrollment.Enroll(service, "win-pc", output, local: true, apply: false).HostPrincipal);
-        Assert.Throws<InvalidOperationException>(() => AgentEnrollment.Enroll(service, "elsewhere", output, local: true, apply: false));
+        Assert.Throws<InvalidOperationException>(() => AgentEnrollment.Enroll(service, "not a machine", output, local: true, apply: false));
     }
 
     public void Dispose() {
