@@ -140,9 +140,11 @@ internal sealed partial class AgentService {
         }
         try {
             var (delivery, server, watch) = await _codex.DeliverAsync(to.SessionId, text, stop).ConfigureAwait(false);
-            if (delivery.Route == "queue") {
+            if (delivery.Route is "queue" or "queue-parked") {
                 if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
-                return ("submitted", "codex-queued-in-app");
+                // A queued message the daemon resumed runs as the thread's next turn. One only parked in the queue (no
+                // local daemon) may never run, so it is recorded as uncertain, never as delivered, and never sent again.
+                return delivery.Route == "queue" ? ("submitted", "codex-queued-resumed") : ("uncertain", "codex-queued-not-resumed");
             }
             if (delivery.Route == "turn") Start("wake:" + requestId + ":" + delivery.TurnId, () => FollowWakeAsync(requestId, to.SessionId, delivery, server, watch, stop, usage));
             else {
