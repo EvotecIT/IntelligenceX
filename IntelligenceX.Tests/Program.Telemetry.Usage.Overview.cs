@@ -48,7 +48,14 @@ internal static partial class Program {
         foreach (var (model, expected) in new[] {
             ("gpt-6-astra", 9m + 0.1m + 5m),
             ("gpt-6-sol", 1.8m + 0.02m + 1m),
-            ("gpt-6-luna", 0.09m + 0.001m + 0.05m)
+            ("gpt-6-luna", 0.09m + 0.001m + 0.05m),
+            ("gpt-6.2-astra", 7.2m + 0.04m + 4m),
+            ("gpt-6.2-sol", 1.8m + 0.01m + 1m),
+            ("gpt-6.1-terra", 0.9m + 0.005m + 0.5m),
+            ("gpt-6.1-sol", 1.8m + 0.01m + 1m),
+            ("gpt-5.6-sol", 3.6m + 0.04m + 2m),
+            ("gpt-5.6-terra", 1.8m + 0.02m + 1.2m),
+            ("gpt-5.6-luna", 0.18m + 0.002m + 0.12m)
         }) {
             var estimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
                 "evt-" + model,
@@ -66,6 +73,20 @@ internal static partial class Program {
             AssertEqual(true, estimate.HasKnownPricing, "api pricing recognizes " + model);
             AssertEqual(expected, estimate.EstimatedCostUsd, "api pricing estimates " + model);
         }
+
+        var unpublished = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+            "evt-unpublished",
+            "openai",
+            "codex.logs",
+            "src-1",
+            new DateTimeOffset(2026, 11, 18, 11, 0, 0, TimeSpan.Zero)) {
+            Model = "gpt-daybreak-blue-latest",
+            InputTokens = 1_000_000,
+            OutputTokens = 100_000,
+            TotalTokens = 1_100_000,
+            TruthLevel = UsageTruthLevel.Exact
+        });
+        AssertEqual(false, unpublished.HasKnownPricing, "api pricing leaves models without a published price unpriced");
 
         var evt = new UsageEventRecord("evt-fast", "openai", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 11, 0, 0, TimeSpan.Zero)) {
             Model = "openai/gpt-5.5/fast/spark",

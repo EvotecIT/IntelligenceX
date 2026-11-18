@@ -62,7 +62,7 @@ registry.Register(new EchoTool());
 
 var input = ChatInput.FromText("Call the echo tool with text 'hello'.");
 var chatOptions = new ChatOptions {
-    Model = "gpt-5.3-codex",
+    Model = "gpt-6.2-sol",
     ParallelToolCalls = true
 };
 
@@ -91,7 +91,7 @@ registry.Register(new EchoTool());
 
 var input = ChatInput.FromText("Call the echo tool with text 'hello'.");
 var options = new ChatOptions {
-    Model = "gpt-5.3-codex",
+    Model = "gpt-6.2-sol",
     Tools = registry.GetDefinitions(),
     ToolChoice = ToolChoice.Auto
 };

@@ -504,7 +504,7 @@ internal sealed partial class ChatServiceSession {
                         await WriteAsync(writer, new ErrorMessage {
                             Kind = ChatServiceMessageKind.Response,
                             RequestId = request.RequestId,
-                            Error = "reasoningEffort must be one of: minimal, low, medium, high, xhigh.",
+                            Error = "reasoningEffort must be one of: minimal, low, medium, high, xhigh, max, ultra.",
                             Code = "invalid_argument"
                         }, cancellationToken).ConfigureAwait(false);
                         return new SetProfileResult(ReconnectClient: false, ModelChanged: false);

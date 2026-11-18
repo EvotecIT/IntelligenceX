@@ -62,7 +62,7 @@ GitHub Actions input/env aliases:
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-6-sol",
+    "model": "gpt-6.2-sol",
     "mode": "inline",
     "length": "long",
     "outputStyle": "compact",
@@ -857,7 +857,7 @@ For reusable workflow callers, remove `copilot_launcher`, `copilot_cli_path`, `c
 - `provider`: `openai`/`codex`/`chatgpt`/`openai-codex`, `claude`/`anthropic`, `openai-compatible` (aliases: `openai-api`, `ollama`, `openrouter`), or `copilot`
 - `providerFallback`: optional fallback provider (same value set as `provider`)
 - `model`: model name for the selected provider
-- `reasoningEffort`: `minimal|low|medium|high|xhigh` (when set to low/medium/high, the header shows a reasoning level label)
+- `reasoningEffort`: `minimal|low|medium|high|xhigh|max|ultra` (when set to low/medium/high, the header shows a reasoning level label)
 - `mode`: `inline`, `summary`, or `hybrid`
 - `length`: `short|medium|long`
 - `intent`: `security|performance|perf|maintainability` (sets focus areas and default strictness/notes when not set)

@@ -44,7 +44,7 @@ Practical configuration examples for common IntelligenceX setups.
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.3-codex",
+    "model": "gpt-6.2-sol",
     "mode": "inline",
     "length": "long",
     "outputStyle": "compact",

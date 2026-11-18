@@ -621,7 +621,7 @@ internal static partial class Program {
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine($"  --model <NAME>          OpenAI model (default: {OpenAIModelCatalog.DefaultModel})");
-        Console.WriteLine("  --reasoning-effort <LEVEL>   Reasoning effort hint: minimal|low|medium|high|xhigh.");
+        Console.WriteLine("  --reasoning-effort <LEVEL>   Reasoning effort hint: minimal|low|medium|high|xhigh|max|ultra.");
         Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
         Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
         Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");

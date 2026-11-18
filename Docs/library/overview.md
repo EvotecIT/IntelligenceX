@@ -55,7 +55,7 @@ var login = await client.StartChatGptLoginAsync();
 Console.WriteLine($"Login URL: {login.AuthUrl}");
 await client.WaitForLoginCompletionAsync(login.LoginId);
 
-var thread = await client.StartThreadAsync("gpt-5.3-codex");
+var thread = await client.StartThreadAsync("gpt-6.2-sol");
 await client.StartTurnAsync(thread.Id, "Hello from IntelligenceX");
 ```
 
@@ -133,7 +133,7 @@ using IntelligenceX.OpenAI.AppServer;
 
 await using var client = await AppServerClient.StartAsync();
 await client.InitializeAsync(new ClientInfo("IntelligenceX", "Demo", "0.1.0"));
-var thread = await client.StartThreadAsync("gpt-5.3-codex");
+var thread = await client.StartThreadAsync("gpt-6.2-sol");
 var sandbox = new SandboxPolicy("workspace", allowNetwork: true, writableRoots: new[] { "C:\\repo" });
 await client.StartTurnAsync(thread.Id, "Run tests", sandboxPolicy: sandbox);
 ```
@@ -162,7 +162,7 @@ Add `.intelligencex/config.json` (or set `INTELLIGENCEX_CONFIG_PATH`) to avoid h
 ```json
 {
   "openai": {
-    "defaultModel": "gpt-5.3-codex",
+    "defaultModel": "gpt-6.2-sol",
     "instructions": "You are a helpful assistant.",
     "reasoningEffort": "medium",
     "reasoningSummary": "auto",

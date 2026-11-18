@@ -8,9 +8,9 @@ namespace IntelligenceX.OpenAI;
 /// </summary>
 public static class OpenAIModelCatalog {
     /// <summary>
-    /// Default OpenAI model for new IntelligenceX sessions and reviewer runs.
+    /// Default OpenAI model for new IntelligenceX sessions and reviewer runs. It follows the default model Codex reports.
     /// </summary>
-    public const string DefaultModel = "gpt-6-sol";
+    public const string DefaultModel = "gpt-6.2-sol";
 
     /// <summary>
     /// Default model for low-latency text, image, and audio Realtime sessions.
@@ -24,8 +24,15 @@ public static class OpenAIModelCatalog {
 
     private static readonly string[] BaselineFallbackModels = {
         DefaultModel,
+        "gpt-6.2-astra",
+        "gpt-6.1-terra",
+        "gpt-6.1-sol",
+        "gpt-6-astra",
+        "gpt-6-sol",
         "gpt-6-luna",
         "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
         "gpt-5.5",
         "gpt-5.4",
         "gpt-5.4-codex",
@@ -142,7 +149,7 @@ public static class OpenAIModelCatalog {
         if (versionScore.HasValue) {
             score += versionScore.Value;
         }
-        score += GetGpt6TierScore(normalized);
+        score += GetNamedTierScore(normalized);
 
         if (normalized.IndexOf("codex", StringComparison.Ordinal) >= 0) {
             score += 30;
@@ -216,16 +223,28 @@ public static class OpenAIModelCatalog {
             }
         }
 
-        return major * 100_000 + minor * 10;
+        // A minor version step outweighs every tier and qualifier bonus, so a newer generation always ranks first.
+        return major * 100_000 + minor * 1_000;
     }
 
-    private static int GetGpt6TierScore(string value) {
-        return NormalizeBaseModelId(value) switch {
-            "gpt-6-astra" => 300,
-            "gpt-6-sol" => 200,
-            "gpt-6-luna" => 100,
-            _ => 0
-        };
+    private static int GetNamedTierScore(string value) {
+        var baseModel = NormalizeBaseModelId(value);
+        if (baseModel.IndexOf("gpt-", StringComparison.Ordinal) < 0) {
+            return 0;
+        }
+        if (baseModel.EndsWith("-astra", StringComparison.Ordinal)) {
+            return 300;
+        }
+        if (baseModel.EndsWith("-sol", StringComparison.Ordinal)) {
+            return 200;
+        }
+        if (baseModel.EndsWith("-terra", StringComparison.Ordinal)) {
+            return 150;
+        }
+        if (baseModel.EndsWith("-luna", StringComparison.Ordinal)) {
+            return 100;
+        }
+        return 0;
     }
 
     private static bool IsModeToken(string value) {

@@ -36,7 +36,7 @@ internal static partial class ReleaseNotesRunner {
         Console.WriteLine("  --max-commits <n>       Max commit subjects to include (default 200)");
         Console.WriteLine("  --model <model>         OpenAI model (default from OPENAI_MODEL)");
         Console.WriteLine("  --transport <kind>      native or appserver (default from OPENAI_TRANSPORT)");
-        Console.WriteLine("  --reasoning-effort <v>  minimal|low|medium|high|xhigh");
+        Console.WriteLine("  --reasoning-effort <v>  minimal|low|medium|high|xhigh|max|ultra");
         Console.WriteLine("  --reasoning-summary <v> auto|concise|detailed|off");
         Console.WriteLine("  --retry-count <n>       Retry OpenAI requests (default 3)");
         Console.WriteLine("  --retry-delay-seconds   Initial retry delay (default 5)");

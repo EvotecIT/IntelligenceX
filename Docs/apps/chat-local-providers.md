@@ -50,7 +50,7 @@ Notes:
 - While a runtime switch is running, runtime buttons are temporarily disabled to avoid duplicate apply requests.
 
 Reasoning controls:
-- `native` and most `compatible-http` presets expose reasoning controls (`minimal|low|medium|high|xhigh`) as provider hints.
+- `native` and most `compatible-http` presets expose reasoning controls (`minimal|low|medium|high|xhigh|max|ultra`) as provider hints.
 - `copilot-native` passes reasoning controls to the selected model; support depends on that model and its advertised inference protocol.
 - Experimental Anthropic/Gemini bridge presets currently use provider-default reasoning.
 

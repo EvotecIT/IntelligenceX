@@ -25,7 +25,15 @@ public enum ReasoningEffort {
     /// <summary>
     /// Extra-high reasoning effort.
     /// </summary>
-    XHigh
+    XHigh,
+    /// <summary>
+    /// Maximum reasoning effort, for models that support it.
+    /// </summary>
+    Max,
+    /// <summary>
+    /// Maximum reasoning with automatic task delegation, for models that support it.
+    /// </summary>
+    Ultra
 }
 
 /// <summary>
@@ -115,6 +123,8 @@ internal static class ChatEnumExtensions {
             ReasoningEffort.Medium => "medium",
             ReasoningEffort.High => "high",
             ReasoningEffort.XHigh => "xhigh",
+            ReasoningEffort.Max => "max",
+            ReasoningEffort.Ultra => "ultra",
             _ => "medium"
         };
     }
