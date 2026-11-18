@@ -113,7 +113,8 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
                                     LocalId(rootElement, "sessionId") ?? Path.GetFileNameWithoutExtension(file),
                                     rootElement.TryGetProperty("spawnedFrom", out var spawned) ? LocalId(spawned, "sessionId") : null,
                                     spawned.ValueKind == JsonValueKind.Object && spawned.TryGetProperty("sideSession", out var side) && side.ValueKind == JsonValueKind.True);
-                        } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) {
+                        } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException or InvalidOperationException) {
+                            // InvalidOperationException: a string the parser accepted but can't decode (a lone surrogate).
                             if (previous.TryGetValue(file, out var known)) files[file] = known;
                         }
                     }

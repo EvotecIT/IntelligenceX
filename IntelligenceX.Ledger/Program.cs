@@ -87,6 +87,7 @@ public static class Program {
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(settings);
         builder.Services.AddHostedService<ShadowReportWorker>();
+        if (coordinationStore is not null) builder.Services.AddHostedService(_ => new SessionLineageBackfill(coordinationStore, store));
         var catalog = settings.WorkCatalog is null ? null : new Catalog.WorkCatalogService(settings.WorkCatalog, store, settings);
         if (catalog is not null) builder.Services.AddHostedService(_ => catalog);
         var app = builder.Build();

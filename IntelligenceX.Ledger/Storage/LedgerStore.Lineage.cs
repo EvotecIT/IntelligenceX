@@ -236,7 +236,8 @@ public sealed partial class LedgerStore {
         string? Rollup((string, string) key) {
             if (subtree.TryGetValue(key, out var known)) return known;
             subtree[key] = null; // cycle guard
-            var value = Worse(verdicts.GetValueOrDefault(key)?.Value, incomplete.Contains(key) ? "unknown" : null);
+            // A session that hasn't reported yet (a helper bound moments ago) may still be running: it counts as unknown.
+            var value = Worse(verdicts.GetValueOrDefault(key)?.Value ?? "unknown", incomplete.Contains(key) ? "unknown" : null);
             foreach (var child in children.GetValueOrDefault(key) ?? []) value = Worse(value, Rollup(child));
             return subtree[key] = value;
         }
@@ -245,7 +246,7 @@ public sealed partial class LedgerStore {
             var key = (node.Provider, node.Native);
             var fact = node.Item?.Session;
             var verdict = verdicts[key];
-            var held = node.Item is null ? [] : reservations.Where(row => row.State == "active" && Holders(node.Item).Contains(row.Lease.Holder))
+            var held = node.Item is null ? [] : reservations.Where(row => row.State == "active" && IsHolder(node.Item, row.Lease.Holder))
                 .Select(row => row.Lease.Key).Distinct().Order(StringComparer.Ordinal).ToArray();
             var takenOver = takeovers.LastOrDefault(row => row.FromProvider == node.Provider && row.FromNative == node.Native);
             var tookOver = takeovers.LastOrDefault(row => row.ByProvider == node.Provider && row.ByNative == node.Native);
@@ -275,6 +276,7 @@ public sealed partial class LedgerStore {
             var reason = verdict != "done" ? "not-finished:" + (verdict ?? "unknown")
                 : incomplete.Contains((node.Provider, node.Native)) ? "subtree-truncated"
                 : below is "working" or "stuck" or "needs-you" or "waiting" ? "subtree-still-live"
+                : below is "unknown" ? "subtree-unresolved"
                 : await CleanupReasonAsync(db, node.Item, reservations, now, token);
             var entry = new SessionCleanupEntry(node.Native, node.Item.MachineId, node.Provider, fact.Title ?? fact.Repository?.Title, fact.Origin,
                 fact.LastActivityAtUtc is { } activity ? Math.Round((now - activity).TotalDays, 1) : 0, fact.Repository?.Worktree,
@@ -356,12 +358,13 @@ public sealed partial class LedgerStore {
             foreach (var pr in node.PullRequests ?? []) entries.Add(new(null, "pull-request", node.Id, pr));
         }
         var items = await SessionItemsAsync(db, keys, now, token);
-        var owners = new Dictionary<string, string>(StringComparer.Ordinal);
+        // Holder ids compare without case, as the lease service resolves them.
+        var owners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, item) in items) foreach (var holder in Holders(item)) owners.TryAdd(holder, key.Item2);
         var leaseArgs = new Dictionary<string, object?>();
-        var names = owners.Keys.Select((holder, i) => { leaseArgs["h" + i] = holder; return "@h" + i; }).ToArray();
+        var names = owners.Keys.Select((holder, i) => { leaseArgs["h" + i] = holder.ToLowerInvariant(); return "@h" + i; }).ToArray();
         var leaseRows = names.Length == 0 ? [] : await db.QueryAsListAsync(
-            "SELECT started,ended,json FROM lease_history WHERE json_extract(json,'$.holder') IN (" + string.Join(",", names) + ") ORDER BY started",
+            "SELECT started,ended,json FROM lease_history WHERE lower(json_extract(json,'$.holder')) IN (" + string.Join(",", names) + ") ORDER BY started",
             row => (Started: DateTimeOffset.Parse(row.GetString(0), System.Globalization.CultureInfo.InvariantCulture),
                 Ended: DateTimeOffset.Parse(row.GetString(1), System.Globalization.CultureInfo.InvariantCulture), Lease: Read<Lease>(row.GetString(2))),
             leaseArgs, cancellationToken: token);
@@ -398,17 +401,22 @@ public sealed partial class LedgerStore {
             entries.Add(new(ask.RequestedAtUtc, "asked", requester.Item2, ask.RequestId + (ask.HelperSessionId is null ? "" : " helper " + helper.Item2)));
             foreach (var stage in ask.Stages.OrderBy(pair => pair.Value))
                 entries.Add(new(stage.Value, "ask-" + stage.Key, requester.Item2, ask.RequestId +
-                    (stage.Key is "completed" or "result" && ask.ResultRef is not null ? " " + ask.ResultRef : "")));
+                    (stage.Key == "terminal" && ask.ResultRef is not null ? " " + ask.ResultRef : "")));
         }
-        var ordered = entries.OrderBy(entry => entry.AtUtc is null).ThenBy(entry => entry.AtUtc).ToArray();
-        return new() { State = "found", Root = tree.Root, Entries = ordered.Take(TrailEntryLimit).ToArray(), Truncated = ordered.Length > TrailEntryLimit || tree.Truncated };
+        // A long trail keeps its newest timed steps, which is what a session picking up the work needs; undated facts
+        // (pull requests) follow them.
+        var timed = entries.Where(entry => entry.AtUtc is not null).OrderBy(entry => entry.AtUtc).ToArray();
+        var undated = entries.Where(entry => entry.AtUtc is null).ToArray();
+        var kept = timed.Skip(Math.Max(0, timed.Length - TrailEntryLimit)).Concat(undated).Take(TrailEntryLimit + undated.Length).ToArray();
+        return new() { State = "found", Root = tree.Root, Entries = kept, Truncated = timed.Length > TrailEntryLimit || tree.Truncated };
     }
 
     /// <summary>
     /// A live session takes over a stopped one. From qualifies when its verdict is stuck, it hit a usage limit, it was
     /// archived, or it has been idle past the reservation takeover window (30 minutes for agents, a day for personal
     /// sessions by default). Its active and queued reservations move to By in one transaction, keeping their keys,
-    /// machines and expiry, and the takeover is recorded for both sessions.
+    /// machines, expiry and queue places, and the takeover is recorded for both sessions. Both sessions are read and
+    /// checked inside that transaction, so a report that archives either one meanwhile can't slip in between.
     /// </summary>
     public async Task<SessionTakeoverReply> TakeOverSessionAsync(SessionTakeoverCommand command, DateTimeOffset now,
         IEnumerable<SessionLink>? live = null, IEnumerable<SessionAskStep>? asks = null, CancellationToken token = default) {
@@ -417,84 +425,99 @@ public sealed partial class LedgerStore {
         await _leaseGate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
-            var fromMatches = await ResolveSessionAsync(db, command.From, token);
-            var byMatches = await ResolveSessionAsync(db, command.By, token);
-            if (fromMatches.Count != 1 || byMatches.Count != 1) {
-                var ambiguous = fromMatches.Count > 1 ? fromMatches : byMatches.Count > 1 ? byMatches : null;
-                return new(false, ambiguous is null ? "not-found" : "ambiguous") { From = command.From, By = command.By,
-                    Matches = ambiguous?.Select(m => m.Match).ToArray() };
-            }
-            var global = await ReadGlobalAsync(db, token);
-            async Task<LedgerItem> Load(string id) => ApplyGlobal(Read<LedgerItem>((string)(await db.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
-                new Dictionary<string, object?> { ["id"] = id }, token))!), global, now);
-            var from = await Load(fromMatches[0].Item);
-            var by = await Load(byMatches[0].Item);
-            if (from.Session?.SourceSessionId is not { } fromNative || by.Session?.SourceSessionId is not { } byNative)
-                return new(false, "not-found") { From = command.From, By = command.By };
-            if (from.Id == by.Id) return new(false, "same-session") { From = fromNative.ToString(), By = byNative.ToString() };
-            var byFact = by.Session;
-            if (byFact.Archived == true || byFact.LastActivityAtUtc is not { } byActivity || now - byActivity > TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes))
-                return new(false, "by-not-live") { From = fromNative.ToString(), By = byNative.ToString() };
-            var fact = from.Session;
-            var verdict = rules.Evaluate(from, now);
-            var idleMinutes = fact.Origin == "agent" ? policy.Lease.TakeoverIdleMinutes : policy.Lease.TakeoverIdleMinutesHuman;
-            DateTimeOffset? idleAt = fact.LastActivityAtUtc?.AddMinutes(idleMinutes);
-            var trigger = verdict.Value == "stuck" ? "stuck" : fact.UsageLimit ? "usage-limit" : fact.Archived == true ? "archived"
-                : idleAt is { } eligible && eligible <= now ? "idle" : null;
-            var takeovers = await TakeoversAsync(db, token);
-            var children = await ChildrenAsync(db, (from.Provider, fromNative.ToString()), live ?? [], token);
-            var open = (asks ?? []).Where(ask => ask.RequesterProvider == from.Provider && Native(ask.RequesterSessionId) == fromNative.ToString() &&
-                ask.State is not ("succeeded" or "failed" or "cancelled")).Select(ask => ask.RequestId).ToArray();
-            var earlier = takeovers.LastOrDefault(row => row.FromProvider == from.Provider && row.FromNative == fromNative.ToString());
-            if (earlier is not null && earlier.ByProvider == by.Provider && earlier.ByNative == byNative.ToString())
-                return Describe(new(true, "already-taken-over") { Trigger = earlier.Trigger, AtUtc = earlier.AtUtc,
-                    Leases = (await ReservationsAsync(db, now, token)).Where(row => Holders(by).Contains(row.Lease.Holder) &&
-                        row.Lease.PreviousHolder is { } previous && Holders(from).Contains(previous)).Select(row => row.Lease).ToArray() });
-            if (earlier is not null) {
-                // Someone else already continues this work and holds what was moved. While they are live it stays theirs;
-                // once they stop too, the work is taken over from them, not from the original session.
-                var current = (await SessionItemsAsync(db, [(earlier.ByProvider, earlier.ByNative)], now, token)).Values.SingleOrDefault()?.Session;
-                var successorLive = current is { Archived: not true, LastActivityAtUtc: { } activity } && now - activity <= TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes);
-                return new(false, successorLive ? "taken-over-by-other" : "take-over-successor") {
-                    From = fromNative.ToString(), By = earlier.ByNative, AtUtc = earlier.AtUtc, Trigger = earlier.Trigger };
-            }
-            if (trigger is null) return new(false, "not-eligible") { From = fromNative.ToString(), By = byNative.ToString(),
-                Verdict = verdict.Value, EligibleAtUtc = idleAt };
-            var holder = by.Provider + ":" + byNative;
-            var moved = await db.RunInTransactionAsync(async (tx, ct) => {
-                var all = await ReservationsAsync(tx, now, ct);
-                var holders = Holders(from);
-                var result = new List<Lease>();
-                foreach (var row in all.Where(row => row.State is "active" or "queued" && holders.Contains(row.Lease.Holder))) {
-                    // A new id fences the stopped holder. An active reservation's history ends here and the new holder's
-                    // starts here, so benchmark budgets count the time once; the row keeps its place in the queue.
-                    if (row.State == "active") await RememberLeaseAsync(tx, row.Lease, now, ct);
-                    var lease = row.Lease with { Holder = holder, LeaseId = Guid.NewGuid().ToString("N"), PreviousHolder = row.Lease.Holder,
-                        TakenOverAtUtc = now, PreviousLeaseId = row.Lease.LeaseId, AcquiredAtUtc = row.State == "active" ? now : row.Lease.AcquiredAtUtc };
-                    await tx.ExecuteNonQueryAsync("UPDATE reservations SET id=@new,holder=@holder,json=@json WHERE id=@old", new Dictionary<string, object?> {
-                        ["new"] = lease.LeaseId, ["holder"] = lease.Holder, ["json"] = Json(lease), ["old"] = row.Lease.LeaseId }, ct);
-                    if (row.State == "active") await RememberLeaseAsync(tx, lease, lease.ExpiresAtUtc, ct);
-                    result.Add(lease);
-                }
-                var record = new TakeoverRow(from.Provider, fromNative.ToString(), by.Provider, byNative.ToString(), now, trigger, command.Reason,
-                    result.Select(lease => lease.Key).ToArray());
-                await tx.ExecuteNonQueryAsync("""
-                    INSERT INTO session_takeovers(from_provider,from_native,by_provider,by_native,recorded,json)
-                    VALUES(@fromProvider,@from,@byProvider,@by,@recorded,@json)
-                    """, new Dictionary<string, object?> { ["fromProvider"] = record.FromProvider, ["from"] = record.FromNative,
-                        ["byProvider"] = record.ByProvider, ["by"] = record.ByNative, ["recorded"] = now.ToString("O"), ["json"] = Json(record) }, ct);
-                return result;
-            }, cancellationToken: token);
-            return Describe(new(true, "taken-over") { Trigger = trigger, AtUtc = now, Leases = moved.ToArray() });
-
-            SessionTakeoverReply Describe(SessionTakeoverReply reply) {
-                var repo = fact.Repository;
-                return reply with { From = fromNative.ToString(), By = byNative.ToString(), Task = from.Scope ?? fact.Scope,
-                    Title = fact.Title ?? repo?.Title, Verdict = verdict.Value, Repo = repo?.Repo, Branch = repo?.Branch,
-                    Worktree = repo?.Worktree, Commit = repo?.Commit,
-                    PullRequests = repo?.PullRequests is { Length: > 0 } prs ? prs : null,
-                    Children = children.Length == 0 ? null : children, OpenAsks = open.Length == 0 ? null : open };
-            }
+            return await db.RunInTransactionAsync((tx, ct) => TakeOverAsync(tx, command, policy, now, live ?? [], asks ?? [], ct), cancellationToken: token);
         } finally { _leaseGate.Release(); }
+    }
+
+    private async Task<SessionTakeoverReply> TakeOverAsync(SQLiteAsyncSession tx, SessionTakeoverCommand command, CoordinationPolicy policy,
+        DateTimeOffset now, IEnumerable<SessionLink> live, IEnumerable<SessionAskStep> asks, CancellationToken token) {
+        var fromMatches = await ResolveSessionAsync(tx, command.From, token);
+        var byMatches = await ResolveSessionAsync(tx, command.By, token);
+        if (fromMatches.Count != 1 || byMatches.Count != 1) {
+            var ambiguous = fromMatches.Count > 1 ? fromMatches : byMatches.Count > 1 ? byMatches : null;
+            return new(false, ambiguous is null ? "not-found" : "ambiguous") { From = command.From, By = command.By,
+                Matches = ambiguous?.Select(m => m.Match).ToArray() };
+        }
+        var global = await ReadGlobalAsync(tx, token);
+        async Task<LedgerItem> Load(string id) => ApplyGlobal(Read<LedgerItem>((string)(await tx.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
+            new Dictionary<string, object?> { ["id"] = id }, token))!), global, now);
+        var from = await Load(fromMatches[0].Item);
+        var by = await Load(byMatches[0].Item);
+        if (from.Session?.SourceSessionId is not { } fromId || by.Session?.SourceSessionId is not { } byId)
+            return new(false, "not-found") { From = command.From, By = command.By };
+        var (fromNative, byNative) = (fromId.ToString(), byId.ToString());
+        if (from.Id == by.Id) return new(false, "same-session") { From = fromNative, By = byNative };
+        bool Live(SessionFact? fact) => fact is { Archived: not true, LastActivityAtUtc: { } activity } &&
+            now - activity <= TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes);
+        if (!Live(by.Session)) return new(false, "by-not-live") { From = fromNative, By = byNative };
+        var fact = from.Session;
+        var verdict = rules.Evaluate(from, now);
+        var idleMinutes = fact.Origin == "agent" ? policy.Lease.TakeoverIdleMinutes : policy.Lease.TakeoverIdleMinutesHuman;
+        DateTimeOffset? idleAt = fact.LastActivityAtUtc?.AddMinutes(idleMinutes);
+        var trigger = verdict.Value == "stuck" ? "stuck" : fact.UsageLimit ? "usage-limit" : fact.Archived == true ? "archived"
+            : idleAt is { } eligible && eligible <= now ? "idle" : null;
+        var children = await ChildrenAsync(tx, (from.Provider, fromNative), live, token);
+        // An ask stays open until its result was accepted; a failed or cancelled one has nothing left to follow.
+        var open = asks.Where(ask => ask.RequesterProvider == from.Provider && Native(ask.RequesterSessionId) == fromNative &&
+            ask.State is not ("failed" or "cancelled") && !(ask.State == "succeeded" && ask.Stages.ContainsKey("accepted")))
+            .Select(ask => ask.RequestId).ToArray();
+        // The newest record that moved From's work away still holds unless From took work over again after it.
+        var takeovers = await TakeoversAsync(tx, token);
+        var lastAway = takeovers.Select((row, index) => (row, index)).LastOrDefault(pair => pair.row.FromProvider == from.Provider && pair.row.FromNative == fromNative);
+        var regained = lastAway.row is not null && takeovers.Skip(lastAway.index + 1).Any(row => row.ByProvider == from.Provider && row.ByNative == fromNative);
+        var earlier = regained ? null : lastAway.row;
+        if (earlier is not null && earlier.ByProvider == by.Provider && earlier.ByNative == byNative)
+            return Describe(new(true, "already-taken-over") { Trigger = earlier.Trigger, AtUtc = earlier.AtUtc,
+                Leases = (await ReservationsAsync(tx, now, token)).Where(row => IsHolder(by, row.Lease.Holder) &&
+                    row.Lease.PreviousHolder is { } previous && IsHolder(from, previous)).Select(row => row.Lease).ToArray() });
+        if (earlier is not null) {
+            // Someone else already continues this work and holds what was moved. While they are live it stays theirs;
+            // once they stop too, the work is taken over from them, not from the original session.
+            var current = (await SessionItemsAsync(tx, [(earlier.ByProvider, earlier.ByNative)], now, token)).Values.SingleOrDefault()?.Session;
+            return new(false, Live(current) ? "taken-over-by-other" : "take-over-successor") {
+                From = fromNative, By = earlier.ByNative, AtUtc = earlier.AtUtc, Trigger = earlier.Trigger };
+        }
+        if (trigger is null) return new(false, "not-eligible") { From = fromNative, By = byNative, Verdict = verdict.Value, EligibleAtUtc = idleAt };
+        var holder = by.Provider + ":" + byNative;
+        var all = await ReservationsAsync(tx, now, token);
+        var moved = new List<Lease>();
+        foreach (var row in all.Where(row => row.State is "active" or "queued" && IsHolder(from, row.Lease.Holder))) {
+            // By may already hold or wait for the same key on the same machine. Keep one row: an active one over a queued
+            // one, otherwise the one earlier in the queue. Two active rows are separate slots and both move.
+            var existing = all.FirstOrDefault(other => other.Lease.Key == row.Lease.Key && other.Lease.Machine == row.Lease.Machine &&
+                other.State is "active" or "queued" && IsHolder(by, other.Lease.Holder) && !(other.State == "active" && row.State == "active"));
+            if (existing is not null) {
+                var keepExisting = existing.State == "active" || row.State == existing.State && existing.Order < row.Order;
+                var drop = keepExisting ? row : existing;
+                if (drop.State == "active") await RememberLeaseAsync(tx, drop.Lease, now, token);
+                await tx.ExecuteNonQueryAsync("DELETE FROM reservations WHERE id=@id", new Dictionary<string, object?> { ["id"] = drop.Lease.LeaseId }, token);
+                if (keepExisting) continue;
+            }
+            // A new id fences the stopped holder. An active reservation's history ends here and the new holder's starts
+            // here, so benchmark budgets count the time once; the row keeps its place in the queue.
+            if (row.State == "active") await RememberLeaseAsync(tx, row.Lease, now, token);
+            var lease = row.Lease with { Holder = holder, LeaseId = Guid.NewGuid().ToString("N"), PreviousHolder = row.Lease.Holder,
+                TakenOverAtUtc = now, PreviousLeaseId = row.Lease.LeaseId, AcquiredAtUtc = row.State == "active" ? now : row.Lease.AcquiredAtUtc };
+            await tx.ExecuteNonQueryAsync("UPDATE reservations SET id=@new,holder=@holder,json=@json WHERE id=@old", new Dictionary<string, object?> {
+                ["new"] = lease.LeaseId, ["holder"] = lease.Holder, ["json"] = Json(lease), ["old"] = row.Lease.LeaseId }, token);
+            if (row.State == "active") await RememberLeaseAsync(tx, lease, lease.ExpiresAtUtc, token);
+            moved.Add(lease);
+        }
+        var record = new TakeoverRow(from.Provider, fromNative, by.Provider, byNative, now, trigger, command.Reason, moved.Select(lease => lease.Key).ToArray());
+        await tx.ExecuteNonQueryAsync("""
+            INSERT INTO session_takeovers(from_provider,from_native,by_provider,by_native,recorded,json)
+            VALUES(@fromProvider,@from,@byProvider,@by,@recorded,@json)
+            """, new Dictionary<string, object?> { ["fromProvider"] = record.FromProvider, ["from"] = record.FromNative,
+                ["byProvider"] = record.ByProvider, ["by"] = record.ByNative, ["recorded"] = now.ToString("O"), ["json"] = Json(record) }, token);
+        return Describe(new(true, "taken-over") { Trigger = trigger, AtUtc = now, Leases = moved.ToArray() });
+
+        SessionTakeoverReply Describe(SessionTakeoverReply reply) {
+            var repo = fact.Repository;
+            return reply with { From = fromNative, By = byNative, Task = from.Scope ?? fact.Scope,
+                Title = fact.Title ?? repo?.Title, Verdict = verdict.Value, Repo = repo?.Repo, Branch = repo?.Branch,
+                Worktree = repo?.Worktree, Commit = repo?.Commit,
+                PullRequests = repo?.PullRequests is { Length: > 0 } prs ? prs : null,
+                Children = children.Length == 0 ? null : children, OpenAsks = open.Length == 0 ? null : open };
+        }
     }
 }

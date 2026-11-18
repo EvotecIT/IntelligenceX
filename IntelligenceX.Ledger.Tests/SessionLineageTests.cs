@@ -121,10 +121,12 @@ public sealed class SessionLineageTests : IDisposable {
     public async Task TakeoverMovesReservationsAndRecordsBothSides() {
         using var store = await SeedAsync();
         var branch = await store.AcquireLeaseAsync(new("branch:evotecit/intelligencex:feature/stuck", "codex:" + Stuck, "mac", "fix", 600), Now.AddMinutes(-1));
-        var resource = await store.AcquireLeaseAsync(new("resource:fixture", Stuck.ToString(), "mac", "fixture", 3600), Now.AddMinutes(-1));
+        // The lease service accepts a holder id in any letter case; the takeover must too.
+        var resource = await store.AcquireLeaseAsync(new("resource:fixture", Stuck.ToString().ToUpperInvariant(), "mac", "fixture", 3600), Now.AddMinutes(-1));
         Assert.True(branch.Ok && resource.Ok);
         SessionAskStep[] asks = [new("ask-9", "codex", Stuck.ToString(), null, null, "queued", Now.AddHours(-1), []),
-            new("ask-8", "codex", Stuck.ToString(), "claude", Root.ToString(), "succeeded", Now.AddHours(-2), [], "result-8")];
+            new("ask-8", "codex", Stuck.ToString(), "claude", Root.ToString(), "succeeded", Now.AddHours(-2), new() { ["accepted"] = Now.AddHours(-1) }, "result-8"),
+            new("ask-7", "codex", Stuck.ToString(), "claude", Root.ToString(), "succeeded", Now.AddHours(-2), new() { ["terminal"] = Now.AddMinutes(-50) }, "result-7")];
         using var sql = new DBAClientX.SQLite();
         async Task<long> Ordinal(string key) {
             await using var db = await sql.OpenSessionAsync(Path.Combine(_directory, "ledger.sqlite"));
@@ -140,8 +142,8 @@ public sealed class SessionLineageTests : IDisposable {
         var reply = await store.TakeOverSessionAsync(new(Stuck.ToString(), Nested.ToString(), "helper crashed"), Now, Live, asks);
         Assert.True(reply.Ok);
         Assert.Equal(("taken-over", "stuck", "feature/stuck"), (reply.State, reply.Trigger, reply.Branch));
-        // A finished ask isn't work to continue.
-        Assert.Equal(new[] { "ask-9" }, reply.OpenAsks);
+        // An accepted result is finished; one still waiting to be accepted is work to follow up.
+        Assert.Equal(new[] { "ask-9", "ask-7" }, reply.OpenAsks);
         Assert.Equal(ordinal, await Ordinal("resource:fixture"));
         await using (var db = await sql.OpenSessionAsync(Path.Combine(_directory, "ledger.sqlite"))) {
             // The stopped holder's interval ends where the new holder's starts, so budgets count the time once.
@@ -154,7 +156,7 @@ public sealed class SessionLineageTests : IDisposable {
         Assert.Equal(new string('a', 40), reply.Commit);
         Assert.Equal(2, reply.Leases!.Length);
         Assert.All(reply.Leases, lease => Assert.Equal("claude:" + Nested, lease.Holder));
-        Assert.Equal(new[] { "codex:" + Stuck, Stuck.ToString() }.Order(), reply.Leases.Select(lease => lease.PreviousHolder!).Order());
+        Assert.Equal(new[] { "codex:" + Stuck, Stuck.ToString().ToUpperInvariant() }.Order(), reply.Leases.Select(lease => lease.PreviousHolder!).Order());
         var moved = Assert.Single((await store.WhoAsync("branch:evotecit/intelligencex:feature/stuck", false, Now)).Leases);
         Assert.Equal(("claude:" + Nested, branch.Lease!.ExpiresAtUtc), (moved.Holder, moved.ExpiresAtUtc));
         // Each reservation keeps its own expiry; the new holder renews it as usual.
@@ -174,11 +176,11 @@ public sealed class SessionLineageTests : IDisposable {
 
         var trail = await store.SessionTrailAsync(Helper.ToString(), Now, Live, asks.Append(
             new("ask-2", "claude", Nested.ToString(), "codex", Helper.ToString(), "completed", Now.AddMinutes(-100),
-                new() { ["bound"] = Now.AddMinutes(-99), ["completed"] = Now.AddMinutes(-90) }, "result-2")));
+                new() { ["bound"] = Now.AddMinutes(-99), ["terminal"] = Now.AddMinutes(-90), ["accepted"] = Now.AddMinutes(-85) }, "result-2")));
         Assert.Equal(Root.ToString(), trail.Root);
         Assert.Contains(trail.Entries, entry => entry is { Kind: "took-over" } && entry.Session == Nested.ToString() && entry.Detail!.Contains(Stuck.ToString()));
         Assert.Contains(trail.Entries, entry => entry is { Kind: "lease-ended" } && entry.Session == Stuck.ToString());
-        Assert.Contains(trail.Entries, entry => entry is { Kind: "ask-completed", Detail: "ask-2 result-2" });
+        Assert.Contains(trail.Entries, entry => entry is { Kind: "ask-terminal", Detail: "ask-2 result-2" });
         Assert.Contains(trail.Entries, entry => entry.Kind == "started" && entry.Session == Subagent.ToString() && entry.Detail == "by " + Helper + " via codex-parent-thread");
         Assert.Equal(trail.Entries.Where(entry => entry.AtUtc is not null).Select(entry => entry.AtUtc).Order(), trail.Entries.Where(entry => entry.AtUtc is not null).Select(entry => entry.AtUtc));
     }
@@ -192,6 +194,19 @@ public sealed class SessionLineageTests : IDisposable {
         var redirect = await store.TakeOverSessionAsync(new(Stuck.ToString(), Root.ToString()), later);
         Assert.Equal((false, "take-over-successor", Nested.ToString()), (redirect.Ok, redirect.State, redirect.By));
         Assert.Equal("taken-over", (await store.TakeOverSessionAsync(new(Nested.ToString(), Root.ToString()), later)).State);
+    }
+
+    [Fact]
+    public async Task WorkTakenBackIsTakenOverFromItsCurrentHolder() {
+        using var store = await SeedAsync();
+        Assert.True((await store.TakeOverSessionAsync(new(Stuck.ToString(), Nested.ToString()), Now)).Ok);
+        var back = Now.AddHours(2);
+        await store.IngestAsync([Session("mac", "codex", Stuck, Working() with { TurnStartedAtUtc = back, LastActivityAtUtc = back })], back);
+        Assert.Equal("taken-over", (await store.TakeOverSessionAsync(new(Nested.ToString(), Stuck.ToString()), back)).State);
+        var later = Now.AddHours(4);
+        await store.IngestAsync([Session("win-pc", "claude", Root, Working(origin: "human") with { TurnStartedAtUtc = later, LastActivityAtUtc = later })], later);
+        // The original session holds its work again, so the old record no longer points elsewhere.
+        Assert.Equal("taken-over", (await store.TakeOverSessionAsync(new(Stuck.ToString(), Root.ToString()), later)).State);
     }
 
     [Fact]
@@ -216,6 +231,18 @@ public sealed class SessionLineageTests : IDisposable {
     }
 
     [Fact]
+    public async Task AFinishedParentOfAnUnreportedHelperIsHeld() {
+        using var store = await SeedAsync();
+        Assert.Equal(1, await store.RecordLinksAsync([new("codex", Subagent.ToString(), "codex", Guid.NewGuid().ToString(), "codex-parent-thread", Now)]));
+        var tree = await store.SessionTreeAsync(Root.ToString(), Now, Live);
+        var held = tree.ArchiveHeld!.ToDictionary(entry => entry.Id, entry => entry.Reason);
+        Assert.Equal("subtree-unresolved", held[Subagent.ToString()]);
+        Assert.Equal("subtree-unresolved", held[Helper.ToString()]);
+        Assert.Empty(tree.Archive!);
+        Assert.Equal("unknown", tree.Nodes.Single(node => node.Id == Helper.ToString()).SubtreeVerdict);
+    }
+
+    [Fact]
     public async Task UnknownSessionsAndAmbiguousTitlesAreExplicit() {
         using var store = await SeedAsync();
         Assert.Equal("not-found", (await store.SessionTreeAsync(Guid.NewGuid().ToString(), Now)).State);
@@ -235,7 +262,11 @@ public sealed class SessionLineageTests : IDisposable {
             sessionId = "local_card", cliSessionId = Stuck.ToString(), spawnedFrom = new { sessionId = "local_parent", taskId = "task_1" } }));
         File.WriteAllText(Path.Combine(folder, "local_orphan.json"), JsonSerializer.Serialize(new {
             sessionId = "local_orphan", cliSessionId = Nested.ToString(), spawnedFrom = new { sessionId = "local_gone" } }));
+        // A string the parser accepts but can't decode skips that file instead of stopping the reporter.
+        File.WriteAllText(Path.Combine(folder, "local_bad.json"), "{\"sessionId\":\"local_bad\",\"cliSessionId\":\"" + Helper +
+            "\",\"spawnedFrom\":{\"sessionId\":\"local_\\ud800\"}}");
         var accounts = new ClaudeDesktopAccounts(root, Path.Combine(root, "missing.json"));
+        Assert.Null(accounts.Parent(Helper.ToString()));
         Assert.Equal((Root.ToString(), true), accounts.Parent(Side.ToString()));
         Assert.Equal((Root.ToString(), false), accounts.Parent(Stuck.ToString()));
         Assert.Null(accounts.Parent(Root.ToString()));
@@ -276,6 +307,9 @@ public sealed class SessionLineageTests : IDisposable {
             SessionLineageSource.Link(work, binding));
         var step = SessionLineageSource.Step(work, binding, null)!;
         Assert.Equal(("codex", Helper.ToString(), "result-7", 2), (step.HelperProvider, step.HelperSessionId, step.ResultRef, step.Stages.Count));
+        // A reused session existed before the ask, so it isn't the asker's child; the ask still shows in the trail.
+        Assert.Null(SessionLineageSource.Link(work with { Request = request with { ReuseSession = true } }, binding));
+        Assert.NotNull(SessionLineageSource.Step(work with { Request = request with { ReuseSession = true } }, binding, null));
         // Ordinary submissions have no asking session to link.
         Assert.Null(SessionLineageSource.Link(work with { Request = request with { ReturnTo = null } }, binding));
     }

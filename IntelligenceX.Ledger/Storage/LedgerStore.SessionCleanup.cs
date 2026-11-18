@@ -38,15 +38,25 @@ public sealed partial class LedgerStore {
     private async Task<string> CleanupReasonAsync(SQLiteAsyncSession db, LedgerItem item, List<Reservation> leases, DateTimeOffset now, CancellationToken token) {
         var fact = item.Session!;
         var repo = fact.Repository;
-        var holders = Holders(item);
         if (fact.Origin != "agent") return "personal-session-information-only";
-        if (leases.Any(row => holders.Contains(row.Lease.Holder))) return "live-lease-or-queue";
+        if (leases.Any(row => IsHolder(item, row.Lease.Holder))) return "live-lease-or-queue";
         if (fact.Question || await HasOpenQuestionAsync(db, item, now, false, token)) return "open-question";
         if (repo?.Dirty == true) return "dirty-worktree";
         if (repo?.Unpushed == true) return "unpushed-worktree";
         if (repo?.GitState == "workspace-missing") return "workspace-already-missing";
         if (repo?.Dirty != false || repo.Unpushed != false) return "workspace-check-required";
         return "clean-and-pushed";
+    }
+
+    /// <summary>Whether a reservation holder names this session: its item id, or its native id bare or provider-qualified
+    /// (optionally owner-driven), in any letter case the lease service accepts.</summary>
+    private static bool IsHolder(LedgerItem item, string holder) {
+        if (holder == item.Id) return true;
+        var parts = holder.Split(':');
+        var native = item.Session?.SourceSessionId;
+        bool Same(string value) => native is { } id ? Guid.TryParse(value, out var parsed) && parsed == id : value == item.Id;
+        return parts.Length == 1 ? Same(parts[0])
+            : parts.Length is 2 or 3 && parts[0] == item.Provider && Same(parts[1]) && (parts.Length == 2 || parts[2] == "owner-driven");
     }
 
     /// <summary>Every holder string a session may reserve under: its item id, native id, and provider-qualified forms.</summary>

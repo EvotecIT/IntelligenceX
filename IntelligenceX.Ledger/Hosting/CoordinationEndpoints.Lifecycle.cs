@@ -18,11 +18,11 @@ internal static partial class CoordinationEndpoints {
                 var value = engine.BindSession(binding, Caller(http));
                 return (value, state.Work.TryGetValue(value.RequestId, out var work) ? SessionLineageSource.Link(work, value) : null);
             }, DateTimeOffset.UtcNow, ct);
-            // The asking session started this helper. Recording it here keeps the link after the request is archived; the
-            // binding is already committed, so a failed record must not make the host retry it. Tree reads still see the
-            // link from live and recently archived requests.
+            // The asking session started this helper. Recording it here keeps the link after the request is archived. The
+            // binding is already committed, so neither a client that disconnects nor a failed write may undo or repeat it;
+            // the service's periodic backfill records any link this write missed while the request is still readable.
             if (link is not null && bound is not null)
-                try { await bound(link, ct); } catch (Exception error) when (error is not OperationCanceledException) { }
+                try { await bound(link, CancellationToken.None); } catch (Exception error) when (error is not OperationCanceledException) { }
             return Results.Ok(result);
         });
         app.MapGet(Prefix + "/results", async (long? afterOrder, HttpContext http, CancellationToken ct) =>
