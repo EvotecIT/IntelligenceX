@@ -82,14 +82,15 @@ internal sealed partial class AgentService {
         var prompt = new StringBuilder();
         if (r.Helper?.ContinuesRequestId is { } earlier)
             prompt.Append("This continues your earlier work on ask ").Append(earlier).AppendLine(", which is the conversation above. " +
-                "Its working directory has been removed; this one starts empty.").AppendLine();
+                "This run has its own working directory, separate from the earlier one.").AppendLine();
         prompt.Append("You are a helper for ").Append(from).AppendLine(", working through the IntelligenceX Ledger.")
             .AppendLine().AppendLine("Task:").AppendLine(r.TaskBrief ?? "(no task text)").AppendLine()
             .Append("The requester is working on ").Append(r.Checkpoint.Project).Append(" (branch ").Append(r.Checkpoint.Branch)
             .Append(", commit ").Append(r.Checkpoint.Commit).AppendLine(").")
-            .Append("Your working directory ").Append(workspace).AppendLine(" starts empty. To work on the code, clone the repository " +
-                "into it and check out that branch or commit. Anything you leave there is kept for review, so remove clones and scratch " +
-                "you don't need and push anything worth keeping.");
+            .Append("Your working directory ").Append(workspace).AppendLine(" holds only the Ledger's marker file. To work on the code, " +
+                "clone the repository into a subfolder of it and check out that branch or commit. Anything you leave there is kept for " +
+                "review, so remove clones and scratch you don't need.");
+        if (!IsReview(work)) prompt.AppendLine("Push anything worth keeping before you finish.");
         if (IsReview(work))
             prompt.AppendLine().AppendLine("This is a review. Review the changes on that branch at that commit against the base the task names " +
                     "(the repository's default branch if it names none). Use the repository's own conventions and AGENTS.md. Be adversarial: look " +
@@ -124,7 +125,9 @@ internal sealed partial class AgentService {
         var last = new Dictionary<string, JsonNode>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < checks.Count; i++) {
             if (checks[i] is not JsonObject check || check["final"] is JsonValue final && final.TryGetValue<bool>(out var isFinal) && !isFinal) continue;
-            last[(Str(check["check"]) ?? Str(check["command"]) ?? "#" + i).Trim()] = check;
+            var name = Str(check["check"])?.Trim() is { Length: > 0 } named ? named
+                : Str(check["command"])?.Trim() is { Length: > 0 } command ? command : "#" + i;
+            last[name] = check;
         }
         var failed = last.Where(pair => Str(pair.Value["result"]) == "fail").Select(pair => (JsonNode?)JsonValue.Create(pair.Key)).ToArray();
         var blocking = findings.Any(f => Str(f?["severity"]) is "critical" or "high");
@@ -136,20 +139,51 @@ internal sealed partial class AgentService {
             ["findings"] = findings.DeepClone(),
             ["validation"] = checks.DeepClone()
         };
-        var order = new[] { "low", "medium", "high", "critical" };
-        while (Encoding.UTF8.GetByteCount(result.ToJsonString()) > MaximumResultBytes) {
-            result["truncated"] = "The full review is in Codex thread " + threadId + ".";
-            var kept = (JsonArray)result["validation"]!;
-            if (kept.FirstOrDefault(c => c?["final"] is JsonValue v && v.TryGetValue<bool>(out var f) && !f) is { } superseded) {
-                kept.Remove(superseded);
-                continue;
+        bool Fits() => Encoding.UTF8.GetByteCount(result.ToJsonString()) <= MaximumResultBytes;
+        if (Fits()) return result.ToJsonString();
+        result["truncated"] = "The full review is in Codex thread " + threadId + ".";
+        var kept = (JsonArray)result["validation"]!;
+        // Superseded attempts go first, then long text is shortened, then the least severe findings are dropped.
+        while (!Fits() && kept.FirstOrDefault(c => c?["final"] is JsonValue v && v.TryGetValue<bool>(out var f) && !f) is { } superseded)
+            kept.Remove(superseded);
+        if (!Fits()) {
+            Clip(result, "summary", 2000);
+            foreach (var check in kept.OfType<JsonObject>()) { Clip(check, "notes", 300); Clip(check, "command", 200); Clip(check, "check", 120); }
+            foreach (var finding in ((JsonArray)result["findings"]!).OfType<JsonObject>()) {
+                Clip(finding, "detail", 600); Clip(finding, "recommendation", 300); Clip(finding, "title", 160); Clip(finding, "file", 200);
             }
-            var list = (JsonArray)result["findings"]!;
-            if (list.Count == 0) return Bound(result.ToJsonString(), threadId);
-            list.Remove(list.OrderBy(f => Array.IndexOf(order, Str(f?["severity"]) ?? "low")).First());
         }
-        return result.ToJsonString();
+        var order = new[] { "low", "medium", "high", "critical" };
+        var list = (JsonArray)result["findings"]!;
+        while (!Fits() && list.Count > 0) list.Remove(list.OrderBy(f => Array.IndexOf(order, Str(f?["severity"]) ?? "low")).First());
+        return Fits() ? result.ToJsonString() : CompactReview(result, threadId);
     }
+
+    private static void Clip(JsonObject node, string name, int length) {
+        if (Str(node[name]) is { } text && text.Length > length) node[name] = text[..length] + "...";
+    }
+
+    /// <summary>The smallest review result: the decision, the failed checks and a shortened summary, still valid JSON.</summary>
+    private static string CompactReview(JsonObject result, string threadId) => new JsonObject {
+        ["pass"] = result["pass"]?.DeepClone(),
+        ["verdict"] = result["verdict"]?.DeepClone(),
+        ["failedChecks"] = new JsonArray(((JsonArray)result["failedChecks"]!).Take(10)
+            .Select(c => (JsonNode?)JsonValue.Create(Str(c) is { Length: > 100 } t ? t[..100] : Str(c))).ToArray()),
+        ["summary"] = Str(result["summary"]) is { Length: > 1000 } s ? s[..1000] + "..." : result["summary"]?.DeepClone(),
+        ["findings"] = new JsonArray(),
+        ["validation"] = new JsonArray(),
+        ["truncated"] = "The full review is in Codex thread " + threadId + "."
+    }.ToJsonString();
+
+    /// <summary>A review that ended without a verdict (a question it couldn't ask, or a failure) still answers in the review
+    /// shape, as a non-passing result whose summary says what happened.</summary>
+    internal static string ReviewWithoutVerdict(string text, string threadId) => CompactReview(new JsonObject {
+        ["pass"] = false, ["verdict"] = "needs-attention", ["failedChecks"] = new JsonArray(), ["summary"] = text
+    }, threadId);
+
+    /// <summary>Result content for a helper's own text: bounded, and in the review shape for a review ask.</summary>
+    private static string TextResult(CoordinationWork work, string text, string threadId) =>
+        IsReview(work) ? ReviewWithoutVerdict(text, threadId) : Bound(text, threadId);
 
     private static string? Str(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
@@ -319,24 +353,26 @@ internal sealed partial class AgentService {
                     throw;
                 }
             } else {
+                if (record.LimitRetryAtUtc is { } retry && retry > DateTimeOffset.UtcNow)
+                    await Task.Delay(retry - DateTimeOffset.UtcNow, stop).ConfigureAwait(false);
                 var prompt = record.Resumes > 0 || record.LimitWaits > 0 ? ResumePrompt : HelperPrompt(work, record.Workspace);
                 outcome = await _codex.RunTurnAsync(threadId, record.Workspace, prompt, OutputSchema(work), Model(work),
                     Effort(work), limit, record.KnownTurns, Submitting, Started, watch, stop).ConfigureAwait(false);
             }
-            if (outcome.UsageLimited) {
-                // Nothing about the task failed: the account ran out of Codex usage. The user is asked to sign in with another
-                // account, the grant stays renewed, and the same thread is tried again each probe interval without using up
-                // a resume.
-                Observe("codex", false, "usage-limit");
-                record = (record with { LimitWaits = record.LimitWaits + 1, TurnId = null, Phase = "turn" }).Save(_settings.StateDirectory);
-                Log("helper-usage-limit", id + " " + outcome.Error);
-                await Task.Delay(TimeSpan.FromMinutes(_policy.UsageLimitProbeMinutes), stop).ConfigureAwait(false);
-                continue;
-            }
-            if (outcome.Status == "completed") Observe("codex", true, "turn");
             if (record.UsageTurn != outcome.TurnId)
                 record = (record with { UsageTurn = outcome.TurnId, UsageAtUtc = DateTimeOffset.UtcNow }).Save(_settings.StateDirectory);
             await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop, record.UsageAtUtc).ConfigureAwait(false);
+            if (outcome.UsageLimited) {
+                // Nothing about the task failed: the account ran out of Codex usage. The user is asked to sign in with another
+                // account, the grant stays renewed, and the same thread is tried again each probe interval without using up
+                // a resume. The time of the next try is saved, so a restart waits out the rest of the interval.
+                Observe("codex", false, "usage-limit");
+                record = (record with { LimitWaits = record.LimitWaits + 1, TurnId = null, Phase = "turn",
+                    LimitRetryAtUtc = DateTimeOffset.UtcNow.AddMinutes(_policy.UsageLimitProbeMinutes) }).Save(_settings.StateDirectory);
+                Log("helper-usage-limit", id + " " + outcome.Error);
+                continue;
+            }
+            if (outcome.Status == "completed") Observe("codex", true, "turn");
             var (kind, text) = ParseAnswer(outcome.FinalText);
             if (kind == "question" && (string.IsNullOrWhiteSpace(text) || System.Text.Encoding.UTF8.GetByteCount(text) > MaximumResultBytes)) kind = "none";
             if (outcome.Status == "completed" && kind == "question") {
@@ -346,12 +382,12 @@ internal sealed partial class AgentService {
                     Log("helper-question", id + "#" + question.Number);
                     continue;
                 } catch (CoordinationCommandRejectedException error) when (error.ErrorCode == "question-limit-reached") {
-                    text = "The helper reached the question limit and stopped with this open question:\n\n" + text;
-                    kind = "result";
+                    return await PublishAsync(work, record, TextResult(work, "The helper reached the question limit and stopped with " +
+                        "this open question:\n\n" + text, threadId), succeeded: true, stop).ConfigureAwait(false);
                 }
             }
             if (outcome.Status == "completed" && kind == "result" && !string.IsNullOrWhiteSpace(text))
-                return await PublishAsync(work, record, IsReview(work) ? ReviewResult(outcome.FinalText, threadId) ?? Bound(text, threadId)
+                return await PublishAsync(work, record, IsReview(work) ? ReviewResult(outcome.FinalText, threadId) ?? TextResult(work, text, threadId)
                     : Bound(text, threadId), succeeded: true, stop).ConfigureAwait(false);
             if (record.Resumes < _policy.ResumeAttempts) {
                 record = (record with { Resumes = record.Resumes + 1, TurnId = null, Phase = "turn" }).Save(_settings.StateDirectory);
@@ -361,7 +397,7 @@ internal sealed partial class AgentService {
             var failure = "The helper on " + _machineId + " stopped without an answer (turn " + outcome.Status +
                 (outcome.Error is null ? "" : ": " + outcome.Error) + "). Codex thread " + threadId + " has the details." +
                 (string.IsNullOrWhiteSpace(outcome.FinalText) ? "" : "\n\nIts last message:\n" + outcome.FinalText);
-            return await PublishAsync(work, record, Bound(failure, threadId), succeeded: false, stop).ConfigureAwait(false);
+            return await PublishAsync(work, record, TextResult(work, failure, threadId), succeeded: false, stop).ConfigureAwait(false);
         }
     }
 

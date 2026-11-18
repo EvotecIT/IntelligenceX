@@ -53,9 +53,11 @@ public sealed partial class CoordinationEngine {
                 state.Bindings.TryGetValue(prior.Request.Id, out priorBinding) && priorBinding.Provider == "codex",
                 "ask-continues-unavailable");
             Require(ask.MachineId is null || ask.MachineId == prior!.Machine, "ask-continues-machine-conflict");
+            // The forked conversation is the earlier ask's, so the caller must still be allowed that project.
+            Require(caller.Projects.Contains(prior!.Request.Checkpoint.Project, StringComparer.Ordinal), "ask-continues-project-denied");
             Require(ask.Provider is null or "codex", "ask-continues-provider-conflict");
             forkSession = priorBinding!.SessionId;
-            ask = ask with { MachineId = prior!.Machine, Provider = "codex" };
+            ask = ask with { MachineId = prior!.Machine, Provider = "codex", Capability = ask.Capability ?? prior.Request.Capability };
         }
         var machine = ask.MachineId is null ? null : state.Policy.Machines.FirstOrDefault(m => m.Id == ask.MachineId);
         Require(ask.MachineId is null || machine is not null, "ask-machine-unknown");
@@ -64,7 +66,10 @@ public sealed partial class CoordinationEngine {
         // The provider has to be one a machine with the capability (the named one, if any) may create.
         bool Offers(MachineCapacity m, string p) => m.Enabled && (machine is null || m.Id == machine.Id) &&
             m.Capabilities.Contains(capability!) && (m.AllowedCreateProviders ?? []).Contains(p, StringComparer.Ordinal);
-        var provider = ask.Provider;
+        // Model, effort, review output and follow-ups are Codex helper options; they route to Codex only.
+        var codexOnly = ask.Model is not null || ask.Effort is not null || ask.Output is not null || ask.Continues is not null;
+        Require(!codexOnly || ask.Provider is null or "codex", "ask-options-require-codex");
+        var provider = codexOnly ? "codex" : ask.Provider;
         if (provider is null) {
             Require(state.Policy.Routing.TryGetValue(ask.Kind ?? state.Policy.Ask.DefaultKind, out var route), "ask-kind-not-routed");
             provider = route.FirstOrDefault(p => state.Policy.Machines.Any(m => Offers(m, p)));

@@ -201,4 +201,37 @@ public sealed class AgentServiceTests {
         Assert.False(new TurnOutcome("t", "failed", null, TurnTokens.None, "m", CodexRunner.ErrorText(other.RootElement)).UsageLimited);
         Assert.Equal("Server overloaded.", CodexRunner.ErrorText(other.RootElement));
     }
+
+
+    [Fact]
+    public void ChecksWithBlankNamesAreKeptApartByTheirCommands() {
+        var answer = ReviewAnswer("approve", "",
+            "{\"check\":\" \",\"command\":\"dotnet build\",\"result\":\"fail\",\"final\":true,\"notes\":\"\"}," +
+            "{\"check\":\"\",\"command\":\"dotnet test\",\"result\":\"pass\",\"final\":true,\"notes\":\"\"}");
+        var root = JsonDocument.Parse(AgentService.ReviewResult(answer, "thread-1")!).RootElement;
+        Assert.False(root.GetProperty("pass").GetBoolean());
+        Assert.Equal("dotnet build", Assert.Single(root.GetProperty("failedChecks").EnumerateArray()).GetString());
+    }
+
+    [Fact]
+    public void AReviewWhoseTextAloneIsTooLongStaysValidJsonWithItsDecision() {
+        var notes = new string('n', 9000);
+        var answer = "{\"outcome\":\"result\",\"text\":\"S\",\"review\":{\"verdict\":\"approve\",\"summary\":\"" + new string('s', 9000) +
+            "\",\"findings\":[],\"validation\":[{\"check\":\"build\",\"command\":\"dotnet build\",\"result\":\"fail\",\"final\":true,\"notes\":\"" +
+            notes + "\"}]}}";
+        var result = AgentService.ReviewResult(answer, "thread-1")!;
+        Assert.True(Encoding.UTF8.GetByteCount(result) <= 8192);
+        var root = JsonDocument.Parse(result).RootElement;
+        Assert.False(root.GetProperty("pass").GetBoolean());
+        Assert.Equal("build", Assert.Single(root.GetProperty("failedChecks").EnumerateArray()).GetString());
+        Assert.Contains("thread-1", root.GetProperty("truncated").GetString());
+    }
+
+    [Fact]
+    public void AReviewThatEndsWithoutAVerdictStillAnswersInTheReviewShape() {
+        var root = JsonDocument.Parse(AgentService.ReviewWithoutVerdict("Stopped with an open question.", "thread-1")).RootElement;
+        Assert.False(root.GetProperty("pass").GetBoolean());
+        Assert.Equal("needs-attention", root.GetProperty("verdict").GetString());
+        Assert.Equal("Stopped with an open question.", root.GetProperty("summary").GetString());
+    }
 }

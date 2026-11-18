@@ -454,4 +454,20 @@ public sealed class CoordinationAskTests {
         var request = state.Work["plain"].Request with { Id = "forged", Helper = new(ContinuesRequestId: "plain", ForkSessionId: "someone-else") };
         Assert.Equal("invalid-helper-options", Assert.Throws<CoordinationConflictException>(() => engine.Submit(request, Sessions)).Message);
     }
+
+
+    [Fact]
+    public void CodexOptionsRouteToCodexAndAFollowUpNeedsTheEarlierProject() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        Assert.Equal("ask-options-require-codex", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("claude-review") with { Provider = "claude", Output = "review" }, Sessions)).Message);
+        Assert.Equal("codex", engine.Ask(Ask("routed-review") with { Output = "review" }, Sessions).Request.RequiredProvider);
+
+        Complete(engine, state, "first");
+        var moved = Sessions with { Projects = ["other"] };
+        Assert.Equal("ask-continues-project-denied", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("second", machine: null!) with { Continues = "first", Project = "other" }, moved)).Message);
+        Assert.Equal("macos-shell", engine.Ask(Ask("third", machine: null!) with { Continues = "first" }, Sessions).Request.Capability);
+    }
 }
