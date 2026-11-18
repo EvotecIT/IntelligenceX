@@ -32,15 +32,20 @@ public sealed class LedgerScopeRegressionTests : IDisposable {
             Event() with { Declaration = first }, Event(minutes: 1) with { Declaration = second }], Now.AddMinutes(1));
         var before = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(1)));
         var resolution = first with { Id = "synthetic-late-resolution", Resolved = true, RecordedAtUtc = Now.AddMinutes(2) };
-        await store.IngestAsync([Event(minutes: 2) with { Declaration = resolution },
-            Event(minutes: 3) with { Declaration = second }], Now.AddMinutes(3));
+        var resolutionEvent = Event(minutes: 2) with { Declaration = resolution };
+        var restatement = Event(minutes: 3) with { Declaration = second };
+        await store.IngestAsync([resolutionEvent, restatement], Now.AddMinutes(3));
         var after = Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(3)));
         Assert.Equal("waiting-task", after.Current!.ReasonCode);
         Assert.Equal(before.Current!.EpisodeId, after.Current.EpisodeId);
         Assert.Equal(Now.AddMinutes(1), after.Current.SinceUtc);
         Assert.Contains(after.Declarations.Values, d => d.Fact == second);
-        // The late resolution is ignored, so it adds no history row.
-        Assert.Equal(4, (await store.HistoryAsync(after.Id, 0, 100, default)).Length);
+        // The resolution of the first episode is history; restating the active declaration changes nothing.
+        var history = (await store.HistoryAsync(after.Id, 0, 100, default))
+            .Select(row => ((LedgerEvent)row.GetType().GetProperty("observation")!.GetValue(row)!).EventId).ToArray();
+        Assert.Equal(4, history.Length);
+        Assert.Contains(resolutionEvent.EventId, history);
+        Assert.DoesNotContain(restatement.EventId, history);
         var checkpoint = second with { Id = "synthetic-checkpoint-update", RecordedAtUtc = Now.AddMinutes(4) };
         await store.IngestAsync([Event(minutes: 4) with { Declaration = checkpoint },
             Event(minutes: 5) with { Declaration = second }], Now.AddMinutes(5));

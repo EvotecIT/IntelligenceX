@@ -94,7 +94,9 @@ A new database uses SQLite incremental vacuum, so each pass also returns up to a
 IntelligenceX.Ledger compact --config /absolute/path/service.json
 ```
 
-The command refuses to run while the service holds the database. It rewrites the file without free pages, switches it to incremental vacuum and prints the size before and after.
+The command refuses to run while the service holds the database, or when the database volume has less free space than twice the file's size: SQLite writes a full copy and a journal while it rewrites, and free pages inside the file don't count. It rewrites the file without free pages, switches it to incremental vacuum and prints the size before and after. If another reader, such as an online backup, still holds the old copy, the command exits with code 3; the file shrinks once that reader closes.
+
+Each observation left out of history keeps a small receipt (its ID, reporter sequence and a payload fingerprint) for the same seven days, so a retry is still acknowledged and reuse of its ID or sequence with different content is still rejected.
 
 Completed sessions and title-only catalog rows leave the current-work roster. Explicit questions, unconfirmed current-turn input, waits, declarations, usage limits, native holds and pending deliveries retain follow-up visibility. Claims and PR history remain available with each stored item. Frozen imported delivery observations older than 24 hours appear in retained history, with their excluded count in current-view coverage. Reporter health identifies a stale evidence file.
 

@@ -48,6 +48,9 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
               UNIQUE(reporter,epoch,sequence));
             CREATE INDEX IF NOT EXISTS events_item ON events(item,ordinal);
             CREATE INDEX IF NOT EXISTS events_received ON events(received);
+            CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, reporter TEXT NOT NULL, epoch TEXT NOT NULL,
+              sequence INTEGER NOT NULL, fingerprint TEXT NOT NULL, received TEXT NOT NULL, UNIQUE(reporter,epoch,sequence));
+            CREATE INDEX IF NOT EXISTS receipts_received ON receipts(received);
             CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS heartbeats (reporter TEXT PRIMARY KEY, machine TEXT NOT NULL, received TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS machines (id TEXT PRIMARY KEY, firstseen TEXT NOT NULL);
@@ -115,8 +118,17 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                         if (Json(Read<LedgerEvent>(previous)) != json) throw new EventConflictException();
                         continue;
                     }
-                    var sequenceOwner = await tx.ExecuteScalarAsync("SELECT id FROM events WHERE reporter=@reporter AND epoch=@epoch AND sequence=@seq",
-                        new Dictionary<string, object?> { ["reporter"] = observation.ReporterId, ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence }, ct);
+                    // Observations left out of history keep a receipt, so retries and identity reuse are still checked.
+                    var receipt = await tx.ExecuteScalarAsync("SELECT fingerprint FROM receipts WHERE id=@id",
+                        new Dictionary<string, object?> { ["id"] = observation.EventId.ToString() }, ct);
+                    if (receipt is string fingerprint) {
+                        if (fingerprint != Fingerprint(json)) throw new EventConflictException();
+                        continue;
+                    }
+                    var sequenceOwner = await tx.ExecuteScalarAsync("""
+                        SELECT id FROM events WHERE reporter=@reporter AND epoch=@epoch AND sequence=@seq
+                        UNION ALL SELECT id FROM receipts WHERE reporter=@reporter AND epoch=@epoch AND sequence=@seq LIMIT 1
+                        """, new Dictionary<string, object?> { ["reporter"] = observation.ReporterId, ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence }, ct);
                     if (sequenceOwner is string) throw new EventConflictException();
                     if (progressItem is not null && progressUpdate is not null) {
                         await ApplyProgressAsync(tx, progressItem, progressUpdate,
@@ -287,6 +299,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                     // The projection always keeps the newest evidence and activity time; history keeps only real changes.
                     if (journal && (stored is not string storedJson || JournalShape(storedJson) != JournalShape(Json(item))))
                         await JournalAsync(tx, observation, json, received, ct);
+                    else if (journal) await ReceiptAsync(tx, observation, json, received, ct);
                     await tx.ExecuteNonQueryAsync("INSERT INTO items(id,json) VALUES(@id,@json) ON CONFLICT(id) DO UPDATE SET json=excluded.json",
                         new Dictionary<string, object?> { ["id"] = item.Id, ["json"] = Json(item) }, ct);
                     if (item.Kind == "session" && item.Session is { } session) await UpsertSessionStatusAsync(tx, item, session, ct);
@@ -311,9 +324,23 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                 ["item"] = observation.ItemId, ["received"] = received.ToString("O"), ["json"] = json
             }, token);
 
-    // Fields that move on every observation without saying anything new about the item.
+    private static Task<int> ReceiptAsync(SQLiteAsyncSession tx, LedgerEvent observation, string json, DateTimeOffset received, CancellationToken token) =>
+        tx.ExecuteNonQueryAsync("""
+            INSERT INTO receipts(id,reporter,epoch,sequence,fingerprint,received)
+            VALUES(@id,@reporter,@epoch,@seq,@fingerprint,@received)
+            """, new Dictionary<string, object?> {
+                ["id"] = observation.EventId.ToString(), ["reporter"] = observation.ReporterId,
+                ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence,
+                ["fingerprint"] = Fingerprint(json), ["received"] = received.ToString("O")
+            }, token);
+
+    private static string Fingerprint(string json) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
+
+    // Fields that move on every observation without saying anything new about the item. A delivery's
+    // disposition time only orders repeats of the same stage; a new stage or effective time changes other fields.
     private static readonly HashSet<string> RefreshOnlyFields = new(StringComparer.Ordinal) {
-        "lastActivityAtUtc", "lastProgressAtUtc", "archiveObservedAtUtc", "evaluatedAtUtc" };
+        "lastActivityAtUtc", "lastProgressAtUtc", "archiveObservedAtUtc", "evaluatedAtUtc", "dispositionObservedAtUtc" };
 
     /// <summary>
     /// An item's stored form without evidence references and refresh-only timestamps. Two observations with the

@@ -35,6 +35,37 @@ public sealed class LedgerStorageRetentionTests : IDisposable {
     }
 
     [Fact]
+    public async Task ObservationsLeftOutOfHistoryStillAcknowledgeRetriesAndRejectReusedIdentity() {
+        using var store = new LedgerStore(Database, new(new()));
+        await store.InitializeAsync();
+        await store.IngestAsync([Session("synthetic-item", Now, open: false)], Now);
+        var refresh = Session("synthetic-item", Now.AddMinutes(1), open: false);
+        await store.IngestAsync([refresh], Now.AddMinutes(1));
+        Assert.Single(await store.HistoryAsync("synthetic-item", 0, 100, default));
+
+        await store.IngestAsync([refresh], Now.AddMinutes(2));
+        await Assert.ThrowsAsync<EventConflictException>(() => store.IngestAsync([refresh with { Session = refresh.Session! with { Title = "Changed" } }], Now.AddMinutes(2)));
+        await Assert.ThrowsAsync<EventConflictException>(() => store.IngestAsync(
+            [Session("synthetic-other", Now.AddMinutes(2), open: false) with { Sequence = refresh.Sequence }], Now.AddMinutes(2)));
+        Assert.Null((await store.EvaluateAllAsync(Now.AddMinutes(2))).Single(item => item.Id == "synthetic-item").Session!.Title);
+
+        await store.PruneEventsAsync(Now + LedgerStore.EventRetention + TimeSpan.FromDays(1));
+        Assert.Equal(0L, await Scalar("SELECT COUNT(*) FROM receipts"));
+    }
+
+    [Fact]
+    public async Task ARepeatedDeliveryStageWithTheSameTimeAddsNoHistory() {
+        using var store = new LedgerStore(Database, new(new()));
+        await store.InitializeAsync();
+        LedgerEvent Delivery(DateTimeOffset observed) => new() { EventId = Guid.NewGuid(), Epoch = _epoch, Sequence = ++_sequence,
+            MachineId = "synthetic-machine", ReporterId = "synthetic-reporter", ItemId = "synthetic-delivery-item", Provider = "codex",
+            Source = "evidence", ObservedAtUtc = observed, Delivery = new("synthetic-delivery", "submitted", Now) };
+        await store.IngestAsync([Delivery(Now)], Now);
+        await store.IngestAsync([Delivery(Now.AddMinutes(1))], Now.AddMinutes(1));
+        Assert.Single(await store.HistoryAsync("synthetic-delivery-item", 0, 100, default));
+    }
+
+    [Fact]
     public async Task TransitionsAndTheirReviewMarksExpireAfterThirtyDaysWhileRecentOnesStay() {
         using var store = new LedgerStore(Database, new(new()));
         await store.InitializeAsync();
@@ -45,7 +76,8 @@ public sealed class LedgerStorageRetentionTests : IDisposable {
         var oldTransitions = await store.DailyAsync(oldDay, default);
         Assert.NotEmpty(oldTransitions);
         var transitionId = (long)oldTransitions[0].GetType().GetProperty("transitionId")!.GetValue(oldTransitions[0])!;
-        await store.IngestAsync([Session("synthetic-old", old, open: true) with { Session = null, ReviewMark = new(transitionId, "correct") }], old);
+        await store.IngestAsync([Session("synthetic-old", old, open: true) with { Session = null, ReviewMark = new(transitionId, "right") }], old);
+        Assert.Contains(await store.DailyAsync(oldDay, default), row => (string)row.GetType().GetProperty("mark")!.GetValue(row)! == "right");
 
         await store.PruneEventsAsync(Now);
         Assert.Empty(await store.DailyAsync(oldDay, default));
@@ -62,9 +94,14 @@ public sealed class LedgerStorageRetentionTests : IDisposable {
         var padding = new string('x', 8000);
         for (var batch = 0; batch < 5; batch++)
             await store.IngestAsync([.. Enumerable.Range(0, 100).Select(i => Session($"synthetic-{batch}-{i}", old, open: false, question: padding))], old);
+        await Scalar("PRAGMA wal_checkpoint(TRUNCATE)");
+        var before = new FileInfo(Database).Length;
         await store.PruneEventsAsync(Now);
+        await Scalar("PRAGMA wal_checkpoint(TRUNCATE)");
         Assert.Equal(0L, await Scalar("SELECT COUNT(*) FROM events"));
-        Assert.True(await Scalar("PRAGMA freelist_count") < 50);
+        // The file shrinks by about the deleted events' size once the checkpoint applies the vacuum; items stay.
+        var returned = before - new FileInfo(Database).Length;
+        Assert.True(returned > 500 * padding.Length * 3 / 4, $"{before} -> {new FileInfo(Database).Length}");
     }
 
     [Fact]
@@ -77,7 +114,8 @@ public sealed class LedgerStorageRetentionTests : IDisposable {
             for (var i = 0; i < 400; i++) await db.ExecuteNonQueryAsync("INSERT INTO filler(value) VALUES('" + new string('x', 8000) + "')");
             await db.ExecuteNonQueryAsync("DELETE FROM filler");
         }
-        var (before, after) = await LedgerStore.CompactAsync(Database);
+        var (before, after, checkpointed) = await LedgerStore.CompactAsync(Database);
+        Assert.True(checkpointed);
         Assert.True(after < before / 4, $"{before} -> {after}");
         Assert.Equal(2L, await Scalar("PRAGMA auto_vacuum"));
     }

@@ -31,17 +31,7 @@ public static class Program {
             Console.WriteLine(JsonSerializer.Serialize(manifest, LedgerJson.Options));
             return 0;
         }
-        if (args.Length == 3 && args[0] == "compact" && args[1] == "--config") {
-            var configuration = LedgerSettings.Load(args[2]);
-            FileStream serviceLease;
-            try { serviceLease = LedgerBackup.AcquireServiceLease(configuration.DataDirectory); }
-            catch (IOException) { Console.Error.WriteLine("Stop the Ledger service before compacting its database."); return 1; }
-            using (serviceLease) {
-                var (before, after) = await LedgerStore.CompactAsync(Path.Combine(configuration.DataDirectory, "ledger.sqlite"));
-                Console.WriteLine(JsonSerializer.Serialize(new { beforeBytes = before, afterBytes = after }, LedgerJson.Options));
-            }
-            return 0;
-        }
+        if (args.Length == 3 && args[0] == "compact" && args[1] == "--config") return await CompactAsync(args[2]);
         if (args.Length == 4 && args[0] == "hook" && args[1] == "--config")
             return await LocalReporter.RunAsync(args[2], hook: true, suppliedPayload: args[3]);
         if (args.Length == 3 && args[0] == "agent" && args[1] == "--config") return await Agents.AgentHost.RunProcessAsync(args[2]);
@@ -172,6 +162,34 @@ public static class Program {
                 : Results.BadRequest(new { error = "invalid-date" }));
         await app.RunAsync();
         return 0;
+    }
+
+    /// <summary>
+    /// Compacts a stopped service's database. Only the data directory is read from the configuration, so the
+    /// command works offline even when the service's LAN interface isn't present.
+    /// </summary>
+    private static async Task<int> CompactAsync(string configPath) {
+        using var config = JsonDocument.Parse(File.ReadAllText(configPath));
+        var dataDirectory = config.RootElement.TryGetProperty("dataDirectory", out var value) ? value.GetString() : null;
+        if (dataDirectory is null || !Path.IsPathFullyQualified(dataDirectory)) { Console.Error.WriteLine("The configuration has no absolute dataDirectory."); return 2; }
+        var database = Path.Combine(dataDirectory, "ledger.sqlite");
+        if (!File.Exists(database)) { Console.Error.WriteLine("No ledger.sqlite in " + dataDirectory + "."); return 2; }
+        // VACUUM writes a full copy and a journal; free pages inside the file don't help.
+        var size = new FileInfo(database).Length;
+        var free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(database))!).AvailableFreeSpace;
+        if (free < size * 2) {
+            Console.Error.WriteLine($"Compacting needs up to {size * 2 / 1048576} MB free on the database volume; {free / 1048576} MB is free. Free some space and retry.");
+            return 1;
+        }
+        FileStream serviceLease;
+        try { serviceLease = LedgerBackup.AcquireServiceLease(dataDirectory); }
+        catch (IOException) { Console.Error.WriteLine("Stop the Ledger service before compacting its database."); return 1; }
+        using (serviceLease) {
+            var (before, after, checkpointed) = await LedgerStore.CompactAsync(database);
+            Console.WriteLine(JsonSerializer.Serialize(new { beforeBytes = before, afterBytes = after, checkpointed }, LedgerJson.Options));
+            if (!checkpointed) Console.Error.WriteLine("The database was rewritten, but another reader kept the old copy open; it shrinks once that reader closes.");
+            return checkpointed ? 0 : 3;
+        }
     }
 
     /// <summary>

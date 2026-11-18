@@ -89,9 +89,13 @@ public sealed partial class LedgerStore {
             await using var db = await _database.OpenSessionAsync(path, token);
             var bound = Math.Clamp(limit, 1, 10000);
             var removed = await db.RunInTransactionAsync(async (tx, ct) => {
+                var recent = new Dictionary<string, object?> { ["cutoff"] = (now - EventRetention).ToString("O"), ["limit"] = bound };
                 var events = await tx.ExecuteNonQueryAsync("""
                     DELETE FROM events WHERE ordinal IN (SELECT ordinal FROM events WHERE received<@cutoff ORDER BY received LIMIT @limit)
-                    """, new Dictionary<string, object?> { ["cutoff"] = (now - EventRetention).ToString("O"), ["limit"] = bound }, ct);
+                    """, recent, ct);
+                events += await tx.ExecuteNonQueryAsync("""
+                    DELETE FROM receipts WHERE id IN (SELECT id FROM receipts WHERE received<@cutoff ORDER BY received LIMIT @limit)
+                    """, recent, ct);
                 var expired = new Dictionary<string, object?> { ["cutoff"] = (now - TransitionRetention).ToString("O"), ["limit"] = bound };
                 await tx.ExecuteNonQueryAsync("""
                     DELETE FROM reviews WHERE transition IN (SELECT ordinal FROM transitions WHERE recorded<@cutoff ORDER BY ordinal LIMIT @limit)
@@ -100,8 +104,11 @@ public sealed partial class LedgerStore {
                     DELETE FROM transitions WHERE ordinal IN (SELECT ordinal FROM transitions WHERE recorded<@cutoff ORDER BY ordinal LIMIT @limit)
                     """, expired, ct);
             }, token);
-            if (Convert.ToInt32(await db.ExecuteScalarAsync("PRAGMA auto_vacuum", cancellationToken: token)) == 2)
-                await db.ExecuteNonQueryAsync("PRAGMA incremental_vacuum(" + VacuumPagesPerTick + ")", cancellationToken: token);
+            // The deletes are committed; returning their pages can wait for a later pass if the disk is full or busy.
+            try {
+                if (Convert.ToInt32(await db.ExecuteScalarAsync("PRAGMA auto_vacuum", cancellationToken: token)) == 2)
+                    await db.ExecuteNonQueryAsync("PRAGMA incremental_vacuum(" + VacuumPagesPerTick + ")", cancellationToken: token);
+            } catch (Microsoft.Data.Sqlite.SqliteException) { }
             return removed;
         } finally { _gate.Release(); }
     }
@@ -110,14 +117,20 @@ public sealed partial class LedgerStore {
     /// Rewrites the database without its free pages and switches it to incremental vacuum, so later retention
     /// passes return space as they go. The caller must hold the service writer lease: the service has to be stopped.
     /// </summary>
-    public static async Task<(long Before, long After)> CompactAsync(string databasePath, CancellationToken token = default) {
+    public static async Task<(long Before, long After, bool Checkpointed)> CompactAsync(string databasePath, CancellationToken token = default) {
         var before = new FileInfo(databasePath).Length;
         using var database = new SQLite();
+        var checkpointed = false;
         await using (var db = await database.OpenSessionAsync(databasePath, token)) {
             await db.ExecuteNonQueryAsync("PRAGMA auto_vacuum=INCREMENTAL", cancellationToken: token);
             await db.ExecuteNonQueryAsync("VACUUM", cancellationToken: token);
-            await db.ExecuteNonQueryAsync("PRAGMA wal_checkpoint(TRUNCATE)", cancellationToken: token);
+            // Another reader (an online backup, say) can hold the old snapshot; the file shrinks once it lets go.
+            for (var attempt = 0; attempt < 10 && !checkpointed; attempt++) {
+                if (attempt > 0) await Task.Delay(TimeSpan.FromSeconds(1), token);
+                checkpointed = (await db.QueryAsListAsync("PRAGMA wal_checkpoint(TRUNCATE)", row => row.GetInt64(0), cancellationToken: token))
+                    .FirstOrDefault() == 0;
+            }
         }
-        return (before, new FileInfo(databasePath).Length);
+        return (before, new FileInfo(databasePath).Length, checkpointed);
     }
 }
