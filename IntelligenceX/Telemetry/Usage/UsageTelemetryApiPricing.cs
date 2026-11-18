@@ -89,7 +89,9 @@ public static class UsageTelemetryApiPricing {
     private static readonly IReadOnlyDictionary<string, UsageTelemetryApiPrice> ApiPricingByModel =
         new Dictionary<string, UsageTelemetryApiPrice>(StringComparer.OrdinalIgnoreCase) {
             // Standard-tier text prices from https://developers.openai.com/api/docs/pricing.
-            // Models the page does not list (gpt-daybreak-blue-latest, gpt-reserve, codex-auto-review) stay unpriced.
+            // Models the page does not list (Daybreak, gpt-reserve, codex-auto-review) stay unpriced.
+            ["gpt-6.2-astra"] = new(8m, 0.40m, 40m),
+            ["gpt-6.2-sol"] = new(2m, 0.10m, 10m),
             ["gpt-6.1-terra"] = new(1m, 0.05m, 5m),
             ["gpt-6.1-sol"] = new(2m, 0.10m, 10m),
             ["gpt-6-astra"] = new(10m, 1m, 50m),

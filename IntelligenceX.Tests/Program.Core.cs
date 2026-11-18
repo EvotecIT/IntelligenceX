@@ -783,7 +783,11 @@ internal static partial class Program {
         var models = method!.Invoke(null, Array.Empty<object>()) as IReadOnlyList<string>;
         AssertNotNull(models, "baseline fallback models");
         var baselineModels = models!;
-        AssertEqual("gpt-6.1-terra", baselineModels[0], "baseline fallback starts with new default");
+        AssertEqual("gpt-6.2-sol", baselineModels[0], "baseline fallback starts with new default");
+        AssertEqual(true, baselineModels.Contains("gpt-6.2-astra", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-6.2-astra");
+        AssertEqual(true, baselineModels.Contains("gpt-6.1-terra", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-6.1-terra");
         AssertEqual(true, baselineModels.Contains("gpt-6.1-sol", StringComparer.OrdinalIgnoreCase),
             "baseline fallback models include gpt-6.1-sol");
         AssertEqual(true, baselineModels.Contains("gpt-6-sol", StringComparer.OrdinalIgnoreCase),
@@ -826,11 +830,15 @@ internal static partial class Program {
             BindingFlags.NonPublic | BindingFlags.Static);
         AssertNotNull(method, "fallback priority comparator");
 
-        var candidates = new List<string> { "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6.1-sol", "gpt-5.6-sol", "gpt-6-sol" };
+        var candidates = new List<string> { "gpt-5.6-terra", "gpt-6-astra", "gpt-6.1-terra", "gpt-6-luna", "gpt-6.1-sol", "gpt-5.6-sol", "gpt-6.2-astra", "gpt-6-sol" };
         candidates.Sort((left, right) => (int)method!.Invoke(null,
-            new object[] { "gpt-6.1-terra", left, right })!);
+            new object[] { "gpt-6.2-sol", left, right })!);
 
-        AssertEqual("gpt-6.1-sol", candidates[0], "GPT-6.1 Sol ranks first when GPT-6.1 Terra is unavailable");
+        AssertEqual("gpt-6.2-astra", candidates[0], "GPT-6.2 Astra ranks first when GPT-6.2 Sol is unavailable");
+        AssertEqual(true, candidates.IndexOf("gpt-6.1-sol") < candidates.IndexOf("gpt-6.1-terra"),
+            "GPT-6.1 Sol ranks before GPT-6.1 Terra");
+        AssertEqual(true, candidates.IndexOf("gpt-6.1-terra") < candidates.IndexOf("gpt-6-astra"),
+            "GPT-6.1 models rank before GPT-6 models");
         AssertEqual(true, candidates.IndexOf("gpt-6-astra") < candidates.IndexOf("gpt-6-sol"),
             "GPT-6 Astra ranks before GPT-6 Sol");
         AssertEqual(true, candidates.IndexOf("gpt-6-luna") < candidates.IndexOf("gpt-5.6-sol"),

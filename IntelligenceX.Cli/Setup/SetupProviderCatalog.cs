@@ -24,7 +24,7 @@ internal static class SetupProviderCatalog {
     private static readonly IReadOnlyList<SetupProviderModelProfile> OpenAiRecommendedModelProfiles = new[] {
         new SetupProviderModelProfile("openai-default-review", "OpenAI default review", OpenAIModelCatalog.DefaultModel, OpenAIModelCatalog.DefaultModel, "Balanced default for coding and everyday review work.", true),
         new SetupProviderModelProfile("openai-fast-review", "OpenAI fast review", "gpt-5.5/fast", "gpt-5.5/fast", "Fast-mode GPT-5.5 for accounts that support it."),
-        new SetupProviderModelProfile("openai-sol-review", "GPT-6.1 Sol review", "gpt-6.1-sol", "gpt-6.1-sol", "Higher-capability model for deeper review passes."),
+        new SetupProviderModelProfile("openai-astra-review", "GPT-6.2 Astra review", "gpt-6.2-astra", "gpt-6.2-astra", "Most capable model for deep review passes."),
         new SetupProviderModelProfile("openai-legacy-review", "GPT-5.5 review", "gpt-5.5", "gpt-5.5", "Previous default for established reviewer configurations."),
         new SetupProviderModelProfile("openai-luna-review", "GPT-6 Luna review", "gpt-6-luna", "gpt-6-luna", "Efficient model for focused, high-volume reviews."),
         new SetupProviderModelProfile("openai-budget-review", "OpenAI budget review", "gpt-5-mini", "gpt-5-mini", "Cheaper review pass with solid quality for routine repos."),

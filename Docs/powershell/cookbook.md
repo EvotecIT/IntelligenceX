@@ -24,7 +24,7 @@ Get-IntelligenceXAccount -Client $client
 ## Workflow: Start A Thread, Chat, Review
 
 ```powershell
-$thread = Start-IntelligenceXThread -Client $client -Model "gpt-6.1-terra"
+$thread = Start-IntelligenceXThread -Client $client -Model "gpt-6.2-sol"
 Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text "Summarize current repo risks."
 
 $review = Start-IntelligenceXReview -Client $client -ThreadId $thread.Id -Delivery immediate -TargetType uncommittedChanges
@@ -63,7 +63,7 @@ if ($oauthServer) {
 
 ```powershell
 Set-IntelligenceXConfigBatch -Client $client -Values @{
-    model = "gpt-6.1-terra"
+    model = "gpt-6.2-sol"
     approvalPolicy = "on-failure"
     stream = $true
 }

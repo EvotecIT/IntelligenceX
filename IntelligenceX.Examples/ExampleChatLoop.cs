@@ -13,7 +13,7 @@ internal sealed class ExampleChatLoop : IExample {
         await ExampleHelpers.InitializeAsync(client).ConfigureAwait(false);
         await ExampleHelpers.EnsureChatGptLoginAsync(client).ConfigureAwait(false);
 
-        var thread = await client.StartNewThreadAsync("gpt-6.1-terra").ConfigureAwait(false);
+        var thread = await client.StartNewThreadAsync("gpt-6.2-sol").ConfigureAwait(false);
         Console.WriteLine($"Thread: {thread.Id}");
 
         while (true) {

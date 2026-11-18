@@ -31,7 +31,7 @@ using IntelligenceX.OpenAI.AppServer;
 
 await using var client = await AppServerClient.StartAsync();
 await client.InitializeAsync(new ClientInfo("IntelligenceX", "Demo", "1.0"));
-var thread = await client.StartThreadAsync("gpt-6.1-terra");
+var thread = await client.StartThreadAsync("gpt-6.2-sol");
 await client.StartTurnAsync(thread.Id, "Hello from app-server");
 ```
 
@@ -71,7 +71,7 @@ using IntelligenceX.OpenAI;
 
 var options = new IntelligenceXClientOptions {
     TransportKind = OpenAITransportKind.CopilotNative,
-    DefaultModel = "gpt-6.1-terra",
+    DefaultModel = "gpt-6.2-sol",
     CopilotOptions = new CopilotNativeOptions {
         GitHubToken = Environment.GetEnvironmentVariable("COPILOT_GITHUB_TOKEN")
     }

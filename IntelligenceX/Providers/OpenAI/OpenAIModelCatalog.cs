@@ -10,7 +10,7 @@ public static class OpenAIModelCatalog {
     /// <summary>
     /// Default OpenAI model for new IntelligenceX sessions and reviewer runs. It follows the default model Codex reports.
     /// </summary>
-    public const string DefaultModel = "gpt-6.1-terra";
+    public const string DefaultModel = "gpt-6.2-sol";
 
     /// <summary>
     /// Default model for low-latency text, image, and audio Realtime sessions.
@@ -24,6 +24,8 @@ public static class OpenAIModelCatalog {
 
     private static readonly string[] BaselineFallbackModels = {
         DefaultModel,
+        "gpt-6.2-astra",
+        "gpt-6.1-terra",
         "gpt-6.1-sol",
         "gpt-6-astra",
         "gpt-6-sol",

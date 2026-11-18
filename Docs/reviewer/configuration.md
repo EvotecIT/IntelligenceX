@@ -62,7 +62,7 @@ GitHub Actions input/env aliases:
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-6.1-terra",
+    "model": "gpt-6.2-sol",
     "mode": "inline",
     "length": "long",
     "outputStyle": "compact",

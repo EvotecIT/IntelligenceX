@@ -34,7 +34,7 @@ Wait-IntelligenceXLogin -Client $client -LoginId $login.LoginId
 ## 3. Start A Thread + Send A Message
 
 ```powershell
-$thread = Start-IntelligenceXThread -Client $client -Model "gpt-6.1-terra"
+$thread = Start-IntelligenceXThread -Client $client -Model "gpt-6.2-sol"
 $turn = Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text "Hello from PowerShell"
 $turn | Get-IntelligenceXTurnOutput
 ```
@@ -78,7 +78,7 @@ $config = Get-IntelligenceXConfig
 $config.Config
 $config.Origins["model"]
 
-Set-IntelligenceXConfigValue -Key "model" -Value "gpt-6.1-terra"
+Set-IntelligenceXConfigValue -Key "model" -Value "gpt-6.2-sol"
 Set-IntelligenceXConfigBatch -Values @{
     approvalPolicy = "on-failure"
     stream = $true
