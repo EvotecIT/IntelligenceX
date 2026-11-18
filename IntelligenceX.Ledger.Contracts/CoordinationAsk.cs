@@ -31,6 +31,10 @@ public sealed record AskPolicy {
     /// after that it waits for the session's next turn (inbox hook).</summary>
     public int UnreachableRetries { get; set; } = 1;
     public double UnreachableRetryMinutes { get; set; } = 30;
+    /// <summary>How long a wake waits for its pull request's checks before it is delivered as expired.</summary>
+    public double WakeExpiryHours { get; set; } = 72;
+    /// <summary>Waiting wakes one session client may hold.</summary>
+    public int MaximumWakes { get; set; } = 64;
 }
 
 /// <summary>One step from a session with no goal: "do this, on that machine, with that provider". The service creates the

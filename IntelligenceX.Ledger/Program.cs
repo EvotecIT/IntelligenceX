@@ -90,6 +90,8 @@ public static class Program {
         if (coordinationStore is not null) builder.Services.AddHostedService(_ => new SessionLineageBackfill(coordinationStore, store));
         var catalog = settings.WorkCatalog is null ? null : new Catalog.WorkCatalogService(settings.WorkCatalog, store, settings);
         if (catalog is not null) builder.Services.AddHostedService(_ => catalog);
+        var readiness = new PullRequestReadinessService(store);
+        if (coordinationStore is not null) builder.Services.AddHostedService(_ => new WakeWatcher(coordinationStore, readiness));
         var app = builder.Build();
         var runtime = new LedgerRuntime(store, settings);
         var contextService = new ProjectContextService(settings.ProjectCatalogPath);
@@ -113,7 +115,6 @@ public static class Program {
         });
         const string prefix = "/api/ledger/v1";
         ProjectContextEndpoints.Map(app, contextService, runtime);
-        var readiness = new PullRequestReadinessService(store);
         app.MapGet(prefix + "/pr-ready", async (string repo, int pr, CancellationToken ct) =>
             Results.Ok(await readiness.ReadAsync(repo, pr, ct)));
         app.MapGet(prefix + "/cleanup", async (string? machine, CancellationToken ct) =>

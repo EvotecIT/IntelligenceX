@@ -27,7 +27,7 @@ internal static partial class CoordinationEndpoints {
     }
 
     internal static CoordinationPrincipal Caller(HttpContext context) => (CoordinationPrincipal)context.Items[typeof(CoordinationPrincipal)]!;
-    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements", "/ask", "/questions", "/usage", "/lease-approvals" }
+    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements", "/ask", "/questions", "/usage", "/lease-approvals", "/wakes" }
         .Any(suffix => path.StartsWithSegments(Prefix + suffix));
 
     internal static async Task<bool> AuthenticateAsync(HttpContext context, string bearer, CoordinationConfiguration config,
@@ -53,6 +53,7 @@ internal static partial class CoordinationEndpoints {
         MapRecovery(app, store, artifacts);
         MapLifecycle(app, store, bound);
         MapAsk(app, store);
+        MapWakes(app, store);
         app.MapGet(Prefix + "/workers/{provider}/{sessionId}", async (string provider, string sessionId,
             HttpContext http, CancellationToken ct) => Results.Ok(await store.ExecuteAsync((e, _) =>
                 e.WorkerStatus(provider, sessionId, Caller(http)), DateTimeOffset.UtcNow, ct)));

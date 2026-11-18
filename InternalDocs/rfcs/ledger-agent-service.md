@@ -198,6 +198,23 @@ Codex and read its result.
   in with another account (`codex login`). The grant stays renewed and the same thread is retried every
   `ask.usageLimitProbeMinutes`. The next completed turn clears the item.
 
+### Wakes
+
+A session that only has to wait (for CI, or for a reviewer's window) asks the Ledger to wake it and ends its turn.
+`wake` takes `ci: "owner/repo#N"` or `afterMinutes`, plus the prompt the session wants to receive. The service reads
+each watched pull request every minute through the same cached GitHub read as `pr_ready`, with no model involved. A
+CI wake becomes due when the checks on the current head have finished (all passed, or failing with none pending) or
+when the pull request is merged or closed. A head that moves during the read waits for the next pass. A timed wake is
+due at its time. A CI wake still waiting after `ask.wakeExpiryHours` (72 by default) becomes due as expired, so the
+session isn't left waiting silently.
+
+The agent service on the session's machine delivers a due wake once: the reason first, then the session's own prompt,
+through the same Codex app server and `SendMessage` routes as results. A delivery left sending past
+`ask.deliveryUnconfirmedMinutes` becomes uncertain and is never resent. A newer CI wake for the same session and pull
+request replaces a waiting one. A session client may hold `ask.maximumWakes` waiting wakes. `wake_cancel` cancels one
+that hasn't started delivery. A Claude wake waits for sign-in and for an unreachable session the same way questions
+do. Closed wakes are dropped after `retainFinishedDays`.
+
 ### Keeping the live state small
 
 The coordination state is one document rewritten by every command. Requests that finished (accepted, result consumed,

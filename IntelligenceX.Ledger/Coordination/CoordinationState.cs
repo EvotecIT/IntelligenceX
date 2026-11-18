@@ -27,6 +27,8 @@ public sealed record CoordinationState {
     public Dictionary<string, CoordinationReconciliation> Reconciliations { get; init; } = [];
     /// <summary>Questions and notices keyed by request and number, with both delivery sides.</summary>
     public Dictionary<string, CoordinationQuestion> Questions { get; init; } = [];
+    /// <summary>Sessions waiting to be woken once, by wake id. Closed wakes are dropped after the retention period.</summary>
+    public Dictionary<string, CoordinationWake> Wakes { get; init; } = [];
     /// <summary>Provider, model and tokens spent on behalf of each request.</summary>
     public Dictionary<string, List<CoordinationUsage>> Usage { get; init; } = [];
 }

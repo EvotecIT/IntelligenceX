@@ -47,6 +47,22 @@ internal sealed partial class AgentService {
         Log("question-delivered", id + "#" + question.Number + " " + stage);
     }
 
+    /// <summary>Delivers one due wake into its session on this machine, exactly once: the reason it fired, then the
+    /// session's own prompt.</summary>
+    private async Task DeliverWakeAsync(CoordinationWake wake, CancellationToken stop) {
+        var attempt = "wake-" + LocalFiles.Hash(wake.Id, wake.Delivery?.AttemptId)[..32];
+        var pending = new PendingReceipt("wake", wake.Id, 0, 0, attempt, "uncertain", "delivery-interrupted");
+        SaveReceipt(pending);
+        await _ledger.WakeDeliveryAsync(wake.Id, new(attempt, "sending"), stop).ConfigureAwait(false);
+        var text = "Wake " + wake.Id + ": " + wake.Outcome + "\n\n" + wake.Prompt +
+            "\n\n(This is the wake you asked the Ledger for. The reason above comes from the service, the rest is your own prompt.)";
+        var to = new CoordinationReturnBinding(wake.Provider + "-" + wake.SessionId, wake.MachineId, wake.Provider, wake.SessionId,
+            new WorkCheckpoint("wake", "wake", new string('0', 40), null, "wake", "wake")) { Address = wake.Address };
+        var (stage, evidence) = await SendToSessionAsync(wake.Id, to, text, stop, usage: false).ConfigureAwait(false);
+        await RecordReceiptAsync(pending with { Stage = stage, Evidence = evidence }, stop).ConfigureAwait(false);
+        Log("wake-delivered", wake.Id + " " + stage);
+    }
+
     private string ReceiptFile(PendingReceipt receipt) =>
         Path.Combine(_settings.StateDirectory, "receipts", LocalFiles.Hash(receipt.Kind, receipt.RequestId, receipt.Generation, receipt.Number)[..32] + ".json");
 
@@ -59,9 +75,11 @@ internal sealed partial class AgentService {
         File.Delete(ReceiptFile(receipt));
     }
 
-    private Task SendReceiptAsync(PendingReceipt r, CancellationToken stop) => r.Kind == "result"
-        ? _ledger.ResultReceiptAsync(r.RequestId, new CoordinationDeliveryCommand(r.Generation, new CoordinationDeliveryReceipt(r.AttemptId, r.Stage, r.Evidence)), stop)
-        : _ledger.QuestionDeliveryAsync(r.RequestId, r.Number, new("question", r.AttemptId, r.Stage, r.Evidence), stop);
+    private Task SendReceiptAsync(PendingReceipt r, CancellationToken stop) => r.Kind switch {
+        "result" => _ledger.ResultReceiptAsync(r.RequestId, new CoordinationDeliveryCommand(r.Generation, new CoordinationDeliveryReceipt(r.AttemptId, r.Stage, r.Evidence)), stop),
+        "wake" => _ledger.WakeDeliveryAsync(r.RequestId, new(r.AttemptId, r.Stage, r.Evidence), stop),
+        _ => _ledger.QuestionDeliveryAsync(r.RequestId, r.Number, new("question", r.AttemptId, r.Stage, r.Evidence), stop)
+    };
 
     /// <summary>Records receipts an earlier pass (or process) couldn't. A receipt the Ledger rejects (its delivery was never
     /// begun, or was already settled) is dropped.</summary>
@@ -74,7 +92,8 @@ internal sealed partial class AgentService {
             catch (JsonException) { receipt = null; }
             if (receipt is null) { File.Delete(file); continue; }
             if (_active.ContainsKey("result:" + receipt.RequestId + ":" + receipt.Generation) ||
-                _active.ContainsKey("question:" + receipt.RequestId + "#" + receipt.Number)) continue;
+                _active.ContainsKey("question:" + receipt.RequestId + "#" + receipt.Number) ||
+                receipt.Kind == "wake" && _active.ContainsKey("wake:" + receipt.RequestId)) continue;
             try {
                 await SendReceiptAsync(receipt, stop).ConfigureAwait(false);
                 Log("receipt-recorded", receipt.RequestId + " " + receipt.Stage);
@@ -88,7 +107,7 @@ internal sealed partial class AgentService {
     /// <summary>Sends text into a session on this machine and records what it cost. Codex threads get a turn (or input
     /// steered into the running turn) through the app server; Claude sessions get a SendMessage from a one-shot sender.</summary>
     private async Task<(string Stage, string Evidence)> SendToSessionAsync(string requestId, CoordinationReturnBinding to, string text,
-        CancellationToken stop) {
+        CancellationToken stop, bool usage = true) {
         if (to.Provider == "claude") {
             // SendMessage addresses sessions by the name ListAgents shows; the asker supplied its own.
             ClaudeSendOutcome sent;
@@ -99,7 +118,7 @@ internal sealed partial class AgentService {
                 Defer("deliver:" + requestId);
                 return ("not-submitted", "claude-cli-unavailable");
             }
-            await RecordUsageAsync(requestId, "delivery", "claude", sent.Model, sent.Tokens, sent.CostUsd, to.SessionId, stop).ConfigureAwait(false);
+            if (usage) await RecordUsageAsync(requestId, "delivery", "claude", sent.Model, sent.Tokens, sent.CostUsd, to.SessionId, stop).ConfigureAwait(false);
             if (sent.Failure is { } failure) Observe("claude", false, failure);
             else if (sent.Stage == "submitted") Observe("claude", true, "sent");
             if (sent.Stage == "not-submitted") {
@@ -113,13 +132,13 @@ internal sealed partial class AgentService {
         try {
             var (delivery, server, watch) = await _codex.DeliverAsync(to.SessionId, text, stop).ConfigureAwait(false);
             if (delivery.Route == "queue") {
-                await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
+                if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
                 return ("submitted", "codex-queued-in-app");
             }
-            if (delivery.Route == "turn") Start("wake:" + requestId + ":" + delivery.TurnId, () => FollowWakeAsync(requestId, to.SessionId, delivery, server, watch, stop));
+            if (delivery.Route == "turn") Start("wake:" + requestId + ":" + delivery.TurnId, () => FollowWakeAsync(requestId, to.SessionId, delivery, server, watch, stop, usage));
             else {
                 await server.DisposeAsync().ConfigureAwait(false);
-                await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
+                if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
             }
             return ("submitted", "codex-" + delivery.Route + "-" + delivery.TurnId);
         } catch (DeliveryUncertainException error) {
@@ -136,10 +155,10 @@ internal sealed partial class AgentService {
 
     /// <summary>Follows the woken turn through its notifications to record its tokens, for at most the policy's window.</summary>
     private async Task FollowWakeAsync(string requestId, string sessionId, CodexDelivery delivery, CodexAppServer server, TurnWatch watch,
-        CancellationToken stop) {
+        CancellationToken stop, bool usage = true) {
         await using (server) {
             await Task.WhenAny(watch.Completed, Task.Delay(TimeSpan.FromMinutes(_policy.WakeUsageMinutes), stop)).ConfigureAwait(false);
-            await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, watch.Tokens, null, sessionId, stop).ConfigureAwait(false);
+            if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, watch.Tokens, null, sessionId, stop).ConfigureAwait(false);
             Log("wake-recorded", requestId + " " + watch.Tokens.Total + " tokens" + (watch.Completed.IsCompleted ? "" : " (partial)"));
             // Closing a private server ends its turn, so it stays open until the requester's turn finishes (or the service stops).
             if (!server.Live && !watch.Completed.IsCompleted)

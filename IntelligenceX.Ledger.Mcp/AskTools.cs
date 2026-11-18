@@ -36,6 +36,33 @@ public sealed class AskTools(LedgerReadClient client) {
             returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output), token), askId);
     }
 
+    [McpServerTool(Name = "wake", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Wake this session once, then end your turn; do not poll or watch. ci: \"owner/repo#123\" wakes it when the checks on that " +
+        "pull request's current head finish (passed or failed) or the pull request closes; afterMinutes wakes it after a delay. Give exactly one. " +
+        "prompt is what you want to be told when it fires, such as the next step; the wake arrives as a new message with the reason first. " +
+        "A newer ci wake for the same session and pull request replaces a waiting one. A ci wake that waits past the policy's expiry " +
+        "(72 hours by default) arrives saying it expired. Reuse the same id when retrying after an error. sessionId and sessionAddress as for ask.")]
+    public Task<CoordinationWake> Wake(string prompt, string? ci = null, double? afterMinutes = null, string? id = null,
+        string? sessionId = null, string? sessionProvider = null, string? sessionAddress = null, CancellationToken token = default) {
+        var (provider, session) = CurrentSession(sessionId, sessionProvider);
+        string? repo = null;
+        int? pr = null;
+        if (ci is not null) {
+            var hash = ci.LastIndexOf('#');
+            if (hash <= 0 || !int.TryParse(ci[(hash + 1)..], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var number))
+                throw new McpException("{\"outcome\":\"rejected\",\"error\":\"invalid-wake\"}");
+            (repo, pr) = (ci[..hash], number);
+        }
+        var wakeId = id ?? "wake-" + Guid.NewGuid().ToString("N");
+        return Command(client.WakeAsync(new CoordinationWakeRequest(wakeId, prompt, provider, session, sessionAddress, repo, pr, afterMinutes), token),
+            wakeId, "wake");
+    }
+
+    [McpServerTool(Name = "wake_cancel", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Cancel one of your wakes that has not been delivered yet.")]
+    public Task<CoordinationWake> WakeCancel(string id, CancellationToken token = default) => Command(client.CancelWakeAsync(id, token));
+
     [McpServerTool(Name = "ask_answer", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Answer question number N of an ask you made. The answer goes back into the same helper session, which then continues.")]
     public Task<CoordinationQuestion> Answer(string requestId, int number, string answer, CancellationToken token = default) =>
@@ -92,14 +119,14 @@ public sealed class AskTools(LedgerReadClient client) {
         } catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { return null; }
     }
 
-    private static async Task<T> Command<T>(Task<T> command, string? retryId = null) {
+    private static async Task<T> Command<T>(Task<T> command, string? retryId = null, string tool = "ask") {
         try { return await command.ConfigureAwait(false); }
         catch (CoordinationCommandRejectedException error) {
             throw new McpException(JsonSerializer.Serialize(new { outcome = "rejected", error = error.ErrorCode }));
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
             JsonException or ArgumentException or HttpRequestException or TaskCanceledException) {
             throw new McpException(retryId is null ? "{\"outcome\":\"uncertain\"}"
-                : JsonSerializer.Serialize(new { outcome = "uncertain", id = retryId, retry = "Call ask again with this id." }));
+                : JsonSerializer.Serialize(new { outcome = "uncertain", id = retryId, retry = "Call " + tool + " again with this id." }));
         }
     }
 }
