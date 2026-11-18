@@ -1419,9 +1419,9 @@ final class IXCodexConversationTests: XCTestCase {
         XCTAssertEqual(result.turn.text, "Fallback worked")
         let requests = await state.requests
         let initialBody = try IXJSONValue.decode(try XCTUnwrap(requests.first?.httpBody))
-        XCTAssertEqual(initialBody["model"]?.stringValue, "gpt-6-sol")
+        XCTAssertEqual(initialBody["model"]?.stringValue, "gpt-6.1-terra")
         let retryBody = try IXJSONValue.decode(try XCTUnwrap(requests.last?.httpBody))
-        XCTAssertEqual(retryBody["model"]?.stringValue, "gpt-5.6-sol")
+        XCTAssertEqual(retryBody["model"]?.stringValue, "gpt-6.1-sol")
         let firstInput = retryBody["input"]?.arrayValue?.first
         let firstContent = firstInput?["content"]?.arrayValue?.first
         XCTAssertEqual(firstContent?["text"]?.stringValue, "Hello")
@@ -1563,7 +1563,7 @@ final class IXCodexConversationTests: XCTestCase {
         ))
         XCTAssertEqual(
             components.queryItems?.first(where: { $0.name == "client_version" })?.value,
-            "0.156.1"
+            "0.162.1"
         )
     }
 
@@ -2074,9 +2074,9 @@ final class IXCodexConversationTests: XCTestCase {
         let fallbackResponse = try IXJSONValue.decode(
             try XCTUnwrap(requests[5].httpBody)
         )
-        XCTAssertEqual(initialCompaction["model"]?.stringValue, "gpt-6-sol")
-        XCTAssertEqual(fallbackCompaction["model"]?.stringValue, "gpt-5.6-sol")
-        XCTAssertEqual(fallbackResponse["model"]?.stringValue, "gpt-5.6-sol")
+        XCTAssertEqual(initialCompaction["model"]?.stringValue, "gpt-6.1-terra")
+        XCTAssertEqual(fallbackCompaction["model"]?.stringValue, "gpt-6.1-sol")
+        XCTAssertEqual(fallbackResponse["model"]?.stringValue, "gpt-6.1-sol")
     }
 
     func testResetDuringRemoteCompactionDoesNotSendAStaleFollowUp() async throws {

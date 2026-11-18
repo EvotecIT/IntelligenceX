@@ -110,7 +110,7 @@
         "persona": { "type": "string" },
         "notes": { "type": "string" },
         "model": { "type": "string" },
-        "reasoningEffort": { "type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh"] },
+        "reasoningEffort": { "type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
         "reasoningSummary": { "type": "string", "enum": ["auto", "concise", "detailed", "off"] },
         "reviewUsageSummary": { "type": "boolean" },
         "languageHints": { "type": "boolean" },

@@ -161,8 +161,9 @@ const reviewModelProfile = $('reviewModelProfile');
 
 const PROVIDER_MODEL_CATALOG = {
   openai: [
-    { profileId: 'openai-default-review', profileLabel: 'OpenAI default review', id: 'gpt-6-sol', label: 'gpt-6-sol', description: 'Balanced default for coding and everyday review work.', isDefault: true },
+    { profileId: 'openai-default-review', profileLabel: 'OpenAI default review', id: 'gpt-6.1-terra', label: 'gpt-6.1-terra', description: 'Balanced default for coding and everyday review work.', isDefault: true },
     { profileId: 'openai-fast-review', profileLabel: 'OpenAI fast review', id: 'gpt-5.5/fast', label: 'gpt-5.5/fast', description: 'Fast-mode GPT-5.5 for accounts that support it.' },
+    { profileId: 'openai-sol-review', profileLabel: 'GPT-6.1 Sol review', id: 'gpt-6.1-sol', label: 'gpt-6.1-sol', description: 'Higher-capability model for deeper review passes.' },
     { profileId: 'openai-legacy-review', profileLabel: 'GPT-5.5 review', id: 'gpt-5.5', label: 'gpt-5.5', description: 'Previous default for established reviewer configurations.' },
     { profileId: 'openai-luna-review', profileLabel: 'GPT-6 Luna review', id: 'gpt-6-luna', label: 'gpt-6-luna', description: 'Efficient model for focused, high-volume reviews.' },
     { profileId: 'openai-budget-review', profileLabel: 'OpenAI budget review', id: 'gpt-5-mini', label: 'gpt-5-mini', description: 'Cheaper review pass with solid quality for routine repos.' },
@@ -253,7 +254,7 @@ function syncProviderModelSelection(previousProvider, nextProvider) {
   const hint = $('reviewModelHint');
   if (hint) {
     hint.textContent = nextProvider === 'openai'
-      ? 'Set the review model for OpenAI runs. Use a named profile, quick pick, or custom model id. Default: gpt-6-sol.'
+      ? 'Set the review model for OpenAI runs. Use a named profile, quick pick, or custom model id. Default: gpt-6.1-terra.'
       : nextProvider === 'claude'
         ? 'Set the review model for Claude runs. Use a named profile, quick pick, or custom model id. Default: claude-opus-4-1.'
         : 'Enter a model ID from the native Copilot model catalog. Availability depends on your account.';

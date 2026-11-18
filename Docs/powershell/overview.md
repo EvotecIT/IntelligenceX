@@ -32,7 +32,7 @@ $login = Start-IntelligenceXChatGptLogin -Client $client
 Write-Host "Login URL: $($login.AuthUrl)"
 Wait-IntelligenceXLogin -Client $client -LoginId $login.LoginId
 
-$thread = Start-IntelligenceXThread -Client $client -Model 'gpt-5.3-codex'
+$thread = Start-IntelligenceXThread -Client $client -Model 'gpt-6.1-terra'
 $turn = Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text 'Hello from PowerShell'
 $turn | Get-IntelligenceXTurnOutput
 
@@ -67,7 +67,7 @@ $config.Config
 $config.Origins['model']
 
 # Apply updates.
-Set-IntelligenceXConfigValue -Key 'model' -Value 'gpt-5.3-codex'
+Set-IntelligenceXConfigValue -Key 'model' -Value 'gpt-6.1-terra'
 Set-IntelligenceXConfigBatch -Values @{
     approvalPolicy = 'on-failure'
     stream = $true

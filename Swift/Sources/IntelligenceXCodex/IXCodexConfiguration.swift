@@ -35,10 +35,10 @@ public struct IXCodexConfiguration: Sendable, Equatable {
         modelURLs: [URL] = [
             URL(string: "https://chatgpt.com/backend-api/codex/models")!,
         ],
-        modelCatalogClientVersion: String = "0.156.1",
-        defaultModel: String = "gpt-6-sol",
+        modelCatalogClientVersion: String = "0.162.1",
+        defaultModel: String = "gpt-6.1-terra",
         defaultReasoningEffort: IXCodexReasoningEffort = .low,
-        fallbackModels: [String] = ["gpt-5.6-sol", "gpt-5.5", "gpt-5.4", "gpt-5.3-codex"],
+        fallbackModels: [String] = ["gpt-6.1-sol", "gpt-6-sol", "gpt-5.6-sol", "gpt-5.5", "gpt-5.4", "gpt-5.3-codex"],
         originator: String = "intelligencex",
         userAgent: String = "intelligencex-swift/0.1"
     ) {

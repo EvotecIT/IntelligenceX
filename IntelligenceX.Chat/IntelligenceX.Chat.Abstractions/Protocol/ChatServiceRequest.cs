@@ -611,7 +611,7 @@ public sealed record ApplyRuntimeSettingsRequest : ChatServiceRequest {
     /// </summary>
     public bool? OpenAIAllowInsecureHttp { get; init; }
     /// <summary>
-    /// Optional reasoning effort override (minimal|low|medium|high|xhigh). Empty clears override.
+    /// Optional reasoning effort override (minimal|low|medium|high|xhigh|max|ultra). Empty clears override.
     /// </summary>
     public string? ReasoningEffort { get; init; }
     /// <summary>
@@ -758,7 +758,7 @@ public sealed record ChatRequestOptions {
     /// </summary>
     public string? Model { get; init; }
     /// <summary>
-    /// Optional reasoning effort override for this request (minimal|low|medium|high|xhigh). Empty clears override.
+    /// Optional reasoning effort override for this request (minimal|low|medium|high|xhigh|max|ultra). Empty clears override.
     /// </summary>
     public string? ReasoningEffort { get; init; }
     /// <summary>

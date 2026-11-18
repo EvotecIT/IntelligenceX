@@ -783,7 +783,13 @@ internal static partial class Program {
         var models = method!.Invoke(null, Array.Empty<object>()) as IReadOnlyList<string>;
         AssertNotNull(models, "baseline fallback models");
         var baselineModels = models!;
-        AssertEqual("gpt-6-sol", baselineModels[0], "baseline fallback starts with new default");
+        AssertEqual("gpt-6.1-terra", baselineModels[0], "baseline fallback starts with new default");
+        AssertEqual(true, baselineModels.Contains("gpt-6.1-sol", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-6.1-sol");
+        AssertEqual(true, baselineModels.Contains("gpt-6-sol", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models keep prior GPT-6 Sol default");
+        AssertEqual(true, baselineModels.Contains("gpt-5.6-terra", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-5.6-terra");
         AssertEqual(true, baselineModels.Contains("gpt-6-luna", StringComparer.OrdinalIgnoreCase),
             "baseline fallback models include gpt-6-luna");
         AssertEqual(true, baselineModels.Contains("gpt-5.6-sol", StringComparer.OrdinalIgnoreCase),
@@ -813,6 +819,32 @@ internal static partial class Program {
             "GPT-6 Sol ranks before GPT-5 baseline");
         AssertEqual(true, candidates.IndexOf("gpt-6-luna") < candidates.IndexOf("gpt-5.5"),
             "GPT-6 Luna ranks before GPT-5 baseline");
+    }
+
+    private static void TestOpenAiModelCatalogRanksNewerGenerationFirst() {
+        var method = typeof(OpenAIModelCatalog).GetMethod("CompareChatGptFallbackPriority",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "fallback priority comparator");
+
+        var candidates = new List<string> { "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6.1-sol", "gpt-5.6-sol", "gpt-6-sol" };
+        candidates.Sort((left, right) => (int)method!.Invoke(null,
+            new object[] { "gpt-6.1-terra", left, right })!);
+
+        AssertEqual("gpt-6.1-sol", candidates[0], "GPT-6.1 Sol ranks first when GPT-6.1 Terra is unavailable");
+        AssertEqual(true, candidates.IndexOf("gpt-6-astra") < candidates.IndexOf("gpt-6-sol"),
+            "GPT-6 Astra ranks before GPT-6 Sol");
+        AssertEqual(true, candidates.IndexOf("gpt-6-luna") < candidates.IndexOf("gpt-5.6-sol"),
+            "GPT-6 Luna ranks before GPT-5.6 models");
+        AssertEqual(true, candidates.IndexOf("gpt-5.6-sol") < candidates.IndexOf("gpt-5.6-terra"),
+            "GPT-5.6 Sol ranks before GPT-5.6 Terra");
+    }
+
+    private static void TestReasoningEffortParsesMaxAndUltra() {
+        AssertEqual(ReasoningEffort.Max, ChatEnumParser.ParseReasoningEffort("max"), "parse max effort");
+        AssertEqual(ReasoningEffort.Ultra, ChatEnumParser.ParseReasoningEffort(" Ultra "), "parse ultra effort");
+        AssertEqual(ReasoningEffort.XHigh, ChatEnumParser.ParseReasoningEffort("x-high"), "parse xhigh alias");
+        AssertEqual("max", ReasoningEffort.Max.ToApiString(), "max effort api value");
+        AssertEqual("ultra", ReasoningEffort.Ultra.ToApiString(), "ultra effort api value");
     }
 #endif
 

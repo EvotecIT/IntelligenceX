@@ -205,7 +205,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 }
                 var parsed = ChatEnumParser.ParseReasoningEffort(value);
                 if (!parsed.HasValue) {
-                    error = "--reasoning-effort must be one of: minimal, low, medium, high, xhigh.";
+                    error = "--reasoning-effort must be one of: minimal, low, medium, high, xhigh, max, ultra.";
                     return options;
                 }
                 options.ReasoningEffort = parsed;
@@ -837,7 +837,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("Options:");
         Console.WriteLine("  --pipe <NAME>           Named pipe name (default: intelligencex.chat)");
         Console.WriteLine($"  --model <NAME>          OpenAI model (default: {OpenAIModelCatalog.DefaultModel})");
-        Console.WriteLine("  --reasoning-effort <LEVEL>   Reasoning effort hint: minimal|low|medium|high|xhigh.");
+        Console.WriteLine("  --reasoning-effort <LEVEL>   Reasoning effort hint: minimal|low|medium|high|xhigh|max|ultra.");
         Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
         Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
         Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");

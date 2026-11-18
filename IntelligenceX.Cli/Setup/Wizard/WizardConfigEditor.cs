@@ -10,7 +10,7 @@ internal static class WizardConfigEditor {
   ""review"": {
     ""provider"": ""openai"",
     ""openaiTransport"": ""native"",
-    ""model"": ""gpt-6-sol"",
+    ""model"": ""gpt-6.1-terra"",
     ""profile"": ""balanced"",
     ""mode"": ""hybrid"",
     ""commentMode"": ""sticky"",

@@ -133,7 +133,7 @@ public sealed partial class MainWindow : Window {
         return normalized.Length == 0 ? null : normalized;
     }
 
-    private static string NormalizeLocalProviderReasoningEffort(string? value) {
+    internal static string NormalizeLocalProviderReasoningEffort(string? value) {
         var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
         return normalized switch {
             "minimal" => "minimal",
@@ -143,6 +143,8 @@ public sealed partial class MainWindow : Window {
             "xhigh" => "xhigh",
             "x-high" => "xhigh",
             "x_high" => "xhigh",
+            "max" => "max",
+            "ultra" => "ultra",
             _ => string.Empty
         };
     }

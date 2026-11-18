@@ -1,6 +1,6 @@
 {
   "openai": {
-    "defaultModel": "gpt-5.3-codex",
+    "defaultModel": "gpt-6.1-terra",
     "appServerPath": "codex",
     "appServerArgs": "app-server",
     "openBrowser": true,

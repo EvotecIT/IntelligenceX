@@ -1357,7 +1357,7 @@
     if (normalized === "x-high" || normalized === "x_high") {
       normalized = "xhigh";
     }
-    if (normalized === "minimal" || normalized === "low" || normalized === "medium" || normalized === "high" || normalized === "xhigh") {
+    if (normalized === "minimal" || normalized === "low" || normalized === "medium" || normalized === "high" || normalized === "xhigh" || normalized === "max" || normalized === "ultra") {
       return normalized;
     }
     return "";
@@ -2685,13 +2685,15 @@
     if (effortSelect) {
       var optionsEfforts = supportedReasoningEfforts.length > 0
         ? supportedReasoningEfforts
-        : ["minimal", "low", "medium", "high", "xhigh"];
+        : ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
       var effortLabels = {
         minimal: "Minimal",
         low: "Low",
         medium: "Medium",
         high: "High",
-        xhigh: "XHigh"
+        xhigh: "XHigh",
+        max: "Max",
+        ultra: "Ultra"
       };
       effortSelect.innerHTML = "";
       var providerDefaultOption = document.createElement("option");

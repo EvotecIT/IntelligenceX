@@ -170,7 +170,7 @@ internal static partial class Program {
                         }
                         var effort = ChatEnumParser.ParseReasoningEffort(effortValue);
                         if (!effort.HasValue) {
-                            error = "--reasoning-effort must be one of: minimal, low, medium, high, xhigh.";
+                            error = "--reasoning-effort must be one of: minimal, low, medium, high, xhigh, max, ultra.";
                             return options;
                         }
                         options.ReasoningEffort = effort;
