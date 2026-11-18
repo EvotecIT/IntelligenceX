@@ -38,7 +38,8 @@ public sealed class LedgerPersistenceTests : IDisposable {
         Assert.Equal(terminalCoversCurrentActivity ? terminal.Session.TurnId : partial.Session.TurnId, item.Session!.TurnId);
         Assert.Equal(!terminalCoversCurrentActivity, item.Session.TurnOpen);
         Assert.Equal(terminalCoversCurrentActivity ? terminal.EventId : partial.EventId, item.SessionEvidence!.EventId);
-        Assert.Equal(2, (await restarted.HistoryAsync(partial.ItemId, 0, 100, default)).Length);
+        // An older reread that loses to the current turn changes nothing and adds no history row.
+        Assert.Equal(terminalCoversCurrentActivity ? 2 : 1, (await restarted.HistoryAsync(partial.ItemId, 0, 100, default)).Length);
     }
 
     [Fact]

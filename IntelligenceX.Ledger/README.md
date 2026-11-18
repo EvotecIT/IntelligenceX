@@ -86,7 +86,15 @@ MCP exposes `repo_activity(repo)` and `overlap(repo, branch?, files?, text?)` wi
 
 ## Reporting and retention
 
-Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. Raw events older than seven days are pruned in batches of at most 10000 per minute. Items and verdict transitions stay. Existing retention backlog drains over successive ticks. Freed database pages are reused by SQLite, so the file can retain its allocated size.
+Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. An observation that leaves its item unchanged apart from evidence references and refresh-only times (last activity, last progress, a re-observed archive, evaluation time) still updates the item but doesn't add a history row. Raw events older than seven days, and verdict transitions with their correctness marks older than 30 days, are pruned in batches of at most 10000 per pass. Items stay. Existing retention backlog drains over successive passes.
+
+A new database uses SQLite incremental vacuum, so each pass also returns up to about 100 MB of freed pages to the file system. An existing database keeps its allocated size until it is compacted once with the service stopped:
+
+```text
+IntelligenceX.Ledger compact --config /absolute/path/service.json
+```
+
+The command refuses to run while the service holds the database. It rewrites the file without free pages, switches it to incremental vacuum and prints the size before and after.
 
 Completed sessions and title-only catalog rows leave the current-work roster. Explicit questions, unconfirmed current-turn input, waits, declarations, usage limits, native holds and pending deliveries retain follow-up visibility. Claims and PR history remain available with each stored item. Frozen imported delivery observations older than 24 hours appear in retained history, with their excluded count in current-view coverage. Reporter health identifies a stale evidence file.
 

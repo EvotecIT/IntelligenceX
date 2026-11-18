@@ -39,7 +39,8 @@ public sealed class LedgerScopeRegressionTests : IDisposable {
         Assert.Equal(before.Current!.EpisodeId, after.Current.EpisodeId);
         Assert.Equal(Now.AddMinutes(1), after.Current.SinceUtc);
         Assert.Contains(after.Declarations.Values, d => d.Fact == second);
-        Assert.Equal(5, (await store.HistoryAsync(after.Id, 0, 100, default)).Length);
+        // The late resolution is ignored, so it adds no history row.
+        Assert.Equal(4, (await store.HistoryAsync(after.Id, 0, 100, default)).Length);
         var checkpoint = second with { Id = "synthetic-checkpoint-update", RecordedAtUtc = Now.AddMinutes(4) };
         await store.IngestAsync([Event(minutes: 4) with { Declaration = checkpoint },
             Event(minutes: 5) with { Declaration = second }], Now.AddMinutes(5));

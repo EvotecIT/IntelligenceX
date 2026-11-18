@@ -72,15 +72,52 @@ public sealed partial class LedgerStore {
         return changed;
     }
 
-    /// <summary>One bounded retention transaction per maintenance tick. Projections and transitions are retained.</summary>
+    /// <summary>Events are kept for 7 days. Transitions and their review marks feed the daily reports, which are also
+    /// written to files, so they are kept for 30.</summary>
+    internal static readonly TimeSpan EventRetention = TimeSpan.FromDays(7), TransitionRetention = TimeSpan.FromDays(30);
+    /// <summary>Pages returned to the file system per maintenance tick, about 100 MB, so one tick stays short.</summary>
+    private const int VacuumPagesPerTick = 25600;
+
+    /// <summary>
+    /// One bounded retention pass per maintenance tick: old events, then old transitions with their review marks.
+    /// Projections are kept. Freed pages go back to the file system when the database uses incremental vacuum.
+    /// </summary>
     public async Task<int> PruneEventsAsync(DateTimeOffset now, int limit = 10000, CancellationToken token = default) {
         await MaintainLeasesAsync(now, token);
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
-            return await db.ExecuteNonQueryAsync("""
-                DELETE FROM events WHERE ordinal IN (SELECT ordinal FROM events WHERE received<@cutoff ORDER BY received LIMIT @limit)
-                """, new Dictionary<string, object?> { ["cutoff"] = now.AddDays(-7).ToString("O"), ["limit"] = Math.Clamp(limit, 1, 10000) }, token);
+            var bound = Math.Clamp(limit, 1, 10000);
+            var removed = await db.RunInTransactionAsync(async (tx, ct) => {
+                var events = await tx.ExecuteNonQueryAsync("""
+                    DELETE FROM events WHERE ordinal IN (SELECT ordinal FROM events WHERE received<@cutoff ORDER BY received LIMIT @limit)
+                    """, new Dictionary<string, object?> { ["cutoff"] = (now - EventRetention).ToString("O"), ["limit"] = bound }, ct);
+                var expired = new Dictionary<string, object?> { ["cutoff"] = (now - TransitionRetention).ToString("O"), ["limit"] = bound };
+                await tx.ExecuteNonQueryAsync("""
+                    DELETE FROM reviews WHERE transition IN (SELECT ordinal FROM transitions WHERE recorded<@cutoff ORDER BY ordinal LIMIT @limit)
+                    """, expired, ct);
+                return events + await tx.ExecuteNonQueryAsync("""
+                    DELETE FROM transitions WHERE ordinal IN (SELECT ordinal FROM transitions WHERE recorded<@cutoff ORDER BY ordinal LIMIT @limit)
+                    """, expired, ct);
+            }, token);
+            if (Convert.ToInt32(await db.ExecuteScalarAsync("PRAGMA auto_vacuum", cancellationToken: token)) == 2)
+                await db.ExecuteNonQueryAsync("PRAGMA incremental_vacuum(" + VacuumPagesPerTick + ")", cancellationToken: token);
+            return removed;
         } finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Rewrites the database without its free pages and switches it to incremental vacuum, so later retention
+    /// passes return space as they go. The caller must hold the service writer lease: the service has to be stopped.
+    /// </summary>
+    public static async Task<(long Before, long After)> CompactAsync(string databasePath, CancellationToken token = default) {
+        var before = new FileInfo(databasePath).Length;
+        using var database = new SQLite();
+        await using (var db = await database.OpenSessionAsync(databasePath, token)) {
+            await db.ExecuteNonQueryAsync("PRAGMA auto_vacuum=INCREMENTAL", cancellationToken: token);
+            await db.ExecuteNonQueryAsync("VACUUM", cancellationToken: token);
+            await db.ExecuteNonQueryAsync("PRAGMA wal_checkpoint(TRUNCATE)", cancellationToken: token);
+        }
+        return (before, new FileInfo(databasePath).Length);
     }
 }

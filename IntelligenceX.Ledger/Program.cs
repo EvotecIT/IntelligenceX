@@ -31,6 +31,17 @@ public static class Program {
             Console.WriteLine(JsonSerializer.Serialize(manifest, LedgerJson.Options));
             return 0;
         }
+        if (args.Length == 3 && args[0] == "compact" && args[1] == "--config") {
+            var configuration = LedgerSettings.Load(args[2]);
+            FileStream serviceLease;
+            try { serviceLease = LedgerBackup.AcquireServiceLease(configuration.DataDirectory); }
+            catch (IOException) { Console.Error.WriteLine("Stop the Ledger service before compacting its database."); return 1; }
+            using (serviceLease) {
+                var (before, after) = await LedgerStore.CompactAsync(Path.Combine(configuration.DataDirectory, "ledger.sqlite"));
+                Console.WriteLine(JsonSerializer.Serialize(new { beforeBytes = before, afterBytes = after }, LedgerJson.Options));
+            }
+            return 0;
+        }
         if (args.Length == 4 && args[0] == "hook" && args[1] == "--config")
             return await LocalReporter.RunAsync(args[2], hook: true, suppliedPayload: args[3]);
         if (args.Length == 3 && args[0] == "agent" && args[1] == "--config") return await Agents.AgentHost.RunProcessAsync(args[2]);
@@ -48,7 +59,8 @@ public static class Program {
                 "       IntelligenceX.Ledger agent-install --reporter <reporter-json-file> --version <installed-version> [--apply]\n" +
                 "       IntelligenceX.Ledger agent-enroll --service <service-json-file> --machine <id> --out <folder> [--local] [--apply]\n" +
                 "       IntelligenceX.Ledger backup --config <local-json-file> --out <new-backup-path>\n" +
-                "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>\n" + LeaseApprovalCommand.Usage);
+                "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>\n" +
+                "       IntelligenceX.Ledger compact --config <local-json-file>\n" + LeaseApprovalCommand.Usage);
             return 2;
         }
         if (args[0] is "report" or "hook") return await LocalReporter.RunAsync(args[2], args[0] == "hook");
