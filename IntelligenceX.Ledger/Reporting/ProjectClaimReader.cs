@@ -21,7 +21,8 @@ internal sealed record ClaimSnapshot(HashSet<string> ActiveItems, HashSet<string
 
 /// <summary>
 /// Read-only, paginated claim evidence from a configured private GitHub project. Each page keeps its ETag and the
-/// claim fields read from it, so an unchanged page answers 304 and costs no rate limit.
+/// claim fields read from it, so an unchanged page answers 304 and costs no rate limit. The previous last page is
+/// always read in full, so rows appended to the project are never missed.
 /// </summary>
 internal sealed class ProjectClaimReader(HttpClient client, ProjectClaimsSettings settings) {
     private sealed record Row(string NodeId, bool Archived, string Agent, string Machine, string Status, string PullRequest);
@@ -75,10 +76,15 @@ internal sealed class ProjectClaimReader(HttpClient client, ProjectClaimsSetting
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("X-GitHub-Api-Version", "2026-03-10");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        if (cached?.ETag is { } etag) request.Headers.TryAddWithoutValidation("If-None-Match", etag);
+        // A 304 carries no Link header. Unchanged rows end on the same item, so a cached continuation stays valid, but
+        // the previous last page is always read in full: rows appended after it only show up in its fresh Link header.
+        if (cached is { Next: not null, ETag: { } etag }) request.Headers.TryAddWithoutValidation("If-None-Match", etag);
         using var response = await client.SendAsync(request, token);
         Requests++;
-        if (response.StatusCode == HttpStatusCode.NotModified && cached is not null) { NotModified++; return cached; }
+        if (response.StatusCode == HttpStatusCode.NotModified && cached is { Next: not null }) {
+            NotModified++;
+            return cached with { Next = NextLink(response) ?? cached.Next };
+        }
         response.EnsureSuccessStatusCode();
         await using var body = await response.Content.ReadAsStreamAsync(token);
         using var document = await JsonDocument.ParseAsync(body, cancellationToken: token);
