@@ -20,6 +20,8 @@ public sealed record LedgerSettings {
     public string? ProjectCatalogPath { get; init; }
     /// <summary>Optional separate local enrollment for authenticated command principals and initial capacity policy.</summary>
     public string? CoordinationConfigPath { get; init; }
+    /// <summary>Optional project catalog: GitHub owners, task labels and the board the task verdicts read.</summary>
+    public Catalog.WorkCatalogSettings? WorkCatalog { get; init; }
 
     public static LedgerSettings Load(string file) {
         var settings = JsonSerializer.Deserialize<LedgerSettings>(File.ReadAllText(file), LedgerJson.Options)
@@ -30,6 +32,7 @@ public sealed record LedgerSettings {
             settings.WriteToken.Length < 32 || settings.ReadToken == settings.WriteToken ||
             settings.Port is < 1024 or > 65535 || settings.ExpectedReporters.Count == 0)
             throw new InvalidDataException("Invalid ledger settings.");
+        settings.WorkCatalog?.Validate();
         var reporters = settings.ExpectedReporters.Values.SelectMany(x => x).ToArray();
         if (settings.ExpectedReporters.Values.Any(x => x.Length == 0) || reporters.Distinct(StringComparer.Ordinal).Count() != reporters.Length)
             throw new InvalidDataException("Expected reporter IDs must be globally unique and nonempty.");

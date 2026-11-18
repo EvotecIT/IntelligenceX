@@ -21,6 +21,8 @@ namespace IntelligenceX.Ledger.Contracts;
 [JsonSerializable(typeof(RepositoryActivity))]
 [JsonSerializable(typeof(RepositoryOverlap))]
 [JsonSerializable(typeof(LedgerWorkView))]
+[JsonSerializable(typeof(ProjectStatusView))]
+[JsonSerializable(typeof(WorkReconcileView))]
 [JsonSerializable(typeof(ProjectContextView))]
 [JsonSerializable(typeof(ProjectContextView[]))]
 [JsonSerializable(typeof(ProjectDirectoryView))]
