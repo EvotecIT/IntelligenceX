@@ -358,18 +358,20 @@ public sealed partial class LedgerStore {
             foreach (var pr in node.PullRequests ?? []) entries.Add(new(null, "pull-request", node.Id, pr));
         }
         var items = await SessionItemsAsync(db, keys, now, token);
-        // Holder ids compare without case, as the lease service resolves them.
-        var owners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (key, item) in items) foreach (var holder in Holders(item)) owners.TryAdd(holder, key.Item2);
+        // Holders are matched by the parsed session id the lease service resolves, in any GUID format or letter case:
+        // the query narrows by the id's digits and IsHolder decides.
         var leaseArgs = new Dictionary<string, object?>();
-        var names = owners.Keys.Select((holder, i) => { leaseArgs["h" + i] = holder.ToLowerInvariant(); return "@h" + i; }).ToArray();
-        var leaseRows = names.Length == 0 ? [] : await db.QueryAsListAsync(
-            "SELECT started,ended,json FROM lease_history WHERE lower(json_extract(json,'$.holder')) IN (" + string.Join(",", names) + ") ORDER BY started",
+        var patterns = items.Values.Select((item, i) => {
+            leaseArgs["h" + i] = "%" + (item.Session?.SourceSessionId?.ToString("N") ?? item.Id) + "%";
+            return "replace(lower(json_extract(json,'$.holder')),'-','') LIKE @h" + i;
+        }).ToArray();
+        var leaseRows = patterns.Length == 0 ? [] : await db.QueryAsListAsync(
+            "SELECT started,ended,json FROM lease_history WHERE " + string.Join(" OR ", patterns) + " ORDER BY started",
             row => (Started: DateTimeOffset.Parse(row.GetString(0), System.Globalization.CultureInfo.InvariantCulture),
                 Ended: DateTimeOffset.Parse(row.GetString(1), System.Globalization.CultureInfo.InvariantCulture), Lease: Read<Lease>(row.GetString(2))),
             leaseArgs, cancellationToken: token);
         foreach (var lease in leaseRows) {
-            var owner = owners[lease.Lease.Holder];
+            if (items.FirstOrDefault(pair => IsHolder(pair.Value, lease.Lease.Holder)).Key.Item2 is not { } owner) continue;
             entries.Add(new(lease.Started, "lease", owner, lease.Lease.Key));
             if (lease.Ended <= now) entries.Add(new(lease.Ended, "lease-ended", owner, lease.Lease.Key));
         }
@@ -450,6 +452,11 @@ public sealed partial class LedgerStore {
         bool Live(SessionFact? fact) => fact is { Archived: not true, LastActivityAtUtc: { } activity } &&
             now - activity <= TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes);
         if (!Live(by.Session)) return new(false, "by-not-live") { From = fromNative, By = byNative };
+        // Reservations name a session, not a machine. If the same session is live on another machine, it isn't stopped.
+        var twins = await tx.QueryAsListAsync("SELECT i.json FROM session_lookup s JOIN items i ON i.id=s.item WHERE s.provider=@provider AND s.native=@native AND s.item<>@item",
+            row => Read<LedgerItem>(row.GetString(0)), new Dictionary<string, object?> { ["provider"] = from.Provider, ["native"] = fromNative, ["item"] = from.Id },
+            cancellationToken: token);
+        if (twins.Any(twin => Live(twin.Session))) return new(false, "from-live-elsewhere") { From = fromNative, By = byNative };
         var fact = from.Session;
         var verdict = rules.Evaluate(from, now);
         var idleMinutes = fact.Origin == "agent" ? policy.Lease.TakeoverIdleMinutes : policy.Lease.TakeoverIdleMinutesHuman;
@@ -461,15 +468,22 @@ public sealed partial class LedgerStore {
         var open = asks.Where(ask => ask.RequesterProvider == from.Provider && Native(ask.RequesterSessionId) == fromNative &&
             ask.State is not ("failed" or "cancelled") && !(ask.State == "succeeded" && ask.Stages.ContainsKey("accepted")))
             .Select(ask => ask.RequestId).ToArray();
-        // The newest record that moved From's work away still holds unless From took work over again after it.
+        // Follow the work last moved away from From through each later takeover of whoever held it. If it came back to
+        // From, From holds it again; otherwise its current holder is the session that continues it. Work From took from
+        // somebody else doesn't count as its own work coming back.
         var takeovers = await TakeoversAsync(tx, token);
         var lastAway = takeovers.Select((row, index) => (row, index)).LastOrDefault(pair => pair.row.FromProvider == from.Provider && pair.row.FromNative == fromNative);
-        var regained = lastAway.row is not null && takeovers.Skip(lastAway.index + 1).Any(row => row.ByProvider == from.Provider && row.ByNative == fromNative);
-        var earlier = regained ? null : lastAway.row;
+        TakeoverRow? earlier = null;
+        if (lastAway.row is not null) {
+            var holding = lastAway.row;
+            foreach (var row in takeovers.Skip(lastAway.index + 1))
+                if (row.FromProvider == holding.ByProvider && row.FromNative == holding.ByNative) holding = row;
+            if (holding.ByProvider != from.Provider || holding.ByNative != fromNative) earlier = holding;
+        }
         if (earlier is not null && earlier.ByProvider == by.Provider && earlier.ByNative == byNative)
             return Describe(new(true, "already-taken-over") { Trigger = earlier.Trigger, AtUtc = earlier.AtUtc,
                 Leases = (await ReservationsAsync(tx, now, token)).Where(row => IsHolder(by, row.Lease.Holder) &&
-                    row.Lease.PreviousHolder is { } previous && IsHolder(from, previous)).Select(row => row.Lease).ToArray() });
+                    row.Lease.TakenOverAtUtc == earlier.AtUtc).Select(row => row.Lease).ToArray() });
         if (earlier is not null) {
             // Someone else already continues this work and holds what was moved. While they are live it stays theirs;
             // once they stop too, the work is taken over from them, not from the original session.
@@ -481,18 +495,20 @@ public sealed partial class LedgerStore {
         var holder = by.Provider + ":" + byNative;
         var all = await ReservationsAsync(tx, now, token);
         var moved = new List<Lease>();
-        foreach (var row in all.Where(row => row.State is "active" or "queued" && IsHolder(from, row.Lease.Holder))) {
-            // By may already hold or wait for the same key on the same machine. Keep one row: an active one over a queued
-            // one, otherwise the one earlier in the queue. Two active rows are separate slots and both move.
-            var existing = all.FirstOrDefault(other => other.Lease.Key == row.Lease.Key && other.Lease.Machine == row.Lease.Machine &&
-                other.State is "active" or "queued" && IsHolder(by, other.Lease.Holder) && !(other.State == "active" && row.State == "active"));
-            if (existing is not null) {
-                var keepExisting = existing.State == "active" || row.State == existing.State && existing.Order < row.Order;
-                var drop = keepExisting ? row : existing;
-                if (drop.State == "active") await RememberLeaseAsync(tx, drop.Lease, now, token);
-                await tx.ExecuteNonQueryAsync("DELETE FROM reservations WHERE id=@id", new Dictionary<string, object?> { ["id"] = drop.Lease.LeaseId }, token);
-                if (keepExisting) continue;
-            }
+        // Reconcile each key and machine as a group with what By already has: every active slot stays and moves, and a
+        // queued row survives only when the new holder has no active slot there, the earliest one in line.
+        var mine = all.Where(row => row.State is "active" or "queued" && IsHolder(from, row.Lease.Holder)).ToArray();
+        var keep = new List<Reservation>();
+        foreach (var group in mine.GroupBy(row => (row.Lease.Key, row.Lease.Machine))) {
+            var theirs = all.Where(other => other.Lease.Key == group.Key.Key && other.Lease.Machine == group.Key.Machine &&
+                other.State is "active" or "queued" && IsHolder(by, other.Lease.Holder)).ToArray();
+            var waiting = group.Concat(theirs).Any(row => row.State == "active") ? null
+                : group.Concat(theirs).Where(row => row.State == "queued").MinBy(row => row.Order);
+            foreach (var row in group.Concat(theirs).Where(row => row.State == "queued" && row != waiting))
+                await tx.ExecuteNonQueryAsync("DELETE FROM reservations WHERE id=@id", new Dictionary<string, object?> { ["id"] = row.Lease.LeaseId }, token);
+            keep.AddRange(group.Where(row => row.State == "active" || row == waiting));
+        }
+        foreach (var row in keep) {
             // A new id fences the stopped holder. An active reservation's history ends here and the new holder's starts
             // here, so benchmark budgets count the time once; the row keeps its place in the queue.
             if (row.State == "active") await RememberLeaseAsync(tx, row.Lease, now, token);

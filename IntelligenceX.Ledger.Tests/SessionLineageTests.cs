@@ -210,6 +210,28 @@ public sealed class SessionLineageTests : IDisposable {
     }
 
     [Fact]
+    public async Task UnrelatedWorkDoesNotBringBackWhatAnotherSessionContinues() {
+        using var store = await SeedAsync();
+        // Stuck's work goes to Nested. Later Stuck resumes and takes over Side's work, which is not its own coming back.
+        Assert.True((await store.TakeOverSessionAsync(new(Stuck.ToString(), Nested.ToString()), Now)).Ok);
+        var back = Now.AddDays(2);
+        await store.IngestAsync([Session("mac", "codex", Stuck, Working() with { TurnStartedAtUtc = back, LastActivityAtUtc = back })], back);
+        Assert.Equal("taken-over", (await store.TakeOverSessionAsync(new(Side.ToString(), Stuck.ToString()), back)).State);
+        var later = back.AddHours(2);
+        await store.IngestAsync([Session("win-pc", "claude", Root, Working(origin: "human") with { TurnStartedAtUtc = later, LastActivityAtUtc = later })], later);
+        var reply = await store.TakeOverSessionAsync(new(Stuck.ToString(), Root.ToString()), later);
+        Assert.Equal(("take-over-successor", Nested.ToString()), (reply.State, reply.By));
+    }
+
+    [Fact]
+    public async Task ASessionLiveOnAnotherMachineIsNotTakenOver() {
+        using var store = await SeedAsync();
+        await store.IngestAsync([Session("win-pc", "codex", Stuck, Working())], Now);
+        var reply = await store.TakeOverSessionAsync(new(LedgerScope.SessionItemId("mac", "codex", Stuck.ToString()), Nested.ToString()), Now);
+        Assert.Equal("from-live-elsewhere", reply.State);
+    }
+
+    [Fact]
     public async Task TruncatedSubtreesAreHeldAndUnreportedHelpersResolve() {
         using var store = await SeedAsync();
         var children = Enumerable.Range(0, LedgerStore.TreeNodeLimit).Select(i => new SessionLink("codex", Helper.ToString(), "codex",
@@ -300,7 +322,7 @@ public sealed class SessionLineageTests : IDisposable {
         var request = new CoordinationRequest("ask-7", "goal", "help", "engine", "mac", null, new(), candidate, [], 1, "authorization",
             ReturnTo: new("requester", "win-pc", "claude", Nested.ToString(), candidate));
         var work = new CoordinationWork(request, "win-pc-sessions", 1, "completed", Now.AddMinutes(-30), ResultRef: "result-7",
-            Stages: new() { ["bound"] = Now.AddMinutes(-29), ["completed"] = Now.AddMinutes(-5) });
+            Stages: new() { ["session-bound"] = Now.AddMinutes(-29), ["terminal"] = Now.AddMinutes(-5) });
         var binding = new CoordinationSessionBinding("ask-7", 1, "grant", "helper", "mac", "codex", Helper.ToString(), "workspace", candidate);
 
         Assert.Equal(new SessionLink("claude", Nested.ToString(), "codex", Helper.ToString(), "ix-ask", Now.AddMinutes(-29), "ask-7"),

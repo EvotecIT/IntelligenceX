@@ -15,9 +15,12 @@ internal static class SessionLineageSource {
     /// its own place, and the ask still shows in the trail.</summary>
     internal static SessionLink? Link(CoordinationWork work, CoordinationSessionBinding binding) =>
         work.Request.ReturnTo is { } asker && !work.Request.ReuseSession
-            ? new(asker.Provider, asker.SessionId, binding.Provider, binding.SessionId, "ix-ask",
-                work.Stages?.GetValueOrDefault("bound") ?? work.Stages?.GetValueOrDefault("started") ?? work.RequestedAtUtc, work.Request.Id)
+            ? new(asker.Provider, asker.SessionId, binding.Provider, binding.SessionId, "ix-ask", BoundAt(work), work.Request.Id)
             : null;
+
+    /// <summary>When the helper was bound (the engine's session-bound stage), else when it started, else when it was asked.</summary>
+    private static DateTimeOffset BoundAt(CoordinationWork work) =>
+        work.Stages is { } stages && (stages.TryGetValue("session-bound", out var bound) || stages.TryGetValue("started", out bound)) ? bound : work.RequestedAtUtc;
 
     internal static SessionAskStep? Step(CoordinationWork work, CoordinationSessionBinding? binding, string? resultRef) =>
         work.Request.ReturnTo is { } asker

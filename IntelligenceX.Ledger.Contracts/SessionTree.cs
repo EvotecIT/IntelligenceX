@@ -78,7 +78,8 @@ public sealed record SessionTakeoverCommand(string From, string By, string? Reas
 /// <summary>
 /// The takeover's result and what By needs to continue: From's task, checkout, pull requests, children still running and
 /// open asks. State is taken-over, already-taken-over, taken-over-by-other (By names the live session that already
-/// continues it), take-over-successor (that session stopped too; take over By instead), not-eligible (EligibleAtUtc says when it will be), not-found, ambiguous, same-session or by-not-live.
+/// continues it), take-over-successor (that session stopped too; take over By instead), from-live-elsewhere (the same session
+/// is still live on another machine), not-eligible (EligibleAtUtc says when it will be), not-found, ambiguous, same-session or by-not-live.
 /// </summary>
 public sealed record SessionTakeoverReply(bool Ok, string State) {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? From { get; init; }
