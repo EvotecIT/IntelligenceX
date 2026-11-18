@@ -33,6 +33,12 @@ public sealed partial class LedgerReadClient {
         PostAsync("policy", command, LedgerReadJson.Default.CoordinationPolicyCommand, LedgerReadJson.Default.CoordinationPolicy, token);
     public Task<CoordinationPolicy> SetPolicyValueAsync(PolicyValueCommand command, CancellationToken token = default) =>
         PostAsync("policy/value", command, LedgerReadJson.Default.PolicyValueCommand, LedgerReadJson.Default.CoordinationPolicy, token);
+    /// <summary>Operator only: reservations waiting because they asked for longer than policy allows.</summary>
+    public Task<LeaseApprovalList> PendingLeaseApprovalsAsync(CancellationToken token = default) =>
+        GetAsync("api/coordination/v1/lease-approvals", LedgerReadJson.Default.LeaseApprovalList, token);
+    /// <summary>Operator only: approves (optionally with a different TTL) or denies one waiting reservation.</summary>
+    public Task<LeaseReply> ApproveLeaseAsync(LeaseApproval approval, CancellationToken token = default) =>
+        PostAsync("lease-approvals", approval, LedgerReadJson.Default.LeaseApproval, LedgerReadJson.Default.LeaseReply, token);
     public Task<CoordinationWork> SubmitAsync(CoordinationRequest request, bool apply = false, CancellationToken token = default) =>
         PostAsync(apply ? "requests" : "requests/preview", request, LedgerReadJson.Default.CoordinationRequest, LedgerReadJson.Default.CoordinationWork, token);
     public Task<CoordinationWork> AcceptAsync(string id, string resultRef, CancellationToken token = default) =>

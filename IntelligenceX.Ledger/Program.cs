@@ -41,13 +41,14 @@ public static class Program {
             return await LedgerInbox.RunAsync(args[2], Console.In, Console.Out);
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
             return await LocalReporter.RunNotifyChainAsync(args[2], args[3]);
+        if (LeaseApprovalCommand.Matches(args)) return await LeaseApprovalCommand.RunAsync(args);
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {
             Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>\n" +
                 "       IntelligenceX.Ledger agent|agent-check|inbox --config <agent-json-file>\n" +
                 "       IntelligenceX.Ledger agent-install --reporter <reporter-json-file> --version <installed-version> [--apply]\n" +
                 "       IntelligenceX.Ledger agent-enroll --service <service-json-file> --machine <id> --out <folder> [--local] [--apply]\n" +
                 "       IntelligenceX.Ledger backup --config <local-json-file> --out <new-backup-path>\n" +
-                "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>");
+                "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>\n" + LeaseApprovalCommand.Usage);
             return 2;
         }
         if (args[0] is "report" or "hook") return await LocalReporter.RunAsync(args[2], args[0] == "hook");
