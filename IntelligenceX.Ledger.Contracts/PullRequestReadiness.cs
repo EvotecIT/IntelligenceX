@@ -12,6 +12,8 @@ public sealed record PullRequestReadiness {
     public string[] PendingChecks { get; init; } = [];
     public int FailingCheckCount { get; init; }
     public int PendingCheckCount { get; init; }
+    /// <summary>How many checks GitHub reported on the head; zero means none have been reported yet.</summary>
+    public int CheckCount { get; init; }
     public int UnresolvedThreads { get; init; }
     public PullRequestThread[] Threads { get; init; } = [];
     public bool ReviewerPending { get; init; }

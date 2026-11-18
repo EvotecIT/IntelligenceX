@@ -27,7 +27,9 @@ public sealed partial class CoordinationEngine {
                 existing.Pr == request.Pr && existing.AfterMinutes == request.AfterMinutes, "wake-id-conflict");
             return existing;
         }
-        Require(state.Wakes.Values.Count(w => w.Owner == caller.Id && w.State == "waiting") < state.Policy.Ask.MaximumWakes, "wake-limit-reached");
+        // Due wakes count until delivered, so a host that stays offline can't let a client build an unbounded backlog.
+        Require(state.Wakes.Values.Count(w => w.Owner == caller.Id && w.State is "waiting" or "due") < state.Policy.Ask.MaximumWakes,
+            "wake-limit-reached");
         if (ci)
             foreach (var older in state.Wakes.Values.Where(w => w.State == "waiting" && w.Owner == caller.Id && w.SessionId == session &&
                 string.Equals(w.Repo, request.Repo, StringComparison.OrdinalIgnoreCase) && w.Pr == request.Pr).ToArray())
@@ -66,11 +68,12 @@ public sealed partial class CoordinationEngine {
         .Where(w => w.State == "waiting" && w.Repo is not null && w.Pr is not null)
         .Select(w => (w.Repo!.ToLowerInvariant(), w.Pr!.Value)).Distinct().ToArray();
 
-    /// <summary>Makes every waiting wake on the pull request due with the checks' outcome. Called by the service once
-    /// the checks on the current head have finished, or the pull request is no longer open.</summary>
-    public int ChecksFinished(string repo, int pr, string outcome) {
+    /// <summary>Makes the waiting wakes on the pull request due with the checks' outcome. Called by the service once the
+    /// checks on the current head have finished, or the pull request is no longer open. Only wakes that existed when GitHub
+    /// was read are covered: a wake registered after that read (perhaps after a new push) waits for a fresh one.</summary>
+    public int ChecksFinished(string repo, int pr, string outcome, DateTimeOffset observedAtUtc) {
         Require(Text(outcome), "invalid-wake-outcome");
-        var due = state.Wakes.Values.Where(w => w.State == "waiting" && w.Pr == pr &&
+        var due = state.Wakes.Values.Where(w => w.State == "waiting" && w.Pr == pr && w.CreatedAtUtc <= observedAtUtc &&
             string.Equals(w.Repo, repo, StringComparison.OrdinalIgnoreCase)).ToArray();
         foreach (var wake in due) MakeDue(wake, outcome);
         return due.Length;
@@ -110,10 +113,12 @@ public sealed partial class CoordinationEngine {
         ? Math.Round(span.TotalMinutes).ToString(System.Globalization.CultureInfo.InvariantCulture) + " minutes"
         : Math.Round(span.TotalHours, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " hours";
 
-    /// <summary>Due wakes the calling host has to deliver: those for sessions on its machine, not yet sending.</summary>
-    public CoordinationWakePage WakesToDeliver(CoordinationPrincipal caller, long afterOrder) {
+    /// <summary>Due wakes the calling host has to deliver: those for sessions on its machine, not yet sending. The inbox
+    /// hook names its own session, so other sessions' backlog can't page its wakes out of reach.</summary>
+    public CoordinationWakePage WakesToDeliver(CoordinationPrincipal caller, long afterOrder, string? sessionId = null) {
         Require(caller.Role == "host", "wakes-role-denied");
         var items = state.Wakes.Values.Where(w => w.Order > afterOrder && w.State == "due" && w.MachineId == caller.MachineId &&
+            (sessionId is null || w.SessionId == sessionId) &&
             w.Delivery is null or { Stage: "held" }).OrderBy(w => w.Order).Take(17).ToArray();
         return new(items.Take(16).ToArray(), items.Length > 16 ? items[15].Order : null);
     }

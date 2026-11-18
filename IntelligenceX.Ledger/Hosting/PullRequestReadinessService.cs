@@ -40,6 +40,7 @@ internal sealed class PullRequestReadinessService(LedgerStore store) {
                     PendingChecks = report.Checks.Where(check => check.State is GitHubReadinessCheckState.Pending or GitHubReadinessCheckState.Unknown).Select(check => check.Name).Take(10).ToArray(),
                     FailingCheckCount = report.Checks.Count(check => check.State == GitHubReadinessCheckState.Failing),
                     PendingCheckCount = report.Checks.Count(check => check.State is GitHubReadinessCheckState.Pending or GitHubReadinessCheckState.Unknown),
+                    CheckCount = report.Checks.Count,
                     UnresolvedThreads = report.UnresolvedThreadCount,
                     Threads = report.UnresolvedThreads.Select(thread => new PullRequestThread(thread.Path, thread.Text)).ToArray(),
                     ReviewerPending = report.PendingReviewers.Count > 0,

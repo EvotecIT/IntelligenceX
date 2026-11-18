@@ -147,20 +147,39 @@ public static class LedgerInbox {
             if (questions.NextOrder is not { } next) break;
             after = next;
         }
-        after = 0;
-        for (var page = 0; page < 8; page++) {
-            var wakes = await ledger.WakesAsync(token, after).ConfigureAwait(false);
-            foreach (var wake in wakes.Items.Where(w => w.MachineId == machineId && w.Provider == "claude" && w.SessionId == session)) {
-                var attempt = "hook-" + Hash(wake.Id, wake.Delivery?.AttemptId, run)[..32];
-                Func<CancellationToken, Task> undo = t => ledger.WakeDeliveryAsync(wake.Id, new(attempt, "not-submitted", evidence), t);
-                collected.Undo.Add(undo);
-                try { await ledger.WakeDeliveryAsync(wake.Id, new(attempt, "sending"), token).ConfigureAwait(false); }
-                catch (CoordinationCommandRejectedException) { collected.Undo.Remove(undo); continue; }
-                collected.Parts.Add("Wake " + wake.Id + ": " + wake.Outcome + "\n\n" + wake.Prompt);
-                collected.Receipts.Add(t => ledger.WakeDeliveryAsync(wake.Id, new(attempt, "submitted", evidence), t));
+        await CollectWakesAsync(ledger, machineId, session, run, evidence, collected, token).ConfigureAwait(false);
+    }
+
+    /// <summary>Wakes come last and on their own: if their feed fails, the results and questions already collected are
+    /// still printed, and a wake whose claim was in flight is released once the hook has printed.</summary>
+    private static async Task CollectWakesAsync(LedgerReadClient ledger, string machineId, string session, string run, string evidence,
+        Collected collected, CancellationToken token) {
+        Func<CancellationToken, Task>? inFlight = null;
+        try {
+            long after = 0;
+            for (var page = 0; page < 8; page++) {
+                var wakes = await ledger.WakesAsync(token, after, session).ConfigureAwait(false);
+                foreach (var wake in wakes.Items.Where(w => w.MachineId == machineId && w.Provider == "claude" && w.SessionId == session)) {
+                    var attempt = "hook-" + Hash(wake.Id, wake.Delivery?.AttemptId, run)[..32];
+                    Func<CancellationToken, Task> undo = t => ledger.WakeDeliveryAsync(wake.Id, new(attempt, "not-submitted", evidence), t);
+                    collected.Undo.Add(undo);
+                    inFlight = undo;
+                    try { await ledger.WakeDeliveryAsync(wake.Id, new(attempt, "sending"), token).ConfigureAwait(false); }
+                    catch (CoordinationCommandRejectedException) { collected.Undo.Remove(undo); inFlight = null; continue; }
+                    inFlight = null;
+                    collected.Parts.Add("Wake " + wake.Id + ": " + wake.Outcome + "\n\n" + wake.Prompt);
+                    collected.Receipts.Add(t => ledger.WakeDeliveryAsync(wake.Id, new(attempt, "submitted", evidence), t));
+                }
+                if (wakes.NextOrder is not { } next) break;
+                after = next;
             }
-            if (wakes.NextOrder is not { } next) break;
-            after = next;
+        } catch (Exception error) when (!token.IsCancellationRequested &&
+            error is IOException or HttpRequestException or JsonException or InvalidDataException or OperationCanceledException) {
+            if (inFlight is not null) {
+                // Not printed, so it is released along with the receipts recorded after printing.
+                collected.Undo.Remove(inFlight);
+                collected.Receipts.Add(inFlight);
+            }
         }
     }
 }

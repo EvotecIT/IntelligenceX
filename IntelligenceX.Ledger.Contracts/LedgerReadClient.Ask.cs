@@ -20,10 +20,10 @@ public sealed partial class LedgerReadClient {
         PostAsync("wakes/" + Uri.EscapeDataString(id) + "/cancel", new CoordinationWakeDeliveryCommand("cancel", "cancel"),
             LedgerReadJson.Default.CoordinationWakeDeliveryCommand, LedgerReadJson.Default.CoordinationWake, token);
 
-    /// <summary>Reads the due wakes this host has to deliver.</summary>
-    public Task<CoordinationWakePage> WakesAsync(CancellationToken token = default, long afterOrder = 0) =>
-        GetAsync("api/coordination/v1/wakes?afterOrder=" + afterOrder.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            LedgerReadJson.Default.CoordinationWakePage, token);
+    /// <summary>Reads the due wakes this host has to deliver, optionally only one session's.</summary>
+    public Task<CoordinationWakePage> WakesAsync(CancellationToken token = default, long afterOrder = 0, string? sessionId = null) =>
+        GetAsync("api/coordination/v1/wakes?afterOrder=" + afterOrder.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            (sessionId is null ? "" : "&sessionId=" + Uri.EscapeDataString(sessionId)), LedgerReadJson.Default.CoordinationWakePage, token);
 
     /// <summary>Starts or records one wake delivery (host).</summary>
     public Task<CoordinationWake> WakeDeliveryAsync(string id, CoordinationWakeDeliveryCommand command, CancellationToken token = default) =>

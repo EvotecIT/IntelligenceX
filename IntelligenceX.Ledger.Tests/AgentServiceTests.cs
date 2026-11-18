@@ -211,6 +211,27 @@ public sealed class AgentServiceTests {
         var root = JsonDocument.Parse(AgentService.ReviewResult(answer, "thread-1")!).RootElement;
         Assert.False(root.GetProperty("pass").GetBoolean());
         Assert.Equal("dotnet build", Assert.Single(root.GetProperty("failedChecks").EnumerateArray()).GetString());
+
+        // An unnamed check without a command is keyed by its position, never by a check that is named like one.
+        var positional = ReviewAnswer("approve", "",
+            "{\"check\":\"\",\"command\":\"\",\"result\":\"fail\",\"final\":true,\"notes\":\"\"}," + Check("#0", "pass", true));
+        var kept = JsonDocument.Parse(AgentService.ReviewResult(positional, "thread-1")!).RootElement;
+        Assert.False(kept.GetProperty("pass").GetBoolean());
+        Assert.Equal("#0", Assert.Single(kept.GetProperty("failedChecks").EnumerateArray()).GetString());
+    }
+
+    [Fact]
+    public void ACompactReviewFitsTheByteLimitEvenWhenItsTextIsEscapedNonAscii() {
+        var name = new string('\u68c0', 100);
+        var checks = string.Join(",", Enumerable.Range(0, 10).Select(i => "{\"check\":\"" + name + i + "\",\"command\":\"" + name +
+            "\",\"result\":\"fail\",\"final\":true,\"notes\":\"" + name + "\"}"));
+        var answer = "{\"outcome\":\"result\",\"text\":\"\",\"review\":{\"verdict\":\"approve\",\"summary\":\"" + new string('\u68c0', 3000) +
+            "\",\"findings\":[],\"validation\":[" + checks + "]}}";
+        var result = AgentService.ReviewResult(answer, "thread-1")!;
+        Assert.True(Encoding.UTF8.GetByteCount(result) <= 8192);
+        var root = JsonDocument.Parse(result).RootElement;
+        Assert.False(root.GetProperty("pass").GetBoolean());
+        Assert.NotEmpty(root.GetProperty("failedChecks").EnumerateArray());
     }
 
     [Fact]

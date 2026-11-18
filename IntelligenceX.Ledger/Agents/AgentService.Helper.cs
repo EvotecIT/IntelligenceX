@@ -122,14 +122,16 @@ internal sealed partial class AgentService {
         var verdict = Str(review["verdict"]);
         var findings = review["findings"] as JsonArray ?? [];
         var checks = review["validation"] as JsonArray ?? [];
-        var last = new Dictionary<string, JsonNode>(StringComparer.OrdinalIgnoreCase);
+        // Attempts of one check share its name; a check without a name is keyed by its command, then its position. The
+        // three kinds never share a key, so an unnamed failure can't be replaced by a check that happens to be named "#0".
+        var last = new Dictionary<string, (string Label, JsonNode Check)>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < checks.Count; i++) {
             if (checks[i] is not JsonObject check || check["final"] is JsonValue final && final.TryGetValue<bool>(out var isFinal) && !isFinal) continue;
-            var name = Str(check["check"])?.Trim() is { Length: > 0 } named ? named
-                : Str(check["command"])?.Trim() is { Length: > 0 } command ? command : "#" + i;
-            last[name] = check;
+            var (key, label) = Str(check["check"])?.Trim() is { Length: > 0 } named ? ("check:" + named, named)
+                : Str(check["command"])?.Trim() is { Length: > 0 } command ? ("command:" + command, command) : ("index:" + i, "#" + i);
+            last[key] = (label, check);
         }
-        var failed = last.Where(pair => Str(pair.Value["result"]) == "fail").Select(pair => (JsonNode?)JsonValue.Create(pair.Key)).ToArray();
+        var failed = last.Values.Where(pair => Str(pair.Check["result"]) == "fail").Select(pair => (JsonNode?)JsonValue.Create(pair.Label)).ToArray();
         var blocking = findings.Any(f => Str(f?["severity"]) is "critical" or "high");
         var result = new JsonObject {
             ["pass"] = verdict == "approve" && !blocking && failed.Length == 0,
@@ -163,17 +165,26 @@ internal sealed partial class AgentService {
         if (Str(node[name]) is { } text && text.Length > length) node[name] = text[..length] + "...";
     }
 
-    /// <summary>The smallest review result: the decision, the failed checks and a shortened summary, still valid JSON.</summary>
-    private static string CompactReview(JsonObject result, string threadId) => new JsonObject {
-        ["pass"] = result["pass"]?.DeepClone(),
-        ["verdict"] = result["verdict"]?.DeepClone(),
-        ["failedChecks"] = new JsonArray(((JsonArray)result["failedChecks"]!).Take(10)
-            .Select(c => (JsonNode?)JsonValue.Create(Str(c) is { Length: > 100 } t ? t[..100] : Str(c))).ToArray()),
-        ["summary"] = Str(result["summary"]) is { Length: > 1000 } s ? s[..1000] + "..." : result["summary"]?.DeepClone(),
-        ["findings"] = new JsonArray(),
-        ["validation"] = new JsonArray(),
-        ["truncated"] = "The full review is in Codex thread " + threadId + "."
-    }.ToJsonString();
+    /// <summary>The smallest review result: the decision, the failed checks and a shortened summary, still valid JSON and
+    /// within the byte limit as serialized (escaped non-ASCII text takes up to six bytes a character).</summary>
+    private static string CompactReview(JsonObject result, string threadId) {
+        var summary = Str(result["summary"]) ?? "";
+        var failed = ((JsonArray)result["failedChecks"]!).Select(Str).OfType<string>().ToArray();
+        for (int length = 1000, checks = 10; ; length /= 2, checks /= 2) {
+            var json = new JsonObject {
+                ["pass"] = result["pass"]?.DeepClone(),
+                ["verdict"] = result["verdict"]?.DeepClone(),
+                ["failedChecks"] = new JsonArray(failed.Take(checks).Select(c => (JsonNode?)JsonValue.Create(Shorten(c, 100))).ToArray()),
+                ["summary"] = Shorten(summary, length),
+                ["findings"] = new JsonArray(),
+                ["validation"] = new JsonArray(),
+                ["truncated"] = "The full review is in Codex thread " + threadId + "."
+            }.ToJsonString();
+            if (Encoding.UTF8.GetByteCount(json) <= MaximumResultBytes || length == 0 && checks == 0) return json;
+        }
+    }
+
+    private static string Shorten(string text, int length) => text.Length <= length ? text : text[..length] + "...";
 
     /// <summary>A review that ended without a verdict (a question it couldn't ask, or a failure) still answers in the review
     /// shape, as a non-passing result whose summary says what happened.</summary>
@@ -359,9 +370,12 @@ internal sealed partial class AgentService {
                 outcome = await _codex.RunTurnAsync(threadId, record.Workspace, prompt, OutputSchema(work), Model(work),
                     Effort(work), limit, record.KnownTurns, Submitting, Started, watch, stop).ConfigureAwait(false);
             }
-            if (record.UsageTurn != outcome.TurnId)
-                record = (record with { UsageTurn = outcome.TurnId, UsageAtUtc = DateTimeOffset.UtcNow }).Save(_settings.StateDirectory);
-            await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop, record.UsageAtUtc).ConfigureAwait(false);
+            // A rejected turn/start never ran, so it has no usage; it counts as a resume and ends in a failure result.
+            if (outcome.Status != "rejected") {
+                if (record.UsageTurn != outcome.TurnId)
+                    record = (record with { UsageTurn = outcome.TurnId, UsageAtUtc = DateTimeOffset.UtcNow }).Save(_settings.StateDirectory);
+                await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop, record.UsageAtUtc).ConfigureAwait(false);
+            }
             if (outcome.UsageLimited) {
                 // Nothing about the task failed: the account ran out of Codex usage. The user is asked to sign in with another
                 // account, the grant stays renewed, and the same thread is tried again each probe interval without using up
@@ -386,9 +400,12 @@ internal sealed partial class AgentService {
                         "this open question:\n\n" + text, threadId), succeeded: true, stop).ConfigureAwait(false);
                 }
             }
+            // A review is judged by its structured verdict, which the schema allows next to an empty text.
+            if (outcome.Status == "completed" && kind == "result" && IsReview(work) && ReviewResult(outcome.FinalText, threadId) is { } review)
+                return await PublishAsync(work, record, review, succeeded: true, stop).ConfigureAwait(false);
             if (outcome.Status == "completed" && kind == "result" && !string.IsNullOrWhiteSpace(text))
-                return await PublishAsync(work, record, IsReview(work) ? ReviewResult(outcome.FinalText, threadId) ?? TextResult(work, text, threadId)
-                    : Bound(text, threadId), succeeded: true, stop).ConfigureAwait(false);
+                return await PublishAsync(work, record, IsReview(work) ? TextResult(work, text, threadId) : Bound(text, threadId),
+                    succeeded: true, stop).ConfigureAwait(false);
             if (record.Resumes < _policy.ResumeAttempts) {
                 record = (record with { Resumes = record.Resumes + 1, TurnId = null, Phase = "turn" }).Save(_settings.StateDirectory);
                 Log("helper-resumed", id + " " + outcome.Status);

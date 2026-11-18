@@ -100,7 +100,13 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 if (model is not null) parameters["model"] = model;
                 if (effort is not null) parameters["effort"] = effort;
                 if (outputSchema is not null) parameters["outputSchema"] = outputSchema.DeepClone();
-                var response = await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false);
+                JsonElement response;
+                try { response = await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false); }
+                catch (CodexRpcException error) {
+                    // The app server refused the turn (for example a model or effort it doesn't offer), so nothing started.
+                    // The caller treats it like a failed turn: resumed a bounded number of times, then a failure result.
+                    return new("", "rejected", null, TurnTokens.None, model ?? resumed, "turn/start rejected: " + error.Message);
+                }
                 turnId = response.GetProperty("turn").GetProperty("id").GetString() ?? throw new InvalidDataException("turn/start returned no id.");
             }
             watch.Follow(turnId);

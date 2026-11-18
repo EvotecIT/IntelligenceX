@@ -26,7 +26,7 @@ public sealed class CoordinationWakeTests {
         Assert.Equal([("evotecit/sample", 7)], engine.WatchedPullRequests());
         Assert.Empty(engine.WakesToDeliver(PcHost, 0).Items);
 
-        Assert.Equal(1, engine.ChecksFinished("evotecit/sample", 7, "The checks on EvotecIT/Sample#7 passed."));
+        Assert.Equal(1, engine.ChecksFinished("evotecit/sample", 7, "The checks on EvotecIT/Sample#7 passed.", Now));
         var due = Assert.Single(engine.WakesToDeliver(PcHost, 0).Items);
         Assert.Equal("The checks on EvotecIT/Sample#7 passed.", due.Outcome);
         Assert.Empty(engine.WakesToDeliver(MacHost, 0).Items);
@@ -47,7 +47,7 @@ public sealed class CoordinationWakeTests {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);
         engine.Wake(Ci(), Sessions);
-        engine.ChecksFinished("EvotecIT/Sample", 7, "Passed.");
+        engine.ChecksFinished("EvotecIT/Sample", 7, "Passed.", Now);
         engine.RecordWakeDelivery("wake-1", new("attempt-1", "sending"), PcHost);
         engine.RecordWakeDelivery("wake-1", new("attempt-1", "not-submitted", "codex-thread-unreachable"), PcHost);
         Assert.Single(engine.WakesToDeliver(PcHost, 0).Items);
@@ -115,6 +115,26 @@ public sealed class CoordinationWakeTests {
             engine.CancelWake("wake-2", Sessions with { Id = "other-sessions" })).Message);
     }
 
+    [Fact]
+    public void AReadMadeBeforeAWakeExistedDoesNotFireItAndDueWakesCountTowardTheLimit() {
+        var state = CreateState();
+        state.Policy.Ask = state.Policy.Ask with { MaximumWakes = 2 };
+        var engine = new CoordinationEngine(state, Now);
+        engine.Wake(Ci(), Sessions);
+        // A cached read from a minute earlier (perhaps of an older head) leaves the new wake waiting.
+        Assert.Equal(0, engine.ChecksFinished("EvotecIT/Sample", 7, "Passed.", Now.AddMinutes(-1)));
+        Assert.Equal("waiting", state.Wakes["wake-1"].State);
+
+        engine.ChecksFinished("EvotecIT/Sample", 7, "Passed.", Now);
+        engine.Wake(new("timer", "Later.", "claude", "session-b", AfterMinutes: 5), Sessions);
+        Assert.Equal("wake-limit-reached", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Wake(Ci("wake-2", pr: 8), Sessions)).Message);
+
+        // The inbox hook reads only its own session's wakes.
+        Assert.Equal("wake-1", Assert.Single(engine.WakesToDeliver(PcHost, 0, "thread-a").Items).Id);
+        Assert.Empty(engine.WakesToDeliver(PcHost, 0, "session-b").Items);
+    }
+
     [Theory]
     [InlineData("open", "green", 0, true, null, "The checks on EvotecIT/Sample#7 on abcdef1 passed.")]
     [InlineData("open", "failing", 0, true, null, "The checks on EvotecIT/Sample#7 on abcdef1 finished with 1 failing: build.")]
@@ -122,13 +142,15 @@ public sealed class CoordinationWakeTests {
     [InlineData("open", "pending", 2, true, null, null)]
     [InlineData("open", "green", 0, false, null, null)]
     [InlineData("open", "green", 0, true, "1234567", null)]
+    [InlineData("open", "green", -1, true, null, null)]
     [InlineData("merged", "green", 0, true, null, "EvotecIT/Sample#7 was merged.")]
     [InlineData("unknown", "unknown", 0, false, null, null)]
     public void TheWatcherFiresOnlyOnFinishedChecksForTheCurrentHeadOrAClosedPullRequest(string state, string checks, int pending,
         bool rechecked, string? checksHead, string? expected) {
+        // pending -1 stands for a fresh head with no checks reported yet.
         var read = new PullRequestReadiness {
             Repo = "EvotecIT/Sample", Pr = 7, HeadSha = "abcdef1234567890", ChecksHeadSha = checksHead, State = state, Checks = checks,
-            PendingCheckCount = pending, FailingCheckCount = checks == "failing" ? 1 : 0, FailingChecks = checks == "failing" ? ["build"] : [],
+            PendingCheckCount = Math.Max(0, pending), CheckCount = pending < 0 ? 0 : 3, FailingCheckCount = checks == "failing" ? 1 : 0, FailingChecks = checks == "failing" ? ["build"] : [],
             RecheckedAfterObservedHead = rechecked
         };
         Assert.Equal(expected, WakeWatcher.Outcome(read));
