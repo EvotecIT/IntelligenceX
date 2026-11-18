@@ -118,15 +118,19 @@ function Get-AgentProcess {
     return $process
 }
 
-# The startup task or LaunchAgent, only when it runs the agent from this root; another install's is left alone.
+# The startup task or LaunchAgent, only when it launches exactly this install (the launch arguments Start-Agent writes);
+# another install's is left alone, including one whose folder merely starts with this one's.
 function Test-OwnStartup {
     if ($IsWindows) {
         $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-        return [bool]($task -and @($task.Actions | Where-Object { "$($_.Execute) $($_.Arguments)".Contains($ServiceRoot, [StringComparison]::OrdinalIgnoreCase) }))
+        $arguments = "//B //Nologo `"$(Join-Path $ServiceRoot 'Start-LedgerAgent.vbs')`""
+        return [bool]($task -and @($task.Actions | Where-Object { [string]::Equals($_.Arguments, $arguments, [StringComparison]::OrdinalIgnoreCase) }))
     }
-    return (Test-Path -LiteralPath $Plist) -and (Get-Content -LiteralPath $Plist -Raw).Contains($ServiceRoot)
+    $config = '<string>agent</string><string>--config</string><string>' + [Security.SecurityElement]::Escape($AgentConfig) + '</string>'
+    return (Test-Path -LiteralPath $Plist) -and (Get-Content -LiteralPath $Plist -Raw).Contains($config)
 }
 
+# Stops the startup entry (when it is this install's) and the agent process its receipt names. Returns that process's id.
 function Stop-Agent {
     $own = Test-OwnStartup
     if ($IsWindows) {
@@ -134,12 +138,19 @@ function Stop-Agent {
         if ($process = Get-AgentProcess) {
             Stop-Process -Id $process.Id
             if (-not $process.WaitForExit(15000)) { throw "The agent service (process $($process.Id)) did not stop; nothing was changed." }
+            return $process.Id
         }
     } else {
-        if ($own) { & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null }
+        if ($own) {
+            & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null
+            # KeepAlive would restart a process stopped while the job is still loaded.
+            & /bin/launchctl print "gui/$Uid/$Label" *> $null
+            if ($LASTEXITCODE -eq 0) { throw "launchctl could not unload $Label; nothing was changed." }
+        }
         if ($process = Get-AgentProcess) {
             & /bin/kill -TERM $process.Id 2>$null
             if (-not $process.WaitForExit(30000)) { throw "The agent service (process $($process.Id)) did not stop; nothing was changed." }
+            return $process.Id
         }
     }
 }
@@ -209,7 +220,7 @@ function Restart-Reporter {
 function Switch-Version([string]$Version, [string]$Previous) {
     $result = Invoke-AgentInstall $Version -Change
     $restart = @($result.steps | Where-Object action -eq 'restart-reporter').Count -gt 0
-    Stop-Agent
+    $null = Stop-Agent
     if ($restart) { Restart-Reporter }
     Start-Agent $Version
     Write-Receipt (Split-Path $Version -Leaf) $Previous
@@ -228,9 +239,8 @@ $current = if ($installed) { $installed.current } else { $null }
 $recordedPrevious = if ($installed) { $installed.previous } else { $null }
 switch ($Action) {
     'Stop' {
-        $process = Get-AgentProcess
-        Stop-Agent
-        [pscustomobject]@{ Action = 'Stop'; Stopped = ${process}?.Id; Running = [bool](Get-AgentProcess) }
+        $stopped = Stop-Agent
+        [pscustomobject]@{ Action = 'Stop'; Stopped = $stopped; Running = [bool](Get-AgentProcess) }
     }
     'Status' {
         [pscustomobject]@{

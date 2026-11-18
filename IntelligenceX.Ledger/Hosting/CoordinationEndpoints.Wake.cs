@@ -45,10 +45,13 @@ internal sealed class WakeWatcher(CoordinationStore store, PullRequestReadinessS
     private async Task ChecksAsync(CancellationToken stop) {
         var watched = await store.ExecuteAsync((engine, _) => engine.WatchedPullRequests(), DateTimeOffset.UtcNow, stop).ConfigureAwait(false);
         foreach (var (repo, pr) in watched) {
+            // A read covers only wakes that existed before it began: a fresh read is stamped after it collects, and a cached
+            // one with when it was made, so the earlier of the two is the cutoff.
+            var started = DateTimeOffset.UtcNow;
             var read = await readiness.ReadAsync(repo, pr, stop).ConfigureAwait(false);
             if (Outcome(read) is not { } outcome) continue;
-            // A cached read covers only the wakes that existed when it was made.
-            await store.ExecuteAsync((engine, _) => engine.ChecksFinished(repo, pr, outcome, read.CheckedAtUtc), DateTimeOffset.UtcNow, stop)
+            var cutoff = read.CheckedAtUtc < started ? read.CheckedAtUtc : started;
+            await store.ExecuteAsync((engine, _) => engine.ChecksFinished(repo, pr, outcome, cutoff), DateTimeOffset.UtcNow, stop)
                 .ConfigureAwait(false);
         }
     }
@@ -63,6 +66,8 @@ internal sealed class WakeWatcher(CoordinationStore store, PullRequestReadinessS
         return read.Checks switch {
             // Green with no checks reported means none have started yet on a fresh head, not that they passed.
             "green" when read.CheckCount > 0 => "The checks on " + name + head + " passed.",
+            "failing" when read.PendingCheckCount == 0 && read.FailingCheckCount == 0 => "The checks on " + name + head +
+                " finished failing; GitHub named no failing check.",
             "failing" when read.PendingCheckCount == 0 => "The checks on " + name + head + " finished with " + read.FailingCheckCount +
                 " failing: " + string.Join(", ", read.FailingChecks) + (read.FailingCheckCount > read.FailingChecks.Length ? ", ..." : "") + ".",
             _ => null

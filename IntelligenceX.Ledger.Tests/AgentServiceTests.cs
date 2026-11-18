@@ -218,6 +218,16 @@ public sealed class AgentServiceTests {
         var kept = JsonDocument.Parse(AgentService.ReviewResult(positional, "thread-1")!).RootElement;
         Assert.False(kept.GetProperty("pass").GetBoolean());
         Assert.Equal("#0", Assert.Single(kept.GetProperty("failedChecks").EnumerateArray()).GetString());
+
+        // Commands that differ only in case may check different things, so they stay apart.
+        var cased = ReviewAnswer("approve", "",
+            "{\"check\":\"\",\"command\":\"./check Foo\",\"result\":\"fail\",\"final\":true,\"notes\":\"\"}," +
+            "{\"check\":\"\",\"command\":\"./check foo\",\"result\":\"pass\",\"final\":true,\"notes\":\"\"}");
+        Assert.False(JsonDocument.Parse(AgentService.ReviewResult(cased, "thread-1")!).RootElement.GetProperty("pass").GetBoolean());
+        // A check whose only attempt failed still fails, even when that attempt is marked superseded.
+        var only = JsonDocument.Parse(AgentService.ReviewResult(ReviewAnswer("approve", "", Check("build", "fail", false)), "thread-1")!).RootElement;
+        Assert.False(only.GetProperty("pass").GetBoolean());
+        Assert.Equal("build", Assert.Single(only.GetProperty("failedChecks").EnumerateArray()).GetString());
     }
 
     [Fact]

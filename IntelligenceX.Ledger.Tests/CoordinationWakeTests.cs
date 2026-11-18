@@ -96,6 +96,7 @@ public sealed class CoordinationWakeTests {
         Assert.Equal("invalid-wake", Assert.Throws<CoordinationConflictException>(() =>
             engine.Wake(new("neither", "Nothing to wait for.", "codex", "thread-a"), Sessions)).Message);
         Assert.Equal("wake-role-denied", Assert.Throws<CoordinationConflictException>(() => engine.Wake(Ci(), PcHost)).Message);
+        Assert.Equal("invalid-wake", Assert.Throws<CoordinationConflictException>(() => engine.Wake(Ci(".."), Sessions)).Message);
 
         var first = engine.Wake(Ci(), Sessions);
         Assert.Same(state.Wakes["wake-1"], engine.Wake(Ci(), Sessions));
@@ -132,7 +133,22 @@ public sealed class CoordinationWakeTests {
 
         // The inbox hook reads only its own session's wakes.
         Assert.Equal("wake-1", Assert.Single(engine.WakesToDeliver(PcHost, 0, "thread-a").Items).Id);
+
         Assert.Empty(engine.WakesToDeliver(PcHost, 0, "session-b").Items);
+    }
+
+    [Fact]
+    public void AtTheLimitANewerCiWakeStillReplacesItsSessionsOlderOneButNotAnotherProvidersSession() {
+        var state = CreateState();
+        state.Policy.Ask = state.Policy.Ask with { MaximumWakes = 1 };
+        var engine = new CoordinationEngine(state, Now);
+        engine.Wake(Ci(), Sessions);
+        Assert.Equal("waiting", engine.Wake(Ci("wake-2"), Sessions).State);
+        Assert.Equal("cancelled", state.Wakes["wake-1"].State);
+        // A Claude session that shares the Codex thread's id is a different session: nothing to replace, so the limit holds.
+        Assert.Equal("wake-limit-reached", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Wake(new("claude-ci", "Same PR, other provider.", "claude", "thread-a", Repo: "EvotecIT/Sample", Pr: 7), Sessions)).Message);
+        Assert.Equal("waiting", state.Wakes["wake-2"].State);
     }
 
     [Theory]
@@ -143,6 +159,7 @@ public sealed class CoordinationWakeTests {
     [InlineData("open", "green", 0, false, null, null)]
     [InlineData("open", "green", 0, true, "1234567", null)]
     [InlineData("open", "green", -1, true, null, null)]
+    [InlineData("open", "failing", -2, true, null, "The checks on EvotecIT/Sample#7 on abcdef1 finished failing; GitHub named no failing check.")]
     [InlineData("merged", "green", 0, true, null, "EvotecIT/Sample#7 was merged.")]
     [InlineData("unknown", "unknown", 0, false, null, null)]
     public void TheWatcherFiresOnlyOnFinishedChecksForTheCurrentHeadOrAClosedPullRequest(string state, string checks, int pending,
@@ -150,7 +167,8 @@ public sealed class CoordinationWakeTests {
         // pending -1 stands for a fresh head with no checks reported yet.
         var read = new PullRequestReadiness {
             Repo = "EvotecIT/Sample", Pr = 7, HeadSha = "abcdef1234567890", ChecksHeadSha = checksHead, State = state, Checks = checks,
-            PendingCheckCount = Math.Max(0, pending), CheckCount = pending < 0 ? 0 : 3, FailingCheckCount = checks == "failing" ? 1 : 0, FailingChecks = checks == "failing" ? ["build"] : [],
+            PendingCheckCount = Math.Max(0, pending), CheckCount = pending == -1 ? 0 : 3, FailingCheckCount = checks == "failing" && pending != -2 ? 1 : 0,
+            FailingChecks = checks == "failing" && pending != -2 ? ["build"] : [],
             RecheckedAfterObservedHead = rechecked
         };
         Assert.Equal(expected, WakeWatcher.Outcome(read));

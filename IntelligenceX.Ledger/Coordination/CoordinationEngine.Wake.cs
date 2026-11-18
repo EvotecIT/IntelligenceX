@@ -15,7 +15,8 @@ public sealed partial class CoordinationEngine {
     public CoordinationWake Wake(CoordinationWakeRequest request, CoordinationPrincipal caller) {
         Require(caller.Role == "client" && Id(caller.MachineId) && caller.RequesterId is null, "wake-role-denied");
         var ci = request?.Repo is not null || request?.Pr is not null;
-        Require(request is not null && Id(request.Id) && request.Id.Length <= 120 && Text(request.Prompt) &&
+        // "." and ".." are valid ids but can't be addressed in a URL path segment, so the wake routes could never reach them.
+        Require(request is not null && Id(request.Id) && request.Id.Length <= 120 && request.Id is not ("." or "..") && Text(request.Prompt) &&
             request.SessionProvider is "codex" or "claude" && Id(request.SessionId) &&
             (request.SessionAddress is null || request.SessionAddress.Length is > 0 and <= 300 && !request.SessionAddress.Any(char.IsControl)) &&
             (ci ? request.Repo is { } repo && RepoName.IsMatch(repo) && request.Pr is > 0 && request.AfterMinutes is null
@@ -27,13 +28,15 @@ public sealed partial class CoordinationEngine {
                 existing.Pr == request.Pr && existing.AfterMinutes == request.AfterMinutes, "wake-id-conflict");
             return existing;
         }
-        // Due wakes count until delivered, so a host that stays offline can't let a client build an unbounded backlog.
-        Require(state.Wakes.Values.Count(w => w.Owner == caller.Id && w.State is "waiting" or "due") < state.Policy.Ask.MaximumWakes,
+        // A newer CI wake for the same session (provider and id) and pull request replaces the waiting one.
+        var replaced = ci ? state.Wakes.Values.Where(w => w.State == "waiting" && w.Owner == caller.Id && w.Provider == request.SessionProvider &&
+            w.SessionId == session && string.Equals(w.Repo, request.Repo, StringComparison.OrdinalIgnoreCase) && w.Pr == request.Pr).ToArray() : [];
+        // Due wakes count until delivered, so a host that stays offline can't let a client build an unbounded backlog. The
+        // count is taken after the replacement, so replacing a wake at the limit is allowed.
+        Require(state.Wakes.Values.Count(w => w.Owner == caller.Id && w.State is "waiting" or "due") - replaced.Length < state.Policy.Ask.MaximumWakes,
             "wake-limit-reached");
-        if (ci)
-            foreach (var older in state.Wakes.Values.Where(w => w.State == "waiting" && w.Owner == caller.Id && w.SessionId == session &&
-                string.Equals(w.Repo, request.Repo, StringComparison.OrdinalIgnoreCase) && w.Pr == request.Pr).ToArray())
-                Close(older with { Outcome = "Replaced by wake " + request.Id + "." }, "cancelled", caller.Id);
+        foreach (var older in replaced)
+            Close(older with { Outcome = "Replaced by wake " + request.Id + "." }, "cancelled", caller.Id);
         // A timed wake's only deadline is its time; the expiry applies to waiting for checks.
         var dueAt = ci ? (DateTimeOffset?)null : now.AddMinutes(request.AfterMinutes!.Value);
         var wake = new CoordinationWake(request.Id, caller.Id, caller.MachineId!, request.SessionProvider, session, request.SessionAddress,

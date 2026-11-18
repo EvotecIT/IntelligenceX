@@ -90,6 +90,10 @@ internal sealed partial class AgentService {
             .Append("Your working directory ").Append(workspace).AppendLine(" holds only the Ledger's marker file. To work on the code, " +
                 "clone the repository into a subfolder of it and check out that branch or commit. Anything you leave there is kept for " +
                 "review, so remove clones and scratch you don't need.");
+        if (IsReview(work))
+            prompt.Append("Review exactly commit ").Append(r.Checkpoint.Commit).AppendLine(": check it out by that SHA (not the branch, " +
+                "which may have moved) and confirm HEAD is that commit before you start. If it can't be fetched or HEAD differs, give " +
+                "review.verdict \"needs-attention\" with a finding that says so, and don't review anything else.");
         if (!IsReview(work)) prompt.AppendLine("Push anything worth keeping before you finish.");
         if (IsReview(work))
             prompt.AppendLine().AppendLine("This is a review. Review the changes on that branch at that commit against the base the task names " +
@@ -122,16 +126,20 @@ internal sealed partial class AgentService {
         var verdict = Str(review["verdict"]);
         var findings = review["findings"] as JsonArray ?? [];
         var checks = review["validation"] as JsonArray ?? [];
-        // Attempts of one check share its name; a check without a name is keyed by its command, then its position. The
-        // three kinds never share a key, so an unnamed failure can't be replaced by a check that happens to be named "#0".
-        var last = new Dictionary<string, (string Label, JsonNode Check)>(StringComparer.OrdinalIgnoreCase);
+        // Attempts of one check share its name (compared without case); a check without a name is keyed by its exact command,
+        // then its position, and the three kinds never share a key. Each check counts by its last attempt marked final, or by
+        // its last attempt when none is, so a check whose only attempt failed still fails.
+        var attempts = new Dictionary<string, (string Label, JsonNode? Final, JsonNode Last)>(StringComparer.Ordinal);
         for (var i = 0; i < checks.Count; i++) {
-            if (checks[i] is not JsonObject check || check["final"] is JsonValue final && final.TryGetValue<bool>(out var isFinal) && !isFinal) continue;
-            var (key, label) = Str(check["check"])?.Trim() is { Length: > 0 } named ? ("check:" + named, named)
+            if (checks[i] is not JsonObject check) continue;
+            var (key, label) = Str(check["check"])?.Trim() is { Length: > 0 } named ? ("check:" + named.ToLowerInvariant(), named)
                 : Str(check["command"])?.Trim() is { Length: > 0 } command ? ("command:" + command, command) : ("index:" + i, "#" + i);
-            last[key] = (label, check);
+            var superseded = check["final"] is JsonValue final && final.TryGetValue<bool>(out var isFinal) && !isFinal;
+            var known = attempts.TryGetValue(key, out var seen) ? seen : (label, null, check);
+            attempts[key] = (known.Label, superseded ? known.Final : check, check);
         }
-        var failed = last.Values.Where(pair => Str(pair.Check["result"]) == "fail").Select(pair => (JsonNode?)JsonValue.Create(pair.Label)).ToArray();
+        var failed = attempts.Values.Where(a => Str((a.Final ?? a.Last)["result"]) == "fail")
+            .Select(a => (JsonNode?)JsonValue.Create(a.Label)).ToArray();
         var blocking = findings.Any(f => Str(f?["severity"]) is "critical" or "high");
         var result = new JsonObject {
             ["pass"] = verdict == "approve" && !blocking && failed.Length == 0,
@@ -370,8 +378,20 @@ internal sealed partial class AgentService {
                 outcome = await _codex.RunTurnAsync(threadId, record.Workspace, prompt, OutputSchema(work), Model(work),
                     Effort(work), limit, record.KnownTurns, Submitting, Started, watch, stop).ConfigureAwait(false);
             }
-            // A rejected turn/start never ran, so it has no usage; it counts as a resume and ends in a failure result.
-            if (outcome.Status != "rejected") {
+            if (outcome.Status == "rejected") {
+                // Nothing reached the thread, so the same input (task, resume prompt or answer) is sent again unchanged, a
+                // bounded number of times; then the requester gets a failure result naming the reason.
+                if (record.Rejections < _policy.ResumeAttempts) {
+                    record = (record with { Rejections = record.Rejections + 1, KnownTurns = null }).Save(_settings.StateDirectory);
+                    Log("helper-turn-rejected", id + " " + outcome.Error);
+                    await Task.Delay(TimeSpan.FromSeconds(30), stop).ConfigureAwait(false);
+                    continue;
+                }
+                return await PublishAsync(work, record, TextResult(work, "The helper on " + _machineId + " could not start a turn: " +
+                    outcome.Error + ". Codex thread " + threadId + " has the details.", threadId), succeeded: false, stop).ConfigureAwait(false);
+            }
+            // A turn stopped at the usage limit before spending anything isn't recorded, so long waits don't fill the usage log.
+            if (!(outcome.UsageLimited && outcome.Tokens.Total == 0)) {
                 if (record.UsageTurn != outcome.TurnId)
                     record = (record with { UsageTurn = outcome.TurnId, UsageAtUtc = DateTimeOffset.UtcNow }).Save(_settings.StateDirectory);
                 await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop, record.UsageAtUtc).ConfigureAwait(false);

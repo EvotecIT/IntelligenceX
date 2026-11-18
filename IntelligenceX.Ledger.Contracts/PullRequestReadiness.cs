@@ -12,7 +12,8 @@ public sealed record PullRequestReadiness {
     public string[] PendingChecks { get; init; } = [];
     public int FailingCheckCount { get; init; }
     public int PendingCheckCount { get; init; }
-    /// <summary>How many checks GitHub reported on the head; zero means none have been reported yet.</summary>
+    /// <summary>How many checks the reader holds for the head: those GitHub reported, plus a pending entry for each required
+    /// check that hasn't reported yet. Zero means GitHub has reported none and none are required.</summary>
     public int CheckCount { get; init; }
     public int UnresolvedThreads { get; init; }
     public PullRequestThread[] Threads { get; init; } = [];

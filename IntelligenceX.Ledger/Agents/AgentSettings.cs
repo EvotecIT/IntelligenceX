@@ -111,6 +111,8 @@ internal sealed record RunRecord {
     public int Resumes { get; init; }
     /// <summary>Turns that ended at the Codex account's usage limit. They are retried without using up a resume.</summary>
     public int LimitWaits { get; init; }
+    /// <summary>turn/start calls the app server refused. The same input is sent again, a bounded number of times.</summary>
+    public int Rejections { get; init; }
     /// <summary>When the next try after a usage limit is due; a restart before then waits for it.</summary>
     public DateTimeOffset? LimitRetryAtUtc { get; init; }
     public string? ResultRef { get; init; }

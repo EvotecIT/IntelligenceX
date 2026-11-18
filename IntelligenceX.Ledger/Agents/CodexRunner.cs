@@ -104,7 +104,7 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 try { response = await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false); }
                 catch (CodexRpcException error) {
                     // The app server refused the turn (for example a model or effort it doesn't offer), so nothing started.
-                    // The caller treats it like a failed turn: resumed a bounded number of times, then a failure result.
+                    // The caller sends the same input again a bounded number of times, then publishes a failure result.
                     return new("", "rejected", null, TurnTokens.None, model ?? resumed, "turn/start rejected: " + error.Message);
                 }
                 turnId = response.GetProperty("turn").GetProperty("id").GetString() ?? throw new InvalidDataException("turn/start returned no id.");
