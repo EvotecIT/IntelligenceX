@@ -62,18 +62,82 @@ public sealed partial class LedgerStore {
         !(parent == child && link.ParentProvider == link.ChildProvider) && (link.RequestId is null || Label(link.RequestId, 128))
             ? link with { ParentSessionId = parent, ChildSessionId = child } : null;
 
-    private static async Task<Dictionary<(string, string), LinkRow>> LinksAsync(SQLiteAsyncSession db, IEnumerable<SessionLink> live, CancellationToken token) {
-        var rows = await db.QueryAsListAsync("SELECT child_provider,child_native,parent_provider,parent_native,via,observed,request FROM session_lineage",
-            row => new LinkRow(row.GetString(2), row.GetString(3), row.GetString(0), row.GetString(1), row.GetString(4),
-                DateTimeOffset.Parse(row.GetString(5), System.Globalization.CultureInfo.InvariantCulture), row.IsDBNull(6) ? null : row.GetString(6)),
-            cancellationToken: token);
+    private static LinkRow Row(SessionLink link) =>
+        new(link.ParentProvider, link.ParentSessionId, link.ChildProvider, link.ChildSessionId, link.Via, link.AtUtc, link.RequestId);
+
+    private const string LinkColumns = "SELECT child_provider,child_native,parent_provider,parent_native,via,observed,request FROM session_lineage ";
+
+    /// <summary>Stored links whose child (or parent, with <paramref name="byParent"/>) is one of the keys, by indexed lookups.</summary>
+    private static async Task<List<LinkRow>> StoredLinksAsync(SQLiteAsyncSession db, IEnumerable<(string Provider, string Native)> keys, bool byParent,
+        CancellationToken token) {
+        var found = new List<LinkRow>();
+        var (providerColumn, nativeColumn) = byParent ? ("parent_provider", "parent_native") : ("child_provider", "child_native");
+        foreach (var chunk in keys.Distinct().Chunk(100)) {
+            var args = new Dictionary<string, object?>();
+            var terms = new List<string>();
+            for (var i = 0; i < chunk.Length; i++) {
+                args["p" + i] = chunk[i].Provider;
+                args["n" + i] = chunk[i].Native;
+                terms.Add("(" + providerColumn + "=@p" + i + " AND " + nativeColumn + "=@n" + i + ")");
+            }
+            found.AddRange(await db.QueryAsListAsync(LinkColumns + "WHERE " + string.Join(" OR ", terms),
+                row => new LinkRow(row.GetString(2), row.GetString(3), row.GetString(0), row.GetString(1), row.GetString(4),
+                    DateTimeOffset.Parse(row.GetString(5), System.Globalization.CultureInfo.InvariantCulture), row.IsDBNull(6) ? null : row.GetString(6)),
+                args, cancellationToken: token));
+        }
+        return found;
+    }
+
+    /// <summary>
+    /// The links of the tree that holds one session: its ancestors, then its root's descendants level by level, read
+    /// through the indexes rather than the whole table. Stored links win; a live link fills only a child that has none.
+    /// Unexplored lists the sessions whose children weren't read because the tree is past the node limit.
+    /// </summary>
+    private static async Task<(Dictionary<(string, string), LinkRow> Links, HashSet<(string, string)> Unexplored)> ComponentAsync(
+        SQLiteAsyncSession db, (string Provider, string Native) start, IEnumerable<SessionLink> live, CancellationToken token) {
+        var liveRows = live.Select(Normalize).OfType<SessionLink>().Select(Row).ToArray();
+        var liveByChild = liveRows.GroupBy(row => (row.ChildProvider, row.ChildNative)).ToDictionary(group => group.Key, group => group.First());
+        var liveByParent = liveRows.ToLookup(row => (row.ParentProvider, row.ParentNative));
         var links = new Dictionary<(string, string), LinkRow>();
-        foreach (var row in rows) links[(row.ChildProvider, row.ChildNative)] = row;
-        // Stored links win; a live link fills only what was never recorded.
-        foreach (var link in live.Select(Normalize).OfType<SessionLink>())
-            links.TryAdd((link.ChildProvider, link.ChildSessionId), new(link.ParentProvider, link.ParentSessionId,
-                link.ChildProvider, link.ChildSessionId, link.Via, link.AtUtc, link.RequestId));
-        return links;
+        var root = start;
+        var climbed = new HashSet<(string, string)> { root };
+        while (climbed.Count < TreeDepthLimit) {
+            var up = (await StoredLinksAsync(db, [root], false, token)).FirstOrDefault() ?? liveByChild.GetValueOrDefault(root);
+            if (up is null) break;
+            links[root] = up;
+            if (!climbed.Add((up.ParentProvider, up.ParentNative))) break;
+            root = (up.ParentProvider, up.ParentNative);
+        }
+        var visited = new HashSet<(string, string)> { root };
+        var frontier = new List<(string, string)> { root };
+        while (frontier.Count > 0 && visited.Count <= TreeNodeLimit) {
+            var stored = await StoredLinksAsync(db, frontier, true, token);
+            var storedChildren = stored.Select(row => (row.ChildProvider, row.ChildNative)).ToHashSet();
+            var candidates = frontier.SelectMany(key => liveByParent[key]).Where(row => !storedChildren.Contains((row.ChildProvider, row.ChildNative))).ToArray();
+            // A live child that already has a stored parent elsewhere stays under that parent.
+            var elsewhere = (await StoredLinksAsync(db, candidates.Select(row => (row.ChildProvider, row.ChildNative)), false, token))
+                .Select(row => (row.ChildProvider, row.ChildNative)).ToHashSet();
+            var next = new List<(string, string)>();
+            foreach (var row in stored.Concat(candidates.Where(row => !elsewhere.Contains((row.ChildProvider, row.ChildNative))))) {
+                var child = (row.ChildProvider, row.ChildNative);
+                links.TryAdd(child, row);
+                if (visited.Add(child)) next.Add(child);
+            }
+            frontier = next;
+        }
+        return (links, frontier.ToHashSet());
+    }
+
+    /// <summary>Children of one session, stored first, then live links for children that have no stored parent.</summary>
+    private static async Task<string[]> ChildrenAsync(SQLiteAsyncSession db, (string Provider, string Native) parent, IEnumerable<SessionLink> live,
+        CancellationToken token) {
+        var stored = await StoredLinksAsync(db, [parent], true, token);
+        var candidates = live.Select(Normalize).OfType<SessionLink>()
+            .Where(link => (link.ParentProvider, link.ParentSessionId) == parent).Select(Row).ToArray();
+        var elsewhere = (await StoredLinksAsync(db, candidates.Select(row => (row.ChildProvider, row.ChildNative)), false, token))
+            .Select(row => (row.ChildProvider, row.ChildNative)).ToHashSet();
+        return stored.Concat(candidates.Where(row => !elsewhere.Contains((row.ChildProvider, row.ChildNative))))
+            .Select(row => row.ChildNative).Distinct().ToArray();
     }
 
     private static async Task<IReadOnlyList<TakeoverRow>> TakeoversAsync(SQLiteAsyncSession db, CancellationToken token) =>
@@ -125,25 +189,42 @@ public sealed partial class LedgerStore {
         await using var db = await _database.OpenSessionAsync(path, token);
         var matches = await ResolveSessionAsync(db, query, token);
         if (matches.Count == 0) {
-            // A parent that never reported (another machine, or before this version) is still a node when children name it.
-            if (Native(query) is { } orphan) {
-                var known = await LinksAsync(db, live ?? [], token);
-                var parent = known.Values.FirstOrDefault(link => link.ParentNative == orphan);
-                if (parent is not null) return await TreeFromAsync(db, parent.ParentProvider, orphan, known, policy, now, silentMachines, query, token);
-            }
+            // A session that hasn't reported yet (another machine, a helper bound moments ago, or one from before this
+            // version) is still a node when a link names it, as a parent or as a child.
+            if (Native(query) is { } orphan && await LinkedProviderAsync(db, orphan, live ?? [], token) is { } orphanProvider)
+                return await TreeFromAsync(db, orphanProvider, orphan, live ?? [], policy, now, silentMachines, query, token);
             return new() { State = "not-found", Query = query };
         }
         if (matches.Count > 1) return new() { State = "ambiguous", Query = query, Matches = matches.Select(m => m.Match).ToArray() };
         var item = Read<LedgerItem>((string)(await db.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
             new Dictionary<string, object?> { ["id"] = matches[0].Item }, token))!);
         if (item.Session?.SourceSessionId is not { } native) return new() { State = "not-found", Query = query };
-        var links = await LinksAsync(db, live ?? [], token);
-        return await TreeFromAsync(db, item.Provider, native.ToString(), links, policy, now, silentMachines, query, token);
+        return await TreeFromAsync(db, item.Provider, native.ToString(), live ?? [], policy, now, silentMachines, query, token);
     }
 
-    private async Task<SessionTree> TreeFromAsync(SQLiteAsyncSession db, string provider, string native, Dictionary<(string, string), LinkRow> links,
+    private static async Task<string?> LinkedProviderAsync(SQLiteAsyncSession db, string native, IEnumerable<SessionLink> live, CancellationToken token) {
+        var args = new Dictionary<string, object?> { ["native"] = native };
+        if (await db.ExecuteScalarAsync("SELECT child_provider FROM session_lineage WHERE child_native=@native LIMIT 1", args, token) is string child) return child;
+        if (await db.ExecuteScalarAsync("SELECT parent_provider FROM session_lineage WHERE parent_native=@native LIMIT 1", args, token) is string parent) return parent;
+        var link = live.Select(Normalize).OfType<SessionLink>().FirstOrDefault(row => row.ChildSessionId == native || row.ParentSessionId == native);
+        return link is null ? null : link.ChildSessionId == native ? link.ChildProvider : link.ParentProvider;
+    }
+
+    private async Task<SessionTree> TreeFromAsync(SQLiteAsyncSession db, string provider, string native, IEnumerable<SessionLink> live,
         CoordinationPolicy policy, DateTimeOffset now, HashSet<string>? silentMachines, string query, CancellationToken token) {
-        var (nodes, truncated) = await WalkAsync(db, provider, native, links, now, token);
+        var (links, unexplored) = await ComponentAsync(db, (provider, native), live, token);
+        var (nodes, omitted) = await WalkAsync(db, provider, native, links, now, token);
+        // A session with descendants left out of the response has an incomplete subtree: its rollup counts them as
+        // unknown and it is never offered for archiving.
+        var incomplete = new HashSet<(string, string)>(unexplored);
+        foreach (var key in omitted.Concat(unexplored)) {
+            var current = key;
+            for (var depth = 0; depth < TreeDepthLimit && links.TryGetValue(current, out var up); depth++) {
+                current = (up.ParentProvider, up.ParentNative);
+                if (!incomplete.Add(current)) break;
+            }
+        }
+        var truncated = omitted.Count > 0 || unexplored.Count > 0;
         var reservations = await ReservationsAsync(db, now, token);
         var takeovers = await TakeoversAsync(db, token);
         var verdicts = nodes.ToDictionary(node => (node.Provider, node.Native),
@@ -155,7 +236,7 @@ public sealed partial class LedgerStore {
         string? Rollup((string, string) key) {
             if (subtree.TryGetValue(key, out var known)) return known;
             subtree[key] = null; // cycle guard
-            var value = verdicts.GetValueOrDefault(key)?.Value;
+            var value = Worse(verdicts.GetValueOrDefault(key)?.Value, incomplete.Contains(key) ? "unknown" : null);
             foreach (var child in children.GetValueOrDefault(key) ?? []) value = Worse(value, Rollup(child));
             return subtree[key] = value;
         }
@@ -192,6 +273,7 @@ public sealed partial class LedgerStore {
             var verdict = verdicts[(node.Provider, node.Native)]?.Value;
             var below = Descendants((node.Provider, node.Native)).Select(Rollup).Aggregate((string?)null, Worse);
             var reason = verdict != "done" ? "not-finished:" + (verdict ?? "unknown")
+                : incomplete.Contains((node.Provider, node.Native)) ? "subtree-truncated"
                 : below is "working" or "stuck" or "needs-you" or "waiting" ? "subtree-still-live"
                 : await CleanupReasonAsync(db, node.Item, reservations, now, token);
             var entry = new SessionCleanupEntry(node.Native, node.Item.MachineId, node.Provider, fact.Title ?? fact.Repository?.Title, fact.Origin,
@@ -214,7 +296,7 @@ public sealed partial class LedgerStore {
     }
 
     /// <summary>Climbs to the root, then lists the root and its descendants depth first, children oldest first.</summary>
-    private async Task<(List<TreeNodeRow> Nodes, bool Truncated)> WalkAsync(SQLiteAsyncSession db, string provider, string native,
+    private async Task<(List<TreeNodeRow> Nodes, HashSet<(string, string)> Omitted)> WalkAsync(SQLiteAsyncSession db, string provider, string native,
         Dictionary<(string, string), LinkRow> links, DateTimeOffset now, CancellationToken token) {
         var root = (provider, native);
         var climbed = new HashSet<(string, string)> { root };
@@ -224,17 +306,17 @@ public sealed partial class LedgerStore {
             .ToDictionary(group => group.Key, group => group.OrderBy(link => link.AtUtc).ThenBy(link => link.ChildNative, StringComparer.Ordinal).ToArray());
         var order = new List<(string Provider, string Native, int Depth, LinkRow? Link)>();
         var seen = new HashSet<(string, string)>();
-        var truncated = false;
+        var omitted = new HashSet<(string, string)>();
         void Visit((string Provider, string Native) key, int depth, LinkRow? link) {
             if (!seen.Add(key)) return;
-            if (order.Count >= TreeNodeLimit) { truncated = true; return; }
+            if (order.Count >= TreeNodeLimit) { omitted.Add(key); return; }
             order.Add((key.Provider, key.Native, depth, link));
             foreach (var child in byParent.GetValueOrDefault(key) ?? []) Visit((child.ChildProvider, child.ChildNative), depth + 1, child);
         }
         Visit(root, 0, null);
         var items = await SessionItemsAsync(db, order.Select(row => (row.Provider, row.Native)), now, token);
         return (order.Select(row => new TreeNodeRow(row.Provider, row.Native, row.Depth, row.Link,
-            items.GetValueOrDefault((row.Provider, row.Native)))).ToList(), truncated);
+            items.GetValueOrDefault((row.Provider, row.Native)))).ToList(), omitted);
     }
 
     private static readonly string[] Urgency = ["stuck", "needs-you", "working", "waiting", "unknown", "done"];
@@ -268,7 +350,8 @@ public sealed partial class LedgerStore {
         var keys = tree.Nodes.Select(node => (node.Provider, node.Id)).ToHashSet();
         var entries = new List<SessionTrailEntry>();
         foreach (var node in tree.Nodes) {
-            entries.Add(new(node.CreatedAtUtc, "started", node.Id, node.StartedBy is null ? node.Title : "by " + node.StartedBy + " via " + node.StartedVia));
+            entries.Add(new(node.CreatedAtUtc, "started", node.Id, node.StartedBy is null ? node.Title
+                : "by " + node.StartedBy + (node.StartedVia is null ? "" : " via " + node.StartedVia)));
             if (node.Branch is not null) entries.Add(new(node.CreatedAtUtc, "branch", node.Id, node.Repo + ":" + node.Branch));
             foreach (var pr in node.PullRequests ?? []) entries.Add(new(null, "pull-request", node.Id, pr));
         }
@@ -289,16 +372,20 @@ public sealed partial class LedgerStore {
         }
         foreach (var (key, item) in items) {
             if (item.Session is { Archived: true, ArchiveObservedAtUtc: { } archivedAt }) entries.Add(new(archivedAt, "archived", key.Item2));
-            var args = new Dictionary<string, object?> { ["item"] = item.Id };
-            var transitions = await db.QueryAsListAsync("SELECT recorded,json FROM transitions WHERE item=@item ORDER BY ordinal",
-                row => (At: DateTimeOffset.Parse(row.GetString(0), System.Globalization.CultureInfo.InvariantCulture), Json: row.GetString(1)), args, cancellationToken: token);
-            foreach (var transition in transitions) {
-                using var document = System.Text.Json.JsonDocument.Parse(transition.Json);
-                var verdict = document.RootElement.TryGetProperty("verdict", out var value) && value.ValueKind == System.Text.Json.JsonValueKind.Object ? value : default;
-                string? Text(string name) => verdict.ValueKind == System.Text.Json.JsonValueKind.Object && verdict.TryGetProperty(name, out var field) &&
-                    field.ValueKind == System.Text.Json.JsonValueKind.String ? field.GetString() : null;
-                entries.Add(new(transition.At, "verdict", key.Item2, Text("value") + ":" + Text("reasonCode")));
-            }
+        }
+        var itemArgs = new Dictionary<string, object?>();
+        var sessionOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        var itemNames = items.Select((pair, i) => { itemArgs["i" + i] = pair.Value.Id; sessionOf[pair.Value.Id] = pair.Key.Item2; return "@i" + i; }).ToArray();
+        var transitions = itemNames.Length == 0 ? [] : await db.QueryAsListAsync(
+            "SELECT item,recorded,json FROM transitions WHERE item IN (" + string.Join(",", itemNames) + ") ORDER BY ordinal",
+            row => (Item: row.GetString(0), At: DateTimeOffset.Parse(row.GetString(1), System.Globalization.CultureInfo.InvariantCulture), Json: row.GetString(2)),
+            itemArgs, cancellationToken: token);
+        foreach (var transition in transitions) {
+            using var document = System.Text.Json.JsonDocument.Parse(transition.Json);
+            var verdict = document.RootElement.TryGetProperty("verdict", out var value) && value.ValueKind == System.Text.Json.JsonValueKind.Object ? value : default;
+            string? Text(string name) => verdict.ValueKind == System.Text.Json.JsonValueKind.Object && verdict.TryGetProperty(name, out var field) &&
+                field.ValueKind == System.Text.Json.JsonValueKind.String ? field.GetString() : null;
+            entries.Add(new(transition.At, "verdict", sessionOf[transition.Item], Text("value") + ":" + Text("reasonCode")));
         }
         foreach (var takeover in await TakeoversAsync(db, token))
             if (keys.Contains((takeover.FromProvider, takeover.FromNative)) || keys.Contains((takeover.ByProvider, takeover.ByNative)))
@@ -355,21 +442,21 @@ public sealed partial class LedgerStore {
             var trigger = verdict.Value == "stuck" ? "stuck" : fact.UsageLimit ? "usage-limit" : fact.Archived == true ? "archived"
                 : idleAt is { } eligible && eligible <= now ? "idle" : null;
             var takeovers = await TakeoversAsync(db, token);
-            var children = (await LinksAsync(db, live ?? [], token)).Values
-                .Where(link => link.ParentProvider == from.Provider && link.ParentNative == fromNative.ToString())
-                .Select(link => link.ChildNative).Distinct().ToArray();
+            var children = await ChildrenAsync(db, (from.Provider, fromNative.ToString()), live ?? [], token);
             var open = (asks ?? []).Where(ask => ask.RequesterProvider == from.Provider && Native(ask.RequesterSessionId) == fromNative.ToString() &&
-                ask.State is not ("completed" or "consumed" or "cancelled" or "failed" or "retired")).Select(ask => ask.RequestId).ToArray();
+                ask.State is not ("succeeded" or "failed" or "cancelled")).Select(ask => ask.RequestId).ToArray();
             var earlier = takeovers.LastOrDefault(row => row.FromProvider == from.Provider && row.FromNative == fromNative.ToString());
             if (earlier is not null && earlier.ByProvider == by.Provider && earlier.ByNative == byNative.ToString())
                 return Describe(new(true, "already-taken-over") { Trigger = earlier.Trigger, AtUtc = earlier.AtUtc,
                     Leases = (await ReservationsAsync(db, now, token)).Where(row => Holders(by).Contains(row.Lease.Holder) &&
                         row.Lease.PreviousHolder is { } previous && Holders(from).Contains(previous)).Select(row => row.Lease).ToArray() });
             if (earlier is not null) {
-                // Someone else already continues this work. Take over from them instead if they stopped too.
+                // Someone else already continues this work and holds what was moved. While they are live it stays theirs;
+                // once they stop too, the work is taken over from them, not from the original session.
                 var current = (await SessionItemsAsync(db, [(earlier.ByProvider, earlier.ByNative)], now, token)).Values.SingleOrDefault()?.Session;
-                if (current is { Archived: not true, LastActivityAtUtc: { } activity } && now - activity <= TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes))
-                    return new(false, "taken-over-by-other") { From = fromNative.ToString(), By = earlier.ByNative, AtUtc = earlier.AtUtc, Trigger = earlier.Trigger };
+                var successorLive = current is { Archived: not true, LastActivityAtUtc: { } activity } && now - activity <= TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes);
+                return new(false, successorLive ? "taken-over-by-other" : "take-over-successor") {
+                    From = fromNative.ToString(), By = earlier.ByNative, AtUtc = earlier.AtUtc, Trigger = earlier.Trigger };
             }
             if (trigger is null) return new(false, "not-eligible") { From = fromNative.ToString(), By = byNative.ToString(),
                 Verdict = verdict.Value, EligibleAtUtc = idleAt };
@@ -379,11 +466,14 @@ public sealed partial class LedgerStore {
                 var holders = Holders(from);
                 var result = new List<Lease>();
                 foreach (var row in all.Where(row => row.State is "active" or "queued" && holders.Contains(row.Lease.Holder))) {
+                    // A new id fences the stopped holder. An active reservation's history ends here and the new holder's
+                    // starts here, so benchmark budgets count the time once; the row keeps its place in the queue.
                     if (row.State == "active") await RememberLeaseAsync(tx, row.Lease, now, ct);
-                    await tx.ExecuteNonQueryAsync("DELETE FROM reservations WHERE id=@id", new Dictionary<string, object?> { ["id"] = row.Lease.LeaseId }, ct);
                     var lease = row.Lease with { Holder = holder, LeaseId = Guid.NewGuid().ToString("N"), PreviousHolder = row.Lease.Holder,
-                        TakenOverAtUtc = now, PreviousLeaseId = row.Lease.LeaseId };
-                    await SaveReservationAsync(tx, lease, row.State, row.TtlSeconds, ct);
+                        TakenOverAtUtc = now, PreviousLeaseId = row.Lease.LeaseId, AcquiredAtUtc = row.State == "active" ? now : row.Lease.AcquiredAtUtc };
+                    await tx.ExecuteNonQueryAsync("UPDATE reservations SET id=@new,holder=@holder,json=@json WHERE id=@old", new Dictionary<string, object?> {
+                        ["new"] = lease.LeaseId, ["holder"] = lease.Holder, ["json"] = Json(lease), ["old"] = row.Lease.LeaseId }, ct);
+                    if (row.State == "active") await RememberLeaseAsync(tx, lease, lease.ExpiresAtUtc, ct);
                     result.Add(lease);
                 }
                 var record = new TakeoverRow(from.Provider, fromNative.ToString(), by.Provider, byNative.ToString(), now, trigger, command.Reason,

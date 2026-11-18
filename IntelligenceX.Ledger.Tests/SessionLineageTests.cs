@@ -123,7 +123,15 @@ public sealed class SessionLineageTests : IDisposable {
         var branch = await store.AcquireLeaseAsync(new("branch:evotecit/intelligencex:feature/stuck", "codex:" + Stuck, "mac", "fix", 600), Now.AddMinutes(-1));
         var resource = await store.AcquireLeaseAsync(new("resource:fixture", Stuck.ToString(), "mac", "fixture", 3600), Now.AddMinutes(-1));
         Assert.True(branch.Ok && resource.Ok);
-        SessionAskStep[] asks = [new("ask-9", "codex", Stuck.ToString(), null, null, "queued", Now.AddHours(-1), [])];
+        SessionAskStep[] asks = [new("ask-9", "codex", Stuck.ToString(), null, null, "queued", Now.AddHours(-1), []),
+            new("ask-8", "codex", Stuck.ToString(), "claude", Root.ToString(), "succeeded", Now.AddHours(-2), [], "result-8")];
+        using var sql = new DBAClientX.SQLite();
+        async Task<long> Ordinal(string key) {
+            await using var db = await sql.OpenSessionAsync(Path.Combine(_directory, "ledger.sqlite"));
+            return Convert.ToInt64(await db.ExecuteScalarAsync("SELECT ordinal FROM reservations WHERE key=@key",
+                new Dictionary<string, object?> { ["key"] = key }));
+        }
+        var ordinal = await Ordinal("resource:fixture");
 
         Assert.Equal("by-not-live", (await store.TakeOverSessionAsync(new(Stuck.ToString(), Helper.ToString()), Now)).State);
         var early = await store.TakeOverSessionAsync(new(Nested.ToString(), Root.ToString()), Now);
@@ -132,7 +140,17 @@ public sealed class SessionLineageTests : IDisposable {
         var reply = await store.TakeOverSessionAsync(new(Stuck.ToString(), Nested.ToString(), "helper crashed"), Now, Live, asks);
         Assert.True(reply.Ok);
         Assert.Equal(("taken-over", "stuck", "feature/stuck"), (reply.State, reply.Trigger, reply.Branch));
+        // A finished ask isn't work to continue.
         Assert.Equal(new[] { "ask-9" }, reply.OpenAsks);
+        Assert.Equal(ordinal, await Ordinal("resource:fixture"));
+        await using (var db = await sql.OpenSessionAsync(Path.Combine(_directory, "ledger.sqlite"))) {
+            // The stopped holder's interval ends where the new holder's starts, so budgets count the time once.
+            var history = await db.QueryAsListAsync("SELECT started,ended FROM lease_history WHERE key='resource:fixture' ORDER BY started",
+                row => (row.GetString(0), row.GetString(1)));
+            Assert.Equal(2, history.Count);
+            Assert.Equal(history[0].Item2, history[1].Item1);
+            Assert.Equal(Now.ToString("O"), history[1].Item1);
+        }
         Assert.Equal(new string('a', 40), reply.Commit);
         Assert.Equal(2, reply.Leases!.Length);
         Assert.All(reply.Leases, lease => Assert.Equal("claude:" + Nested, lease.Holder));
@@ -163,6 +181,38 @@ public sealed class SessionLineageTests : IDisposable {
         Assert.Contains(trail.Entries, entry => entry is { Kind: "ask-completed", Detail: "ask-2 result-2" });
         Assert.Contains(trail.Entries, entry => entry.Kind == "started" && entry.Session == Subagent.ToString() && entry.Detail == "by " + Helper + " via codex-parent-thread");
         Assert.Equal(trail.Entries.Where(entry => entry.AtUtc is not null).Select(entry => entry.AtUtc).Order(), trail.Entries.Where(entry => entry.AtUtc is not null).Select(entry => entry.AtUtc));
+    }
+
+    [Fact]
+    public async Task AStoppedSuccessorIsTakenOverItself() {
+        using var store = await SeedAsync();
+        Assert.True((await store.TakeOverSessionAsync(new(Stuck.ToString(), Nested.ToString()), Now)).Ok);
+        var later = Now.AddHours(2);
+        await store.IngestAsync([Session("win-pc", "claude", Root, Working(origin: "human") with { LastActivityAtUtc = later, TurnStartedAtUtc = later })], later);
+        var redirect = await store.TakeOverSessionAsync(new(Stuck.ToString(), Root.ToString()), later);
+        Assert.Equal((false, "take-over-successor", Nested.ToString()), (redirect.Ok, redirect.State, redirect.By));
+        Assert.Equal("taken-over", (await store.TakeOverSessionAsync(new(Nested.ToString(), Root.ToString()), later)).State);
+    }
+
+    [Fact]
+    public async Task TruncatedSubtreesAreHeldAndUnreportedHelpersResolve() {
+        using var store = await SeedAsync();
+        var children = Enumerable.Range(0, LedgerStore.TreeNodeLimit).Select(i => new SessionLink("codex", Helper.ToString(), "codex",
+            new Guid(i + 1, 0, 0, new byte[8]).ToString(), "ix-ask", Now.AddMinutes(-70)));
+        Assert.Equal(LedgerStore.TreeNodeLimit, await store.RecordLinksAsync(children));
+
+        var tree = await store.SessionTreeAsync(Root.ToString(), Now, Live);
+        Assert.True(tree.Truncated);
+        Assert.Equal(LedgerStore.TreeNodeLimit, tree.Nodes.Length);
+        var helper = tree.Nodes.Single(node => node.Id == Helper.ToString());
+        Assert.Equal("unknown", helper.SubtreeVerdict);
+        Assert.Equal("subtree-truncated", tree.ArchiveHeld!.Single(entry => entry.Id == Helper.ToString()).Reason);
+        Assert.DoesNotContain(tree.Archive!, entry => entry.Id == Helper.ToString());
+
+        // A helper bound moments ago has a link but no report yet; its tree still resolves.
+        var fresh = new Guid(1, 0, 0, new byte[8]).ToString();
+        var fromChild = await store.SessionTreeAsync(fresh, Now, Live);
+        Assert.Equal(("found", Root.ToString()), (fromChild.State, fromChild.Root));
     }
 
     [Fact]
