@@ -88,6 +88,35 @@ public sealed class ProjectClaimReaderTests {
         }
     }
 
+    [Fact]
+    public async Task UnchangedPagesAreReadWithTheirETagAndReuseThePreviousRows() {
+        var handler = new ConditionalHandler();
+        using var client = new HttpClient(handler);
+        var reader = new ProjectClaimReader(client, new() { Organization = "synthetic", ProjectNumber = 1,
+            AgentFieldId = 1, MachineFieldId = 2, StatusFieldId = 3, PullRequestFieldId = 4,
+            MachineAliases = new() { ["synthetic-host"] = "machine-a" } });
+        var first = await reader.ReadAsync(default);
+        Assert.Equal([null, null], handler.Conditions);
+        Assert.Equal(2, first.ActiveItems.Count);
+
+        // Both pages unchanged: GitHub answers 304 without a body or Link header, and the snapshot is rebuilt from the cache.
+        handler.Conditions.Clear();
+        var second = await reader.ReadAsync(default);
+        Assert.Equal(["W/\"page-1-v1\"", "W/\"page-2-v1\""], handler.Conditions);
+        Assert.Equal(2, reader.NotModified);
+        Assert.Equal(first.ActiveItems, second.ActiveItems);
+        Assert.Equal(first.PullRequestUrlsByItem.Keys, second.PullRequestUrlsByItem.Keys);
+
+        // A changed page is read again and replaces its cached rows; the unchanged page is still reused.
+        handler.Conditions.Clear();
+        handler.SecondPageStatus = "Done";
+        var third = await reader.ReadAsync(default);
+        Assert.Equal(["W/\"page-1-v1\"", "W/\"page-2-v1\""], handler.Conditions);
+        Assert.Equal(3, reader.NotModified);
+        Assert.Equal(LocalReporter.ItemId("machine-a", "codex", "11111111-1111-1111-1111-111111111111"), Assert.Single(third.ActiveItems));
+        Assert.Equal(6, reader.Requests);
+    }
+
     private sealed class FixtureHandler(string json) : HttpMessageHandler {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
             Assert.Equal(HttpMethod.Get, request.Method);
@@ -114,6 +143,31 @@ public sealed class ProjectClaimReaderTests {
             var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) };
             if (page == 1) response.Headers.TryAddWithoutValidation("Link",
                 $"<https://{(foreignHost ? "example.invalid" : "api.github.com")}/organizations/1/projectsV2/1/items?after=synthetic-cursor>; rel=\"next\"");
+            return Task.FromResult(response);
+        }
+    }
+    private sealed class ConditionalHandler : HttpMessageHandler {
+        internal List<string?> Conditions { get; } = [];
+        internal string SecondPageStatus { get; set; } = "Active";
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+            var page = request.RequestUri!.Query.Contains("after=synthetic-cursor", StringComparison.Ordinal) ? 2 : 1;
+            var condition = request.Headers.TryGetValues("If-None-Match", out var values) ? values.Single() : null;
+            Conditions.Add(condition);
+            var status = page == 1 ? "Active" : SecondPageStatus;
+            var etag = $"W/\"page-{page}-{(status == "Active" ? "v1" : "v2")}\"";
+            if (condition == etag) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotModified));
+            var json = """
+                [{"node_id":"synthetic-PAGE","fields":[
+                {"id":1,"data_type":"text","value":{"raw":"codex:SESSION"}},
+                {"id":2,"data_type":"single_select","value":{"name":{"raw":"synthetic-host"}}},
+                {"id":3,"data_type":"single_select","value":{"name":{"raw":"STATUS"}}},
+                {"id":4,"data_type":"text","value":{"raw":"https://github.com/Sample/Project/pull/PAGE"}}]}]
+                """.Replace("PAGE", page.ToString()).Replace("STATUS", status)
+                .Replace("SESSION", page == 1 ? "11111111-1111-1111-1111-111111111111" : "22222222-2222-2222-2222-222222222222");
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) };
+            response.Headers.TryAddWithoutValidation("ETag", etag);
+            if (page == 1) response.Headers.TryAddWithoutValidation("Link",
+                "<https://api.github.com/organizations/1/projectsV2/1/items?after=synthetic-cursor>; rel=\"next\"");
             return Task.FromResult(response);
         }
     }
