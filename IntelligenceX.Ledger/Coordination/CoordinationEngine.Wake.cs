@@ -22,8 +22,9 @@ public sealed partial class CoordinationEngine {
                 : request.AfterMinutes is { } after && double.IsFinite(after) && after > 0 && after <= 7 * 24 * 60), "invalid-wake");
         var session = request!.SessionProvider == "codex" ? request.SessionId.ToLowerInvariant() : request.SessionId;
         if (state.Wakes.TryGetValue(request.Id, out var existing)) {
-            Require(existing.Owner == caller.Id && existing.SessionId == session && existing.Prompt == request.Prompt &&
-                existing.Repo == request.Repo && existing.Pr == request.Pr, "wake-id-conflict");
+            Require(existing.Owner == caller.Id && existing.Provider == request.SessionProvider && existing.SessionId == session &&
+                existing.Address == request.SessionAddress && existing.Prompt == request.Prompt && existing.Repo == request.Repo &&
+                existing.Pr == request.Pr && existing.AfterMinutes == request.AfterMinutes, "wake-id-conflict");
             return existing;
         }
         Require(state.Wakes.Values.Count(w => w.Owner == caller.Id && w.State == "waiting") < state.Policy.Ask.MaximumWakes, "wake-limit-reached");
@@ -31,9 +32,11 @@ public sealed partial class CoordinationEngine {
             foreach (var older in state.Wakes.Values.Where(w => w.State == "waiting" && w.Owner == caller.Id && w.SessionId == session &&
                 string.Equals(w.Repo, request.Repo, StringComparison.OrdinalIgnoreCase) && w.Pr == request.Pr).ToArray())
                 Close(older with { Outcome = "Replaced by wake " + request.Id + "." }, "cancelled", caller.Id);
+        // A timed wake's only deadline is its time; the expiry applies to waiting for checks.
+        var dueAt = ci ? (DateTimeOffset?)null : now.AddMinutes(request.AfterMinutes!.Value);
         var wake = new CoordinationWake(request.Id, caller.Id, caller.MachineId!, request.SessionProvider, session, request.SessionAddress,
-            request.Prompt, request.Repo, request.Pr, now, ci ? null : now.AddMinutes(request.AfterMinutes!.Value),
-            now.AddHours(state.Policy.Ask.WakeExpiryHours), Order: state.Sequence + 1);
+            request.Prompt, request.Repo, request.Pr, now, dueAt, dueAt ?? now.AddHours(state.Policy.Ask.WakeExpiryHours),
+            Order: state.Sequence + 1, AfterMinutes: request.AfterMinutes);
         state.Wakes[wake.Id] = wake;
         Note(wake.Id, "wake-requested", caller.Id, 0);
         ApplyWakes();
@@ -57,10 +60,11 @@ public sealed partial class CoordinationEngine {
         return Close(wake, "cancelled", caller.Id);
     }
 
-    /// <summary>Pull requests that waiting wakes watch, for the service's checks reader.</summary>
+    /// <summary>Every pull request that waiting wakes watch, for the service's checks reader. A client may hold
+    /// ask.maximumWakes, so the list stays bounded; each read is cached for a minute.</summary>
     public (string Repo, int Pr)[] WatchedPullRequests() => state.Wakes.Values
         .Where(w => w.State == "waiting" && w.Repo is not null && w.Pr is not null)
-        .Select(w => (w.Repo!.ToLowerInvariant(), w.Pr!.Value)).Distinct().Take(32).ToArray();
+        .Select(w => (w.Repo!.ToLowerInvariant(), w.Pr!.Value)).Distinct().ToArray();
 
     /// <summary>Makes every waiting wake on the pull request due with the checks' outcome. Called by the service once
     /// the checks on the current head have finished, or the pull request is no longer open.</summary>
@@ -92,7 +96,7 @@ public sealed partial class CoordinationEngine {
         foreach (var wake in state.Wakes.Values.ToArray()) {
             if (wake.State == "waiting" && wake.Repo is null && wake.DueAtUtc is { } at && at <= now)
                 MakeDue(wake, "The " + Minutes(at - wake.CreatedAtUtc) + " you asked to wait have passed.");
-            else if (wake.State == "waiting" && wake.ExpiresAtUtc <= now)
+            else if (wake.State == "waiting" && wake.Repo is not null && wake.ExpiresAtUtc <= now)
                 MakeDue(wake, "The checks on " + wake.Repo + "#" + wake.Pr + " did not finish within " +
                     Minutes(wake.ExpiresAtUtc - wake.CreatedAtUtc) + "; this wake expired.");
             else if (wake.State == "due" && wake.Delivery is { Stage: "sending", AtUtc: { } since } && now - since > unconfirmed)

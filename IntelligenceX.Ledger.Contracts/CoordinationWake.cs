@@ -12,7 +12,7 @@ public sealed record CoordinationWakeRequest(string Id, string Prompt, string Se
 public sealed record CoordinationWake(string Id, string Owner, string MachineId, string Provider, string SessionId,
     string? Address, string Prompt, string? Repo, int? Pr, DateTimeOffset CreatedAtUtc, DateTimeOffset? DueAtUtc,
     DateTimeOffset ExpiresAtUtc, string State = "waiting", string? Outcome = null, CoordinationDelivery? Delivery = null,
-    long Order = 0, DateTimeOffset? ClosedAtUtc = null);
+    long Order = 0, DateTimeOffset? ClosedAtUtc = null, double? AfterMinutes = null);
 
 /// <summary>Due wakes a host has to deliver, oldest first.</summary>
 public sealed record CoordinationWakePage(CoordinationWake[] Items, long? NextOrder);

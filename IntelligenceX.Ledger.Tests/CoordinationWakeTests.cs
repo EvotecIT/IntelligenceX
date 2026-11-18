@@ -78,9 +78,11 @@ public sealed class CoordinationWakeTests {
         Assert.Equal(("due", "The 45 minutes you asked to wait have passed."), (state.Wakes["timer"].State, state.Wakes["timer"].Outcome));
         Assert.Equal("waiting", state.Wakes["wake-1"].State);
 
+        engine.Wake(new("long-timer", "Check again in four days.", "codex", "thread-a", AfterMinutes: 4 * 24 * 60), Sessions);
         new CoordinationEngine(state, Now.AddHours(state.Policy.Ask.WakeExpiryHours)).ApplyWakes();
         Assert.Equal("due", state.Wakes["wake-1"].State);
         Assert.Contains("did not finish within 72 hours", state.Wakes["wake-1"].Outcome);
+        Assert.Equal("waiting", state.Wakes["long-timer"].State);
     }
 
     [Fact]
@@ -100,6 +102,9 @@ public sealed class CoordinationWakeTests {
         Assert.Equal(first, engine.Wake(Ci(), Sessions));
         Assert.Equal("wake-id-conflict", Assert.Throws<CoordinationConflictException>(() =>
             engine.Wake(Ci() with { Prompt = "Something else." }, Sessions)).Message);
+        engine.Wake(new("timer", "Later.", "codex", "thread-a", AfterMinutes: 5), Sessions);
+        Assert.Equal("wake-id-conflict", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Wake(new("timer", "Later.", "codex", "thread-a", AfterMinutes: 60), Sessions)).Message);
 
         engine.Wake(Ci("wake-2"), Sessions);
         Assert.Equal(("cancelled", "Replaced by wake wake-2."), (state.Wakes["wake-1"].State, state.Wakes["wake-1"].Outcome));

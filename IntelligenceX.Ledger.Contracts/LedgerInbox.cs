@@ -5,8 +5,8 @@ using System.Text.Json.Nodes;
 
 namespace IntelligenceX.Ledger.Contracts;
 
-/// <summary>Claude Code hook (SessionStart or UserPromptSubmit) that hands the session whatever results, questions and
-/// notices are waiting for it, for example while the CLI used for SendMessage was signed out. Each item is begun in the
+/// <summary>Claude Code hook (SessionStart or UserPromptSubmit) that hands the session whatever results, questions,
+/// notices and due wakes are waiting for it, for example while the CLI used for SendMessage was signed out. Each item is begun in the
 /// Ledger before it is printed and recorded as submitted after, so it is shown at most once and never also sent by
 /// SendMessage. Any failure prints nothing: a hook must never stop the session. Reflection-free, so the hook can be a
 /// Native AOT executable that starts in milliseconds.</summary>
@@ -145,6 +145,21 @@ public static class LedgerInbox {
                 collected.Receipts.Add(t => ledger.QuestionDeliveryAsync(q.RequestId, q.Number, new("question", attempt, "submitted", evidence), t));
             }
             if (questions.NextOrder is not { } next) break;
+            after = next;
+        }
+        after = 0;
+        for (var page = 0; page < 8; page++) {
+            var wakes = await ledger.WakesAsync(token, after).ConfigureAwait(false);
+            foreach (var wake in wakes.Items.Where(w => w.MachineId == machineId && w.Provider == "claude" && w.SessionId == session)) {
+                var attempt = "hook-" + Hash(wake.Id, wake.Delivery?.AttemptId, run)[..32];
+                Func<CancellationToken, Task> undo = t => ledger.WakeDeliveryAsync(wake.Id, new(attempt, "not-submitted", evidence), t);
+                collected.Undo.Add(undo);
+                try { await ledger.WakeDeliveryAsync(wake.Id, new(attempt, "sending"), token).ConfigureAwait(false); }
+                catch (CoordinationCommandRejectedException) { collected.Undo.Remove(undo); continue; }
+                collected.Parts.Add("Wake " + wake.Id + ": " + wake.Outcome + "\n\n" + wake.Prompt);
+                collected.Receipts.Add(t => ledger.WakeDeliveryAsync(wake.Id, new(attempt, "submitted", evidence), t));
+            }
+            if (wakes.NextOrder is not { } next) break;
             after = next;
         }
     }
