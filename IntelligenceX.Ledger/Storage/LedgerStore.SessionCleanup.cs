@@ -1,3 +1,4 @@
+using DBAClientX;
 using IntelligenceX.Ledger.Contracts;
 
 namespace IntelligenceX.Ledger.Storage;
@@ -23,15 +24,7 @@ public sealed partial class LedgerStore {
             var fact = item.Session!;
             var id = fact.SourceSessionId?.ToString() ?? item.Id;
             var repo = fact.Repository;
-            var reason = "clean-and-pushed";
-            if (fact.Origin != "agent") reason = "personal-session-information-only";
-            else if (leases.Any(row => row.Lease.Holder == id || row.Lease.Holder == item.Id ||
-                row.Lease.Holder == item.Provider + ":" + id || row.Lease.Holder == item.Provider + ":" + id + ":owner-driven")) reason = "live-lease-or-queue";
-            else if (fact.Question || await HasOpenQuestionAsync(db, item, now, false, token)) reason = "open-question";
-            else if (repo?.Dirty == true) reason = "dirty-worktree";
-            else if (repo?.Unpushed == true) reason = "unpushed-worktree";
-            else if (repo?.GitState == "workspace-missing") reason = "workspace-already-missing";
-            else if (repo?.Dirty != false || repo.Unpushed != false) reason = "workspace-check-required";
+            var reason = await CleanupReasonAsync(db, item, leases, now, token);
             var entry = new SessionCleanupEntry(id, item.MachineId, item.Provider, fact.Title ?? repo?.Title, fact.Origin,
                 Math.Round((now - fact.LastActivityAtUtc!.Value).TotalDays, 1), repo?.Worktree, repo?.Branch, reason);
             if (fact.Origin != "agent") personal.Add(entry);
@@ -39,5 +32,26 @@ public sealed partial class LedgerStore {
             else held.Add(entry);
         }
         return new(policy.Revision, now, policy.Session.IdleArchiveHours, ready.ToArray(), held.ToArray(), personal.ToArray());
+    }
+
+    /// <summary>Why cleanup may or may not archive one session: clean-and-pushed and workspace-already-missing allow it.</summary>
+    private async Task<string> CleanupReasonAsync(SQLiteAsyncSession db, LedgerItem item, List<Reservation> leases, DateTimeOffset now, CancellationToken token) {
+        var fact = item.Session!;
+        var repo = fact.Repository;
+        var holders = Holders(item);
+        if (fact.Origin != "agent") return "personal-session-information-only";
+        if (leases.Any(row => holders.Contains(row.Lease.Holder))) return "live-lease-or-queue";
+        if (fact.Question || await HasOpenQuestionAsync(db, item, now, false, token)) return "open-question";
+        if (repo?.Dirty == true) return "dirty-worktree";
+        if (repo?.Unpushed == true) return "unpushed-worktree";
+        if (repo?.GitState == "workspace-missing") return "workspace-already-missing";
+        if (repo?.Dirty != false || repo.Unpushed != false) return "workspace-check-required";
+        return "clean-and-pushed";
+    }
+
+    /// <summary>Every holder string a session may reserve under: its item id, native id, and provider-qualified forms.</summary>
+    private static HashSet<string> Holders(LedgerItem item) {
+        var id = item.Session?.SourceSessionId?.ToString() ?? item.Id;
+        return new(StringComparer.Ordinal) { item.Id, id, item.Provider + ":" + id, item.Provider + ":" + id + ":owner-driven" };
     }
 }

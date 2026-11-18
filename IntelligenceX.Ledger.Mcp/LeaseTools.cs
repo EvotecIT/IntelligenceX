@@ -22,4 +22,9 @@ public sealed class LeaseTools(LedgerReadClient client) {
     [Description("Release the reservation matching this key and leaseId. A successor's reservation is protected.")]
     public Task<LeaseReply> Release(string key, string leaseId, CancellationToken cancellationToken = default) =>
         client.ReleaseLeaseAsync(new(key, leaseId), cancellationToken);
+
+    [McpServerTool(Name = "session_takeover", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Take over a session that stopped: stuck, at a usage limit, archived, or idle past the reservation takeover window. Its active and queued reservations move to the session named by 'by' (normally this session's own ID), and both sessions record the takeover. The reply carries what is needed to continue: its task, repository, branch, worktree, commit, PRs, children and open asks. not-eligible returns when it will be. Repeating the same takeover is safe.")]
+    public Task<SessionTakeoverReply> TakeOver(string from, string by, string? reason = null, CancellationToken cancellationToken = default) =>
+        client.TakeOverSessionAsync(new(from, by, reason), cancellationToken);
 }

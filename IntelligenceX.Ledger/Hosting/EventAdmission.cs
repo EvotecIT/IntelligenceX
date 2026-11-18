@@ -22,7 +22,10 @@ internal static class EventAdmission {
             !DeclarationValidation.ValidScope(s.Scope) || s.TurnId is not null && !Id(s.TurnId) || s.InputId is not null && !Id(s.InputId) ||
             s.AccountId is not null && !Id(s.AccountId) || s.RepositoryBranchKey is not null && !Id(s.RepositoryBranchKey) ||
             !Time(s.LastActivityAtUtc) || !Time(s.TurnStartedAtUtc) || !Time(s.TurnEndedAtUtc) || !Time(s.QuestionAtUtc) ||
-            !Time(s.ArchiveObservedAtUtc) || (s.Archived is null) != (s.ArchiveObservedAtUtc is null))) return false;
+            !Time(s.ArchiveObservedAtUtc) || (s.Archived is null) != (s.ArchiveObservedAtUtc is null) ||
+            (s.StartedBySessionId is null) != (s.StartedByProvider is null) || (s.StartedBySessionId is null) != (s.StartedVia is null) ||
+            s.StartedByProvider is not (null or "codex" or "claude") ||
+            s.StartedVia is not (null or "codex-parent-thread" or "claude-parent-session" or "desktop-side-session"))) return false;
         if (e.Session?.Repository is { } repository && (repository.Repo is not { Length: > 0 and <= 200 } ||
             repository.Repo.Split('/').Length != 2 || repository.Branch?.Length > 256 || repository.Worktree?.Length > 4096 ||
             repository.Title?.Length > 240 || repository.PullRequests is null || repository.PullRequests.Length > 10 ||

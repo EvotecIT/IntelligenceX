@@ -84,6 +84,31 @@ ix ledger overlap example/project --branch feature/cell-formatting --files src/C
 
 MCP exposes `repo_activity(repo)` and `overlap(repo, branch?, files?, text?)` with the read token. Both accept `details` and `recent24h`. HTTP uses `GET /repo-activity?repo=...` and `GET /overlap?repo=...&branch=...&files=...&text=...`, with `details=true` and `recent24h=true` for the optional views. Overlap evaluates all selected evidence before formatting and returns `none`, `possible` or `conflict` with grouped matches. Text comparison uses words from the supplied text and observed titles. Every response starts with a one-line summary and preserves missing-source coverage.
 
+## Session trees, takeover and trail
+
+The Ledger records which session started which, across Claude and Codex and across machines:
+
+- A Codex thread's `parent_thread_id` (subagents, and forks made in the app).
+- A Claude Code `parentSessionId`.
+- A Claude desktop session spawned from another (`spawnedFrom` in the app's session file). Only a side session the other session started itself counts as agent-started; one a person started from a suggestion card keeps its own provenance.
+- An ask: the asking session is the parent of the helper session bound to the request. The link is recorded when the helper is bound, so it outlives the request's archive.
+
+The first parent recorded for a session stays; a later observation never moves it under another parent.
+
+```text
+ix ledger session_tree <session-id-or-title> --config /absolute/path/client.json
+ix ledger session_trail <session-id-or-title> --config /absolute/path/client.json
+ix ledger session_takeover <from-session> <by-session> [--reason "helper crashed"] --config /absolute/path/leases.json
+```
+
+`session_tree` climbs from any session to its root and lists the root and every descendant, depth first, up to 200 sessions. Each node has its parent and how it was linked, verdict, machine, provider, repository, branch, pull requests, reservations and takeovers. `subtreeVerdict` is the most urgent verdict in the node's subtree (stuck, then needs-you, working, waiting, unknown, done), so a branch with one stuck session reads as stuck. A node that is stuck, at a usage limit, or archived while it still holds reservations or has running children gets `suggestion: take-over`. `archive` lists the root's finished descendants that cleanup would archive once the root's outcome is accepted, using the same checks as `cleanup` (no reservation, no open question, clean and pushed). Descendants that are still running, or that have running descendants, are listed under `archiveHeld` with the reason. It is a plan; nothing is archived.
+
+`session_takeover` lets a live session continue the work of one that stopped. The stopped session qualifies when its verdict is stuck, it hit a usage limit, it was archived, or it has been idle past `lease.takeoverIdleMinutes` (or `lease.takeoverIdleMinutesHuman` for a personal session). Its active and queued reservations move to the new session in one transaction, keeping their keys, machines and expiry, with `previousHolder` and `takenOverAtUtc` set. The tree then shows `takenOverBy` on one side and `tookOverFrom` on the other. The reply carries what's needed to continue: the task, repository, branch, worktree, commit, pull requests, child sessions and open asks. `not-eligible` says when the session will qualify. Repeating the same takeover returns `already-taken-over`. The new session's reservations follow the normal rules from then on, so it renews them and hands branch work off as usual.
+
+`session_trail` follows one tree through time: each session's start and parent, branches and pull requests, asks and their stages and results, reservations taken and ended, takeovers, verdict changes within the 30-day transition history, and archiving.
+
+MCP exposes `session_tree(id)` and `session_trail(id)` with the read token, and `session_takeover(from, by, reason?)` with `--lease-config`. HTTP uses `GET /session-tree?id=...`, `GET /session-trail?id=...` and `POST /session-takeover` under `/api/ledger/v1`; the takeover needs the write token.
+
 ## Reporting and retention
 
 Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. An observation that leaves its item unchanged apart from evidence references and refresh-only times (last activity, last progress, a re-observed archive, evaluation time) still updates the item but doesn't add a history row. Raw events older than seven days, and verdict transitions with their correctness marks older than 30 days, are pruned in batches of at most 10000 per pass. Items stay. Existing retention backlog drains over successive passes.

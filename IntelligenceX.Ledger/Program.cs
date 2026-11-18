@@ -122,10 +122,27 @@ public static class Program {
             return Results.Ok(await store.SessionStatusAsync(id, DateTimeOffset.UtcNow, ct,
                 machines.Where(machine => machine.State != "healthy").Select(machine => machine.Id).ToHashSet(StringComparer.Ordinal)));
         });
+        async Task<HashSet<string>> SilentMachines(DateTimeOffset now, CancellationToken ct) =>
+            (await runtime.MachinesAsync(now, ct)).Where(machine => machine.State != "healthy").Select(machine => machine.Id).ToHashSet(StringComparer.Ordinal);
+        app.MapGet(prefix + "/session-tree", async (string id, CancellationToken ct) => {
+            var now = DateTimeOffset.UtcNow;
+            var (links, _) = await SessionLineageSource.ReadAsync(coordinationStore, now, ct);
+            return Results.Ok(await store.SessionTreeAsync(id, now, links, await SilentMachines(now, ct), ct));
+        });
+        app.MapGet(prefix + "/session-trail", async (string id, CancellationToken ct) => {
+            var now = DateTimeOffset.UtcNow;
+            var (links, asks) = await SessionLineageSource.ReadAsync(coordinationStore, now, ct);
+            return Results.Ok(await store.SessionTrailAsync(id, now, links, asks, ct));
+        });
+        app.MapPost(prefix + "/session-takeover", async (SessionTakeoverCommand command, CancellationToken ct) => {
+            var now = DateTimeOffset.UtcNow;
+            var (links, asks) = await SessionLineageSource.ReadAsync(coordinationStore, now, ct);
+            return Results.Ok(await store.TakeOverSessionAsync(command, now, links, asks, ct));
+        });
         LeaseEndpoints.Map(app, store, settings);
         Catalog.WorkCatalogEndpoints.Map(app, catalog, runtime);
         if (coordinationStore is not null) {
-            CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory);
+            CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory, (link, ct) => store.RecordLinksAsync([link], ct));
         }
         app.MapGet(prefix + "/policy", async (CancellationToken ct) => Results.Ok(await ReadPolicy(ct)));
         app.MapPost(prefix + "/events", async (LedgerEvent[] events, CancellationToken ct) => {
