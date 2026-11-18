@@ -202,7 +202,12 @@ function Switch-Version([string]$Version, [string]$Previous) {
     Write-Receipt (Split-Path $Version -Leaf) $Previous
     # Keep only the current and previous versions.
     Get-ChildItem -LiteralPath $Versions -Directory | Where-Object { $_.Name -notin @((Split-Path $Version -Leaf), $Previous) } |
-        ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Recurse -Force } catch { Write-Warning "Kept $($_.FullName): $($_.Exception.Message)" } }
+        ForEach-Object {
+            # Inside catch, $_ is the error record, so keep the folder in its own variable.
+            $folder = $_.FullName
+            try { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction Stop }
+            catch { Write-Warning "Kept ${folder}: $($_.Exception.Message)" }
+        }
 }
 
 $installed = Read-Json $Receipt
