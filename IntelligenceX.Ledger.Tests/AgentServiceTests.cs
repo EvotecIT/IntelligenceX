@@ -194,6 +194,21 @@ public sealed class AgentServiceTests {
     }
 
     [Fact]
+    public void AQueuedMessageCountsAsDeliveredOnlyWhenTheDaemonResumedTheThread() {
+        // The exact output of codex 0.169 (app) and 0.162 (npm) on a machine without the local app-server daemon.
+        const string parked = "Warning: message was queued, but could not resume thread 01a1f04c-2799-7f33-b8ee-8e45e5fc36f1: " +
+            "start a local daemon or specify a server with --remote\n";
+        const string old = "error: unexpected argument '--resume' found\n\n  tip: a similar argument exists: '--remote'\n";
+        Assert.Equal(CodexRunner.QueueOutcome.Resumed, CodexRunner.ClassifyQueue(0, "", askedToResume: true));
+        Assert.Equal(CodexRunner.QueueOutcome.Parked, CodexRunner.ClassifyQueue(0, parked, askedToResume: true));
+        Assert.Equal(CodexRunner.QueueOutcome.ResumeUnsupported, CodexRunner.ClassifyQueue(2, old, askedToResume: true));
+        // Without --resume nothing asks the daemon, so the message is only parked.
+        Assert.Equal(CodexRunner.QueueOutcome.Parked, CodexRunner.ClassifyQueue(0, "", askedToResume: false));
+        Assert.Equal(CodexRunner.QueueOutcome.Failed, CodexRunner.ClassifyQueue(2, old, askedToResume: false));
+        Assert.Equal(CodexRunner.QueueOutcome.Failed, CodexRunner.ClassifyQueue(1, "queue failed", askedToResume: true));
+    }
+
+    [Fact]
     public void ATurnStoppedByTheCodexUsageLimitIsToldApartFromOtherFailures() {
         using var limited = JsonDocument.Parse("{\"message\":\"You've hit your usage limit.\",\"codexErrorInfo\":\"usageLimitExceeded\"}");
         using var other = JsonDocument.Parse("{\"message\":\"Server overloaded.\",\"codexErrorInfo\":\"serverOverloaded\"}");

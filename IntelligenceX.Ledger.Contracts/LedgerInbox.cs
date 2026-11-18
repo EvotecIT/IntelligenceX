@@ -5,8 +5,11 @@ using System.Text.Json.Nodes;
 
 namespace IntelligenceX.Ledger.Contracts;
 
-/// <summary>Claude Code hook (SessionStart or UserPromptSubmit) that hands the session whatever results, questions,
-/// notices and due wakes are waiting for it, for example while the CLI used for SendMessage was signed out. Each item is begun in the
+/// <summary>Claude Code hook (registered on SessionStart and UserPromptSubmit) that hands the session whatever results,
+/// questions, notices and due wakes are waiting for it, for example while the CLI used for SendMessage was signed out. It
+/// delivers only on UserPromptSubmit, whose context always reaches the turn it starts. The desktop app also fires
+/// SessionStart when it restarts an idle session's process; that context reaches the model only if a turn follows in the
+/// same process, so an item printed there could be recorded as submitted and never seen. Each item is begun in the
 /// Ledger before it is printed and recorded as submitted after, so it is shown at most once and never also sent by
 /// SendMessage. Any failure prints nothing: a hook must never stop the session. Reflection-free, so the hook can be a
 /// Native AOT executable that starts in milliseconds.</summary>
@@ -45,6 +48,7 @@ public static class LedgerInbox {
             using var hook = JsonDocument.Parse(payload.Length > 1024 * 1024 ? "{}" : payload);
             if (!hook.RootElement.TryGetProperty("session_id", out var id) || id.GetString() is not { Length: > 0 } session) return 0;
             var eventName = hook.RootElement.TryGetProperty("hook_event_name", out var name) ? name.GetString() ?? "SessionStart" : "SessionStart";
+            if (eventName != "UserPromptSubmit") return 0;
             if (BootId(stateDirectory) is not { } bootId) return 0;
             var ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(coordinationConfig));
             var collected = new Collected();

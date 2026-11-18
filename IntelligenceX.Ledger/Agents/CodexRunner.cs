@@ -264,11 +264,12 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 watch.Follow(started);
                 return (new("turn", started, model), server, watch);
             } catch (CodexRpcException error) when (error.Message.Contains("active writer", StringComparison.OrdinalIgnoreCase)) {
-                // The Codex app has the thread open over its own stdio server. Its supported route for outside input is
-                // `codex queue`, which hands the message to the app; the turn runs when the app next loads the thread.
+                // The Codex app has the thread open over its own stdio server. The supported route for outside input is
+                // `codex queue --resume`: the message is stored and the local app-server daemon is asked to run it. Without
+                // a daemon the message only waits in the queue, which nothing may ever drain, so that is reported apart.
                 await server.DisposeAsync().ConfigureAwait(false);
-                await QueueAsync(threadId, text, token).ConfigureAwait(false);
-                return (new("queue", "queued", model), server, watch);
+                var queued = await QueueAsync(threadId, text, token).ConfigureAwait(false);
+                return (new(queued == QueueOutcome.Resumed ? "queue" : "queue-parked", "queued", model), server, watch);
             } catch (Exception error) when (error is TimeoutException or System.Net.WebSockets.WebSocketException ||
                 error is IOException and not CodexRpcException) {
                 // The request was written; whether the thread took it is unknown.
@@ -317,10 +318,33 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         }
     }
 
-    private async Task QueueAsync(string threadId, string text, CancellationToken token) {
+    /// <summary>What `codex queue` did: queued and resumed by the local daemon, queued only (no daemon resumed it, or the
+    /// CLI can't ask), a CLI too old for --resume (nothing was queued, so it can be asked again without it), or failed.</summary>
+    internal enum QueueOutcome { Resumed, Parked, ResumeUnsupported, Failed }
+
+    internal static QueueOutcome ClassifyQueue(int exitCode, string stderr, bool askedToResume) {
+        // clap rejects an unknown flag with exit code 2 before doing anything.
+        if (exitCode == 2 && askedToResume && stderr.Contains("unexpected argument '--resume'", StringComparison.Ordinal)) return QueueOutcome.ResumeUnsupported;
+        if (exitCode != 0) return QueueOutcome.Failed;
+        return askedToResume && !stderr.Contains("could not resume thread", StringComparison.OrdinalIgnoreCase) ? QueueOutcome.Resumed : QueueOutcome.Parked;
+    }
+
+    private async Task<QueueOutcome> QueueAsync(string threadId, string text, CancellationToken token) {
+        var (exit, stderr) = await RunQueueAsync(threadId, text, resume: true, token).ConfigureAwait(false);
+        var outcome = ClassifyQueue(exit, stderr, askedToResume: true);
+        if (outcome == QueueOutcome.ResumeUnsupported) {
+            (exit, stderr) = await RunQueueAsync(threadId, text, resume: false, token).ConfigureAwait(false);
+            outcome = ClassifyQueue(exit, stderr, askedToResume: false);
+        }
+        if (outcome == QueueOutcome.Failed) throw new DeliveryUncertainException("codex queue exited with " + exit + ".", new IOException(stderr.Trim()));
+        return outcome;
+    }
+
+    private async Task<(int Exit, string Error)> RunQueueAsync(string threadId, string text, bool resume, CancellationToken token) {
         var start = new System.Diagnostics.ProcessStartInfo(executable) {
             RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
         foreach (var argument in new[] { "queue", "--thread", threadId, "--message", text }) start.ArgumentList.Add(argument);
+        if (resume) start.ArgumentList.Add("--resume");
         using var process = System.Diagnostics.Process.Start(start) ?? throw new IOException("codex queue did not start.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(60));
@@ -335,8 +359,7 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             if (token.IsCancellationRequested) throw;
             throw new DeliveryUncertainException("codex queue did not finish within a minute.", error2);
         }
-        if (process.ExitCode != 0) throw new DeliveryUncertainException("codex queue exited with " + process.ExitCode + ".",
-            new IOException((await error.ConfigureAwait(false)).Trim()));
+        return (process.ExitCode, await error.ConfigureAwait(false));
     }
 
     /// <summary>Archives the thread. One that is already archived (for example by a pass interrupted before it recorded
