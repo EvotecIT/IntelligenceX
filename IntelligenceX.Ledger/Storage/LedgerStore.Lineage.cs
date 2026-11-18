@@ -15,8 +15,34 @@ public sealed partial class LedgerStore {
 
     private sealed record LinkRow(string ParentProvider, string ParentNative, string ChildProvider, string ChildNative, string Via,
         DateTimeOffset AtUtc, string? RequestId);
+    /// <summary>One takeover. Moves pairs each reservation id From held with the id it has under By, so a later takeover of
+    /// By can tell which of its reservations continue this work.</summary>
     private sealed record TakeoverRow(string FromProvider, string FromNative, string ByProvider, string ByNative,
-        DateTimeOffset AtUtc, string Trigger, string? Reason, string[] Leases);
+        DateTimeOffset AtUtc, string Trigger, string? Reason, string[] Leases) {
+        public LeaseMove[] Moves { get; init; } = [];
+    }
+    private sealed record LeaseMove(string Previous, string Lease);
+
+    /// <summary>
+    /// Where the work last moved away from a session is now: the takeover that last moved it and the reservation ids it
+    /// has there. It follows later takeovers of each holder that moved this work on (when no reservation moved, any later
+    /// takeover of the holder carries it). Null when the session never handed work away or the work came back to it.
+    /// </summary>
+    private static (TakeoverRow Row, HashSet<string> Leases)? Continuation(IReadOnlyList<TakeoverRow> takeovers, string provider, string native) {
+        var last = takeovers.Select((row, index) => (row, index)).LastOrDefault(pair => pair.row.FromProvider == provider && pair.row.FromNative == native);
+        if (last.row is null) return null;
+        var holding = last.row;
+        var leases = last.row.Moves.Select(move => move.Lease).ToHashSet(StringComparer.Ordinal);
+        var carriesLeases = leases.Count > 0;
+        foreach (var row in takeovers.Skip(last.index + 1)) {
+            if (row.FromProvider != holding.ByProvider || row.FromNative != holding.ByNative) continue;
+            var next = row.Moves.Where(move => leases.Contains(move.Previous)).Select(move => move.Lease).ToHashSet(StringComparer.Ordinal);
+            if (carriesLeases && next.Count == 0) continue;
+            holding = row;
+            if (carriesLeases) leases = next;
+        }
+        return holding.ByProvider == provider && holding.ByNative == native ? null : (holding, leases);
+    }
     private sealed record TreeNodeRow(string Provider, string Native, int Depth, LinkRow? Link, LedgerItem? Item);
 
     private static async Task InitializeLineageAsync(SQLiteAsyncSession db, CancellationToken token) {
@@ -248,7 +274,7 @@ public sealed partial class LedgerStore {
             var verdict = verdicts[key];
             var held = node.Item is null ? [] : reservations.Where(row => row.State == "active" && IsHolder(node.Item, row.Lease.Holder))
                 .Select(row => row.Lease.Key).Distinct().Order(StringComparer.Ordinal).ToArray();
-            var takenOver = takeovers.LastOrDefault(row => row.FromProvider == node.Provider && row.FromNative == node.Native);
+            var takenOver = Continuation(takeovers, node.Provider, node.Native)?.Row;
             var tookOver = takeovers.LastOrDefault(row => row.ByProvider == node.Provider && row.ByNative == node.Native);
             var running = (children.GetValueOrDefault(key) ?? []).Any(child => Rollup(child) is "working" or "stuck" or "needs-you");
             var (suggestion, why) = takenOver is not null ? (null, null) : Suggest(fact, verdict, held.Length, running);
@@ -358,12 +384,14 @@ public sealed partial class LedgerStore {
             foreach (var pr in node.PullRequests ?? []) entries.Add(new(null, "pull-request", node.Id, pr));
         }
         var items = await SessionItemsAsync(db, keys, now, token);
-        // Holders are matched by the parsed session id the lease service resolves, in any GUID format or letter case:
-        // the query narrows by the id's digits and IsHolder decides.
+        // Holders are matched the way the lease service resolves them: the item id exactly, or the session id in any GUID
+        // format or letter case. Every format writes the id's first eight digits together, so the query narrows by those
+        // and IsHolder decides.
         var leaseArgs = new Dictionary<string, object?>();
         var patterns = items.Values.Select((item, i) => {
-            leaseArgs["h" + i] = "%" + (item.Session?.SourceSessionId?.ToString("N") ?? item.Id) + "%";
-            return "replace(lower(json_extract(json,'$.holder')),'-','') LIKE @h" + i;
+            leaseArgs["i" + i] = item.Id;
+            leaseArgs["h" + i] = "%" + (item.Session?.SourceSessionId?.ToString("N")[..8] ?? item.Id) + "%";
+            return "json_extract(json,'$.holder')=@i" + i + " OR lower(json_extract(json,'$.holder')) LIKE @h" + i;
         }).ToArray();
         var leaseRows = patterns.Length == 0 ? [] : await db.QueryAsListAsync(
             "SELECT started,ended,json FROM lease_history WHERE " + string.Join(" OR ", patterns) + " ORDER BY started",
@@ -468,22 +496,15 @@ public sealed partial class LedgerStore {
         var open = asks.Where(ask => ask.RequesterProvider == from.Provider && Native(ask.RequesterSessionId) == fromNative &&
             ask.State is not ("failed" or "cancelled") && !(ask.State == "succeeded" && ask.Stages.ContainsKey("accepted")))
             .Select(ask => ask.RequestId).ToArray();
-        // Follow the work last moved away from From through each later takeover of whoever held it. If it came back to
-        // From, From holds it again; otherwise its current holder is the session that continues it. Work From took from
-        // somebody else doesn't count as its own work coming back.
+        // Work From handed away stays with whoever continues it. If it came back to From, From holds it again; work From
+        // took from somebody else doesn't count as its own coming back.
         var takeovers = await TakeoversAsync(tx, token);
-        var lastAway = takeovers.Select((row, index) => (row, index)).LastOrDefault(pair => pair.row.FromProvider == from.Provider && pair.row.FromNative == fromNative);
-        TakeoverRow? earlier = null;
-        if (lastAway.row is not null) {
-            var holding = lastAway.row;
-            foreach (var row in takeovers.Skip(lastAway.index + 1))
-                if (row.FromProvider == holding.ByProvider && row.FromNative == holding.ByNative) holding = row;
-            if (holding.ByProvider != from.Provider || holding.ByNative != fromNative) earlier = holding;
-        }
+        var continuation = Continuation(takeovers, from.Provider, fromNative);
+        var earlier = continuation?.Row;
         if (earlier is not null && earlier.ByProvider == by.Provider && earlier.ByNative == byNative)
             return Describe(new(true, "already-taken-over") { Trigger = earlier.Trigger, AtUtc = earlier.AtUtc,
-                Leases = (await ReservationsAsync(tx, now, token)).Where(row => IsHolder(by, row.Lease.Holder) &&
-                    row.Lease.TakenOverAtUtc == earlier.AtUtc).Select(row => row.Lease).ToArray() });
+                Leases = (await ReservationsAsync(tx, now, token)).Where(row => continuation!.Value.Leases.Contains(row.Lease.LeaseId))
+                    .Select(row => row.Lease).ToArray() });
         if (earlier is not null) {
             // Someone else already continues this work and holds what was moved. While they are live it stays theirs;
             // once they stop too, the work is taken over from them, not from the original session.
@@ -519,7 +540,9 @@ public sealed partial class LedgerStore {
             if (row.State == "active") await RememberLeaseAsync(tx, lease, lease.ExpiresAtUtc, token);
             moved.Add(lease);
         }
-        var record = new TakeoverRow(from.Provider, fromNative, by.Provider, byNative, now, trigger, command.Reason, moved.Select(lease => lease.Key).ToArray());
+        var record = new TakeoverRow(from.Provider, fromNative, by.Provider, byNative, now, trigger, command.Reason, moved.Select(lease => lease.Key).ToArray()) {
+            Moves = moved.Select(lease => new LeaseMove(lease.PreviousLeaseId!, lease.LeaseId)).ToArray()
+        };
         await tx.ExecuteNonQueryAsync("""
             INSERT INTO session_takeovers(from_provider,from_native,by_provider,by_native,recorded,json)
             VALUES(@fromProvider,@from,@byProvider,@by,@recorded,@json)

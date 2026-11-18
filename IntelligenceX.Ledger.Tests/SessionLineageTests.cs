@@ -162,8 +162,11 @@ public sealed class SessionLineageTests : IDisposable {
         // Each reservation keeps its own expiry; the new holder renews it as usual.
         Assert.Equal(resource.Lease!.ExpiresAtUtc, Assert.Single((await store.WhoAsync("resource:fixture", false, Now)).Leases).ExpiresAtUtc);
 
+        // A repeat returns the reservations this takeover moved, not one the new holder took afterwards.
+        Assert.True((await store.AcquireLeaseAsync(new("resource:unrelated", "claude:" + Nested, "win-pc", "other", 600), Now)).Ok);
         var again = await store.TakeOverSessionAsync(new(Stuck.ToString(), Nested.ToString()), Now.AddMinutes(1));
         Assert.Equal(("already-taken-over", 2), (again.State, again.Leases!.Length));
+        Assert.DoesNotContain(again.Leases, lease => lease.Key == "resource:unrelated");
         var other = await store.TakeOverSessionAsync(new(Stuck.ToString(), Root.ToString()), Now.AddMinutes(1));
         Assert.Equal(("taken-over-by-other", Nested.ToString()), (other.State, other.By));
 
@@ -174,12 +177,15 @@ public sealed class SessionLineageTests : IDisposable {
         Assert.Contains("branch:evotecit/intelligencex:feature/stuck", nodes[Nested.ToString()].Leases!);
         Assert.Null(nodes[Stuck.ToString()].Leases);
 
+        // A reservation held under the session's item id is part of its history too.
+        Assert.True((await store.AcquireLeaseAsync(new("resource:root", LedgerScope.SessionItemId("win-pc", "claude", Root.ToString()), "win-pc", "root", 600), Now)).Ok);
         var trail = await store.SessionTrailAsync(Helper.ToString(), Now, Live, asks.Append(
             new("ask-2", "claude", Nested.ToString(), "codex", Helper.ToString(), "completed", Now.AddMinutes(-100),
                 new() { ["bound"] = Now.AddMinutes(-99), ["terminal"] = Now.AddMinutes(-90), ["accepted"] = Now.AddMinutes(-85) }, "result-2")));
         Assert.Equal(Root.ToString(), trail.Root);
         Assert.Contains(trail.Entries, entry => entry is { Kind: "took-over" } && entry.Session == Nested.ToString() && entry.Detail!.Contains(Stuck.ToString()));
         Assert.Contains(trail.Entries, entry => entry is { Kind: "lease-ended" } && entry.Session == Stuck.ToString());
+        Assert.Contains(trail.Entries, entry => entry is { Kind: "lease", Detail: "resource:root" } && entry.Session == Root.ToString());
         Assert.Contains(trail.Entries, entry => entry is { Kind: "ask-terminal", Detail: "ask-2 result-2" });
         Assert.Contains(trail.Entries, entry => entry.Kind == "started" && entry.Session == Subagent.ToString() && entry.Detail == "by " + Helper + " via codex-parent-thread");
         Assert.Equal(trail.Entries.Where(entry => entry.AtUtc is not null).Select(entry => entry.AtUtc).Order(), trail.Entries.Where(entry => entry.AtUtc is not null).Select(entry => entry.AtUtc));
@@ -203,6 +209,8 @@ public sealed class SessionLineageTests : IDisposable {
         var back = Now.AddHours(2);
         await store.IngestAsync([Session("mac", "codex", Stuck, Working() with { TurnStartedAtUtc = back, LastActivityAtUtc = back })], back);
         Assert.Equal("taken-over", (await store.TakeOverSessionAsync(new(Nested.ToString(), Stuck.ToString()), back)).State);
+        // The tree agrees: Stuck holds its work again, so it is no longer shown as taken over.
+        Assert.Null((await store.SessionTreeAsync(Stuck.ToString(), back)).Nodes.Single(node => node.Id == Stuck.ToString()).TakenOverBy);
         var later = Now.AddHours(4);
         await store.IngestAsync([Session("win-pc", "claude", Root, Working(origin: "human") with { TurnStartedAtUtc = later, LastActivityAtUtc = later })], later);
         // The original session holds its work again, so the old record no longer points elsewhere.
