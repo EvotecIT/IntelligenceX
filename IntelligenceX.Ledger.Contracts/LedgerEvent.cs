@@ -45,6 +45,11 @@ public sealed record SessionFact {
     public string? InputId { get; init; }
     public bool QuestionBlocking { get; init; } = true;
     public Guid? SourceSessionId { get; init; }
+    /// <summary>The session that started this one, by its provider and native id, with the evidence that links them
+    /// (codex-parent-thread, claude-parent-session or desktop-side-session). Null when no parent was observed.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? StartedBySessionId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? StartedByProvider { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? StartedVia { get; init; }
     /// <summary>Observed structured peer input identity for the current turn; message content is excluded.</summary>
     public Guid? SourceMessageId { get; init; }
     public bool? Archived { get; init; }

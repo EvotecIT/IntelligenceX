@@ -57,6 +57,10 @@ public sealed partial class LedgerStore {
                 ["archived"] = session.Archived == true ? 1 : 0, ["account"] = session.AccountId
             }, token);
         await UpsertSessionLookupAsync(db, item, session, token);
+        if (session.SourceSessionId is { } child && session.StartedBySessionId is { } parent && session.StartedByProvider is { } parentProvider &&
+            session.StartedVia is { } via && child != parent)
+            await RecordLinkAsync(db, new(parentProvider, parent.ToString(), item.Provider, child.ToString(), via,
+                session.CreatedAtUtc ?? item.FirstObservedAtUtc), token);
         if (session.Archived == true && session.ArchiveObservedAtUtc is { } archivedAt) {
             var args = new Dictionary<string, object?> { ["item"] = item.Id,
                 ["native"] = session.SourceSessionId?.ToString(),

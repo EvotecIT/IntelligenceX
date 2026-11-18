@@ -46,7 +46,8 @@ internal static class CodexAgentSessionReader {
                         SessionSource = Text(payload, "source") ??
                             (Object(Object(payload, "source"), "subagent").ValueKind is JsonValueKind.True or JsonValueKind.Object or JsonValueKind.String
                                 ? "subagent" : session.SessionSource),
-                        ParentSessionId = Text(payload, "parent_thread_id") ?? session.ParentSessionId,
+                        ParentSessionId = Text(payload, "parent_thread_id") ??
+                            Text(Object(Object(Object(payload, "source"), "subagent"), "thread_spawn"), "parent_thread_id") ?? session.ParentSessionId,
                         WorkingDirectory = Text(payload, "cwd") ?? session.WorkingDirectory,
                         Branch = Text(git, "branch") ?? session.Branch,
                         Repository = AgentRepositoryIdentity.FromRemote(Text(git, "repository_url")) ?? session.Repository

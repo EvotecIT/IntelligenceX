@@ -7,14 +7,23 @@ internal static partial class CoordinationEndpoints {
     private static bool ResultVisible(CoordinationResultOutbox result, CoordinationWork work, CoordinationPrincipal caller) =>
         Visible(work, caller) || caller.Role == "host" && result.ReturnTo.MachineId == caller.MachineId;
 
-    private static void MapLifecycle(WebApplication app, CoordinationStore store) {
+    private static void MapLifecycle(WebApplication app, CoordinationStore store, Func<SessionLink, CancellationToken, Task>? bound) {
         app.MapPost(Prefix + "/requests/{id}/cancel", async (string id, CoordinationCancellation command,
             HttpContext http, CancellationToken ct) => Results.Ok(await store.ExecuteAsync((engine, _) =>
                 engine.Cancel(id, command, Caller(http)), DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/requests/{id}/binding", async (string id, CoordinationSessionBinding binding,
             HttpContext http, CancellationToken ct) => {
             CoordinationValidation.Require(id == binding.RequestId, "binding-request-conflict");
-            return Results.Ok(await store.ExecuteAsync((engine, _) => engine.BindSession(binding, Caller(http)), DateTimeOffset.UtcNow, ct));
+            var (result, link) = await store.ExecuteAsync((engine, state) => {
+                var value = engine.BindSession(binding, Caller(http));
+                return (value, state.Work.TryGetValue(value.RequestId, out var work) ? SessionLineageSource.Link(work, value) : null);
+            }, DateTimeOffset.UtcNow, ct);
+            // The asking session started this helper. Recording it here keeps the link after the request is archived. The
+            // binding is already committed, so neither a client that disconnects nor a failed write may undo or repeat it;
+            // the service's periodic backfill records any link this write missed while the request is still readable.
+            if (link is not null && bound is not null)
+                try { await bound(link, CancellationToken.None); } catch (Exception error) when (error is not OperationCanceledException) { }
+            return Results.Ok(result);
         });
         app.MapGet(Prefix + "/results", async (long? afterOrder, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((_, state) => {

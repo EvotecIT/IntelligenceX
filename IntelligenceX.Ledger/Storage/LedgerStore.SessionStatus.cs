@@ -26,16 +26,10 @@ public sealed partial class LedgerStore {
     /// <summary>Finds one native identity or unique explicit title without loading unrelated item evidence.</summary>
     public async Task<SessionStatus> SessionStatusAsync(string query, DateTimeOffset now, CancellationToken token = default,
         HashSet<string>? silentMachines = null) {
-        if (!Label(query, 240)) throw new ArgumentException("Invalid session identity or title fragment.");
         var policy = await ReadPolicyAsync(token);
         await using var db = await _database.OpenSessionAsync(path, token);
-        var args = new Dictionary<string, object?> { ["query"] = Guid.TryParse(query, out var id) ? id.ToString() : query };
-        var matches = await db.QueryAsListAsync("SELECT item,native,machine,provider,title FROM session_lookup WHERE native=@query OR item=@query LIMIT 3",
-            row => (Item: row.GetString(0), Match: new SessionMatch(row.IsDBNull(1) ? row.GetString(0) : row.GetString(1), row.GetString(2), row.GetString(3), row.IsDBNull(4) ? null : row.GetString(4))),
-            args, cancellationToken: token);
-        if (matches.Count == 0 && !Guid.TryParse(query, out _)) matches = await db.QueryAsListAsync("""
-            SELECT item,native,machine,provider,title FROM session_lookup WHERE instr(lower(title),lower(@query))>0 ORDER BY item LIMIT 3
-            """, row => (row.GetString(0), new SessionMatch(row.IsDBNull(1) ? row.GetString(0) : row.GetString(1), row.GetString(2), row.GetString(3), row.IsDBNull(4) ? null : row.GetString(4))), args, cancellationToken: token);
+        var matches = await ResolveSessionAsync(db, query, token);
+        var args = new Dictionary<string, object?>();
         if (matches.Count == 0) return new() { State = "not-found" };
         if (matches.Count > 1) return Compact(new SessionStatus { State = "ambiguous", Matches = matches.Select(row => row.Match).ToArray() },
             value => value with { Matches = value.Matches![..^1], Truncated = true }, value => value.Matches!.Length);

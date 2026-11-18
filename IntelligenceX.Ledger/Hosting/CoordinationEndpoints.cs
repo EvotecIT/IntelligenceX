@@ -45,12 +45,13 @@ internal static partial class CoordinationEndpoints {
         _ => work.Requester == p.Id && (p.RequesterId is not null || p.Projects.Contains(work.Request.Checkpoint.Project))
     };
 
-    internal static void Map(WebApplication app, CoordinationStore store, string dataDirectory) {
+    internal static void Map(WebApplication app, CoordinationStore store, string dataDirectory,
+        Func<SessionLink, CancellationToken, Task>? bound = null) {
         var artifacts = new CoordinationArtifactStore(Path.Combine(dataDirectory, "coordination-results"));
         store.Archived = artifacts.ArchiveEntries;
         MapArtifacts(app, store, artifacts);
         MapRecovery(app, store, artifacts);
-        MapLifecycle(app, store);
+        MapLifecycle(app, store, bound);
         MapAsk(app, store);
         app.MapGet(Prefix + "/workers/{provider}/{sessionId}", async (string provider, string sessionId,
             HttpContext http, CancellationToken ct) => Results.Ok(await store.ExecuteAsync((e, _) =>

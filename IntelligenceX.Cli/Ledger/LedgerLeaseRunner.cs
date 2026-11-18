@@ -8,7 +8,7 @@ internal static class LedgerLeaseRunner {
         if (args.Length < 3 || args[^2] != "--config") return 2;
         var command = args[..^2];
         try {
-            var write = command[0] is "lease_acquire" or "lease_renew" or "lease_release";
+            var write = command[0] is "lease_acquire" or "lease_renew" or "lease_release" or "session_takeover";
             using var client = write ? LedgerReadClient.ForLeases(LeaseClientSettings.Load(args[^1])) : new LedgerReadClient(LedgerClientSettings.Load(args[^1]));
             var json = command switch {
                 ["who", var key] => JsonSerializer.Serialize(await client.WhoAsync(key), LedgerReadJson.Default.LeaseQuery),
@@ -20,6 +20,12 @@ internal static class LedgerLeaseRunner {
                     JsonSerializer.Serialize(await client.PullRequestReadinessAsync(repo, pr), LedgerReadJson.Default.PullRequestReadiness),
                 ["cleanup", "--dry-run"] => JsonSerializer.Serialize(await client.CleanupPlanAsync(), LedgerReadJson.Default.SessionCleanupPlan),
                 ["cleanup", "--dry-run", "--machine", var id] => JsonSerializer.Serialize(await client.CleanupPlanAsync(id), LedgerReadJson.Default.SessionCleanupPlan),
+                ["session_tree", var id] => JsonSerializer.Serialize(await client.SessionTreeAsync(id), LedgerReadJson.Default.SessionTree),
+                ["session_trail", var id] => JsonSerializer.Serialize(await client.SessionTrailAsync(id), LedgerReadJson.Default.SessionTrail),
+                ["session_takeover", var from, var by] =>
+                    JsonSerializer.Serialize(await client.TakeOverSessionAsync(new(from, by)), LedgerReadJson.Default.SessionTakeoverReply),
+                ["session_takeover", var from, var by, "--reason", var reason] =>
+                    JsonSerializer.Serialize(await client.TakeOverSessionAsync(new(from, by, reason)), LedgerReadJson.Default.SessionTakeoverReply),
                 ["lease_acquire", var key, var holder, var machine, var purpose, var ttl] when TryTtl(ttl, out var seconds) =>
                     JsonSerializer.Serialize(await client.AcquireLeaseAsync(new(key, holder, machine, purpose, seconds)), LedgerReadJson.Default.LeaseReply),
                 ["lease_acquire", var key, var holder, var machine, var purpose, var ttl, "--transfer", var previous, "--checkpoint", var checkpoint] when TryTtl(ttl, out var seconds) =>

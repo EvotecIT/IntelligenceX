@@ -146,6 +146,13 @@ public static class LocalReporter {
                     fact = fact with { AccountId = "claude:" + account };
                 if (fact.Archived is null && session.Provider == "claude" && claudeAccounts.Archived(session.Id) is { } archived)
                     fact = fact with { Archived = archived, ArchiveObservedAtUtc = DateTimeOffset.UtcNow };
+                // A session the desktop app spawned from another. Only a side session that session started itself is an
+                // agent's; one a person started from a suggestion card keeps its own provenance.
+                if (fact.StartedBySessionId is null && session.Provider == "claude" &&
+                    claudeAccounts.Parent(session.Id) is { } desktop && Guid.TryParse(desktop.Parent, out var parentId)) {
+                    fact = fact with { StartedBySessionId = parentId, StartedByProvider = "claude", StartedVia = "desktop-side-session" };
+                    if (desktop.SideSession) fact = fact with { Origin = "agent", OriginEvidence = "desktop-side-session" };
+                }
                 changes.TryAppend(Event(id, session.Provider, fact));
                 if (fact.SourceMessageId is not null || session.PeerMessages.Count > 0)
                     foreach (var messageEvent in SessionMessageEvents(Event(id, session.Provider, fact), session.PeerMessages))
@@ -263,6 +270,7 @@ public static class LocalReporter {
         SessionArchiveCache.Observation? archive) {
         var pending = session.PendingInputs;
         var origin = SessionOrigin.For(session);
+        var parent = SessionOrigin.Parent(session);
         var blocking = pending.FirstOrDefault(x => x.IsBlocking && x.Id is not null && !x.AnswerIsUnconfirmed && !PriorTurn(x, session));
         return new SessionFact {
             Title = SessionOrigin.Title(session.Title),
@@ -271,6 +279,7 @@ public static class LocalReporter {
             TurnId = session.TurnId is null ? null : LedgerScope.Id("turn", session.TurnId),
             InputId = blocking?.Id is { } inputId ? LedgerScope.Id("input", inputId) : null,
             SourceSessionId = Guid.TryParse(session.Id, out var sourceId) ? sourceId : null,
+            StartedBySessionId = parent?.Session, StartedByProvider = parent?.Provider, StartedVia = parent?.Via,
             SourceMessageId = session.SourceMessageId,
             Archived = archive?.Archived,
             ArchiveObservedAtUtc = archive?.ObservedAtUtc,

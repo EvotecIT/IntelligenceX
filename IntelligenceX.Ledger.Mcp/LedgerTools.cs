@@ -11,6 +11,14 @@ public sealed class LedgerTools(LedgerReadClient client) {
     [Description("Read one compact session status by provider session/thread ID or unique title fragment. Includes real title, turn state, last activity, question, usage limit, archive, repository, reservations and origin. Ambiguous titles return explicit matches.")]
     public Task<SessionStatus> SessionStatus(string id, CancellationToken cancellationToken = default) => client.SessionStatusAsync(id, cancellationToken);
 
+    [McpServerTool(Name = "session_tree", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read the tree of work a session belongs to, across Claude and Codex and across machines: its root and every session started from it (Codex subagent threads, Claude desktop side sessions, ix asks), depth first. Each node has who started it, verdict, the most urgent verdict in its subtree, machine, provider, branch, PRs, leases and takeovers. suggestion take-over marks a stuck, usage-limited or archived-with-work node; archive lists the root's finished descendants that cleanup could archive once the root's outcome is accepted (a plan only). Accepts a session/thread ID or unique title fragment.")]
+    public Task<SessionTree> SessionTree(string id, CancellationToken cancellationToken = default) => client.SessionTreeAsync(id, cancellationToken);
+
+    [McpServerTool(Name = "session_trail", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read the history of the tree a session belongs to, oldest first: sessions started and by whom, asks and their stages and results, reservations taken and ended, takeovers, verdict changes (last 30 days), branches, PRs and archiving.")]
+    public Task<SessionTrail> SessionTrail(string id, CancellationToken cancellationToken = default) => client.SessionTrailAsync(id, cancellationToken);
+
     [McpServerTool(Name = "repo_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read current repository work grouped by checkout. The compact default includes full live identities, recent-session counts/titles, up to five shared filenames and total counts. Set details for all session rows, and recent24h for 24-hour history. Summary comes first.")]
     public Task<RepositoryActivity> RepoActivity(string repo, CancellationToken cancellationToken = default, bool recent24h = false, bool details = false) => client.RepoActivityAsync(repo, cancellationToken, recent24h, details);
