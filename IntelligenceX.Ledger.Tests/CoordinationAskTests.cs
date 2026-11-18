@@ -450,6 +450,7 @@ public sealed class CoordinationAskTests {
         Assert.Equal("invalid-helper-options", Assert.Throws<CoordinationConflictException>(() =>
             engine.Ask(Ask("bad-output") with { Output = "essay" }, Sessions)).Message);
         Assert.Null(engine.Ask(Ask("plain"), Sessions).Request.Helper);
+        Assert.Equal("ultra", engine.Ask(Ask("ultra") with { Model = "gpt-6.1-sol", Effort = "ultra" }, Sessions).Request.Helper!.Effort);
 
         var request = state.Work["plain"].Request with { Id = "forged", Helper = new(ContinuesRequestId: "plain", ForkSessionId: "someone-else") };
         Assert.Equal("invalid-helper-options", Assert.Throws<CoordinationConflictException>(() => engine.Submit(request, Sessions)).Message);

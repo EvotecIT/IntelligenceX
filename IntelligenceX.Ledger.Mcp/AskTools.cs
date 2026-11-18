@@ -20,7 +20,7 @@ public sealed class AskTools(LedgerReadClient client) {
         "Codex: the CODEX_THREAD_ID environment variable of your shell commands. Claude Code: CLAUDE_CODE_SESSION_ID, and also " +
         "sessionAddress: this session's own name and ref exactly as ListAgents shows it (\"This session is <name> [<ref>]\"). " +
         "continues: the id of an earlier Codex ask of yours; the helper carries on from that conversation (a forked copy) on the same machine. " +
-        "model and effort (low, medium, high, xhigh) override the Codex defaults for this ask. " +
+        "model and effort (low, medium, high, xhigh, max, ultra; which a model accepts varies) override the Codex defaults for this ask. " +
         "output: \"review\" for a merge-gate review of the branch at the commit, returned as JSON with pass, verdict, failedChecks, findings and validation.")]
     public Task<CoordinationWork> Ask(string task, string? machine = null, string? provider = null, string? kind = null,
         string? capability = null, string? id = null, string? project = null, string? branch = null, string? commit = null,
