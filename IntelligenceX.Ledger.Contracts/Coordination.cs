@@ -46,12 +46,13 @@ public sealed record WorkCheckpoint(string Project, string Branch, string Commit
 /// Another assignment is eligible only after the previous assignment is terminal and its result consumed.
 /// The default false retains disposable-helper assignment and historical ownership safeguards.
 /// TaskBrief optionally supplies plain task instructions for help/review, bounded to 8192 UTF-8 bytes
-/// and containing non-whitespace when supplied. Null preserves legacy requests.</summary>
+/// and containing non-whitespace when supplied. Null preserves legacy requests.
+/// Helper optionally sets the helper's model, effort, output shape and the session a follow-up forks.</summary>
 public sealed record CoordinationRequest(string Id, string GoalId, string Kind, string Capability,
     string? MachineId, string? WorkerId, ResourceDemand Resources, WorkCheckpoint Checkpoint,
     string[] Dependencies, long ControlRevision, string AuthorizationRef, string? RequiredProvider = null,
     bool ReadOnly = false, CoordinationReturnBinding? ReturnTo = null, bool ReuseSession = false,
-    string? TaskBrief = null);
+    string? TaskBrief = null, CoordinationHelperOptions? Helper = null);
 
 /// <summary>Service-owned goal controls survive restarts. Revision is the metadata compare-and-swap version;
 /// ControlRevision is the authorization generation used by requests. Ordinary checkpoints do not change it.

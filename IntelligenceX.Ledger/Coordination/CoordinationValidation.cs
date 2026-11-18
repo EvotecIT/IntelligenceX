@@ -41,9 +41,10 @@ public static class CoordinationValidation {
         Require(p.Ask is not null && Id(p.Ask.DefaultKind) && Positive(p.Ask.QuestionWaitMinutes) &&
             p.Ask.MaximumQuestions is >= 0 and <= 64 && Positive(p.Ask.AdmissionMinutes) && Positive(p.Ask.TurnMinutes) &&
             p.Ask.ResumeAttempts is >= 0 and <= 8 && Positive(p.Ask.WakeUsageMinutes) &&
-            (p.Ask.CodexModel is null || Id(p.Ask.CodexModel)) && (p.Ask.CodexEffort is null or "low" or "medium" or "high" or "xhigh") &&
+            (p.Ask.CodexModel is null || Id(p.Ask.CodexModel)) && (p.Ask.CodexEffort is null or "low" or "medium" or "high" or "xhigh" or "max" or "ultra") &&
             Id(p.Ask.ClaudeDeliveryModel) && Positive(p.Ask.DeliveryUnconfirmedMinutes) && Positive(p.Ask.UsageLimitProbeMinutes) &&
-            p.Ask.UnreachableRetries is >= 0 and <= 16 && Positive(p.Ask.UnreachableRetryMinutes), "invalid-ask-policy");
+            p.Ask.UnreachableRetries is >= 0 and <= 16 && Positive(p.Ask.UnreachableRetryMinutes) &&
+            Positive(p.Ask.WakeExpiryHours) && p.Ask.WakeExpiryHours <= 24 * 30 && p.Ask.MaximumWakes is >= 1 and <= 1024, "invalid-ask-policy");
         Require(p.Priority is { Count: > 0 and <= 64 } && p.Priority.All(pair => Id(pair.Key) &&
             pair.Value is "low" or "normal" or "high"), "invalid-priority-policy");
     }
@@ -59,6 +60,10 @@ public static class CoordinationValidation {
             (r.MachineId is null || Id(r.MachineId)) && (r.WorkerId is null || Id(r.WorkerId)), "invalid-request");
         Require(r.TaskBrief is null || !string.IsNullOrWhiteSpace(r.TaskBrief) &&
             Encoding.UTF8.GetByteCount(r.TaskBrief) <= 8192, "invalid-task-brief");
+        Require(r.Helper is not { } h || (h.Model is null || Id(h.Model)) && h.Effort is null or "low" or "medium" or "high" or "xhigh" or "max" or "ultra" &&
+            h.Output is null or "text" or "review" && (h.ContinuesRequestId is null || Id(h.ContinuesRequestId)) &&
+            (h.ForkSessionId is null || Id(h.ForkSessionId)) && h.ContinuesRequestId is null == h.ForkSessionId is null &&
+            r.Kind is "help" or "review", "invalid-helper-options");
         Checkpoint(c);
         Require(caller.Projects.Contains(c!.Project, StringComparer.Ordinal), "project-not-authorized");
         Require(r.Dependencies is { Length: <= 64 } && r.Dependencies.All(Id) && !r.Dependencies.Contains(r.Id) &&

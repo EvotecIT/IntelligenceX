@@ -245,9 +245,24 @@ internal sealed partial class AgentService {
             if (Deferred("deliver:" + question.RequestId)) continue;
             Start("question:" + question.RequestId + "#" + question.Number, () => DeliverQuestionAsync(item, stop));
         }
+        foreach (var wake in await PageAsync(after => _ledger.WakesAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
+            if (wake.MachineId != _machineId || wake.Provider is not ("codex" or "claude")) continue;
+            waiting.Add(wake.Id);
+            if (wake.Provider == "claude" && (!claudeReady && !probe || Unreachable(wake.Id))) {
+                var reason = claudeReady ? UnreachableHold : SignInHold;
+                if (!claudeReady) held++;
+                if (wake.Delivery?.EvidenceRef != reason)
+                    Start("hold:" + wake.Id, () => _ledger.WakeDeliveryAsync(wake.Id, new("hold-" + LocalFiles.Hash(wake.Id)[..24], "held", reason), stop));
+                continue;
+            }
+            if (wake.Provider == "claude" && !claudeReady) probe = false;
+            if (Deferred("deliver:" + wake.Id)) continue;
+            Start("wake:" + wake.Id, () => DeliverWakeAsync(wake, stop));
+        }
         CountHeld(held);
         // Deliveries in progress aren't in the feeds; their entries stay until the outcome is known.
-        waiting.AddRange(_active.Keys.Where(key => key.StartsWith("result:", StringComparison.Ordinal) || key.StartsWith("question:", StringComparison.Ordinal))
+        waiting.AddRange(_active.Keys.Where(key => key.StartsWith("result:", StringComparison.Ordinal) || key.StartsWith("question:", StringComparison.Ordinal) ||
+                key.StartsWith("wake:", StringComparison.Ordinal) && key.Count(c => c == ':') == 1)
             .Select(key => key[(key.IndexOf(':') + 1)..].Split(['#', ':'])[0]));
         ForgetUnreachable(waiting);
         foreach (var job in await PageAsync(after => _ledger.RetirementsAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {

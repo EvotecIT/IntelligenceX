@@ -9,7 +9,9 @@ agent-manifest.json names the source commit and every file's SHA-256. Each versi
 agent-service/versions/<commit>, and agent-service/install.json records the current and previous one, so Rollback
 returns to the previous version without a kit.
 
-Install and Rollback preview by default; -Apply makes the change. The Ledger service and reporter installs, their
+Install and Rollback preview by default; -Apply makes the change. Stop stops only the agent process its own receipt
+names (with a matching start time) and the startup task that runs this install, never other Ledger processes such as
+the MCP servers sessions run, so stop the agent with it before a runtime update. The Ledger service and reporter installs, their
 snapshots and scheduled tasks are left alone. The one exception is the first install over an older reporter that ran
 the agent itself: its agent settings move to agent.json and the reporter is restarted before the new process starts,
 so the two never run together.
@@ -17,11 +19,12 @@ so the two never run together.
 ./Install-LedgerAgent.ps1 -Action Install -Kit <kit> -Capability windows-powershell
 ./Install-LedgerAgent.ps1 -Action Install -Kit <kit> -Capability windows-powershell -Apply
 ./Install-LedgerAgent.ps1 -Action Rollback -Apply
+./Install-LedgerAgent.ps1 -Action Stop
 ./Install-LedgerAgent.ps1
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Install', 'Rollback', 'Status')][string]$Action = 'Status',
+    [ValidateSet('Install', 'Rollback', 'Status', 'Stop')][string]$Action = 'Status',
     [string]$Kit,
     [string]$Root,
     [string]$ReporterConfig,
@@ -115,18 +118,39 @@ function Get-AgentProcess {
     return $process
 }
 
-function Stop-Agent {
+# The startup task or LaunchAgent, only when it launches exactly this install (the launch arguments Start-Agent writes);
+# another install's is left alone, including one whose folder merely starts with this one's.
+function Test-OwnStartup {
     if ($IsWindows) {
-        if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $TaskName }
+        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        $arguments = "//B //Nologo `"$(Join-Path $ServiceRoot 'Start-LedgerAgent.vbs')`""
+        return [bool]($task -and @($task.Actions | Where-Object { [string]::Equals($_.Arguments, $arguments, [StringComparison]::OrdinalIgnoreCase) }))
+    }
+    $config = '<string>agent</string><string>--config</string><string>' + [Security.SecurityElement]::Escape($AgentConfig) + '</string>'
+    return (Test-Path -LiteralPath $Plist) -and (Get-Content -LiteralPath $Plist -Raw).Contains($config)
+}
+
+# Stops the startup entry (when it is this install's) and the agent process its receipt names. Returns that process's id.
+function Stop-Agent {
+    $own = Test-OwnStartup
+    if ($IsWindows) {
+        if ($own) { Stop-ScheduledTask -TaskName $TaskName }
         if ($process = Get-AgentProcess) {
             Stop-Process -Id $process.Id
             if (-not $process.WaitForExit(15000)) { throw "The agent service (process $($process.Id)) did not stop; nothing was changed." }
+            return $process.Id
         }
     } else {
-        & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null
+        if ($own) {
+            & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null
+            # KeepAlive would restart a process stopped while the job is still loaded.
+            & /bin/launchctl print "gui/$Uid/$Label" *> $null
+            if ($LASTEXITCODE -eq 0) { throw "launchctl could not unload $Label; nothing was changed." }
+        }
         if ($process = Get-AgentProcess) {
             & /bin/kill -TERM $process.Id 2>$null
             if (-not $process.WaitForExit(30000)) { throw "The agent service (process $($process.Id)) did not stop; nothing was changed." }
+            return $process.Id
         }
     }
 }
@@ -196,7 +220,7 @@ function Restart-Reporter {
 function Switch-Version([string]$Version, [string]$Previous) {
     $result = Invoke-AgentInstall $Version -Change
     $restart = @($result.steps | Where-Object action -eq 'restart-reporter').Count -gt 0
-    Stop-Agent
+    $null = Stop-Agent
     if ($restart) { Restart-Reporter }
     Start-Agent $Version
     Write-Receipt (Split-Path $Version -Leaf) $Previous
@@ -214,6 +238,10 @@ $installed = Read-Json $Receipt
 $current = if ($installed) { $installed.current } else { $null }
 $recordedPrevious = if ($installed) { $installed.previous } else { $null }
 switch ($Action) {
+    'Stop' {
+        $stopped = Stop-Agent
+        [pscustomobject]@{ Action = 'Stop'; Stopped = $stopped; Running = [bool](Get-AgentProcess) }
+    }
     'Status' {
         [pscustomobject]@{
             Current = $current; Previous = $recordedPrevious

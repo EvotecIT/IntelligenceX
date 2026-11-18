@@ -133,6 +133,81 @@ public sealed class AgentSetupTests : IDisposable {
         Assert.Throws<InvalidOperationException>(() => AgentEnrollment.Enroll(service, "not a machine", output, local: true, apply: false));
     }
 
+    [Fact]
+    public async Task StopEndsOnlyTheAgentItsReceiptNamesAndLeavesOtherLedgerProcessesRunning() {
+        // Runs the real installer script, so it needs PowerShell 7.5 (the script's minimum) and the source tree.
+        var script = FindScript();
+        var pwsh = await FindPowerShellAsync();
+        if (script is null || pwsh is null) return;
+        var started = new List<System.Diagnostics.Process>();
+        try {
+            var agent = Sleeper(pwsh, started);
+            // Stands in for an MCP server whose path sits under the same install, as session MCP servers do.
+            var mcp = Sleeper(pwsh, started);
+            var state = Path.Combine(_root, "state");
+            Directory.CreateDirectory(state);
+            File.WriteAllText(Path.Combine(_root, "agent.json"), new JsonObject { ["stateDirectory"] = state }.ToJsonString());
+            File.WriteAllText(Path.Combine(state, "agent-process.json"), new JsonObject {
+                ["pid"] = agent.Id, ["startedAtUtc"] = agent.StartTime.ToUniversalTime().ToString("o")
+            }.ToJsonString());
+            var (exit, output, errors) = await RunAsync(pwsh, started, "-NoProfile", "-NonInteractive", "-File", script, "-Action", "Stop", "-Root", _root);
+            Assert.True(exit == 0, errors);
+            Assert.Contains(agent.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), output);
+            Assert.True(agent.HasExited);
+            Assert.False(mcp.HasExited);
+        } finally {
+            foreach (var process in started) {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                process.Dispose();
+            }
+        }
+    }
+
+    private static System.Diagnostics.Process Sleeper(string pwsh, List<System.Diagnostics.Process> started) {
+        var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pwsh) {
+            ArgumentList = { "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep 120" } })!;
+        started.Add(process);
+        return process;
+    }
+
+    /// <summary>Runs a process with a one-minute limit; on timeout it is killed and the test fails.</summary>
+    private static async Task<(int Exit, string Output, string Errors)> RunAsync(string file, List<System.Diagnostics.Process> started,
+        params string[] arguments) {
+        var info = new System.Diagnostics.ProcessStartInfo(file) { RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+        var process = System.Diagnostics.Process.Start(info)!;
+        started.Add(process);
+        using var limit = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+        var output = process.StandardOutput.ReadToEndAsync(limit.Token);
+        var errors = process.StandardError.ReadToEndAsync(limit.Token);
+        await process.WaitForExitAsync(limit.Token);
+        return (process.ExitCode, await output, await errors);
+    }
+
+    /// <summary>The first pwsh on PATH that is at least 7.5, or null when there is none.</summary>
+    private static async Task<string?> FindPowerShellAsync() {
+        var name = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
+        foreach (var folder in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)) {
+            var candidate = Path.Combine(folder, name);
+            if (!File.Exists(candidate)) continue;
+            var started = new List<System.Diagnostics.Process>();
+            try {
+                var (exit, output, _) = await RunAsync(candidate, started, "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()");
+                if (exit == 0 && System.Version.TryParse(output.Trim().Split('-')[0], out var version) && version >= new System.Version(7, 5)) return candidate;
+            } catch (Exception error) when (error is System.ComponentModel.Win32Exception or OperationCanceledException) {
+            } finally { foreach (var process in started) process.Dispose(); }
+        }
+        return null;
+    }
+
+    private static string? FindScript() {
+        for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder is not null; folder = folder.Parent) {
+            var candidate = Path.Combine(folder.FullName, "IntelligenceX.Ledger", "Install", "Install-LedgerAgent.ps1");
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
+    }
+
     public void Dispose() {
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }

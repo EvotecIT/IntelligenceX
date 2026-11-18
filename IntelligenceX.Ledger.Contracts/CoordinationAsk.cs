@@ -31,16 +31,29 @@ public sealed record AskPolicy {
     /// after that it waits for the session's next turn (inbox hook).</summary>
     public int UnreachableRetries { get; set; } = 1;
     public double UnreachableRetryMinutes { get; set; } = 30;
+    /// <summary>How long a wake waits for its pull request's checks before it is delivered as expired.</summary>
+    public double WakeExpiryHours { get; set; } = 72;
+    /// <summary>Waiting wakes one session client may hold.</summary>
+    public int MaximumWakes { get; set; } = 64;
 }
 
 /// <summary>One step from a session with no goal: "do this, on that machine, with that provider". The service creates the
 /// goal and the help request together. The asking session is the return destination and must be on the caller's machine.
 /// Source fields describe the asker's repository; the helper works in its own empty workspace. ReturnAddress is how the
 /// asking session is reached when its provider addresses sessions by name: for Claude Code, the "name [ref]" that
-/// ListAgents shows for the session itself.</summary>
+/// ListAgents shows for the session itself. Continues names an earlier Codex ask of the same requester whose helper
+/// conversation this one carries on from; it runs on the same machine. Model and Effort override the policy's Codex
+/// defaults for this ask. Output "review" asks for a structured review verdict instead of free text.</summary>
 public sealed record CoordinationAsk(string Id, string Task, string Project, string Branch, string Commit,
     string ReturnProvider, string ReturnSessionId, string? MachineId = null, string? Provider = null,
-    string? Kind = null, string? Capability = null, string? ReturnAddress = null);
+    string? Kind = null, string? Capability = null, string? ReturnAddress = null, string? Continues = null,
+    string? Model = null, string? Effort = null, string? Output = null);
+
+/// <summary>How a help request's helper runs. Model and Effort override the policy's defaults. Output is "text" (the
+/// default) or "review" (a structured verdict with findings and checks). ForkSessionId is the earlier helper session
+/// whose conversation a follow-up continues in a forked copy, and ContinuesRequestId the request that ran it.</summary>
+public sealed record CoordinationHelperOptions(string? Model = null, string? Effort = null, string? Output = null,
+    string? ContinuesRequestId = null, string? ForkSessionId = null);
 
 /// <summary>A question from a helper or a notice from the service to the requester. Notices need no answer.
 /// State is asked, answered, expired or resumed; Delivery carries the requester-side send, AnswerDelivery the

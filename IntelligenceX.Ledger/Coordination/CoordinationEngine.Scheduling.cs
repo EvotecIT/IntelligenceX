@@ -57,6 +57,7 @@ public sealed partial class CoordinationEngine {
     public void Schedule() {
         ArchiveFinished();
         ApplyAskWaits();
+        ApplyWakes();
         foreach (var work in state.Work.Values.Where(w => Occupied.Contains(w.State) && w.State != "reconcile").ToArray()) {
             var goal = state.Goals[work.Request.GoalId];
             var bootChanged = state.Hosts.TryGetValue(work.Machine!, out var host) && work.BootId is not null && work.BootId != host.BootId;

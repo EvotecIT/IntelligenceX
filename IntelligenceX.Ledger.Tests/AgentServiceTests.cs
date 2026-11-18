@@ -158,4 +158,111 @@ public sealed class AgentServiceTests {
 
     private static string Line(object value) => JsonSerializer.Serialize(value);
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value);
+
+
+    private static string ReviewAnswer(string verdict, string findings, string validation) =>
+        "{\"outcome\":\"result\",\"text\":\"Summary.\",\"review\":{\"verdict\":\"" + verdict + "\",\"summary\":\"Looked at it.\"," +
+        "\"findings\":[" + findings + "],\"validation\":[" + validation + "]}}";
+
+    private static string Check(string name, string result, bool final) =>
+        "{\"check\":\"" + name + "\",\"command\":\"dotnet test\",\"result\":\"" + result + "\",\"final\":" + (final ? "true" : "false") + ",\"notes\":\"\"}";
+
+    private static string Finding(string severity, string detail = "Detail.") =>
+        "{\"severity\":\"" + severity + "\",\"title\":\"Title\",\"file\":\"a.cs\",\"line\":1,\"detail\":\"" + detail + "\",\"recommendation\":\"Fix it.\"}";
+
+    [Fact]
+    public void AReviewPassesOnlyOnApprovalWithNoBlockingFindingAndNoFinalFailedCheck() {
+        bool Pass(string answer) => JsonDocument.Parse(AgentService.ReviewResult(answer, "thread-1")!).RootElement.GetProperty("pass").GetBoolean();
+        // A setup failure that was corrected and rerun does not count; the rerun does.
+        Assert.True(Pass(ReviewAnswer("approve", Finding("medium"), Check("tests", "fail", false) + "," + Check("tests", "pass", true))));
+        Assert.False(Pass(ReviewAnswer("approve", "", Check("tests", "pass", false) + "," + Check("tests", "fail", true))));
+        Assert.False(Pass(ReviewAnswer("approve", Finding("high"), Check("tests", "pass", true))));
+        Assert.False(Pass(ReviewAnswer("needs-attention", "", "")));
+        var failed = JsonDocument.Parse(AgentService.ReviewResult(ReviewAnswer("approve", "", Check("build", "fail", true)), "thread-1")!).RootElement;
+        Assert.Equal("build", Assert.Single(failed.GetProperty("failedChecks").EnumerateArray()).GetString());
+        Assert.Null(AgentService.ReviewResult("{\"outcome\":\"result\",\"text\":\"No review.\"}", "thread-1"));
+    }
+
+    [Fact]
+    public void ALongReviewDropsTheLeastSevereFindingsToFitAndStaysValidJson() {
+        var findings = string.Join(",", Enumerable.Range(0, 40).Select(i => Finding(i == 0 ? "critical" : "low", new string('x', 300))));
+        var result = AgentService.ReviewResult(ReviewAnswer("needs-attention", findings, Check("tests", "pass", true)), "thread-1")!;
+        Assert.True(Encoding.UTF8.GetByteCount(result) <= 8192);
+        var root = JsonDocument.Parse(result).RootElement;
+        Assert.Contains("thread-1", root.GetProperty("truncated").GetString());
+        Assert.Contains(root.GetProperty("findings").EnumerateArray(), f => f.GetProperty("severity").GetString() == "critical");
+    }
+
+    [Fact]
+    public void ATurnStoppedByTheCodexUsageLimitIsToldApartFromOtherFailures() {
+        using var limited = JsonDocument.Parse("{\"message\":\"You've hit your usage limit.\",\"codexErrorInfo\":\"usageLimitExceeded\"}");
+        using var other = JsonDocument.Parse("{\"message\":\"Server overloaded.\",\"codexErrorInfo\":\"serverOverloaded\"}");
+        Assert.True(new TurnOutcome("t", "failed", null, TurnTokens.None, "m", CodexRunner.ErrorText(limited.RootElement)).UsageLimited);
+        Assert.False(new TurnOutcome("t", "failed", null, TurnTokens.None, "m", CodexRunner.ErrorText(other.RootElement)).UsageLimited);
+        Assert.Equal("Server overloaded.", CodexRunner.ErrorText(other.RootElement));
+    }
+
+
+    [Fact]
+    public void ChecksWithBlankNamesAreKeptApartByTheirCommands() {
+        var answer = ReviewAnswer("approve", "",
+            "{\"check\":\" \",\"command\":\"dotnet build\",\"result\":\"fail\",\"final\":true,\"notes\":\"\"}," +
+            "{\"check\":\"\",\"command\":\"dotnet test\",\"result\":\"pass\",\"final\":true,\"notes\":\"\"}");
+        var root = JsonDocument.Parse(AgentService.ReviewResult(answer, "thread-1")!).RootElement;
+        Assert.False(root.GetProperty("pass").GetBoolean());
+        Assert.Equal("dotnet build", Assert.Single(root.GetProperty("failedChecks").EnumerateArray()).GetString());
+
+        // An unnamed check without a command is keyed by its position, never by a check that is named like one.
+        var positional = ReviewAnswer("approve", "",
+            "{\"check\":\"\",\"command\":\"\",\"result\":\"fail\",\"final\":true,\"notes\":\"\"}," + Check("#0", "pass", true));
+        var kept = JsonDocument.Parse(AgentService.ReviewResult(positional, "thread-1")!).RootElement;
+        Assert.False(kept.GetProperty("pass").GetBoolean());
+        Assert.Equal("#0", Assert.Single(kept.GetProperty("failedChecks").EnumerateArray()).GetString());
+
+        // Commands that differ only in case may check different things, so they stay apart.
+        var cased = ReviewAnswer("approve", "",
+            "{\"check\":\"\",\"command\":\"./check Foo\",\"result\":\"fail\",\"final\":true,\"notes\":\"\"}," +
+            "{\"check\":\"\",\"command\":\"./check foo\",\"result\":\"pass\",\"final\":true,\"notes\":\"\"}");
+        Assert.False(JsonDocument.Parse(AgentService.ReviewResult(cased, "thread-1")!).RootElement.GetProperty("pass").GetBoolean());
+        // A check whose only attempt failed still fails, even when that attempt is marked superseded.
+        var only = JsonDocument.Parse(AgentService.ReviewResult(ReviewAnswer("approve", "", Check("build", "fail", false)), "thread-1")!).RootElement;
+        Assert.False(only.GetProperty("pass").GetBoolean());
+        Assert.Equal("build", Assert.Single(only.GetProperty("failedChecks").EnumerateArray()).GetString());
+    }
+
+    [Fact]
+    public void ACompactReviewFitsTheByteLimitEvenWhenItsTextIsEscapedNonAscii() {
+        var name = new string('\u68c0', 100);
+        var checks = string.Join(",", Enumerable.Range(0, 10).Select(i => "{\"check\":\"" + name + i + "\",\"command\":\"" + name +
+            "\",\"result\":\"fail\",\"final\":true,\"notes\":\"" + name + "\"}"));
+        var answer = "{\"outcome\":\"result\",\"text\":\"\",\"review\":{\"verdict\":\"approve\",\"summary\":\"" + new string('\u68c0', 3000) +
+            "\",\"findings\":[],\"validation\":[" + checks + "]}}";
+        var result = AgentService.ReviewResult(answer, "thread-1")!;
+        Assert.True(Encoding.UTF8.GetByteCount(result) <= 8192);
+        var root = JsonDocument.Parse(result).RootElement;
+        Assert.False(root.GetProperty("pass").GetBoolean());
+        Assert.NotEmpty(root.GetProperty("failedChecks").EnumerateArray());
+    }
+
+    [Fact]
+    public void AReviewWhoseTextAloneIsTooLongStaysValidJsonWithItsDecision() {
+        var notes = new string('n', 9000);
+        var answer = "{\"outcome\":\"result\",\"text\":\"S\",\"review\":{\"verdict\":\"approve\",\"summary\":\"" + new string('s', 9000) +
+            "\",\"findings\":[],\"validation\":[{\"check\":\"build\",\"command\":\"dotnet build\",\"result\":\"fail\",\"final\":true,\"notes\":\"" +
+            notes + "\"}]}}";
+        var result = AgentService.ReviewResult(answer, "thread-1")!;
+        Assert.True(Encoding.UTF8.GetByteCount(result) <= 8192);
+        var root = JsonDocument.Parse(result).RootElement;
+        Assert.False(root.GetProperty("pass").GetBoolean());
+        Assert.Equal("build", Assert.Single(root.GetProperty("failedChecks").EnumerateArray()).GetString());
+        Assert.Contains("thread-1", root.GetProperty("truncated").GetString());
+    }
+
+    [Fact]
+    public void AReviewThatEndsWithoutAVerdictStillAnswersInTheReviewShape() {
+        var root = JsonDocument.Parse(AgentService.ReviewWithoutVerdict("Stopped with an open question.", "thread-1")).RootElement;
+        Assert.False(root.GetProperty("pass").GetBoolean());
+        Assert.Equal("needs-attention", root.GetProperty("verdict").GetString());
+        Assert.Equal("Stopped with an open question.", root.GetProperty("summary").GetString());
+    }
 }

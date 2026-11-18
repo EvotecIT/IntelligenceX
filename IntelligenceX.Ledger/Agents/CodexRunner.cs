@@ -17,7 +17,10 @@ internal sealed record TurnTokens(long Input, long CachedInput, long Output, lon
 internal sealed class TurnStillRunningException(string message) : InvalidOperationException(message);
 
 /// <summary>How one turn ended. Status is the app server's turn status (completed, failed, interrupted) or timed-out.</summary>
-internal sealed record TurnOutcome(string TurnId, string Status, string? FinalText, TurnTokens Tokens, string Model, string? Error);
+internal sealed record TurnOutcome(string TurnId, string Status, string? FinalText, TurnTokens Tokens, string Model, string? Error) {
+    /// <summary>The account ran out of Codex usage: nothing about the task failed, so the turn is retried once it passes.</summary>
+    public bool UsageLimited => Error?.StartsWith(CodexRunner.UsageLimitPrefix, StringComparison.Ordinal) == true;
+}
 
 /// <summary>How a message reached a Codex thread: a new turn, or input steered into the turn already running.</summary>
 internal sealed record CodexDelivery(string Route, string TurnId, string Model);
@@ -36,6 +39,19 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         if (model is not null) parameters["model"] = model;
         var started = await server.CallAsync("thread/start", parameters, CallTimeout, token).ConfigureAwait(false);
         var id = started.GetProperty("thread").GetProperty("id").GetString() ?? throw new InvalidDataException("thread/start returned no id.");
+        await NameAsync(server, id, title, token).ConfigureAwait(false);
+        return id;
+    }
+
+    /// <summary>Starts a new thread holding a copy of an earlier thread's conversation, in a new working directory, so a
+    /// follow-up keeps its context while the earlier thread stays as it was. An archived thread can be forked too.</summary>
+    public async Task<string> ForkThreadAsync(string sourceThreadId, string cwd, string? model, string title, CancellationToken token) {
+        await using var server = await OpenAsync(token).ConfigureAwait(false);
+        var parameters = new JsonObject { ["threadId"] = sourceThreadId, ["cwd"] = cwd, ["ephemeral"] = false,
+            ["approvalPolicy"] = "never", ["excludeTurns"] = true };
+        if (model is not null) parameters["model"] = model;
+        var forked = await server.CallAsync("thread/fork", parameters, CallTimeout, token).ConfigureAwait(false);
+        var id = forked.GetProperty("thread").GetProperty("id").GetString() ?? throw new InvalidDataException("thread/fork returned no id.");
         await NameAsync(server, id, title, token).ConfigureAwait(false);
         return id;
     }
@@ -84,7 +100,13 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 if (model is not null) parameters["model"] = model;
                 if (effort is not null) parameters["effort"] = effort;
                 if (outputSchema is not null) parameters["outputSchema"] = outputSchema.DeepClone();
-                var response = await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false);
+                JsonElement response;
+                try { response = await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false); }
+                catch (CodexRpcException error) {
+                    // The app server refused the turn (for example a model or effort it doesn't offer), so nothing started.
+                    // The caller sends the same input again a bounded number of times, then publishes a failure result.
+                    return new("", "rejected", null, TurnTokens.None, model ?? resumed, "turn/start rejected: " + error.Message);
+                }
                 turnId = response.GetProperty("turn").GetProperty("id").GetString() ?? throw new InvalidDataException("turn/start returned no id.");
             }
             watch.Follow(turnId);
@@ -200,8 +222,18 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             .Select(item => item.TryGetProperty("text", out var text) ? text.GetString() : null).LastOrDefault(text => !string.IsNullOrWhiteSpace(text))
         : null;
 
-    private static string? Error(JsonElement turn) => turn.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object &&
-        error.TryGetProperty("message", out var message) ? message.GetString() : null;
+    internal const string UsageLimitPrefix = "[usageLimitExceeded] ";
+
+    private static string? Error(JsonElement turn) => turn.TryGetProperty("error", out var error) ? ErrorText(error) : null;
+
+    /// <summary>A turn error's message, prefixed when the app server classifies it as the account's usage limit.</summary>
+    internal static string? ErrorText(JsonElement error) {
+        if (error.ValueKind != JsonValueKind.Object) return null;
+        var message = error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String ? text.GetString() : null;
+        var limited = error.TryGetProperty("codexErrorInfo", out var info) && info.ValueKind == JsonValueKind.String &&
+            info.GetString() == "usageLimitExceeded";
+        return limited ? UsageLimitPrefix + (message ?? "usage limit reached") : message;
+    }
 
     private static JsonArray Input(string text) => [new JsonObject { ["type"] = "text", ["text"] = text, ["text_elements"] = new JsonArray() }];
 
@@ -379,8 +411,7 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
             earlyTurn.GetProperty("id").GetString() is { } earlyId) {
             lock (_gate) {
                 if (TurnId is null) {
-                    var earlyError = earlyTurn.TryGetProperty("error", out var earlyFailure) && earlyFailure.ValueKind == JsonValueKind.Object &&
-                        earlyFailure.TryGetProperty("message", out var earlyMessage) ? earlyMessage.GetString() : null;
+                    var earlyError = earlyTurn.TryGetProperty("error", out var earlyFailure) ? CodexRunner.ErrorText(earlyFailure) : null;
                     _earlyDone[earlyId] = (CodexRunner.Status(earlyTurn), CodexRunner.FinalText(earlyTurn), earlyError);
                     return;
                 }
@@ -415,8 +446,7 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
                 LastMessage = text.GetString();
                 break;
             case "turn/completed" when parameters.TryGetProperty("turn", out var turn) && turn.GetProperty("id").GetString() == TurnId:
-                var error = turn.TryGetProperty("error", out var failure) && failure.ValueKind == JsonValueKind.Object &&
-                    failure.TryGetProperty("message", out var message) ? message.GetString() : null;
+                var error = turn.TryGetProperty("error", out var failure) ? CodexRunner.ErrorText(failure) : null;
                 Complete(CodexRunner.Status(turn), CodexRunner.FinalText(turn), error);
                 break;
         }

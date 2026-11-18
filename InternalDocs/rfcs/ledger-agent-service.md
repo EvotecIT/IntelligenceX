@@ -176,6 +176,45 @@ one needs attention), and learns of a Claude usage limit or lapsed login from th
   about 0.1 s instead of the 1.5–4 s the full Ledger program needs to start. `IntelligenceX.Ledger inbox` runs the same
   code.
 
+### Follow-ups, reviews and usage limits
+
+These cover what sessions used to do through a separate Codex bridge plugin, so `ask` is the one way to hand work to
+Codex and read its result.
+
+- **Follow-ups keep the context.** `ask` with `continues: <earlier ask id>` runs on the machine that ran the earlier
+  helper. The agent service forks that helper's thread (`thread/fork`) into a new workspace, so the new helper has the
+  whole earlier conversation and the earlier thread stays as it was, archived or not. The earlier ask must be the same
+  requester's, finished, and still in the live state (not yet archived). The service resolves the thread to fork from
+  that ask's binding. `request_submit` can't name one.
+- **Model and effort per ask.** `model` and `effort` override `ask.codexModel` and `ask.codexEffort` for that ask's
+  turns.
+- **Reviews.** `output: "review"` asks for a merge-gate review of the branch at the commit. The helper's final answer
+  carries a verdict, findings (critical, high, medium, low) and the checks it ran. Only the final attempt of each check
+  counts. The published result is JSON with `pass`, `verdict`, `failedChecks`, `summary`, `findings` and `validation`.
+  `pass` is true only for `approve` with no critical or high finding and no failed final check. A review over 8 KB
+  drops superseded check attempts, then the least severe findings, and says where the full review is.
+- **Codex usage limit.** A helper turn that ends with `usageLimitExceeded` doesn't use up a resume or fail the
+  request. The machine's `<machine>:sign-in:codex` item turns needs-you with reason `usage-limit`, so its user can sign
+  in with another account (`codex login`). The grant stays renewed and the same thread is retried every
+  `ask.usageLimitProbeMinutes`. The next completed turn clears the item.
+
+### Wakes
+
+A session that only has to wait (for CI, or for a reviewer's window) asks the Ledger to wake it and ends its turn.
+`wake` takes `ci: "owner/repo#N"` or `afterMinutes`, plus the prompt the session wants to receive. The service reads
+each watched pull request every minute through the same cached GitHub read as `pr_ready`, with no model involved. A
+CI wake becomes due when the checks on the current head have finished (all passed, or failing with none pending) or
+when the pull request is merged or closed. A head that moves during the read waits for the next pass. A timed wake is
+due at its time. A CI wake still waiting after `ask.wakeExpiryHours` (72 by default) becomes due as expired, so the
+session isn't left waiting silently.
+
+The agent service on the session's machine delivers a due wake once: the reason first, then the session's own prompt,
+through the same Codex app server and `SendMessage` routes as results. A delivery left sending past
+`ask.deliveryUnconfirmedMinutes` becomes uncertain and is never resent. A newer CI wake for the same session and pull
+request replaces a waiting one. A session client may hold `ask.maximumWakes` waiting wakes. `wake_cancel` cancels one
+that hasn't started delivery. A Claude wake waits for sign-in and for an unreachable session the same way questions
+do. Closed wakes are dropped after `retainFinishedDays`.
+
 ### Keeping the live state small
 
 The coordination state is one document rewritten by every command. Requests that finished (accepted, result consumed,
