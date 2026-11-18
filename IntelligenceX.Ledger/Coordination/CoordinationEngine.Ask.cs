@@ -26,13 +26,17 @@ public sealed partial class CoordinationEngine {
         Require(ask is not null && Id(ask.Id) && ask.Id.Length <= 120 && Text(ask.Task) && Id(ask.ReturnProvider) &&
             Id(ask.ReturnSessionId) && (ask.MachineId is null || Id(ask.MachineId)) && (ask.Provider is null || Id(ask.Provider)) &&
             (ask.Kind is null || Id(ask.Kind)) && (ask.Capability is null || Id(ask.Capability)) &&
-            (ask.ReturnAddress is null || ask.ReturnAddress.Length is > 0 and <= 300 && !ask.ReturnAddress.Any(char.IsControl)), "invalid-ask");
+            (ask.ReturnAddress is null || ask.ReturnAddress.Length is > 0 and <= 300 && !ask.ReturnAddress.Any(char.IsControl)) &&
+            (ask.Continues is null || Id(ask.Continues) && ask.Continues != ask.Id), "invalid-ask");
         bool Same(CoordinationWork work) => work.Requester == caller.Id && IsAsk(work) && work.Request.TaskBrief == ask.Task &&
             work.Request.ReturnTo is { } back && back.Provider == ask.ReturnProvider && back.SessionId == ask.ReturnSessionId &&
-            work.Request.MachineId == ask.MachineId && work.Request.Checkpoint.Project == ask.Project &&
+            (work.Request.MachineId == ask.MachineId || ask.Continues is not null && ask.MachineId is null) &&
+            work.Request.Checkpoint.Project == ask.Project &&
             work.Request.Checkpoint.Branch == ask.Branch && work.Request.Checkpoint.Commit == ask.Commit &&
             (ask.Provider is null || work.Request.RequiredProvider == ask.Provider) &&
-            (ask.Capability is null || work.Request.Capability == ask.Capability);
+            (ask.Capability is null || work.Request.Capability == ask.Capability) &&
+            work.Request.Helper?.ContinuesRequestId == ask.Continues && work.Request.Helper?.Model == ask.Model &&
+            work.Request.Helper?.Effort == ask.Effort && work.Request.Helper?.Output == ask.Output;
         if (state.Work.TryGetValue(ask.Id, out var existing) || archived?.RequestId == ask.Id && (existing = archived.Work) is not null) {
             Require(Same(existing), "request-id-conflict");
             return existing;
@@ -40,6 +44,19 @@ public sealed partial class CoordinationEngine {
         // A session already enrolled under another worker id keeps it, so the result can be delivered to that worker.
         var returnWorker = state.Workers.Values.FirstOrDefault(w => w.MachineId == caller.MachineId && w.Provider == ask.ReturnProvider &&
             w.SessionId == ask.ReturnSessionId)?.Id ?? ask.ReturnProvider + "-" + ask.ReturnSessionId;
+        // A follow-up carries on the earlier helper's conversation, so it runs where that helper ran, with the same provider.
+        string? forkSession = null;
+        if (ask.Continues is not null) {
+            CoordinationSessionBinding? priorBinding = null;
+            Require(state.Work.TryGetValue(ask.Continues, out var prior) && IsAsk(prior) && prior.Requester == caller.Id &&
+                Terminal.Contains(prior.State) && prior.Provider == "codex" && prior.Machine is not null &&
+                state.Bindings.TryGetValue(prior.Request.Id, out priorBinding) && priorBinding.Provider == "codex",
+                "ask-continues-unavailable");
+            Require(ask.MachineId is null || ask.MachineId == prior!.Machine, "ask-continues-machine-conflict");
+            Require(ask.Provider is null or "codex", "ask-continues-provider-conflict");
+            forkSession = priorBinding!.SessionId;
+            ask = ask with { MachineId = prior!.Machine, Provider = "codex" };
+        }
         var machine = ask.MachineId is null ? null : state.Policy.Machines.FirstOrDefault(m => m.Id == ask.MachineId);
         Require(ask.MachineId is null || machine is not null, "ask-machine-unknown");
         var capability = ask.Capability ?? machine?.Capabilities.FirstOrDefault();
@@ -57,7 +74,9 @@ public sealed partial class CoordinationEngine {
         var goalId = "ask-" + ask.Id;
         var request = new CoordinationRequest(ask.Id, goalId, "help", capability, ask.MachineId, null, new(AgentSlots: 1),
             checkpoint, [], 1, AskOrigin, provider, ReturnTo: new(returnWorker, caller.MachineId!, ask.ReturnProvider,
-                ask.ReturnSessionId, checkpoint) { Address = ask.ReturnAddress }, TaskBrief: ask.Task);
+                ask.ReturnSessionId, checkpoint) { Address = ask.ReturnAddress }, TaskBrief: ask.Task,
+            Helper: ask.Continues is null && ask.Model is null && ask.Effort is null && ask.Output is null ? null
+                : new(ask.Model, ask.Effort, ask.Output, ask.Continues, forkSession));
         Request(request, caller);
         Require(!state.Goals.ContainsKey(goalId), "ask-goal-conflict");
         Require(state.Work.Values.Count(w => w.State == "queued") < state.Policy.MaximumQueued, "queue-full");

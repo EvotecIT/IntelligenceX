@@ -59,6 +59,10 @@ public static class CoordinationValidation {
             (r.MachineId is null || Id(r.MachineId)) && (r.WorkerId is null || Id(r.WorkerId)), "invalid-request");
         Require(r.TaskBrief is null || !string.IsNullOrWhiteSpace(r.TaskBrief) &&
             Encoding.UTF8.GetByteCount(r.TaskBrief) <= 8192, "invalid-task-brief");
+        Require(r.Helper is not { } h || (h.Model is null || Id(h.Model)) && h.Effort is null or "low" or "medium" or "high" or "xhigh" &&
+            h.Output is null or "text" or "review" && (h.ContinuesRequestId is null || Id(h.ContinuesRequestId)) &&
+            (h.ForkSessionId is null || Id(h.ForkSessionId)) && h.ContinuesRequestId is null == h.ForkSessionId is null &&
+            r.Kind is "help" or "review", "invalid-helper-options");
         Checkpoint(c);
         Require(caller.Projects.Contains(c!.Project, StringComparer.Ordinal), "project-not-authorized");
         Require(r.Dependencies is { Length: <= 64 } && r.Dependencies.All(Id) && !r.Dependencies.Contains(r.Id) &&

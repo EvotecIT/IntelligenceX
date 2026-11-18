@@ -19,21 +19,139 @@ internal sealed partial class AgentService {
         ["additionalProperties"] = false
     };
 
+    /// <summary>The final answer of a review ask: the same result-or-question shape, plus a structured verdict with
+    /// findings and the checks that were run. A check counts by its final attempt.</summary>
+    internal static readonly JsonObject ReviewOutputSchema = new() {
+        ["type"] = "object",
+        ["properties"] = new JsonObject {
+            ["outcome"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("result", "question") },
+            ["text"] = new JsonObject { ["type"] = "string" },
+            ["review"] = new JsonObject {
+                ["type"] = "object",
+                ["properties"] = new JsonObject {
+                    ["verdict"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("approve", "needs-attention") },
+                    ["summary"] = new JsonObject { ["type"] = "string" },
+                    ["findings"] = new JsonObject {
+                        ["type"] = "array",
+                        ["items"] = new JsonObject {
+                            ["type"] = "object",
+                            ["properties"] = new JsonObject {
+                                ["severity"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("critical", "high", "medium", "low") },
+                                ["title"] = new JsonObject { ["type"] = "string" },
+                                ["file"] = new JsonObject { ["type"] = "string" },
+                                ["line"] = new JsonObject { ["type"] = "integer" },
+                                ["detail"] = new JsonObject { ["type"] = "string" },
+                                ["recommendation"] = new JsonObject { ["type"] = "string" }
+                            },
+                            ["required"] = new JsonArray("severity", "title", "file", "line", "detail", "recommendation"),
+                            ["additionalProperties"] = false
+                        }
+                    },
+                    ["validation"] = new JsonObject {
+                        ["type"] = "array",
+                        ["items"] = new JsonObject {
+                            ["type"] = "object",
+                            ["properties"] = new JsonObject {
+                                ["check"] = new JsonObject { ["type"] = "string" },
+                                ["command"] = new JsonObject { ["type"] = "string" },
+                                ["result"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("pass", "fail", "skipped") },
+                                ["final"] = new JsonObject { ["type"] = "boolean" },
+                                ["notes"] = new JsonObject { ["type"] = "string" }
+                            },
+                            ["required"] = new JsonArray("check", "command", "result", "final", "notes"),
+                            ["additionalProperties"] = false
+                        }
+                    }
+                },
+                ["required"] = new JsonArray("verdict", "summary", "findings", "validation"),
+                ["additionalProperties"] = false
+            }
+        },
+        ["required"] = new JsonArray("outcome", "text", "review"),
+        ["additionalProperties"] = false
+    };
+
+    private static bool IsReview(CoordinationWork work) => work.Request.Helper?.Output == "review";
+    private static JsonObject OutputSchema(CoordinationWork work) => IsReview(work) ? ReviewOutputSchema : HelperOutputSchema;
+    private string? Model(CoordinationWork work) => work.Request.Helper?.Model ?? _policy.CodexModel;
+    private string? Effort(CoordinationWork work) => work.Request.Helper?.Effort ?? _policy.CodexEffort;
+
     internal static string HelperPrompt(CoordinationWork work, string workspace) {
         var r = work.Request;
         var from = r.ReturnTo is { } back ? back.Provider + " session " + back.SessionId + " on " + back.MachineId : "another session";
-        return new StringBuilder()
-            .Append("You are a helper for ").Append(from).AppendLine(", working through the IntelligenceX Ledger.")
+        var prompt = new StringBuilder();
+        if (r.Helper?.ContinuesRequestId is { } earlier)
+            prompt.Append("This continues your earlier work on ask ").Append(earlier).AppendLine(", which is the conversation above. " +
+                "Its working directory has been removed; this one starts empty.").AppendLine();
+        prompt.Append("You are a helper for ").Append(from).AppendLine(", working through the IntelligenceX Ledger.")
             .AppendLine().AppendLine("Task:").AppendLine(r.TaskBrief ?? "(no task text)").AppendLine()
             .Append("The requester is working on ").Append(r.Checkpoint.Project).Append(" (branch ").Append(r.Checkpoint.Branch)
             .Append(", commit ").Append(r.Checkpoint.Commit).AppendLine(").")
-            .Append("Your working directory ").Append(workspace).AppendLine(" starts empty. Anything you leave there is kept for review, " +
-                "so remove scratch you don't need and push anything worth keeping.")
-            .AppendLine().AppendLine("Finish with the JSON final answer the output schema asks for:")
+            .Append("Your working directory ").Append(workspace).AppendLine(" starts empty. To work on the code, clone the repository " +
+                "into it and check out that branch or commit. Anything you leave there is kept for review, so remove clones and scratch " +
+                "you don't need and push anything worth keeping.");
+        if (IsReview(work))
+            prompt.AppendLine().AppendLine("This is a review. Review the changes on that branch at that commit against the base the task names " +
+                    "(the repository's default branch if it names none). Use the repository's own conventions and AGENTS.md. Be adversarial: look " +
+                    "for correctness bugs, regressions, missing tests, unsafe changes and anything that should block a merge. Run the validation " +
+                    "that matters for these changes (build, tests, analyzers) where practical and record each command in review.validation.")
+                .AppendLine("Give every attempt of a check the same check name. If an attempt failed for a setup reason and you corrected and " +
+                    "reran it, mark the earlier attempt final: false and the rerun final: true. A final fail blocks the merge.")
+                .AppendLine("Do not modify, commit, push or delete anything in the repository, and do not merge.")
+                .AppendLine("Set review.verdict to \"approve\" only if nothing should block the merge; otherwise \"needs-attention\" with " +
+                    "concrete findings. text is a one-paragraph summary for the requester. For a question, fill review with " +
+                    "\"needs-attention\" and empty lists; it is ignored.");
+        return prompt.AppendLine().AppendLine("Finish with the JSON final answer the output schema asks for:")
             .AppendLine("- outcome \"result\": text is your answer for the requester (keep it under about 6000 characters).")
             .AppendLine("- outcome \"question\": text is one clear question only the requester can answer. The answer arrives in this conversation and you continue.")
             .ToString();
     }
+
+    /// <summary>Turns a review answer into the published result: the verdict as JSON with pass worked out the way the merge
+    /// gate always did (approve, no critical or high finding, no check whose final attempt failed). When the whole would pass
+    /// the Ledger's 8 KB, superseded check attempts and then the lowest-severity findings are dropped and truncated is set.
+    /// Null when the answer has no review.</summary>
+    internal static string? ReviewResult(string? finalText, string threadId) {
+        if (string.IsNullOrWhiteSpace(finalText)) return null;
+        JsonObject review;
+        try {
+            if (JsonNode.Parse(finalText) is not JsonObject root || root["review"] is not JsonObject found) return null;
+            review = (JsonObject)found.DeepClone();
+        } catch (Exception error) when (error is JsonException or InvalidOperationException) { return null; }
+        var verdict = Str(review["verdict"]);
+        var findings = review["findings"] as JsonArray ?? [];
+        var checks = review["validation"] as JsonArray ?? [];
+        var last = new Dictionary<string, JsonNode>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < checks.Count; i++) {
+            if (checks[i] is not JsonObject check || check["final"] is JsonValue final && final.TryGetValue<bool>(out var isFinal) && !isFinal) continue;
+            last[(Str(check["check"]) ?? Str(check["command"]) ?? "#" + i).Trim()] = check;
+        }
+        var failed = last.Where(pair => Str(pair.Value["result"]) == "fail").Select(pair => (JsonNode?)JsonValue.Create(pair.Key)).ToArray();
+        var blocking = findings.Any(f => Str(f?["severity"]) is "critical" or "high");
+        var result = new JsonObject {
+            ["pass"] = verdict == "approve" && !blocking && failed.Length == 0,
+            ["verdict"] = verdict,
+            ["failedChecks"] = new JsonArray(failed),
+            ["summary"] = review["summary"]?.DeepClone(),
+            ["findings"] = findings.DeepClone(),
+            ["validation"] = checks.DeepClone()
+        };
+        var order = new[] { "low", "medium", "high", "critical" };
+        while (Encoding.UTF8.GetByteCount(result.ToJsonString()) > MaximumResultBytes) {
+            result["truncated"] = "The full review is in Codex thread " + threadId + ".";
+            var kept = (JsonArray)result["validation"]!;
+            if (kept.FirstOrDefault(c => c?["final"] is JsonValue v && v.TryGetValue<bool>(out var f) && !f) is { } superseded) {
+                kept.Remove(superseded);
+                continue;
+            }
+            var list = (JsonArray)result["findings"]!;
+            if (list.Count == 0) return Bound(result.ToJsonString(), threadId);
+            list.Remove(list.OrderBy(f => Array.IndexOf(order, Str(f?["severity"]) ?? "low")).First());
+        }
+        return result.ToJsonString();
+    }
+
+    private static string? Str(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
     internal static string AnswerPrompt(CoordinationQuestion question, double waitMinutes) => question.State == "expired"
         ? "No answer to your question arrived within " + waitMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) +
@@ -100,7 +218,10 @@ internal sealed partial class AgentService {
             if (record.ThreadId is null) {
                 var task = work.Request.TaskBrief ?? id;
                 var title = "Ledger " + id + ": " + (task.Length > 60 ? task[..60] : task).ReplaceLineEndings(" ");
-                record = record with { ThreadId = await _codex.StartThreadAsync(record.Workspace, _policy.CodexModel, title, stop).ConfigureAwait(false) };
+                var thread = work.Request.Helper?.ForkSessionId is { } source
+                    ? await _codex.ForkThreadAsync(source, record.Workspace, Model(work), title, stop).ConfigureAwait(false)
+                    : await _codex.StartThreadAsync(record.Workspace, Model(work), title, stop).ConfigureAwait(false);
+                record = record with { ThreadId = thread };
                 record.Save(_settings.StateDirectory);
             }
             var threadId = record.ThreadId!;
@@ -186,8 +307,8 @@ internal sealed partial class AgentService {
                 // Repeating the same sending attempt is accepted, so a restart right after recording it locally is safe.
                 await _ledger.QuestionDeliveryAsync(id, record.QuestionNumber!.Value, new("answer", record.AnswerAttempt!, "sending"), stop).ConfigureAwait(false);
                 try {
-                    outcome = await _codex.RunTurnAsync(threadId, record.Workspace, record.AnswerPrompt!, HelperOutputSchema, _policy.CodexModel,
-                        _policy.CodexEffort, limit, record.KnownTurns, Submitting, Started, watch, stop).ConfigureAwait(false);
+                    outcome = await _codex.RunTurnAsync(threadId, record.Workspace, record.AnswerPrompt!, OutputSchema(work), Model(work),
+                        Effort(work), limit, record.KnownTurns, Submitting, Started, watch, stop).ConfigureAwait(false);
                 } catch (Exception error) when (record.KnownTurns is null && record.TurnId is null && record.AnswerAttempt is { } attempt &&
                     error is IOException or TimeoutException or InvalidOperationException or System.ComponentModel.Win32Exception or
                         System.Net.WebSockets.WebSocketException) {
@@ -198,10 +319,21 @@ internal sealed partial class AgentService {
                     throw;
                 }
             } else {
-                var prompt = record.Resumes > 0 ? ResumePrompt : HelperPrompt(work, record.Workspace);
-                outcome = await _codex.RunTurnAsync(threadId, record.Workspace, prompt, HelperOutputSchema, _policy.CodexModel,
-                    _policy.CodexEffort, limit, record.KnownTurns, Submitting, Started, watch, stop).ConfigureAwait(false);
+                var prompt = record.Resumes > 0 || record.LimitWaits > 0 ? ResumePrompt : HelperPrompt(work, record.Workspace);
+                outcome = await _codex.RunTurnAsync(threadId, record.Workspace, prompt, OutputSchema(work), Model(work),
+                    Effort(work), limit, record.KnownTurns, Submitting, Started, watch, stop).ConfigureAwait(false);
             }
+            if (outcome.UsageLimited) {
+                // Nothing about the task failed: the account ran out of Codex usage. The user is asked to sign in with another
+                // account, the grant stays renewed, and the same thread is tried again each probe interval without using up
+                // a resume.
+                Observe("codex", false, "usage-limit");
+                record = (record with { LimitWaits = record.LimitWaits + 1, TurnId = null, Phase = "turn" }).Save(_settings.StateDirectory);
+                Log("helper-usage-limit", id + " " + outcome.Error);
+                await Task.Delay(TimeSpan.FromMinutes(_policy.UsageLimitProbeMinutes), stop).ConfigureAwait(false);
+                continue;
+            }
+            if (outcome.Status == "completed") Observe("codex", true, "turn");
             if (record.UsageTurn != outcome.TurnId)
                 record = (record with { UsageTurn = outcome.TurnId, UsageAtUtc = DateTimeOffset.UtcNow }).Save(_settings.StateDirectory);
             await RecordUsageAsync(id, "worker", "codex", outcome.Model, outcome.Tokens, null, threadId, stop, record.UsageAtUtc).ConfigureAwait(false);
@@ -219,7 +351,8 @@ internal sealed partial class AgentService {
                 }
             }
             if (outcome.Status == "completed" && kind == "result" && !string.IsNullOrWhiteSpace(text))
-                return await PublishAsync(work, record, Bound(text, threadId), succeeded: true, stop).ConfigureAwait(false);
+                return await PublishAsync(work, record, IsReview(work) ? ReviewResult(outcome.FinalText, threadId) ?? Bound(text, threadId)
+                    : Bound(text, threadId), succeeded: true, stop).ConfigureAwait(false);
             if (record.Resumes < _policy.ResumeAttempts) {
                 record = (record with { Resumes = record.Resumes + 1, TurnId = null, Phase = "turn" }).Save(_settings.StateDirectory);
                 Log("helper-resumed", id + " " + outcome.Status);

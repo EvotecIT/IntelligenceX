@@ -18,10 +18,14 @@ public sealed class AskTools(LedgerReadClient client) {
         "Source project/branch/commit default to this session's Git checkout. Reuse the same id when retrying after an error. " +
         "sessionId is this session's own id, where the answer is delivered; pass it when the tool reports session-unknown. " +
         "Codex: the CODEX_THREAD_ID environment variable of your shell commands. Claude Code: CLAUDE_CODE_SESSION_ID, and also " +
-        "sessionAddress: this session's own name and ref exactly as ListAgents shows it (\"This session is <name> [<ref>]\").")]
+        "sessionAddress: this session's own name and ref exactly as ListAgents shows it (\"This session is <name> [<ref>]\"). " +
+        "continues: the id of an earlier Codex ask of yours; the helper carries on from that conversation (a forked copy) on the same machine. " +
+        "model and effort (low, medium, high, xhigh) override the Codex defaults for this ask. " +
+        "output: \"review\" for a merge-gate review of the branch at the commit, returned as JSON with pass, verdict, failedChecks, findings and validation.")]
     public Task<CoordinationWork> Ask(string task, string? machine = null, string? provider = null, string? kind = null,
         string? capability = null, string? id = null, string? project = null, string? branch = null, string? commit = null,
-        string? sessionId = null, string? sessionProvider = null, string? sessionAddress = null, CancellationToken token = default) {
+        string? sessionId = null, string? sessionProvider = null, string? sessionAddress = null, string? continues = null,
+        string? model = null, string? effort = null, string? output = null, CancellationToken token = default) {
         var (returnProvider, session) = CurrentSession(sessionId, sessionProvider);
         var source = project is null || branch is null || commit is null ? GitSource() : default;
         // An uncertain outcome names the id, so a retry with it returns the ask the service may already have taken.
@@ -29,7 +33,7 @@ public sealed class AskTools(LedgerReadClient client) {
         return Command(client.AskAsync(new CoordinationAsk(askId, task,
             project ?? source.Project ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"project-required\"}"),
             branch ?? source.Branch ?? "main", commit ?? source.Commit ?? throw new McpException("{\"outcome\":\"rejected\",\"error\":\"commit-required\"}"),
-            returnProvider, session, machine, provider, kind, capability, sessionAddress), token), askId);
+            returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output), token), askId);
     }
 
     [McpServerTool(Name = "ask_answer", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]

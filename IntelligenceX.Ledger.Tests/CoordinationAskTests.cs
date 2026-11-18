@@ -415,4 +415,43 @@ public sealed class CoordinationAskTests {
         Assert.Equal("invalid-ask-policy", Assert.Throws<CoordinationConflictException>(() =>
             engine.SetPolicyValue(new("ask.codexEffort", System.Text.Json.JsonDocument.Parse("\"extreme\"").RootElement, 2), operator_)).Message);
     }
+
+
+    [Fact]
+    public void AFollowUpForksTheEarlierHelperOnTheSameMachineWithItsOwnOptions() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        var running = engine.Ask(Ask("running"), Sessions);
+        StartHelper(engine, running, "running-thread");
+        Assert.Equal("ask-continues-unavailable", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("too-early", machine: null!) with { Continues = "running" }, Sessions)).Message);
+
+        Complete(engine, state, "first");
+        var followUp = Ask("second", machine: null!) with { Continues = "first", Model = "gpt-6", Effort = "high", Output = "review" };
+        var work = engine.Ask(followUp, Sessions);
+        Assert.Equal(("mac", "codex"), (work.Request.MachineId, work.Request.RequiredProvider));
+        Assert.Equal(new CoordinationHelperOptions("gpt-6", "high", "review", "first", "thread-first"), work.Request.Helper);
+        Assert.Same(state.Work["second"], engine.Ask(followUp, Sessions));
+        Assert.Equal("request-id-conflict", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(followUp with { Effort = "low" }, Sessions)).Message);
+        Assert.Equal("ask-continues-machine-conflict", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("third", machine: "pc") with { Continues = "first" }, Sessions)).Message);
+        var other = Sessions with { Id = "other-sessions" };
+        Assert.Equal("ask-continues-unavailable", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("fourth", machine: null!) with { Continues = "first" }, other)).Message);
+    }
+
+    [Fact]
+    public void HelperOptionsAreValidatedAndAForkIsNeverSuppliedDirectly() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        Assert.Equal("invalid-helper-options", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("bad-effort") with { Effort = "extreme" }, Sessions)).Message);
+        Assert.Equal("invalid-helper-options", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("bad-output") with { Output = "essay" }, Sessions)).Message);
+        Assert.Null(engine.Ask(Ask("plain"), Sessions).Request.Helper);
+
+        var request = state.Work["plain"].Request with { Id = "forged", Helper = new(ContinuesRequestId: "plain", ForkSessionId: "someone-else") };
+        Assert.Equal("invalid-helper-options", Assert.Throws<CoordinationConflictException>(() => engine.Submit(request, Sessions)).Message);
+    }
 }

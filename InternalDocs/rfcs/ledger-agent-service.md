@@ -176,6 +176,28 @@ one needs attention), and learns of a Claude usage limit or lapsed login from th
   about 0.1 s instead of the 1.5–4 s the full Ledger program needs to start. `IntelligenceX.Ledger inbox` runs the same
   code.
 
+### Follow-ups, reviews and usage limits
+
+These cover what sessions used to do through a separate Codex bridge plugin, so `ask` is the one way to hand work to
+Codex and read its result.
+
+- **Follow-ups keep the context.** `ask` with `continues: <earlier ask id>` runs on the machine that ran the earlier
+  helper. The agent service forks that helper's thread (`thread/fork`) into a new workspace, so the new helper has the
+  whole earlier conversation and the earlier thread stays as it was, archived or not. The earlier ask must be the same
+  requester's, finished, and still in the live state (not yet archived). The service resolves the thread to fork from
+  that ask's binding. `request_submit` can't name one.
+- **Model and effort per ask.** `model` and `effort` override `ask.codexModel` and `ask.codexEffort` for that ask's
+  turns.
+- **Reviews.** `output: "review"` asks for a merge-gate review of the branch at the commit. The helper's final answer
+  carries a verdict, findings (critical, high, medium, low) and the checks it ran. Only the final attempt of each check
+  counts. The published result is JSON with `pass`, `verdict`, `failedChecks`, `summary`, `findings` and `validation`.
+  `pass` is true only for `approve` with no critical or high finding and no failed final check. A review over 8 KB
+  drops superseded check attempts, then the least severe findings, and says where the full review is.
+- **Codex usage limit.** A helper turn that ends with `usageLimitExceeded` doesn't use up a resume or fail the
+  request. The machine's `<machine>:sign-in:codex` item turns needs-you with reason `usage-limit`, so its user can sign
+  in with another account (`codex login`). The grant stays renewed and the same thread is retried every
+  `ask.usageLimitProbeMinutes`. The next completed turn clears the item.
+
 ### Keeping the live state small
 
 The coordination state is one document rewritten by every command. Requests that finished (accepted, result consumed,
