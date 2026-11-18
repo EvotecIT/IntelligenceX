@@ -20,7 +20,8 @@ public sealed partial class LedgerStore {
         ValidateTtl(command.TtlSeconds);
         var maximum = (int)Math.Floor(MaximumTtlSeconds(command.Key, policy));
         var needsApproval = command.TtlSeconds > maximum;
-        if (needsApproval && command.TransferLeaseId is not null) return TtlExceeded(maximum);
+        // Branch reservations hand off and take over between sessions rather than queue, so they stay within policy.
+        if (needsApproval && (command.TransferLeaseId is not null || KeyClass(command.Key) == "branch")) return TtlExceeded(maximum);
         await _leaseGate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
@@ -65,7 +66,7 @@ public sealed partial class LedgerStore {
                 if (reason is null && await EarlierWaiterAsync(tx, lease, all, policy, now, ct)) reason = "earlier-waiter";
                 reason = await BenchmarkBudgetReasonAsync(tx, lease, command.TtlSeconds, policy, now, ct) ?? reason;
                 if (reason is not null && KeyClass(lease.Key) is not ("build" or "test" or "bench"))
-                    return new(false, "busy", all.FirstOrDefault(r => r.Lease.Key == lease.Key)?.Lease);
+                    return new(false, "busy", all.FirstOrDefault(r => r.Lease.Key == lease.Key && r.State == "active")?.Lease);
                 var queued = reason is not null;
                 if (queued && all.Count(r => r.State == "queued") >= policy.MaximumQueued) return new(false, "queue-full");
                 lease = lease with { AcquiredAtUtc = queued ? null : now,
@@ -150,7 +151,8 @@ public sealed partial class LedgerStore {
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
             return await db.RunInTransactionAsync(async (tx, ct) => {
-                await ScheduleReservationsAsync(tx, policy, now, ct);
+                // Queue the approval before scheduling, so a slot freed meanwhile goes to it in its original order
+                // rather than to a younger waiter. Expired requests are already excluded here.
                 var row = (await ReservationsAsync(tx, now, ct)).FirstOrDefault(r => r.Lease.LeaseId == command.LeaseId && r.State == "needs-approval");
                 if (row is null) return new LeaseReply(false, "not-pending");
                 if (!command.Approve) {

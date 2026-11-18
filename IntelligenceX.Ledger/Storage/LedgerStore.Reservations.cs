@@ -37,7 +37,7 @@ public sealed partial class LedgerStore {
     /// <summary>An operator may approve up to a week for one reservation; anything longer is a bad request.</summary>
     private const int MaximumApprovedTtlSeconds = 7 * 24 * 3600;
     private static int AllowedTtlSeconds(Lease lease, CoordinationPolicy policy) =>
-        Math.Max((int)Math.Floor(MaximumTtlSeconds(lease.Key, policy)), lease.ApprovedTtlSeconds ?? 0);
+        lease.ApprovedTtlSeconds ?? (int)Math.Floor(MaximumTtlSeconds(lease.Key, policy));
     private static void ValidateTtl(int seconds) {
         if (seconds <= 0 || seconds > MaximumApprovedTtlSeconds) throw new ArgumentException("Lease TTL is out of range.");
     }

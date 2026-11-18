@@ -72,6 +72,43 @@ public sealed class LeaseApprovalTests : IDisposable {
         Assert.Equal(Now.AddHours(8), approved.Lease!.ExpiresAtUtc);
     }
 
+    [Fact]
+    public async Task AShorterApprovalBoundsRenewalsBelowThePolicyMaximum() {
+        using var store = new LedgerStore(Database, new(new()), _ => Task.FromResult(Policy));
+        await store.InitializeAsync();
+        var asked = await store.AcquireLeaseAsync(new("test:synthetic", "worker", "synthetic", "long suite", 10800), Now);
+        var approved = await store.ApproveLeaseAsync(new(asked.Lease!.LeaseId, true, 1800), Now);
+        await Session(store, "worker", Now);
+        var renewal = await store.RenewLeaseAsync(new("test:synthetic", approved.Lease!.LeaseId, 3600), Now);
+        Assert.Equal(("ttl-exceeds-policy", 1800), (renewal.State, renewal.MaximumTtlSeconds));
+    }
+
+    [Fact]
+    public async Task BusyRepliesNameTheActiveHolderAndBranchesNeverWaitForApproval() {
+        using var store = new LedgerStore(Database, new(new()), _ => Task.FromResult(Policy));
+        await store.InitializeAsync();
+        Assert.Equal("needs-approval", (await store.AcquireLeaseAsync(new("resource:x", "waiting", "synthetic", "long", 2 * 86400), Now)).State);
+        var holder = await store.AcquireLeaseAsync(new("resource:x", "holder", "synthetic", "short", 600), Now);
+        var busy = await store.AcquireLeaseAsync(new("resource:x", "third", "synthetic", "short", 600), Now);
+        Assert.Equal(("busy", holder.Lease!.LeaseId), (busy.State, busy.Lease!.LeaseId));
+
+        var branch = await store.AcquireLeaseAsync(new("branch:example/repo:feature", "worker", "synthetic", "edit", 481 * 60), Now);
+        Assert.Equal(("ttl-exceeds-policy", 480 * 60), (branch.State, branch.MaximumTtlSeconds));
+        Assert.DoesNotContain((await store.PendingLeaseApprovalsAsync(Now)).Pending, p => p.Lease.Key.StartsWith("branch:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnApprovalKeepsItsPlaceAheadOfAYoungerWaiterWhenTheSlotFreesFirst() {
+        using var store = new LedgerStore(Database, new(new()), _ => Task.FromResult(Policy));
+        await store.InitializeAsync();
+        Assert.True((await store.AcquireLeaseAsync(new("bench:synthetic", "first", "synthetic", "measure", 600), Now)).Ok);
+        var asked = await store.AcquireLeaseAsync(new("bench:synthetic", "overnight", "synthetic", "measure", 8 * 3600), Now.AddSeconds(1));
+        Assert.Equal("queued", (await store.AcquireLeaseAsync(new("bench:synthetic", "younger", "synthetic", "measure", 600), Now.AddSeconds(2))).State);
+        var approved = await store.ApproveLeaseAsync(new(asked.Lease!.LeaseId, true), Now.AddMinutes(11));
+        Assert.Equal("acquired", approved.State);
+        Assert.Equal("overnight", Assert.Single((await store.WhoAsync("bench:synthetic", false, Now.AddMinutes(11))).Leases).Holder);
+    }
+
     [Theory]
     [InlineData(new[] { "lease-approvals", "--config", "x" }, null, false, 0)]
     [InlineData(new[] { "lease-approvals", "--config", "x", "--deny", "id" }, "id", false, 0)]
