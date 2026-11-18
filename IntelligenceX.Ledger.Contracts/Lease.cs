@@ -12,7 +12,13 @@ public sealed record Lease(string Key, string Holder, string Machine, string Pur
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool TtlAdjustedToPolicy { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? PreviousLeaseId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public LeaseHandoff? Handoff { get; init; }
+    /// <summary>A TTL above policy that an operator approved for this one reservation, renewals included.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? ApprovedTtlSeconds { get; init; }
 }
+/// <summary>An operator's answer to a reservation waiting in needs-approval. TtlSeconds 0 approves the requested TTL.</summary>
+public sealed record LeaseApproval(string LeaseId, bool Approve, int TtlSeconds = 0);
+public sealed record PendingLeaseApproval(Lease Lease, int RequestedTtlSeconds, int MaximumTtlSeconds);
+public sealed record LeaseApprovalList(PendingLeaseApproval[] Pending);
 public sealed record LeaseHandoff(string Commit, string NextStep, string? PullRequest = null);
 public sealed record LeaseAcquire(string Key, string Holder, string Machine, string Purpose, int TtlSeconds,
     string? TransferLeaseId = null, LeaseHandoff? Handoff = null);
@@ -24,6 +30,8 @@ public sealed record LeaseReply(bool Ok, string State, Lease? Lease = null) {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Reason { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? HolderLastActivityAtUtc { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? TakeoverAtUtc { get; init; }
+    /// <summary>The longest TTL policy allows for this key, sent with a ttl-exceeds-policy reply.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? MaximumTtlSeconds { get; init; }
 }
 public sealed record LeaseQuery(string Query, Lease[] Leases, int Total);
 public sealed record MachineStatus(string Machine, string Reporter, int LiveSessions, int LimitedSessions, Lease[] Leases, int TotalLeases) {

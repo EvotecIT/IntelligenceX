@@ -79,6 +79,16 @@ public sealed class LedgerTools(LedgerReadClient client) {
             view.Coverage, view.Truncated);
     }
 
+    [McpServerTool(Name = "project_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read every catalogued repository with open issues, open PRs, observed worktrees and task verdict counts, most in need of attention first. Set repo for one repository with its worktree and PR rows. GitHub metadata only; coverage names stale or incomplete reads.")]
+    public Task<ProjectStatusView> ProjectStatus(string? repo = null, int limit = 20, CancellationToken cancellationToken = default) =>
+        client.ProjectStatusAsync(repo, Math.Clamp(limit, 1, 200), cancellationToken);
+
+    [McpServerTool(Name = "work_reconcile", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read task verdicts for board items and addressed issues: not-started, in-progress, waiting-on-you, done-closable, stale, needs-replacement, archived. Each row has evidence, missingFacts and suggested actions that are never applied automatically. Archived tasks are counted but listed only when verdict=archived. Optionally filter by repo.")]
+    public Task<WorkReconcileView> WorkReconcile(string? verdict = null, string? repo = null, int limit = 25, CancellationToken cancellationToken = default) =>
+        client.WorkReconcileAsync(verdict, repo, Math.Clamp(limit, 1, 200), cancellationToken);
+
     [McpServerTool(Name = "work_item", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read the complete service verdict and evidence for an exact Ledger work item, including retained historical items.")]
     public Task<LedgerItemView> WorkItem(string itemId, CancellationToken cancellationToken = default) =>

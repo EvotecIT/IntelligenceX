@@ -17,7 +17,11 @@ public sealed partial class LedgerStore {
         ValidateHandoff(command);
         var policy = await ReadPolicyAsync(token);
         if (command.TtlSeconds == 0) command = command with { TtlSeconds = DefaultLeaseTtl(command.Key, policy) };
-        ValidateTtl(command.Key, command.TtlSeconds, policy);
+        ValidateTtl(command.TtlSeconds);
+        var maximum = (int)Math.Floor(MaximumTtlSeconds(command.Key, policy));
+        var needsApproval = command.TtlSeconds > maximum;
+        // Branch reservations hand off and take over between sessions rather than queue, so they stay within policy.
+        if (needsApproval && (command.TransferLeaseId is not null || KeyClass(command.Key) == "branch")) return TtlExceeded(maximum);
         await _leaseGate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
@@ -25,6 +29,12 @@ public sealed partial class LedgerStore {
                 await ScheduleReservationsAsync(tx, policy, now, ct);
                 var all = await ReservationsAsync(tx, now, ct);
                 var existing = all.FirstOrDefault(r => r.Lease.Key == command.Key && r.Lease.Holder == command.Holder && r.Lease.Machine == command.Machine);
+                if (existing is { State: "needs-approval" or "denied" } && !needsApproval) {
+                    // A shorter ask within policy replaces one waiting for approval or already denied.
+                    await tx.ExecuteNonQueryAsync("DELETE FROM reservations WHERE id=@id", new Dictionary<string, object?> { ["id"] = existing.Lease.LeaseId }, ct);
+                    all.Remove(existing);
+                    existing = null;
+                }
                 if (existing is not null) {
                     if (command.TransferLeaseId is not null && (existing.Lease.PreviousLeaseId != command.TransferLeaseId || Json(existing.Lease.Handoff) != Json(command.Handoff)))
                         return new(false, "lease-conflict", existing.Lease);
@@ -32,6 +42,12 @@ public sealed partial class LedgerStore {
                 }
                 var lease = new Lease(command.Key, command.Holder, command.Machine, command.Purpose, Guid.NewGuid().ToString("N"), now.AddSeconds(command.TtlSeconds));
                 if (Encoding.UTF8.GetByteCount(Json(lease)) > 900) throw new ArgumentException("Lease metadata exceeds the compact response bound.");
+                if (needsApproval) {
+                    // Nothing is admitted or queued until an operator approves the length; the request lapses like a queued one.
+                    lease = lease with { ExpiresAtUtc = now.AddMinutes(policy.Lease.QueueTtlMinutes) };
+                    await SaveReservationAsync(tx, lease, "needs-approval", command.TtlSeconds, ct);
+                    return NeedsApproval(lease, maximum);
+                }
                 if (KeyClass(lease.Key) == "branch" && all.FirstOrDefault(r => r.Lease.Key == lease.Key && r.State == "active") is { } previous) {
                     var holder = await TakeoverAsync(tx, previous.Lease, policy, ct);
                     if (command.TransferLeaseId is not null && previous.Lease.LeaseId != command.TransferLeaseId) return new(false, "not-held");
@@ -50,7 +66,7 @@ public sealed partial class LedgerStore {
                 if (reason is null && await EarlierWaiterAsync(tx, lease, all, policy, now, ct)) reason = "earlier-waiter";
                 reason = await BenchmarkBudgetReasonAsync(tx, lease, command.TtlSeconds, policy, now, ct) ?? reason;
                 if (reason is not null && KeyClass(lease.Key) is not ("build" or "test" or "bench"))
-                    return new(false, "busy", all.FirstOrDefault(r => r.Lease.Key == lease.Key)?.Lease);
+                    return new(false, "busy", all.FirstOrDefault(r => r.Lease.Key == lease.Key && r.State == "active")?.Lease);
                 var queued = reason is not null;
                 if (queued && all.Count(r => r.State == "queued") >= policy.MaximumQueued) return new(false, "queue-full");
                 lease = lease with { AcquiredAtUtc = queued ? null : now,
@@ -64,6 +80,8 @@ public sealed partial class LedgerStore {
 
     private static LeaseReply ReservationReply(Reservation row, List<Reservation> all, CoordinationPolicy policy, DateTimeOffset now) {
         if (row.State == "active") return new(true, "acquired", row.Lease) { Reason = row.Lease.TtlAdjustedToPolicy ? "ttl-adjusted-to-policy" : null };
+        if (row.State == "needs-approval") return NeedsApproval(row.Lease, (int)Math.Floor(MaximumTtlSeconds(row.Lease.Key, policy)));
+        if (row.State == "denied") return NeedsApproval(row.Lease, (int)Math.Floor(MaximumTtlSeconds(row.Lease.Key, policy))) with { State = "denied" };
         var ahead = OrderedQueue(all, policy).TakeWhile(value => value.Lease.LeaseId != row.Lease.LeaseId)
             .Count(value => Conflicts(value.Lease, row.Lease)) + 1;
         var deadlines = all.Where(r => r.State == "active" && Conflicts(r.Lease, row.Lease)).Select(r => r.Lease.ExpiresAtUtc).ToArray();
@@ -76,7 +94,7 @@ public sealed partial class LedgerStore {
         if (!LeaseKey(command.Key) || !Guid.TryParseExact(command.LeaseId, "N", out _)) throw new ArgumentException("Invalid lease renewal.");
         var policy = await ReadPolicyAsync(token);
         if (command.TtlSeconds == 0) command = command with { TtlSeconds = DefaultLeaseTtl(command.Key, policy) };
-        ValidateTtl(command.Key, command.TtlSeconds, policy);
+        ValidateTtl(command.TtlSeconds);
         await _leaseGate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
@@ -85,6 +103,7 @@ public sealed partial class LedgerStore {
                 var row = (await ReservationsAsync(tx, now, ct)).FirstOrDefault(r => r.Lease.Key == command.Key && r.Lease.LeaseId == command.LeaseId && r.State == "active");
                 var lease = row?.Lease;
                 if (lease is null || lease.ExpiresAtUtc <= now || lease.LeaseId != command.LeaseId) return new LeaseReply(false, "not-held");
+                if (command.TtlSeconds > AllowedTtlSeconds(lease, policy)) return TtlExceeded(AllowedTtlSeconds(lease, policy), lease);
                 var session = await HolderSessionAsync(tx, lease, ct);
                 if (session is null || session.Archived == true || session.LastActivityAtUtc is not { } activity || now - activity > TimeSpan.FromMinutes(policy.Lease.LiveWithinMinutes))
                     return new LeaseReply(false, "holder-not-live", lease);
@@ -116,6 +135,50 @@ public sealed partial class LedgerStore {
                 return new LeaseReply(true, "released");
             }, token);
         } finally { _leaseGate.Release(); }
+    }
+
+    private static LeaseReply NeedsApproval(Lease lease, int maximum) =>
+        new(false, "needs-approval", lease) { Reason = "ttl-exceeds-policy", MaximumTtlSeconds = maximum };
+
+    /// <summary>
+    /// Settles one reservation waiting in needs-approval. Approval keeps its place in line and queues it with the
+    /// approved TTL, which then also bounds its renewals; denial removes it. Callers must authorize the operator.
+    /// </summary>
+    public async Task<LeaseReply> ApproveLeaseAsync(LeaseApproval command, DateTimeOffset now, CancellationToken token = default) {
+        if (!Guid.TryParseExact(command.LeaseId, "N", out _) || command.TtlSeconds < 0) throw new ArgumentException("Invalid lease approval.");
+        if (command.Approve && command.TtlSeconds > 0) ValidateTtl(command.TtlSeconds);
+        var policy = await ReadPolicyAsync(token);
+        await _leaseGate.WaitAsync(token);
+        try {
+            await using var db = await _database.OpenSessionAsync(path, token);
+            return await db.RunInTransactionAsync(async (tx, ct) => {
+                // Queue the approval before scheduling, so a slot freed meanwhile goes to it in its original order
+                // rather than to a younger waiter. Expired requests are already excluded here.
+                var row = (await ReservationsAsync(tx, now, ct)).FirstOrDefault(r => r.Lease.LeaseId == command.LeaseId && r.State == "needs-approval");
+                if (row is null) return new LeaseReply(false, "not-pending");
+                if (!command.Approve) {
+                    // Keep the denial until it lapses so the requester sees the answer instead of asking again.
+                    var denied = row.Lease with { ExpiresAtUtc = now.AddMinutes(policy.Lease.QueueTtlMinutes) };
+                    await SaveReservationAsync(tx, denied, "denied", row.TtlSeconds, ct);
+                    return new LeaseReply(true, "denied", denied);
+                }
+                var ttl = command.TtlSeconds == 0 ? row.TtlSeconds : command.TtlSeconds;
+                var lease = row.Lease with { ApprovedTtlSeconds = ttl, ExpiresAtUtc = now.AddMinutes(policy.Lease.QueueTtlMinutes) };
+                await SaveReservationAsync(tx, lease, "queued", ttl, ct);
+                await ScheduleReservationsAsync(tx, policy, now, ct);
+                var all = await ReservationsAsync(tx, now, ct);
+                return all.FirstOrDefault(r => r.Lease.LeaseId == lease.LeaseId) is { } current
+                    ? ReservationReply(current, all, policy, now) : new LeaseReply(false, "not-pending");
+            }, cancellationToken: token);
+        } finally { _leaseGate.Release(); }
+    }
+
+    public async Task<LeaseApprovalList> PendingLeaseApprovalsAsync(DateTimeOffset now, CancellationToken token = default) {
+        var policy = await ReadPolicyAsync(token);
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var rows = await ReservationsAsync(db, now, token);
+        return new([.. rows.Where(r => r.State == "needs-approval").Take(20)
+            .Select(r => new PendingLeaseApproval(r.Lease, r.TtlSeconds, (int)Math.Floor(MaximumTtlSeconds(r.Lease.Key, policy))))]);
     }
 
     public async Task<LeaseQuery> WhoAsync(string key, bool prefix, DateTimeOffset now, CancellationToken token = default) {

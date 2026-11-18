@@ -37,7 +37,19 @@ Lists expose `nextCursor`. Pass it with `--cursor` before `--config` to continue
 
 ## Quick reservations and queries
 
-Leases reserve a key until its TTL expires. They work independently of Goals and requests. Competing acquisition returns `busy` with the current holder. Renew and release require the returned `leaseId`, which protects a replacement reservation from an old caller. TTL accepts seconds from 1 to 86400. CLI values also accept `s`, `m` and `h` suffixes.
+Leases reserve a key until its TTL expires. They work independently of Goals and requests. Competing acquisition returns `busy` with the current holder. Renew and release require the returned `leaseId`, which protects a replacement reservation from an old caller. Policy sets the longest TTL for each key class (`lease.maximumTtlMinutes`: `test` and `build` 60 minutes, `bench` and `machine` 120, `branch` 480, anything else 1,440). CLI values also accept `s`, `m` and `h` suffixes.
+
+A longer TTL isn't rejected outright. The reservation waits in `needs-approval`, with `maximumTtlSeconds` in the reply, and isn't admitted or queued until an operator approves it. Calling `lease_acquire` again with the same key, holder and machine returns its current state: still waiting, queued, acquired or `denied`. A denial stays visible until it lapses, and a shorter request within policy replaces a waiting or denied one. An unanswered request lapses after `lease.queueTtlMinutes`. Approval can shorten the requested TTL. The approved TTL then also bounds renewals, and an approved benchmark isn't held to the daily benchmark budget. A single reservation can be approved for up to seven days. Branch keys and handoffs (`transferLeaseId`) can't wait for approval, because they hand off between sessions rather than queue. Above the maximum they return `ttl-exceeds-policy` with `maximumTtlSeconds`, the same as a renewal beyond the allowed TTL.
+
+On the Ledger host, the operator lists and answers waiting requests with the operator credential from the coordination configuration:
+
+```text
+IntelligenceX.Ledger lease-approvals --config /absolute/path/service.json
+IntelligenceX.Ledger lease-approvals --config /absolute/path/service.json --approve <lease-id> --minutes 480
+IntelligenceX.Ledger lease-approvals --config /absolute/path/service.json --deny <lease-id>
+```
+
+Without `--minutes`, approval grants the requested TTL. The HTTP routes are `GET` and `POST /api/coordination/v1/lease-approvals`, and only the operator principal can use them.
 
 ```text
 ix ledger who bench:shared --config /absolute/path/client.json
@@ -170,6 +182,47 @@ an optional verdict selects a state. Use `work_item` for full evidence. Retrieva
 and state evaluation remain service-owned and make no model calls. These tools
 grant no execution or publication authority. Register the host through the
 client's supported MCP settings after reviewing the exact configuration change.
+
+## Projects and task verdicts
+
+With an optional `workCatalog` section in the service settings, the service keeps
+a catalog of every repository of the configured owners, their open issues and
+PRs, the items of a GitHub project board and the checkouts sessions used. It reads
+GitHub metadata only (never bodies or comments), follows every page, keeps each
+page's ETag so unchanged pages answer 304, and shares one hourly request budget
+(`hourlyRequestBudget`) that pauses while GitHub reports fewer than
+`minimumRemaining` requests left. The catalog and its page cache are saved to
+`work-catalog.json` in the data directory, so a restart doesn't re-read
+everything. A failed or limited read keeps the previous data and names the gap
+in `coverage`.
+
+```json
+"workCatalog": {
+  "organizations": ["example"], "users": [], "taskLabelPrefix": "to:",
+  "taskRepositories": ["example/coordination"], "staleAfterDays": 7, "refreshMinutes": 10,
+  "board": { "organization": "example", "projectNumber": 1, "statusFieldId": 1, "agentFieldId": 2,
+    "machineFieldId": 3, "workRepoFieldId": 4, "branchFieldId": 5, "pullRequestFieldId": 6,
+    "nextActorFieldId": 7, "holdReasonFieldId": 8, "machineAliases": { "PC": "pc" } }
+}
+```
+
+Tasks are board items and open issues with a `to:` label. Each gets one verdict:
+`not-started`, `in-progress`, `waiting-on-you`, `done-closable`, `stale`,
+`needs-replacement` or `archived`, with its evidence, `missingFacts` and
+suggested actions (close an issue, mark a board item done, reassign, ask for an
+update). Suggested actions are never applied by the service. A claimed task
+follows its session's own verdict: stuck or archived sessions mean the task
+needs a replacement, a session that needs you makes the task wait on you.
+
+```text
+GET /api/ledger/v1/projects/status[?repo=owner/name][&limit=40]
+GET /api/ledger/v1/work/reconcile[?verdict=done-closable][&repo=owner/name][&limit=50]
+ix ledger project_status [owner/repo] --config <client.json>
+ix ledger work_reconcile [verdict] [owner/repo] --config <client.json>
+```
+
+The MCP tools are `project_status` and `work_reconcile`. Worktrees are those a
+session has used; a full per-machine worktree listing is not part of the catalog yet.
 
 ## Backup and restore
 

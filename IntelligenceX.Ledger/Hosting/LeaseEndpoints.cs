@@ -15,6 +15,17 @@ internal static class LeaseEndpoints {
             Results.Ok(await store.RenewLeaseAsync(value, DateTimeOffset.UtcNow, ct)));
         app.MapPost(api + "/leases/release", async (LeaseRelease value, CancellationToken ct) =>
             Results.Ok(await store.ReleaseLeaseAsync(value, DateTimeOffset.UtcNow, ct)));
+        // Approving a longer reservation is an operator decision, so it sits behind coordination authentication
+        // rather than the lease write token every session holds.
+        const string approvals = "/api/coordination/v1/lease-approvals";
+        app.MapGet(approvals, async (HttpContext http, CancellationToken ct) => {
+            Coordination.CoordinationValidation.Require(CoordinationEndpoints.Caller(http).Role == "operator", "lease-approval-role-denied");
+            return Results.Ok(await store.PendingLeaseApprovalsAsync(DateTimeOffset.UtcNow, ct));
+        });
+        app.MapPost(approvals, async (LeaseApproval value, HttpContext http, CancellationToken ct) => {
+            Coordination.CoordinationValidation.Require(CoordinationEndpoints.Caller(http).Role == "operator", "lease-approval-role-denied");
+            return Results.Ok(await store.ApproveLeaseAsync(value, DateTimeOffset.UtcNow, ct));
+        });
         app.MapGet(api + "/machine-status/{id}", async (string id, CancellationToken ct) => {
             if (!settings.ExpectedReporters.TryGetValue(id, out var expected)) return Results.NotFound();
             var health = await store.HeartbeatsAsync(ct);

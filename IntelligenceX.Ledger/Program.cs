@@ -41,13 +41,14 @@ public static class Program {
             return await LedgerInbox.RunAsync(args[2], Console.In, Console.Out);
         if (args.Length == 4 && args[0] == "notify" && args[1] == "--config")
             return await LocalReporter.RunNotifyChainAsync(args[2], args[3]);
+        if (LeaseApprovalCommand.Matches(args)) return await LeaseApprovalCommand.RunAsync(args);
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {
             Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>\n" +
                 "       IntelligenceX.Ledger agent|agent-check|inbox --config <agent-json-file>\n" +
                 "       IntelligenceX.Ledger agent-install --reporter <reporter-json-file> --version <installed-version> [--apply]\n" +
                 "       IntelligenceX.Ledger agent-enroll --service <service-json-file> --machine <id> --out <folder> [--local] [--apply]\n" +
                 "       IntelligenceX.Ledger backup --config <local-json-file> --out <new-backup-path>\n" +
-                "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>");
+                "       IntelligenceX.Ledger restore --config <local-json-file> --from <backup-path>\n" + LeaseApprovalCommand.Usage);
             return 2;
         }
         if (args[0] is "report" or "hook") return await LocalReporter.RunAsync(args[2], args[0] == "hook");
@@ -84,6 +85,8 @@ public static class Program {
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(settings);
         builder.Services.AddHostedService<ShadowReportWorker>();
+        var catalog = settings.WorkCatalog is null ? null : new Catalog.WorkCatalogService(settings.WorkCatalog, store, settings);
+        if (catalog is not null) builder.Services.AddHostedService(_ => catalog);
         var app = builder.Build();
         var runtime = new LedgerRuntime(store, settings);
         var contextService = new ProjectContextService(settings.ProjectCatalogPath);
@@ -118,6 +121,7 @@ public static class Program {
                 machines.Where(machine => machine.State != "healthy").Select(machine => machine.Id).ToHashSet(StringComparer.Ordinal)));
         });
         LeaseEndpoints.Map(app, store, settings);
+        Catalog.WorkCatalogEndpoints.Map(app, catalog, runtime);
         if (coordinationStore is not null) {
             CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory);
         }
