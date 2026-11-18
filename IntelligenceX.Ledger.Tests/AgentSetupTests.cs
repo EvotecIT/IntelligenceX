@@ -133,6 +133,52 @@ public sealed class AgentSetupTests : IDisposable {
         Assert.Throws<InvalidOperationException>(() => AgentEnrollment.Enroll(service, "not a machine", output, local: true, apply: false));
     }
 
+    [Fact]
+    public async Task StopEndsOnlyTheAgentItsReceiptNamesAndLeavesOtherLedgerProcessesRunning() {
+        // Runs the real installer script, so it needs PowerShell 7 and the script from the source tree.
+        var script = FindScript();
+        var pwsh = FindOnPath(OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh");
+        if (script is null || pwsh is null) return;
+        using var agent = Sleeper(pwsh);
+        // Stands in for an MCP server whose path sits under the same install, as session MCP servers do.
+        using var mcp = Sleeper(pwsh);
+        var state = Path.Combine(_root, "state");
+        Directory.CreateDirectory(state);
+        File.WriteAllText(Path.Combine(_root, "agent.json"), new JsonObject { ["stateDirectory"] = state }.ToJsonString());
+        File.WriteAllText(Path.Combine(state, "agent-process.json"), new JsonObject {
+            ["pid"] = agent.Id, ["startedAtUtc"] = agent.StartTime.ToUniversalTime().ToString("o")
+        }.ToJsonString());
+        try {
+            var run = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pwsh) {
+                ArgumentList = { "-NoProfile", "-NonInteractive", "-File", script, "-Action", "Stop", "-Root", _root },
+                RedirectStandardOutput = true, RedirectStandardError = true
+            })!;
+            var errors = run.StandardError.ReadToEndAsync();
+            await run.StandardOutput.ReadToEndAsync();
+            await run.WaitForExitAsync();
+            Assert.True(run.ExitCode == 0, await errors);
+            Assert.True(agent.HasExited);
+            Assert.False(mcp.HasExited);
+        } finally {
+            foreach (var process in new[] { agent, mcp }) if (!process.HasExited) process.Kill();
+        }
+    }
+
+    private static System.Diagnostics.Process Sleeper(string pwsh) => System.Diagnostics.Process.Start(
+        new System.Diagnostics.ProcessStartInfo(pwsh) { ArgumentList = { "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep 120" } })!;
+
+    private static string? FindScript() {
+        for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder is not null; folder = folder.Parent) {
+            var candidate = Path.Combine(folder.FullName, "IntelligenceX.Ledger", "Install", "Install-LedgerAgent.ps1");
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private static string? FindOnPath(string name) => (Environment.GetEnvironmentVariable("PATH") ?? "")
+        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+        .Select(folder => Path.Combine(folder, name)).FirstOrDefault(File.Exists);
+
     public void Dispose() {
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
     }
