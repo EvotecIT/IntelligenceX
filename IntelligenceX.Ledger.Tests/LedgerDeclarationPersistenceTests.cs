@@ -38,7 +38,9 @@ public sealed class LedgerDeclarationPersistenceTests : IDisposable {
         var unrelated = Event(4) with { ItemId = "synthetic-other-item", Session = new() { TurnOpen = true, LastActivityAtUtc = Now } };
         await Assert.ThrowsAsync<EventConflictException>(() => store.IngestAsync([unrelated, changed], Now.AddMinutes(6)));
         Assert.Single(await store.EvaluateAllAsync(Now.AddMinutes(6)));
-        Assert.Equal(2, (await store.HistoryAsync(first.ItemId, 0, 100, default)).Length);
+        // Restating the same declaration changes nothing, and the rejected batch stores nothing.
+        Assert.Single(await store.HistoryAsync(first.ItemId, 0, 100, default));
+        Assert.Empty(await store.HistoryAsync(unrelated.ItemId, 0, 100, default));
     }
 
     [Fact]
@@ -62,7 +64,8 @@ public sealed class LedgerDeclarationPersistenceTests : IDisposable {
         Assert.False(item.Session!.UsageLimit);
         Assert.Null(item.Control);
         Assert.Empty(item.Declarations);
-        Assert.Equal(6, (await store.HistoryAsync(item.Id, 0, 100, default)).Length);
+        // Delayed old facts are ignored, so only the observations that changed the item are history.
+        Assert.Equal(3, (await store.HistoryAsync(item.Id, 0, 100, default)).Length);
     }
 
     [Fact]

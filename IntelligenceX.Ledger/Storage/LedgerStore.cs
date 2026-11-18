@@ -37,7 +37,9 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
     public async Task InitializeAsync(CancellationToken token = default) {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         await using var db = await _database.OpenSessionAsync(path, token);
+        // A new database starts with incremental vacuum; an existing one switches with the stopped compact command.
         await db.ExecuteNonQueryAsync("""
+            PRAGMA auto_vacuum=INCREMENTAL;
             PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS events (
               ordinal INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
@@ -46,6 +48,9 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
               UNIQUE(reporter,epoch,sequence));
             CREATE INDEX IF NOT EXISTS events_item ON events(item,ordinal);
             CREATE INDEX IF NOT EXISTS events_received ON events(received);
+            CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY, reporter TEXT NOT NULL, epoch TEXT NOT NULL,
+              sequence INTEGER NOT NULL, fingerprint TEXT NOT NULL, received TEXT NOT NULL, UNIQUE(reporter,epoch,sequence));
+            CREATE INDEX IF NOT EXISTS receipts_received ON receipts(received);
             CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS heartbeats (reporter TEXT PRIMARY KEY, machine TEXT NOT NULL, received TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS machines (id TEXT PRIMARY KEY, firstseen TEXT NOT NULL);
@@ -113,22 +118,25 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                         if (Json(Read<LedgerEvent>(previous)) != json) throw new EventConflictException();
                         continue;
                     }
-                    var sequenceOwner = await tx.ExecuteScalarAsync("SELECT id FROM events WHERE reporter=@reporter AND epoch=@epoch AND sequence=@seq",
-                        new Dictionary<string, object?> { ["reporter"] = observation.ReporterId, ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence }, ct);
+                    // Observations left out of history keep a receipt, so retries and identity reuse are still checked.
+                    var receipt = await tx.ExecuteScalarAsync("SELECT fingerprint FROM receipts WHERE id=@id",
+                        new Dictionary<string, object?> { ["id"] = observation.EventId.ToString() }, ct);
+                    if (receipt is string fingerprint) {
+                        if (fingerprint != Fingerprint(json)) throw new EventConflictException();
+                        continue;
+                    }
+                    var sequenceOwner = await tx.ExecuteScalarAsync("""
+                        SELECT id FROM events WHERE reporter=@reporter AND epoch=@epoch AND sequence=@seq
+                        UNION ALL SELECT id FROM receipts WHERE reporter=@reporter AND epoch=@epoch AND sequence=@seq LIMIT 1
+                        """, new Dictionary<string, object?> { ["reporter"] = observation.ReporterId, ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence }, ct);
                     if (sequenceOwner is string) throw new EventConflictException();
                     if (progressItem is not null && progressUpdate is not null) {
                         await ApplyProgressAsync(tx, progressItem, progressUpdate,
                             new(observation.EventId, observation.Source, observation.SourceVersion, observation.ObservedAtUtc, received), received, ct);
                         continue;
                     }
-                    await tx.ExecuteNonQueryAsync("""
-                        INSERT INTO events(id,reporter,epoch,sequence,item,received,json)
-                        VALUES(@id,@reporter,@epoch,@seq,@item,@received,@json)
-                        """, new Dictionary<string, object?> {
-                            ["id"] = observation.EventId.ToString(), ["reporter"] = observation.ReporterId,
-                            ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence,
-                            ["item"] = observation.ItemId, ["received"] = received.ToString("O"), ["json"] = json
-                        }, ct);
+                    // Item observations are journaled after projection, and only when they changed something.
+                    if (!ItemObservation(observation)) await JournalAsync(tx, observation, json, received, ct);
                     }
                     if (observation.GlobalWork is not null) {
                         global ??= new(null, null);
@@ -288,6 +296,10 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                     // Only the runtime's heartbeat check can release a last-known projection.
                     // Historical stages may enrich history without proving that the reporter is live.
                     if (decisionChanged) item = await EvaluateAsync(tx, item, received, ct, item.Current?.LastKnown == true);
+                    // The projection always keeps the newest evidence and activity time; history keeps only real changes.
+                    if (journal && (stored is not string storedJson || JournalShape(storedJson) != JournalShape(Json(item))))
+                        await JournalAsync(tx, observation, json, received, ct);
+                    else if (journal) await ReceiptAsync(tx, observation, json, received, ct);
                     await tx.ExecuteNonQueryAsync("INSERT INTO items(id,json) VALUES(@id,@json) ON CONFLICT(id) DO UPDATE SET json=excluded.json",
                         new Dictionary<string, object?> { ["id"] = item.Id, ["json"] = Json(item) }, ct);
                     if (item.Kind == "session" && item.Session is { } session) await UpsertSessionStatusAsync(tx, item, session, ct);
@@ -296,6 +308,58 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                 return events.Select(x => x.EventId).ToArray();
             }, token);
         } finally { _gate.Release(); }
+    }
+
+    /// <summary>Observations that update an item projection, as opposed to health, global work or review marks.</summary>
+    private static bool ItemObservation(LedgerEvent observation) =>
+        observation.GlobalWork is null && observation.ReviewMark is null && !observation.Heartbeat && observation.Coverage is null;
+
+    private static Task<int> JournalAsync(SQLiteAsyncSession tx, LedgerEvent observation, string json, DateTimeOffset received, CancellationToken token) =>
+        tx.ExecuteNonQueryAsync("""
+            INSERT INTO events(id,reporter,epoch,sequence,item,received,json)
+            VALUES(@id,@reporter,@epoch,@seq,@item,@received,@json)
+            """, new Dictionary<string, object?> {
+                ["id"] = observation.EventId.ToString(), ["reporter"] = observation.ReporterId,
+                ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence,
+                ["item"] = observation.ItemId, ["received"] = received.ToString("O"), ["json"] = json
+            }, token);
+
+    private static Task<int> ReceiptAsync(SQLiteAsyncSession tx, LedgerEvent observation, string json, DateTimeOffset received, CancellationToken token) =>
+        tx.ExecuteNonQueryAsync("""
+            INSERT INTO receipts(id,reporter,epoch,sequence,fingerprint,received)
+            VALUES(@id,@reporter,@epoch,@seq,@fingerprint,@received)
+            """, new Dictionary<string, object?> {
+                ["id"] = observation.EventId.ToString(), ["reporter"] = observation.ReporterId,
+                ["epoch"] = observation.Epoch.ToString(), ["seq"] = observation.Sequence,
+                ["fingerprint"] = Fingerprint(json), ["received"] = received.ToString("O")
+            }, token);
+
+    private static string Fingerprint(string json) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
+
+    // Fields that move on every observation without saying anything new about the item. A delivery's
+    // disposition time only orders repeats of the same stage; a new stage or effective time changes other fields.
+    private static readonly HashSet<string> RefreshOnlyFields = new(StringComparer.Ordinal) {
+        "lastActivityAtUtc", "lastProgressAtUtc", "archiveObservedAtUtc", "evaluatedAtUtc", "dispositionObservedAtUtc" };
+
+    /// <summary>
+    /// An item's stored form without evidence references and refresh-only timestamps. Two observations with the
+    /// same shape differ only in when something was seen again, so the second one isn't worth a history row.
+    /// </summary>
+    internal static string JournalShape(string itemJson) {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(itemJson);
+        Strip(node);
+        return node?.ToJsonString() ?? "";
+
+        static void Strip(System.Text.Json.Nodes.JsonNode? value) {
+            if (value is System.Text.Json.Nodes.JsonObject obj) {
+                foreach (var name in obj.Select(pair => pair.Key).ToArray())
+                    // Evidence references are objects or arrays; a text field such as originEvidence is real content.
+                    if ((name == "evidence" || name.EndsWith("Evidence", StringComparison.Ordinal)) && obj[name] is System.Text.Json.Nodes.JsonObject or System.Text.Json.Nodes.JsonArray ||
+                        RefreshOnlyFields.Contains(name)) obj.Remove(name);
+                    else Strip(obj[name]);
+            } else if (value is System.Text.Json.Nodes.JsonArray array) foreach (var child in array) Strip(child);
+        }
     }
 
     /// <summary>Holds the single in-process writer, so tests can prove which paths never wait for it.</summary>
