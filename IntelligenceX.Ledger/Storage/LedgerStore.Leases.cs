@@ -29,8 +29,8 @@ public sealed partial class LedgerStore {
                 await ScheduleReservationsAsync(tx, policy, now, ct);
                 var all = await ReservationsAsync(tx, now, ct);
                 var existing = all.FirstOrDefault(r => r.Lease.Key == command.Key && r.Lease.Holder == command.Holder && r.Lease.Machine == command.Machine);
-                if (existing is { State: "needs-approval" } && !needsApproval) {
-                    // A shorter ask within policy replaces the one still waiting for approval.
+                if (existing is { State: "needs-approval" or "denied" } && !needsApproval) {
+                    // A shorter ask within policy replaces one waiting for approval or already denied.
                     await tx.ExecuteNonQueryAsync("DELETE FROM reservations WHERE id=@id", new Dictionary<string, object?> { ["id"] = existing.Lease.LeaseId }, ct);
                     all.Remove(existing);
                     existing = null;
@@ -81,6 +81,7 @@ public sealed partial class LedgerStore {
     private static LeaseReply ReservationReply(Reservation row, List<Reservation> all, CoordinationPolicy policy, DateTimeOffset now) {
         if (row.State == "active") return new(true, "acquired", row.Lease) { Reason = row.Lease.TtlAdjustedToPolicy ? "ttl-adjusted-to-policy" : null };
         if (row.State == "needs-approval") return NeedsApproval(row.Lease, (int)Math.Floor(MaximumTtlSeconds(row.Lease.Key, policy)));
+        if (row.State == "denied") return NeedsApproval(row.Lease, (int)Math.Floor(MaximumTtlSeconds(row.Lease.Key, policy))) with { State = "denied" };
         var ahead = OrderedQueue(all, policy).TakeWhile(value => value.Lease.LeaseId != row.Lease.LeaseId)
             .Count(value => Conflicts(value.Lease, row.Lease)) + 1;
         var deadlines = all.Where(r => r.State == "active" && Conflicts(r.Lease, row.Lease)).Select(r => r.Lease.ExpiresAtUtc).ToArray();
@@ -156,8 +157,10 @@ public sealed partial class LedgerStore {
                 var row = (await ReservationsAsync(tx, now, ct)).FirstOrDefault(r => r.Lease.LeaseId == command.LeaseId && r.State == "needs-approval");
                 if (row is null) return new LeaseReply(false, "not-pending");
                 if (!command.Approve) {
-                    await tx.ExecuteNonQueryAsync("DELETE FROM reservations WHERE id=@id", new Dictionary<string, object?> { ["id"] = command.LeaseId }, ct);
-                    return new LeaseReply(true, "denied", row.Lease);
+                    // Keep the denial until it lapses so the requester sees the answer instead of asking again.
+                    var denied = row.Lease with { ExpiresAtUtc = now.AddMinutes(policy.Lease.QueueTtlMinutes) };
+                    await SaveReservationAsync(tx, denied, "denied", row.TtlSeconds, ct);
+                    return new LeaseReply(true, "denied", denied);
                 }
                 var ttl = command.TtlSeconds == 0 ? row.TtlSeconds : command.TtlSeconds;
                 var lease = row.Lease with { ApprovedTtlSeconds = ttl, ExpiresAtUtc = now.AddMinutes(policy.Lease.QueueTtlMinutes) };

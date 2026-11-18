@@ -49,8 +49,11 @@ public sealed class LeaseApprovalTests : IDisposable {
         var first = await store.AcquireLeaseAsync(new("test:synthetic", "worker", "synthetic", "long suite", 10800), Now);
         Assert.Equal("denied", (await store.ApproveLeaseAsync(new(first.Lease!.LeaseId, false), Now)).State);
         Assert.Empty((await store.PendingLeaseApprovalsAsync(Now)).Pending);
+        var polled = await store.AcquireLeaseAsync(new("test:synthetic", "worker", "synthetic", "long suite", 10800), Now.AddMinutes(1));
+        Assert.Equal(("denied", first.Lease.LeaseId), (polled.State, polled.Lease!.LeaseId));
+        Assert.Empty((await store.PendingLeaseApprovalsAsync(Now.AddMinutes(1))).Pending);
+        Assert.Equal("not-pending", (await store.ApproveLeaseAsync(new(first.Lease.LeaseId, true), Now.AddMinutes(1))).State);
 
-        await store.AcquireLeaseAsync(new("test:synthetic", "worker", "synthetic", "long suite", 10800), Now);
         var shorter = await store.AcquireLeaseAsync(new("test:synthetic", "worker", "synthetic", "short suite", 1800), Now);
         Assert.Equal("acquired", shorter.State);
         Assert.Empty((await store.PendingLeaseApprovalsAsync(Now)).Pending);
