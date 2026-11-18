@@ -145,12 +145,14 @@ function Stop-Agent {
             & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null
             # KeepAlive would restart a process stopped while the job is still loaded. bootout returns before the job is
             # gone, so the check waits up to 30 seconds for it to unload.
+            # The last check comes after the last pause, so an unload during that pause still counts.
             $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
-            do {
+            while ($true) {
                 & /bin/launchctl print "gui/$Uid/$Label" *> $null
                 $loaded = $LASTEXITCODE -eq 0
-                if ($loaded) { Start-Sleep -Milliseconds 500 }
-            } while ($loaded -and [DateTimeOffset]::UtcNow -lt $deadline)
+                if (-not $loaded -or [DateTimeOffset]::UtcNow -ge $deadline) { break }
+                Start-Sleep -Milliseconds 500
+            }
             if ($loaded) { throw "launchctl could not unload $Label; nothing was changed." }
         }
         if ($process = Get-AgentProcess) {
