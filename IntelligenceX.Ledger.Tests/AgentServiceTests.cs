@@ -201,6 +201,10 @@ public sealed class AgentServiceTests {
         const string old = "error: unexpected argument '--resume' found\n\n  tip: a similar argument exists: '--remote'\n";
         Assert.Equal(CodexRunner.QueueOutcome.Resumed, CodexRunner.ClassifyQueue(0, "", askedToResume: true));
         Assert.Equal(CodexRunner.QueueOutcome.Parked, CodexRunner.ClassifyQueue(0, parked, askedToResume: true));
+        // With the Codex app holding the thread, the queued message is the app's next turn (seen live on win-pc).
+        Assert.Equal(CodexRunner.QueueOutcome.HolderOwned, CodexRunner.ClassifyQueue(0, "Warning: message was queued, but could not " +
+            "resume thread 01a1f068-824a-7fb1-9112-782fffce7e77: thread 01a1f068-824a-7fb1-9112-782fffce7e77 already has an active writer\n",
+            askedToResume: true));
         Assert.Equal(CodexRunner.QueueOutcome.ResumeUnsupported, CodexRunner.ClassifyQueue(2, old, askedToResume: true));
         // Without --resume nothing asks the daemon, so the message is only parked.
         Assert.Equal(CodexRunner.QueueOutcome.Parked, CodexRunner.ClassifyQueue(0, "", askedToResume: false));

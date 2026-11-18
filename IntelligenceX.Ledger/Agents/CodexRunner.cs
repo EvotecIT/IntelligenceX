@@ -247,8 +247,15 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
             var running = read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
                 ? turns.EnumerateArray().LastOrDefault() : default;
-            var model = await ResumeAsync(server, threadId, read.GetProperty("thread").TryGetProperty("cwd", out var cwd) &&
-                cwd.ValueKind == JsonValueKind.String ? cwd.GetString()! : Environment.CurrentDirectory, token).ConfigureAwait(false);
+            // The Codex app (or the local daemon) holding the thread refuses this server's resume with "active writer", the
+            // same answer turn/start gives; either way the message goes through the queue to the holder.
+            string model;
+            try {
+                model = await ResumeAsync(server, threadId, read.GetProperty("thread").TryGetProperty("cwd", out var cwd) &&
+                    cwd.ValueKind == JsonValueKind.String ? cwd.GetString()! : Environment.CurrentDirectory, token).ConfigureAwait(false);
+            } catch (CodexRpcException error) when (ActiveWriter(error)) {
+                return await QueueInsteadAsync(server, watch, threadId, text, "codex", token).ConfigureAwait(false);
+            }
             try {
                 if (running.ValueKind == JsonValueKind.Object && Status(running) == "inProgress") {
                     var turnId = running.GetProperty("id").GetString()!;
@@ -263,13 +270,8 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 var started = response.GetProperty("turn").GetProperty("id").GetString()!;
                 watch.Follow(started);
                 return (new("turn", started, model), server, watch);
-            } catch (CodexRpcException error) when (error.Message.Contains("active writer", StringComparison.OrdinalIgnoreCase)) {
-                // The Codex app has the thread open over its own stdio server. The supported route for outside input is
-                // `codex queue --resume`: the message is stored and the local app-server daemon is asked to run it. Without
-                // a daemon the message only waits in the queue, which nothing may ever drain, so that is reported apart.
-                await server.DisposeAsync().ConfigureAwait(false);
-                var queued = await QueueAsync(threadId, text, token).ConfigureAwait(false);
-                return (new(queued == QueueOutcome.Resumed ? "queue" : "queue-parked", "queued", model), server, watch);
+            } catch (CodexRpcException error) when (ActiveWriter(error)) {
+                return await QueueInsteadAsync(server, watch, threadId, text, model, token).ConfigureAwait(false);
             } catch (Exception error) when (error is TimeoutException or System.Net.WebSockets.WebSocketException ||
                 error is IOException and not CodexRpcException) {
                 // The request was written; whether the thread took it is unknown.
@@ -318,15 +320,31 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         }
     }
 
-    /// <summary>What `codex queue` did: queued and resumed by the local daemon, queued only (no daemon resumed it, or the
-    /// CLI can't ask), a CLI too old for --resume (nothing was queued, so it can be asked again without it), or failed.</summary>
-    internal enum QueueOutcome { Resumed, Parked, ResumeUnsupported, Failed }
+    private static bool ActiveWriter(CodexRpcException error) => error.Message.Contains("active writer", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The Codex app (or the local daemon) holds the thread. The supported route for outside input is
+    /// `codex queue --resume`: the message is stored for the holder, or the daemon is asked to run it. Without either the
+    /// message only waits in the queue, which nothing may drain, so that is reported apart.</summary>
+    private async Task<(CodexDelivery, CodexAppServer, TurnWatch)> QueueInsteadAsync(CodexAppServer server, TurnWatch watch, string threadId,
+        string text, string model, CancellationToken token) {
+        await server.DisposeAsync().ConfigureAwait(false);
+        var queued = await QueueAsync(threadId, text, token).ConfigureAwait(false);
+        return (new(queued switch { QueueOutcome.Resumed => "queue", QueueOutcome.HolderOwned => "queue-app", _ => "queue-parked" }, "queued", model), server, watch);
+    }
+
+    /// <summary>What `codex queue` did: queued and resumed by the local daemon; queued for the client that holds the thread
+    /// (the app runs it as its next turn); queued only (no daemon resumed it, or the CLI can't ask); a CLI too old for
+    /// --resume (nothing was queued, so it can be asked again without it); or failed.</summary>
+    internal enum QueueOutcome { Resumed, HolderOwned, Parked, ResumeUnsupported, Failed }
 
     internal static QueueOutcome ClassifyQueue(int exitCode, string stderr, bool askedToResume) {
         // clap rejects an unknown flag with exit code 2 before doing anything.
         if (exitCode == 2 && askedToResume && stderr.Contains("unexpected argument '--resume'", StringComparison.Ordinal)) return QueueOutcome.ResumeUnsupported;
         if (exitCode != 0) return QueueOutcome.Failed;
-        return askedToResume && !stderr.Contains("could not resume thread", StringComparison.OrdinalIgnoreCase) ? QueueOutcome.Resumed : QueueOutcome.Parked;
+        if (!askedToResume) return QueueOutcome.Parked;
+        if (!stderr.Contains("could not resume thread", StringComparison.OrdinalIgnoreCase)) return QueueOutcome.Resumed;
+        // The resume was refused because a client already holds the thread: that client takes the queued message next.
+        return stderr.Contains("active writer", StringComparison.OrdinalIgnoreCase) ? QueueOutcome.HolderOwned : QueueOutcome.Parked;
     }
 
     private async Task<QueueOutcome> QueueAsync(string threadId, string text, CancellationToken token) {
