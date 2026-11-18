@@ -170,13 +170,16 @@ public static class Program {
     /// </summary>
     private static async Task<int> CompactAsync(string configPath) {
         using var config = JsonDocument.Parse(File.ReadAllText(configPath));
-        var dataDirectory = config.RootElement.TryGetProperty("dataDirectory", out var value) ? value.GetString() : null;
+        // Matches LedgerSettings.Load, which reads property names case-insensitively.
+        var dataDirectory = config.RootElement.ValueKind == JsonValueKind.Object ? config.RootElement.EnumerateObject()
+            .FirstOrDefault(p => p.Name.Equals("dataDirectory", StringComparison.OrdinalIgnoreCase)).Value is { ValueKind: JsonValueKind.String } value
+            ? value.GetString() : null : null;
         if (dataDirectory is null || !Path.IsPathFullyQualified(dataDirectory)) { Console.Error.WriteLine("The configuration has no absolute dataDirectory."); return 2; }
         var database = Path.Combine(dataDirectory, "ledger.sqlite");
         if (!File.Exists(database)) { Console.Error.WriteLine("No ledger.sqlite in " + dataDirectory + "."); return 2; }
         // VACUUM writes a full copy and a journal; free pages inside the file don't help.
         var size = new FileInfo(database).Length;
-        var free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(database))!).AvailableFreeSpace;
+        var free = VolumeOf(Path.GetFullPath(database)).AvailableFreeSpace;
         if (free < size * 2) {
             Console.Error.WriteLine($"Compacting needs up to {size * 2 / 1048576} MB free on the database volume; {free / 1048576} MB is free. Free some space and retry.");
             return 1;
@@ -190,6 +193,19 @@ public static class Program {
             if (!checkpointed) Console.Error.WriteLine("The database was rewritten, but another reader kept the old copy open; it shrinks once that reader closes.");
             return checkpointed ? 0 : 3;
         }
+    }
+
+    /// <summary>The mounted volume that holds a path: the ready drive with the longest root containing it.</summary>
+    internal static DriveInfo VolumeOf(string fullPath) {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return DriveInfo.GetDrives()
+            .Where(drive => drive.IsReady && Contains(drive.RootDirectory.FullName))
+            .OrderByDescending(drive => drive.RootDirectory.FullName.Length)
+            .FirstOrDefault() ?? new DriveInfo(Path.GetPathRoot(fullPath)!);
+
+        // "/mnt/d" must not claim "/mnt/data": a root matches only up to a directory boundary.
+        bool Contains(string root) => fullPath.StartsWith(root, comparison) &&
+            (root.EndsWith(Path.DirectorySeparatorChar) || fullPath.Length == root.Length || fullPath[root.Length] == Path.DirectorySeparatorChar);
     }
 
     /// <summary>

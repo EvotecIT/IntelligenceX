@@ -120,6 +120,16 @@ public sealed class LedgerStorageRetentionTests : IDisposable {
         Assert.Equal(2L, await Scalar("PRAGMA auto_vacuum"));
     }
 
+    [Fact]
+    public async Task CompactCommandReadsTheDataDirectoryInAnyCaseAndMeasuresItsVolume() {
+        using (var store = new LedgerStore(Database, new(new()))) await store.InitializeAsync();
+        var config = Path.Combine(_directory, "service.json");
+        File.WriteAllText(config, System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string> { ["DataDirectory"] = _directory }));
+        Assert.Equal(0, await Program.Main(["compact", "--config", config]));
+        var volume = Program.VolumeOf(Path.GetFullPath(Database));
+        Assert.StartsWith(volume.RootDirectory.FullName, Path.GetFullPath(Database), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    }
+
     private async Task<long> Scalar(string sql) {
         using var database = new SQLite();
         await using var db = await database.OpenSessionAsync(Database);
