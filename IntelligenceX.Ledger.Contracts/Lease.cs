@@ -113,7 +113,10 @@ public sealed record LeaseClientSettings {
 
 /// <summary>Latest reporter liveness and coverage, stored as one row rather than journal entries.</summary>
 public sealed record ReporterHealth(string MachineId, string ReporterId, string SourceVersion, DateTimeOffset ObservedAtUtc, string[] Coverage,
-    ReporterProgress[]? Progress = null, ProbeAvailability? Probe = null);
+    ReporterProgress[]? Progress = null, ProbeAvailability? Probe = null) {
+    /// <summary>GitHub REST use of the reporter and of the local components that left a tally for it to forward.</summary>
+    public GitHubUsageReport[]? GitHubUsage { get; init; }
+}
 
 /// <summary>Collection cadence comes from the same revisioned policy used by the service.</summary>
 public sealed record ReporterHealthReceipt(bool Ok, long PolicyRevision = 0, SessionPolicy? Session = null);

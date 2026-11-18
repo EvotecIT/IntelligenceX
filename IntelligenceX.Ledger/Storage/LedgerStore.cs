@@ -78,6 +78,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         await InitializeReservationsAsync(db, token);
         await InitializeSessionLookupAsync(db, token);
         await InitializeLineageAsync(db, token);
+        await InitializeGitHubUsageAsync(db, token);
     }
 
     public async Task<Guid[]> IngestAsync(LedgerEvent[] events, DateTimeOffset received, CancellationToken token = default, bool journal = true) {

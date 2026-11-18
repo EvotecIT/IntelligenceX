@@ -59,6 +59,7 @@ ix ledger lease_renew bench:shared <lease-id> 10m --config /absolute/path/leases
 ix ledger lease_release bench:shared <lease-id> --config /absolute/path/leases.json
 ix ledger machine_status machine-id --config /absolute/path/client.json
 ix ledger budget_status --config /absolute/path/client.json
+ix ledger github_budget --config /absolute/path/client.json
 ```
 
 The write configuration contains `endpoint`, `readToken`, `writeToken` and optional `certificateSha256`. Protect it locally. Read configuration continues to contain only read credentials. MCP `--config` exposes `who`, `machine_status` and `budget_status` alongside the existing read tools. Explicit `--lease-config` adds `lease_acquire`, `lease_renew` and `lease_release` using separate write credentials.
@@ -66,6 +67,23 @@ The write configuration contains `endpoint`, `readToken`, `writeToken` and optio
 The corresponding HTTP routes are `GET /leases?key=...&prefix=false`, `POST /leases/acquire`, `POST /leases/renew`, `POST /leases/release`, `GET /machine-status/{id}` and `GET /budget-status` under `/api/ledger/v1`. Mutation payloads use the same field names as the CLI arguments, with `ttlSeconds` for TTL. Read calls require the read token and mutations require the write token. Responses are compact JSON with total counts when rows are omitted to stay within 1 KB.
 
 Machine status includes reporter health, live-session and observed usage-limit counts. Budget status groups observed limits across machines and mapped accounts. Missing account mapping keeps the evidence session-scoped. Remaining credits and reset times remain unknown.
+
+### GitHub request budget
+
+GitHub reports one rate limit per identity and doesn't say which client spent it, so each component that calls GitHub counts its own answers per minute: every answer is charged except a 304. The service counts its work catalog (`ledger-catalog`) and pull request reads (`ledger-readiness`) itself; each reporter counts its own requests (`ledger-reporter`) and sends them with its health once a minute.
+
+Other local tools leave the same tally as `<component>.json` in `%LOCALAPPDATA%\IntelligenceX\Ledger\github-usage` (or `IX_LEDGER_GITHUB_USAGE_DIR`), and the reporter forwards it, so they need no Ledger credentials:
+
+```json
+{ "component": "marquee", "instance": "<guid per process>",
+  "minutes": [ { "minuteUtc": "2026-11-18T15:04:00+00:00", "resource": "core", "charged": 12, "notModified": 40 } ],
+  "rateLimits": [ { "resource": "core", "limit": 5000, "used": 1830, "remaining": 3170,
+                    "resetAtUtc": "2026-11-18T15:41:07+00:00", "observedAtUtc": "2026-11-18T15:04:31+00:00" } ] }
+```
+
+Each minute holds the running total for that process, so rewriting the file is safe. Keep the last 90 minutes; files older than that are ignored.
+
+`github_budget` (MCP, CLI, `GET /github-budget`) lists charged requests per component and machine for the last hour and the last five minutes, and each live rate-limit window with its limit, used, remaining and reset. A window's `unattributed` count is what it used that no reporting component accounts for: ad-hoc `gh`, scripts and other tools on the same identity. A second `core` window means a second identity or token is in use.
 
 Each reporter can read an optional local Marquee Probe on loopback port 47820. `probeEndpoint` overrides that loopback origin. Probe wire version 1 supplies CPU load, memory pressure, swap, free space and runner activity through the existing reporter health row. Machine queries use this cached observation and report an unavailable source when Probe is absent, unpaired or stale. The consumed wire records reference their pinned upstream source.
 

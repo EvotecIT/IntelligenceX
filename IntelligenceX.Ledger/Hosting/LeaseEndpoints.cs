@@ -44,6 +44,7 @@ internal static class LeaseEndpoints {
                 Coverage = status.Coverage.Replace("credits-and-reset-unknown", "accounts:ledger-host-only", StringComparison.Ordinal)
             });
         });
+        app.MapGet(api + "/github-budget", async (CancellationToken ct) => Results.Ok(await store.GitHubBudgetAsync(DateTimeOffset.UtcNow, ct)));
         async Task<string[]> RepositoryCoverage(CancellationToken ct) {
             var reporting = await store.ReportedRepositoryMachinesAsync(ct);
             var health = await store.HeartbeatsAsync(ct);
@@ -81,7 +82,8 @@ internal static class LeaseEndpoints {
                 value.ObservedAtUtc.Offset != TimeSpan.Zero || value.ObservedAtUtc > now.AddMinutes(2) ||
                 value.Coverage is null || value.Coverage.Length > 32 || value.Coverage.Any(c => !LedgerStore.LeaseKey(c)) ||
                 value.Progress?.Length > 128 || value.Progress?.Any(p => p is null || !LedgerStore.LeaseKey(p.ItemId) || !LedgerStore.LeaseKey(p.TurnId) ||
-                    p.LastActivityAtUtc.Offset != TimeSpan.Zero || p.LastActivityAtUtc > value.ObservedAtUtc) == true)
+                    p.LastActivityAtUtc.Offset != TimeSpan.Zero || p.LastActivityAtUtc > value.ObservedAtUtc) == true ||
+                !GitHubUsageValidation.Valid(value.GitHubUsage, now))
                 return Results.BadRequest(new { error = "invalid-health" });
             if (!ValidProbe(value.Probe, now)) value = value with { Probe = new("unavailable", "invalid-source-data") { ObservedAtUtc = now } };
             await store.UpdateReporterHealthAsync(value, ct);

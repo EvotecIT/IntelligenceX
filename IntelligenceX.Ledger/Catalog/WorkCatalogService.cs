@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Ledger.Hosting;
+using IntelligenceX.Ledger.Reporting;
 using IntelligenceX.Ledger.Storage;
 using IntelligenceX.Telemetry.GitHub;
 using V = IntelligenceX.Ledger.Contracts.TaskVerdicts;
@@ -27,10 +28,10 @@ internal sealed class WorkCatalogService : BackgroundService {
     private string? _lastError;
 
     internal WorkCatalogService(WorkCatalogSettings settings, LedgerStore store, LedgerSettings ledger, TimeProvider? clock = null,
-        Func<CancellationToken, Task<HttpClient?>>? github = null) {
+        Func<CancellationToken, Task<HttpClient?>>? github = null, GitHubUsageMeter? usage = null) {
         _settings = settings; _store = store; _ledger = ledger; _clock = clock ?? TimeProvider.System;
         _file = Path.Combine(ledger.DataDirectory, "work-catalog.json");
-        _github = github ?? CreateGitHubClientAsync;
+        _github = github ?? (token => CreateGitHubClientAsync(usage, token));
         _budget = new(settings.HourlyRequestBudget, settings.MinimumRemaining, _clock);
         if (File.Exists(_file)) {
             try {
@@ -90,10 +91,11 @@ internal sealed class WorkCatalogService : BackgroundService {
         File.Move(temporary, _file, true);
     }
 
-    private static async Task<HttpClient?> CreateGitHubClientAsync(CancellationToken token) {
+    private static async Task<HttpClient?> CreateGitHubClientAsync(GitHubUsageMeter? usage, CancellationToken token) {
         var credentials = await GitHubCredentialResolver.ResolveAsync(token);
         if (!credentials.HasToken) return null;
-        var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        HttpMessageHandler handler = new HttpClientHandler { AllowAutoRedirect = false };
+        if (usage is not null) handler = new GitHubUsageHandler(usage, "ledger-catalog", handler);
         var client = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("IntelligenceX-Ledger/1");
         client.DefaultRequestHeaders.Authorization = new("Bearer", credentials.Token);

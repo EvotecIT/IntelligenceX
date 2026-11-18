@@ -88,9 +88,12 @@ public static class Program {
         builder.Services.AddSingleton(settings);
         builder.Services.AddHostedService<ShadowReportWorker>();
         if (coordinationStore is not null) builder.Services.AddHostedService(_ => new SessionLineageBackfill(coordinationStore, store));
-        var catalog = settings.WorkCatalog is null ? null : new Catalog.WorkCatalogService(settings.WorkCatalog, store, settings);
+        // The service's own GitHub reads are counted here and saved each minute for the github-budget view.
+        var githubUsage = new GitHubUsageMeter();
+        builder.Services.AddHostedService(_ => new GitHubUsageRecorder(githubUsage, store));
+        var catalog = settings.WorkCatalog is null ? null : new Catalog.WorkCatalogService(settings.WorkCatalog, store, settings, usage: githubUsage);
         if (catalog is not null) builder.Services.AddHostedService(_ => catalog);
-        var readiness = new PullRequestReadinessService(store);
+        var readiness = new PullRequestReadinessService(store, githubUsage);
         if (coordinationStore is not null) builder.Services.AddHostedService(_ => new WakeWatcher(coordinationStore, readiness));
         var app = builder.Build();
         var runtime = new LedgerRuntime(store, settings);

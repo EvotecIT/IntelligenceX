@@ -24,6 +24,8 @@ namespace IntelligenceX.Ledger.Contracts;
 [JsonSerializable(typeof(SessionTakeoverReply))]
 [JsonSerializable(typeof(MachineStatus))]
 [JsonSerializable(typeof(BudgetStatus))]
+[JsonSerializable(typeof(GitHubBudgetView))]
+[JsonSerializable(typeof(GitHubUsageReport))]
 [JsonSerializable(typeof(RepositoryActivity))]
 [JsonSerializable(typeof(RepositoryOverlap))]
 [JsonSerializable(typeof(LedgerWorkView))]
