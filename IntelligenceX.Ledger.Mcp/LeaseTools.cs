@@ -8,13 +8,13 @@ namespace IntelligenceX.Ledger.Mcp;
 [McpServerToolType]
 public sealed class LeaseTools(LedgerReadClient client) {
     [McpServerTool(Name = "lease_acquire", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Reserve a resource for a session. Policy controls capacity and TTL. Omit ttlSeconds for the policy default. Heavy work queues. For a branch handoff, supply transferLeaseId and handoff {commit,nextStep,pullRequest?}; the reporter must have observed that clean, pushed commit. Save leaseId for renewal/release.")]
+    [Description("Reserve a resource for a session. Policy controls capacity and TTL. Omit ttlSeconds for the policy default. A ttlSeconds above the key's maximum waits as needs-approval (with maximumTtlSeconds) until the operator approves it; ask them, then call again with the same key, holder and machine to see the result. Heavy work queues. For a branch handoff, supply transferLeaseId and handoff {commit,nextStep,pullRequest?}; the reporter must have observed that clean, pushed commit. Save leaseId for renewal/release.")]
     public Task<LeaseReply> Acquire(string key, string holder, string machine, string purpose, int ttlSeconds = 0,
         string? transferLeaseId = null, LeaseHandoff? handoff = null, CancellationToken cancellationToken = default) =>
         client.AcquireLeaseAsync(new(key, holder, machine, purpose, ttlSeconds, transferLeaseId, handoff), cancellationToken);
 
     [McpServerTool(Name = "lease_renew", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false)]
-    [Description("Renew a reservation by exact leaseId when the holder has fresh session evidence. Policy controls TTL and benchmark budgets. Omit ttlSeconds to use the policy default.")]
+    [Description("Renew a reservation by exact leaseId when the holder has fresh session evidence. Policy controls TTL and benchmark budgets. Omit ttlSeconds to use the policy default. A ttlSeconds above the policy or approved maximum returns ttl-exceeds-policy with maximumTtlSeconds.")]
     public Task<LeaseReply> Renew(string key, string leaseId, int ttlSeconds = 0, CancellationToken cancellationToken = default) =>
         client.RenewLeaseAsync(new(key, leaseId, ttlSeconds), cancellationToken);
 

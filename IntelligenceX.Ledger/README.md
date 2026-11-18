@@ -37,7 +37,19 @@ Lists expose `nextCursor`. Pass it with `--cursor` before `--config` to continue
 
 ## Quick reservations and queries
 
-Leases reserve a key until its TTL expires. They work independently of Goals and requests. Competing acquisition returns `busy` with the current holder. Renew and release require the returned `leaseId`, which protects a replacement reservation from an old caller. TTL accepts seconds from 1 to 86400. CLI values also accept `s`, `m` and `h` suffixes.
+Leases reserve a key until its TTL expires. They work independently of Goals and requests. Competing acquisition returns `busy` with the current holder. Renew and release require the returned `leaseId`, which protects a replacement reservation from an old caller. Policy sets the longest TTL for each key class (`lease.maximumTtlMinutes`: `test` and `build` 60 minutes, `bench` and `machine` 120, `branch` 480, anything else 1,440). CLI values also accept `s`, `m` and `h` suffixes.
+
+A longer TTL isn't rejected outright. The reservation waits in `needs-approval`, with `maximumTtlSeconds` in the reply, and isn't admitted or queued until an operator approves it. Calling `lease_acquire` again with the same key, holder and machine returns its current state, and a shorter request within policy replaces it. An unanswered request lapses after `lease.queueTtlMinutes`. Approval can shorten the requested TTL. The approved TTL then also bounds renewals, and an approved benchmark isn't held to the daily benchmark budget. A single reservation can be approved for up to seven days. Renewing beyond the allowed TTL returns `ttl-exceeds-policy` with `maximumTtlSeconds`.
+
+On the Ledger host, the operator lists and answers waiting requests with the operator credential from the coordination configuration:
+
+```text
+IntelligenceX.Ledger lease-approvals --config /absolute/path/service.json
+IntelligenceX.Ledger lease-approvals --config /absolute/path/service.json --approve <lease-id> --minutes 480
+IntelligenceX.Ledger lease-approvals --config /absolute/path/service.json --deny <lease-id>
+```
+
+Without `--minutes`, approval grants the requested TTL. The HTTP routes are `GET` and `POST /api/coordination/v1/lease-approvals`, and only the operator principal can use them.
 
 ```text
 ix ledger who bench:shared --config /absolute/path/client.json

@@ -34,10 +34,15 @@ public sealed partial class LedgerStore {
 
     private static int DefaultLeaseTtl(string key, CoordinationPolicy policy) =>
         (int)Math.Min(policy.Lease.DefaultTtlSeconds, MaximumTtlSeconds(key, policy));
-    private static void ValidateTtl(string key, int seconds, CoordinationPolicy policy) {
-        if (seconds <= 0 || seconds > MaximumTtlSeconds(key, policy))
-            throw new ArgumentException("Lease TTL exceeds policy.");
+    /// <summary>An operator may approve up to a week for one reservation; anything longer is a bad request.</summary>
+    private const int MaximumApprovedTtlSeconds = 7 * 24 * 3600;
+    private static int AllowedTtlSeconds(Lease lease, CoordinationPolicy policy) =>
+        Math.Max((int)Math.Floor(MaximumTtlSeconds(lease.Key, policy)), lease.ApprovedTtlSeconds ?? 0);
+    private static void ValidateTtl(int seconds) {
+        if (seconds <= 0 || seconds > MaximumApprovedTtlSeconds) throw new ArgumentException("Lease TTL is out of range.");
     }
+    private static LeaseReply TtlExceeded(int maximum, Lease? lease = null) =>
+        new(false, "ttl-exceeds-policy", lease) { MaximumTtlSeconds = maximum };
 
     private static async Task<List<Reservation>> ReservationsAsync(SQLiteAsyncSession db, DateTimeOffset now, CancellationToken token) =>
         (await db.QueryAsListAsync("SELECT json,state,ttl,ordinal FROM reservations WHERE expires>@now ORDER BY ordinal",
@@ -118,7 +123,8 @@ public sealed partial class LedgerStore {
 
     private static async Task<string?> BenchmarkBudgetReasonAsync(SQLiteAsyncSession db, Lease lease, int ttl,
         CoordinationPolicy policy, DateTimeOffset now, CancellationToken token) {
-        if (KeyClass(lease.Key) != "bench") return null;
+        // An operator who approved this reservation's length has already decided the machine can spend it.
+        if (KeyClass(lease.Key) != "bench" || lease.ApprovedTtlSeconds is not null) return null;
         var history = await db.QueryAsListAsync("""
             SELECT started,ended,json FROM lease_history
             WHERE machine=@machine AND substr(key,1,6)='bench:' COLLATE NOCASE AND ended>@cutoff ORDER BY ended DESC
@@ -148,7 +154,7 @@ public sealed partial class LedgerStore {
         all.Where(row => row.State == "queued").OrderBy(row => Priority(row.Lease, policy)).ThenBy(row => row.Order);
 
     private static int QueuedTtl(Reservation row, CoordinationPolicy policy) =>
-        Math.Max(1, (int)Math.Min(row.TtlSeconds, MaximumTtlSeconds(row.Lease.Key, policy)));
+        Math.Max(1, Math.Min(row.TtlSeconds, AllowedTtlSeconds(row.Lease, policy)));
 
     private static async Task<bool> EarlierWaiterAsync(SQLiteAsyncSession db, Lease lease, List<Reservation> all,
         CoordinationPolicy policy, DateTimeOffset now, CancellationToken token) {

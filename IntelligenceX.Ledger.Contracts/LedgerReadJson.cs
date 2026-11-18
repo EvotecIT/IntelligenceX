@@ -12,6 +12,8 @@ namespace IntelligenceX.Ledger.Contracts;
 [JsonSerializable(typeof(LeaseRenew))]
 [JsonSerializable(typeof(LeaseRelease))]
 [JsonSerializable(typeof(LeaseReply))]
+[JsonSerializable(typeof(LeaseApproval))]
+[JsonSerializable(typeof(LeaseApprovalList))]
 [JsonSerializable(typeof(LeaseQuery))]
 [JsonSerializable(typeof(SessionStatus))]
 [JsonSerializable(typeof(PullRequestReadiness))]
