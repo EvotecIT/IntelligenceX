@@ -19,6 +19,10 @@ The reporter configuration requires `endpoint`, `token` (the write token), `mach
 
 An expected machine with no heartbeat is `not-enrolled`. A reporter silent for ten minutes makes its machine Stuck; item rows retain their last-known state. Startup and partial-source diagnostics appear separately in status. Local-only automatic discovery includes new source roots during reconciliation without relabeling recovered history as local activity.
 
+`serve`, `report` and `agent` raise their own CPU, disk and memory priority to normal at startup; `serve` and `report` print the result. Windows starts scheduled tasks below normal priority, which also lowers disk priority, and at low disk priority the service stalled for minutes whenever another process wrote heavily to the same volume.
+
+While it starts, the service writes its current phase to `service-startup.json` in the data directory and to standard output: `opening-coordination`, `opening-ledger`, `rebuilding-projections` (with done and total counts), `ledger-ready`, `starting-listener` and finally `ready`. A supervisor can wait while the phase or its counts change and treat a start that stops moving as unhealthy. The derived session tables are rebuilt from items only when the database's projection version is older than the service's, in one transaction, so a normal restart skips that pass.
+
 The bounded outbox defaults to 64 MiB. Events have stable IDs and per-epoch sequences. Only acknowledged IDs leave the outbox. Replaying the same observation is idempotent; conflicting ID or sequence reuse is rejected. Capacity exhaustion retains unacknowledged files and reports backpressure while delivery keeps draining. Uploads respect both the 100-event and 1-MiB ingress limits. Source logs remain the reconciliation backstop. Hook hints share the outbox and cannot take its delivery lock.
 
 ## Read the ledger
@@ -111,9 +115,9 @@ MCP exposes `session_tree(id)` and `session_trail(id)` with the read token, and 
 
 ## Reporting and retention
 
-Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. An observation that leaves its item unchanged apart from evidence references and refresh-only times (last activity, last progress, a re-observed archive, evaluation time) still updates the item but doesn't add a history row. Raw events older than seven days, and verdict transitions with their correctness marks older than 30 days, are pruned in batches of at most 10000 per pass. Items stay. Existing retention backlog drains over successive passes.
+Reporters spool state changes durably. Combined liveness, source coverage and exact open-turn activity is posted to `/api/ledger/v1/reporters/health` every 60 seconds and upserted per reporter. Older reporter pings and activity-only facts are folded into current state at ingress. Successful rechecks of unchanged project facts refresh `/api/ledger/v1/project-evidence` after matching state events drain. A changed fact must first enter history. An observation that leaves its item unchanged apart from evidence references and refresh-only times (last activity, last progress, a re-observed archive, evaluation time) still updates the item but doesn't add a history row. Raw events older than seven days, and verdict transitions with their correctness marks older than 30 days, are pruned in batches of at most 2000 per pass, every five minutes. Items stay. Existing retention backlog drains over successive passes.
 
-A new database uses SQLite incremental vacuum, so each pass also returns up to about 100 MB of freed pages to the file system. An existing database keeps its allocated size until it is compacted once with the service stopped:
+A new database uses SQLite incremental vacuum, so each pass also returns up to about 16 MB of freed pages to the file system. The service keeps one database connection open for its lifetime, so SQLite checkpoints the WAL in small steps as it grows instead of all at once whenever the last request connection closes. An existing database keeps its allocated size until it is compacted once with the service stopped:
 
 ```text
 IntelligenceX.Ledger compact --config /absolute/path/service.json
@@ -132,6 +136,7 @@ All HTTP routes below use `/api/ledger/v1` and require a bearer token. GET route
 | `POST /events` | Acknowledges up to 100 typed events after history and projection commit together. |
 | `GET /status` | Versions, verdict counts, quiet paused count, expected machines and source coverage. |
 | `GET /machines` | Healthy, silent and not-enrolled machine rows. |
+| `GET /health` | Takes the write gate and reads one row within five seconds. Returns 200 with `status: ok`, the gate wait and query times, start time and process priority, or 503 with `status: stalled` and `write-gate-busy` or `database-slow`. |
 | `GET /items` | Stable snapshot pagination, filtered by verdict, machine or provider. |
 | `GET /items/{id}` | Verdict, reason, since, evidence and independent delivery-stage knowledge. |
 | `GET /items/{id}/events` | Bounded event history in receipt order. |

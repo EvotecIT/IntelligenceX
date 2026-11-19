@@ -13,6 +13,8 @@ The kit has the layout the Ledger service and reporter installers expect, plus w
 - agent-manifest.json and Install-LedgerAgent.ps1, which installs the agent service from this kit.
 
 The manifest names the exact source commit, so the working tree must be clean.
+Live Ledgers run merged master only, so the commit has to be on origin/master. -Unmerged builds a kit from any
+commit for an isolated test instance; its manifest says merged: false and the live installers refuse it.
 .EXAMPLE
 ./Build/Publish-LedgerAgent.ps1 -Runtime win-x64 -Output D:\Dev\Scratch\ledger-kit
 #>
@@ -20,13 +22,27 @@ The manifest names the exact source commit, so the working tree must be clean.
 param(
     [Parameter(Mandatory)][ValidateSet('win-x64', 'osx-arm64')][string]$Runtime,
     [Parameter(Mandatory)][string]$Output,
-    [switch]$NoHook
+    [switch]$NoHook,
+    [switch]$Unmerged
 )
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path $PSScriptRoot -Parent
 $commit = (git -C $repository rev-parse HEAD).Trim()
 if (git -C $repository status --porcelain) { throw 'Commit or stash changes first; the kit records its exact source commit.' }
+if (-not $Unmerged) {
+    # An explicit destination also updates origin/master in a clone that tracks only a topic branch.
+    git -C $repository fetch --quiet origin '+refs/heads/master:refs/remotes/origin/master'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not fetch origin/master to confirm the commit is merged.' }
+    git -C $repository merge-base --is-ancestor $commit origin/master
+    if ($LASTEXITCODE -ne 0) {
+        throw "Live Ledgers run merged master only and $commit is not on origin/master. Pass -Unmerged for a kit that only an isolated test instance will run."
+    }
+}
 $Output = [IO.Path]::GetFullPath($Output)
+# The build is checked against a clean tree afterwards, so the kit can't be written inside the repository.
+if ($Output.StartsWith([IO.Path]::GetFullPath($repository).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Write the kit outside the repository: $Output"
+}
 if (Test-Path -LiteralPath $Output) { throw "The output folder already exists: $Output" }
 $appFolder = if ($Runtime -eq 'win-x64') { 'service' } else { 'app' }
 $app = Join-Path $Output $appFolder
@@ -53,6 +69,10 @@ if (-not $NoHook) {
     Get-ChildItem -LiteralPath $hook -Filter *.dSYM -Directory | Remove-Item -Recurse
 }
 
+# The build read the working tree, so it has to still be the commit the merge check passed.
+if ((git -C $repository rev-parse HEAD).Trim() -cne $commit -or (git -C $repository status --porcelain)) {
+    throw "The working tree changed during the build; the kit would not match $commit. Publish again."
+}
 # Update-LedgerRuntime.ps1 reads service/-relative paths with upper-case hashes; the Mac installer reads app-relative
 # paths with lower-case hashes and the runtime.
 $files = Get-ChildItem -LiteralPath $app -File -Recurse | Sort-Object FullName | ForEach-Object {
@@ -61,7 +81,7 @@ $files = Get-ChildItem -LiteralPath $app -File -Recurse | Sort-Object FullName |
     if ($Runtime -eq 'win-x64') { [ordered]@{ path = "service/$relative"; sha256 = $hash.ToUpperInvariant() } }
     else { [ordered]@{ path = $relative; sha256 = $hash.ToLowerInvariant() } }
 }
-$manifest = [ordered]@{ sourceCommit = $commit }
+$manifest = [ordered]@{ sourceCommit = $commit; merged = -not $Unmerged }
 if ($Runtime -ne 'win-x64') { $manifest.runtime = $Runtime }
 $manifest.files = @($files)
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Output 'manifest.json') -Encoding utf8NoBOM
@@ -73,7 +93,7 @@ $agentFiles = foreach ($folder in $appFolder, 'tools') {
             sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     }
 }
-[ordered]@{ sourceCommit = $commit; runtime = $Runtime; appFolder = $appFolder; files = @($agentFiles) } |
+[ordered]@{ sourceCommit = $commit; merged = -not $Unmerged; runtime = $Runtime; appFolder = $appFolder; files = @($agentFiles) } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Output 'agent-manifest.json') -Encoding utf8NoBOM
 Copy-Item -LiteralPath (Join-Path $repository 'IntelligenceX.Ledger/Install/Install-LedgerAgent.ps1') -Destination $Output
 [pscustomobject]@{ Kit = $Output; Runtime = $Runtime; SourceCommit = $commit; Files = $files.Count; Hook = -not $NoHook }

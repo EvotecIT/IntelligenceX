@@ -79,14 +79,23 @@ public sealed partial class LedgerStore {
     /// <summary>Events are kept for 7 days. Transitions and their review marks feed the daily reports, which are also
     /// written to files, so they are kept for 30.</summary>
     internal static readonly TimeSpan EventRetention = TimeSpan.FromDays(7), TransitionRetention = TimeSpan.FromDays(30);
-    /// <summary>Pages returned to the file system per maintenance tick, about 100 MB, so one tick stays short.</summary>
-    private const int VacuumPagesPerTick = 25600;
+    /// <summary>
+    /// Pages returned to the file system per maintenance tick, about 16 MB. The write gate is held meanwhile, so a tick
+    /// has to stay short even on a busy disk; freed space comes back over several ticks.
+    /// </summary>
+    private const int VacuumPagesPerTick = 4096;
+
+    /// <summary>
+    /// Rows removed per table per tick. A tick runs every five minutes, so this still clears over 500,000 events a day,
+    /// several times the busiest day seen, while keeping each delete short.
+    /// </summary>
+    internal const int PruneBatch = 2000;
 
     /// <summary>
     /// One bounded retention pass per maintenance tick: old events, then old transitions with their review marks.
     /// Projections are kept. Freed pages go back to the file system when the database uses incremental vacuum.
     /// </summary>
-    public async Task<int> PruneEventsAsync(DateTimeOffset now, int limit = 10000, CancellationToken token = default) {
+    public async Task<int> PruneEventsAsync(DateTimeOffset now, int limit = PruneBatch, CancellationToken token = default) {
         await MaintainLeasesAsync(now, token);
         await _gate.WaitAsync(token);
         try {

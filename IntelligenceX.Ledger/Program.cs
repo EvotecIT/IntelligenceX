@@ -34,7 +34,11 @@ public static class Program {
         if (args.Length == 3 && args[0] == "compact" && args[1] == "--config") return await CompactAsync(args[2]);
         if (args.Length == 4 && args[0] == "hook" && args[1] == "--config")
             return await LocalReporter.RunAsync(args[2], hook: true, suppliedPayload: args[3]);
-        if (args.Length == 3 && args[0] == "agent" && args[1] == "--config") return await Agents.AgentHost.RunProcessAsync(args[2]);
+        if (args.Length == 3 && args[0] == "agent" && args[1] == "--config") {
+            // A sign-in task like the service and reporter; helper sessions it starts inherit its priority.
+            ProcessPriority.EnsureNormal();
+            return await Agents.AgentHost.RunProcessAsync(args[2]);
+        }
         if (args.Length == 3 && args[0] == "agent-check" && args[1] == "--config") return await Agents.AgentHost.CheckAsync(Agents.AgentHost.Load(args[2]));
         if (args.Length > 0 && args[0] == "agent-install") return await Agents.AgentInstaller.RunAsync(args);
         if (args.Length > 0 && args[0] == "agent-enroll") return Agents.AgentEnrollment.Run(args);
@@ -53,10 +57,15 @@ public static class Program {
                 "       IntelligenceX.Ledger compact --config <local-json-file>\n" + LeaseApprovalCommand.Usage);
             return 2;
         }
+        if (args[0] == "report") ReportPriority(ProcessPriority.EnsureNormal());
         if (args[0] is "report" or "hook") return await LocalReporter.RunAsync(args[2], args[0] == "hook");
+        var priority = ProcessPriority.EnsureNormal();
+        ReportPriority(priority);
         var settings = LedgerSettings.Load(args[2]);
         Directory.CreateDirectory(settings.DataDirectory);
         using var writerLease = LedgerBackup.AcquireServiceLease(settings.DataDirectory);
+        var startup = new StartupProgress(settings.DataDirectory);
+        startup.Report(new("opening-coordination"));
         var coordination = settings.CoordinationConfigPath is null ? null : CoordinationEndpoints.Load(settings.CoordinationConfigPath, settings);
         using var coordinationStore = coordination is null ? null : new CoordinationStore(
             Path.Combine(settings.DataDirectory, "coordination.sqlite"), coordination.InitialPolicy, coordination.Principals);
@@ -65,7 +74,8 @@ public static class Program {
         async Task<CoordinationPolicy> ReadPolicy(CancellationToken ct) => coordinationStore is null
             ? new(1, []) : await coordinationStore.ReadAsync(state => state.Policy, ct);
         using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules), ReadPolicy);
-        await store.InitializeAsync();
+        await store.InitializeAsync(progress: startup);
+        startup.Report(new("starting-listener"));
         var builder = CreateWebBuilder();
         builder.Logging.ClearProviders(); // Payloads, paths and credentials never enter request logs.
         // Windows Schannel requires a key container for a configured server PFX. The default
@@ -164,6 +174,14 @@ public static class Program {
                 pausedCount = items.Count(i => i.Current!.Hold is { Type: "paused-by-user" }) });
         });
         app.MapGet(prefix + "/machines", async (CancellationToken ct) => Results.Ok(await runtime.MachinesAsync(DateTimeOffset.UtcNow, ct)));
+        var startedAtUtc = DateTimeOffset.UtcNow;
+        app.MapGet(prefix + "/health", async (CancellationToken ct) => {
+            // The supervisor restarts the service after several failed probes, so the budget stays well under its timeout.
+            var probe = await store.ProbeAsync(HealthBudget, ct);
+            var body = new { status = probe.Healthy ? "ok" : "stalled", reason = probe.Reason, probe.GateWaitMs, probe.QueryMs,
+                startedAtUtc, priority };
+            return probe.Healthy ? Results.Ok(body) : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
+        });
         app.MapGet(prefix + "/items", async (string? cursor, int? limit, string? verdict, string? machineId, string? provider, CancellationToken ct) => {
             var page = await runtime.PageAsync(cursor, Math.Clamp(limit ?? 100, 1, 500), verdict, machineId, provider, ct);
             return page is null ? Results.BadRequest(new { error = "expired-or-invalid-cursor" }) : Results.Ok(new {
@@ -179,9 +197,16 @@ public static class Program {
             DateOnly.TryParseExact(date, "yyyy-MM-dd", out var day)
                 ? Results.Ok(await store.ReportAsync(day, DateTimeOffset.UtcNow, ct))
                 : Results.BadRequest(new { error = "invalid-date" }));
+        app.Lifetime.ApplicationStarted.Register(startup.Ready);
         await app.RunAsync();
         return 0;
     }
+
+    /// <summary>Time the health probe allows the write gate and one query before it reports the service as stalled.</summary>
+    internal static readonly TimeSpan HealthBudget = TimeSpan.FromSeconds(5);
+
+    private static void ReportPriority(ProcessPriority.State state) =>
+        Console.Out.WriteLine($"{DateTimeOffset.UtcNow:O} priority cpu={state.Cpu} disk={state.Disk?.ToString() ?? "n/a"} memory={state.Memory?.ToString() ?? "n/a"}");
 
     /// <summary>
     /// Compacts a stopped service's database. Only the data directory is read from the configuration, so the
