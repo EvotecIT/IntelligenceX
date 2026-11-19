@@ -229,7 +229,10 @@ starting an app server every minute.
 ### Known limits
 
 - A Claude desktop session running in a different permission mode from the sender holds incoming SendMessage
-  deliveries for its user's approval. The delivery is recorded as submitted; the session sees it once approved.
+  deliveries for its user's approval, and the notice of that hold goes to a sender that has already exited. The inbox
+  hook records each session's permission mode from its prompts, and the sender runs in the recipient's recorded mode,
+  so a wake starts a turn in an idle session. A session that hasn't run a prompt since the hook was installed has no
+  recorded mode; its deliveries are sent in the default mode and may wait for approval.
 - When the Codex app holds the thread, `codex queue --resume` stores the message and asks the local app-server daemon to
   run it. That is recorded as submitted, as is a message whose resume is refused because the app holds the thread: the
   app runs it as its next turn (`codex-queued-in-app`). Without a daemon (or with a CLI too old for `--resume`) the message only waits

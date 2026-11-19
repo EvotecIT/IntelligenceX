@@ -120,7 +120,10 @@ internal sealed partial class AgentService {
         if (to.Provider == "claude") {
             // SendMessage addresses sessions by the name ListAgents shows; the asker supplied its own.
             ClaudeSendOutcome sent;
-            try { sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop).ConfigureAwait(false); }
+            try {
+                sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop,
+                    ClaudeSessionModes.Read(_settings.StateDirectory, to.SessionId)).ConfigureAwait(false);
+            }
             catch (ClaudeLaunchException error) {
                 // The CLI didn't start, so nothing was sent: the delivery returns to pending and is retried after a pause.
                 Log("delivery-not-submitted", requestId + " claude " + error.Message);

@@ -24,7 +24,11 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
         "more than one row has that name, don't send. " +
         "Then reply with one word: sent or failed.";
 
-    public async Task<ClaudeSendOutcome> SendAsync(string sessionId, string text, string model, CancellationToken token) {
+    /// <summary>Sends <paramref name="text"/> to the session at <paramref name="sessionId"/> (its address). The sender runs
+    /// in <paramref name="permissionMode"/>, the recipient's recorded mode, when one is known: the desktop app holds a
+    /// message from a session in a different mode until its user approves it.</summary>
+    public async Task<ClaudeSendOutcome> SendAsync(string sessionId, string text, string model, CancellationToken token,
+        string? permissionMode = null) {
         var start = new ProcessStartInfo(executable) {
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
             UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = workingDirectory
@@ -33,6 +37,7 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
             "--tools", "SendMessage,ListAgents", "--allowedTools", "SendMessage,ListAgents", "--strict-mcp-config",
             "--setting-sources", "", "--no-session-persistence", "--system-prompt", SystemPrompt })
             start.ArgumentList.Add(argument);
+        if (permissionMode is not null) { start.ArgumentList.Add("--permission-mode"); start.ArgumentList.Add(permissionMode); }
         Process process;
         try { process = Process.Start(start) ?? throw new ClaudeLaunchException("claude did not start."); }
         catch (System.ComponentModel.Win32Exception error) { throw new ClaudeLaunchException(error.Message, error); }
