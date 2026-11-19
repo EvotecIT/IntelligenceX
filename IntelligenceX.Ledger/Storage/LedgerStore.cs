@@ -105,8 +105,9 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
     }
 
     /// <summary>
-    /// Rebuilds the derived session tables from items in one transaction, so a large rebuild costs one commit instead
-    /// of one per session, and records the version so later starts skip it. Progress is reported every 100 sessions.
+    /// Replaces the derived session tables with rows rebuilt from items in one transaction, so a large rebuild costs one
+    /// commit instead of one per session and leaves no row from an older derivation, and records the version so later
+    /// starts skip it. Progress is reported every 100 sessions.
     /// </summary>
     private static async Task RebuildProjectionsAsync(SQLiteAsyncSession db, IProgress<StartupStep>? progress, CancellationToken token) {
         progress?.Report(new("rebuilding-projections"));
@@ -116,12 +117,15 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
             """, row => Read<LedgerItem>(row.GetString(0)), cancellationToken: token);
         await db.RunInTransactionAsync(async (tx, ct) => {
             await tx.ExecuteNonQueryAsync("""
-                INSERT OR IGNORE INTO session_status(item,machine,provider,open,limited,archived,account)
+                DELETE FROM repository_sessions;
+                DELETE FROM session_lookup;
+                DELETE FROM session_status;
+                INSERT INTO session_status(item,machine,provider,open,limited,archived,account)
                   SELECT id,json_extract(json,'$.machineId'),json_extract(json,'$.provider'),
                     COALESCE(json_extract(json,'$.session.turnOpen'),0),COALESCE(json_extract(json,'$.session.usageLimit'),0),
                     COALESCE(json_extract(json,'$.session.archived'),0),json_extract(json,'$.session.accountId')
                   FROM items WHERE json_extract(json,'$.kind')='session' AND json_type(json,'$.session')='object';
-                INSERT OR IGNORE INTO session_lookup(item,native,title,machine,provider)
+                INSERT INTO session_lookup(item,native,title,machine,provider)
                   SELECT i.id,json_extract(i.json,'$.session.sourceSessionId'),
                     COALESCE(json_extract(i.json,'$.session.title'),json_extract(i.json,'$.session.repository.title')),
                     s.machine,s.provider FROM session_status s JOIN items i ON i.id=s.item;

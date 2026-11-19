@@ -30,7 +30,8 @@ $repository = Split-Path $PSScriptRoot -Parent
 $commit = (git -C $repository rev-parse HEAD).Trim()
 if (git -C $repository status --porcelain) { throw 'Commit or stash changes first; the kit records its exact source commit.' }
 if (-not $Unmerged) {
-    git -C $repository fetch --quiet origin master
+    # An explicit destination also updates origin/master in a clone that tracks only a topic branch.
+    git -C $repository fetch --quiet origin '+refs/heads/master:refs/remotes/origin/master'
     if ($LASTEXITCODE -ne 0) { throw 'Could not fetch origin/master to confirm the commit is merged.' }
     git -C $repository merge-base --is-ancestor $commit origin/master
     if ($LASTEXITCODE -ne 0) {

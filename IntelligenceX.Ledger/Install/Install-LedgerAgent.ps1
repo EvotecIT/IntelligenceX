@@ -81,7 +81,9 @@ function Assert-Kit([string]$Path) {
     $expected = $IsWindows ? 'win-x64' : 'osx-arm64'
     if ($manifest.runtime -cne $expected) { throw "The kit is for $($manifest.runtime); this machine needs $expected." }
     # Live machines run merged master only; a kit built with -Unmerged is for an isolated test instance.
-    if ($manifest.merged -eq $false -and -not $AllowUnmerged) { throw "The kit was built from unmerged commit $($manifest.sourceCommit). Live machines run merged master only." }
+    # Kits from before the rule have no merged field and stay installable, so rollback to them keeps working.
+    $merged = $manifest.PSObject.Properties['merged']
+    if ($merged -and $merged.Value -eq $false -and -not $AllowUnmerged) { throw "The kit was built from unmerged commit $($manifest.sourceCommit). Live machines run merged master only." }
     $listed = @{}
     foreach ($file in $manifest.files) {
         $full = [IO.Path]::GetFullPath((Join-Path $Path $file.path))

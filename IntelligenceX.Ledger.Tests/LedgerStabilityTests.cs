@@ -53,12 +53,19 @@ public sealed class LedgerStabilityTests {
         Assert.Equal(LedgerStore.ProjectionVersion, await Scalar("PRAGMA user_version"));
 
         // A database from before the version mark gets its derived rows rebuilt from items, with progress reported.
-        await Execute("DELETE FROM repository_sessions; DELETE FROM session_status; DELETE FROM session_lookup; PRAGMA user_version=0");
+        // Its derived rows can be missing, outdated or orphaned; the rebuild replaces all of them.
+        await Execute("""
+            DELETE FROM repository_sessions WHERE item='synthetic-a'; DELETE FROM session_status WHERE item='synthetic-a';
+            UPDATE session_lookup SET title='outdated' WHERE item='synthetic-b';
+            INSERT INTO session_lookup(item,native,title,machine,provider) VALUES('synthetic-gone',NULL,'gone','synthetic-machine','codex');
+            PRAGMA user_version=0
+            """);
         var steps = new List<StartupStep>();
         using (var store = new LedgerStore(Database, new(new()))) await store.InitializeAsync(progress: new Collect(steps));
         Assert.Equal(2L, await Scalar("SELECT COUNT(*) FROM repository_sessions"));
         Assert.Equal(2L, await Scalar("SELECT COUNT(*) FROM session_status"));
         Assert.Equal(2L, await Scalar("SELECT COUNT(*) FROM session_lookup"));
+        Assert.Equal(0L, await Scalar("SELECT COUNT(*) FROM session_lookup WHERE title IN ('outdated','gone')"));
         Assert.Contains(steps, step => step.Phase == "rebuilding-projections");
         Assert.Equal(LedgerStore.ProjectionVersion, await Scalar("PRAGMA user_version"));
 
