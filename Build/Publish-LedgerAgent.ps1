@@ -39,6 +39,10 @@ if (-not $Unmerged) {
     }
 }
 $Output = [IO.Path]::GetFullPath($Output)
+# The build is checked against a clean tree afterwards, so the kit can't be written inside the repository.
+if ($Output.StartsWith([IO.Path]::GetFullPath($repository).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Write the kit outside the repository: $Output"
+}
 if (Test-Path -LiteralPath $Output) { throw "The output folder already exists: $Output" }
 $appFolder = if ($Runtime -eq 'win-x64') { 'service' } else { 'app' }
 $app = Join-Path $Output $appFolder

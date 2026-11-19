@@ -9,6 +9,25 @@ public sealed record StartupStep(string Phase, int? Done = null, int? Total = nu
 public sealed record StoreProbe(bool Healthy, string? Reason, long GateWaitMs, long? QueryMs);
 
 public sealed partial class LedgerStore {
+    private readonly object _probeSync = new();
+    private Task? _probeRead;
+
+    /// <summary>
+    /// The probe's database read. Callers share one read until it finishes, so repeated probes during a disk stall don't
+    /// pile up blocked reads and open connections.
+    /// </summary>
+    private Task SharedProbeRead() {
+        lock (_probeSync) {
+            if (_probeRead is { IsCompleted: false } running) return running;
+            var read = Task.Run(async () => {
+                await using var db = await _database.OpenSessionAsync(path, CancellationToken.None);
+                await db.ExecuteScalarAsync("SELECT reporter FROM heartbeats LIMIT 1", cancellationToken: CancellationToken.None);
+            }, CancellationToken.None);
+            _ = read.ContinueWith(static finished => _ = finished.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            return _probeRead = read;
+        }
+    }
+
     /// <summary>
     /// Takes the write gate, the path every write waits on, then reads one row, all within one budget measured from the
     /// call. A writer stuck behind a slow disk or a long maintenance pass shows up as a gate that doesn't free up in
@@ -22,16 +41,12 @@ public sealed partial class LedgerStore {
         var gateWait = clock.ElapsedMilliseconds;
         // SQLite statements run synchronously and can sit in disk I/O where cancellation doesn't reach them, so the read
         // runs on its own and the probe answers by the deadline either way.
-        var query = Task.Run(async () => {
-            await using var db = await _database.OpenSessionAsync(path, CancellationToken.None);
-            await db.ExecuteScalarAsync("SELECT reporter FROM heartbeats LIMIT 1", cancellationToken: CancellationToken.None);
-        }, CancellationToken.None);
+        var query = SharedProbeRead();
         var remaining = budget - clock.Elapsed;
         try {
             if (remaining <= TimeSpan.Zero) throw new TimeoutException();
             await query.WaitAsync(remaining, token);
         } catch (TimeoutException) {
-            _ = query.ContinueWith(static finished => _ = finished.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return new(false, "database-slow", gateWait, clock.ElapsedMilliseconds - gateWait);
         } catch (DBAClientX.DbaClientXException) {
             return new(false, "database-error", gateWait, clock.ElapsedMilliseconds - gateWait);
