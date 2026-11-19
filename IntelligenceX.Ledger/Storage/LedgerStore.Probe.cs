@@ -10,21 +10,21 @@ public sealed record StoreProbe(bool Healthy, string? Reason, long GateWaitMs, l
 
 public sealed partial class LedgerStore {
     /// <summary>
-    /// Takes the write gate and reads one row, the same path every write takes, and answers within one budget measured
-    /// from the call. A writer stuck behind a slow disk or a long maintenance pass shows up here as a gate that doesn't
-    /// free up in time, even while plain reads still answer.
+    /// Takes the write gate, the path every write waits on, then reads one row, all within one budget measured from the
+    /// call. A writer stuck behind a slow disk or a long maintenance pass shows up as a gate that doesn't free up in
+    /// time, even while plain reads still answer; a stalled disk shows up as a read that doesn't finish.
     /// </summary>
     public async Task<StoreProbe> ProbeAsync(TimeSpan budget, CancellationToken token = default) {
         var clock = Stopwatch.StartNew();
         if (!await _gate.WaitAsync(budget, token)) return new(false, "write-gate-busy", clock.ElapsedMilliseconds, null);
+        // Getting the gate is the writer check. The read needs no writer exclusion, so a stalled read never holds up ingest.
+        _gate.Release();
         var gateWait = clock.ElapsedMilliseconds;
         // SQLite statements run synchronously and can sit in disk I/O where cancellation doesn't reach them, so the read
-        // runs on its own and releases the gate when it finishes; the probe answers by the deadline either way.
+        // runs on its own and the probe answers by the deadline either way.
         var query = Task.Run(async () => {
-            try {
-                await using var db = await _database.OpenSessionAsync(path, CancellationToken.None);
-                await db.ExecuteScalarAsync("SELECT reporter FROM heartbeats LIMIT 1", cancellationToken: CancellationToken.None);
-            } finally { _gate.Release(); }
+            await using var db = await _database.OpenSessionAsync(path, CancellationToken.None);
+            await db.ExecuteScalarAsync("SELECT reporter FROM heartbeats LIMIT 1", cancellationToken: CancellationToken.None);
         }, CancellationToken.None);
         var remaining = budget - clock.Elapsed;
         try {

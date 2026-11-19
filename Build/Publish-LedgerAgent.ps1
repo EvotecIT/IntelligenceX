@@ -65,6 +65,10 @@ if (-not $NoHook) {
     Get-ChildItem -LiteralPath $hook -Filter *.dSYM -Directory | Remove-Item -Recurse
 }
 
+# The build read the working tree, so it has to still be the commit the merge check passed.
+if ((git -C $repository rev-parse HEAD).Trim() -cne $commit -or (git -C $repository status --porcelain)) {
+    throw "The working tree changed during the build; the kit would not match $commit. Publish again."
+}
 # Update-LedgerRuntime.ps1 reads service/-relative paths with upper-case hashes; the Mac installer reads app-relative
 # paths with lower-case hashes and the runtime.
 $files = Get-ChildItem -LiteralPath $app -File -Recurse | Sort-Object FullName | ForEach-Object {
