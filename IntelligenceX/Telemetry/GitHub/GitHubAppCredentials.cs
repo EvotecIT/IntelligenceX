@@ -85,11 +85,17 @@ public sealed class GitHubAppTokenSource : IDisposable {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _token;
     private DateTimeOffset _expires;
+    private DateTimeOffset _failedUntil;
+
+    /// <summary>How long every caller skips the App after it failed to sign in, before trying again.</summary>
+    public static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(5);
 
     /// <summary>Creates a token source; <paramref name="client"/> is for tests.</summary>
     public GitHubAppTokenSource(GitHubAppSettings settings, HttpClient? client = null, Func<DateTimeOffset>? clock = null) {
         _settings = settings;
-        _client = client ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        // Short enough that a request waiting on it (12 seconds for readiness, 20 for project reads) still has time to
+        // fall back to the user token.
+        _client = client ?? new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         _disposeClient = client is null;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
@@ -103,26 +109,37 @@ public sealed class GitHubAppTokenSource : IDisposable {
         try {
             var now = _clock();
             if (_token is not null && now < _expires - RenewBefore) return _token;
-            using var request = new HttpRequestMessage(HttpMethod.Post,
-                _settings.ApiBaseUrl + "app/installations/" + _settings.InstallationId + "/access_tokens");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CreateJwt(now));
-            request.Headers.Accept.ParseAdd("application/vnd.github+json");
-            request.Headers.UserAgent.ParseAdd("IntelligenceX/1");
-            using var response = await _client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-                throw new HttpRequestException("GitHub App token request failed: " + (int)response.StatusCode, null, response.StatusCode);
-            using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false));
-            // An answer without a token is a failed sign-in like any other, so callers fall back the same way.
-            if (body.RootElement.ValueKind != JsonValueKind.Object || !body.RootElement.TryGetProperty("token", out var issued) ||
-                issued.ValueKind != JsonValueKind.String || issued.GetString() is not { Length: > 0 } value)
-                throw new HttpRequestException("GitHub App token response had no token.");
-            _token = value;
-            _expires = body.RootElement.TryGetProperty("expires_at", out var expires) && expires.TryGetDateTimeOffset(out var at)
-                ? at : now.AddHours(1);
-            return _token;
+            // Shared by every caller: after a failure nobody asks again until the retry time, however many were queued.
+            if (now < _failedUntil) throw new HttpRequestException("GitHub App sign-in is waiting to retry.");
+            try {
+                return await RequestTokenAsync(now, cancellationToken).ConfigureAwait(false);
+            } catch (Exception error) when (IsSignInFailure(error, cancellationToken)) {
+                _failedUntil = now + RetryAfter;
+                throw;
+            }
         } finally {
             _gate.Release();
         }
+    }
+
+    private async Task<string> RequestTokenAsync(DateTimeOffset now, CancellationToken cancellationToken) {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            _settings.ApiBaseUrl + "app/installations/" + _settings.InstallationId + "/access_tokens");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CreateJwt(now));
+        request.Headers.Accept.ParseAdd("application/vnd.github+json");
+        request.Headers.UserAgent.ParseAdd("IntelligenceX/1");
+        using var response = await _client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException("GitHub App token request failed: " + (int)response.StatusCode, null, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false));
+        // An answer without a token is a failed sign-in like any other, so callers fall back the same way.
+        if (body.RootElement.ValueKind != JsonValueKind.Object || !body.RootElement.TryGetProperty("token", out var issued) ||
+            issued.ValueKind != JsonValueKind.String || issued.GetString() is not { Length: > 0 } value)
+            throw new HttpRequestException("GitHub App token response had no token.");
+        _token = value;
+        _expires = body.RootElement.TryGetProperty("expires_at", out var expires) && expires.TryGetDateTimeOffset(out var at)
+            ? at : now.AddHours(1);
+        return _token;
     }
 
     /// <summary>
@@ -158,38 +175,32 @@ public sealed class GitHubAppTokenSource : IDisposable {
 
 /// <summary>
 /// Signs each GitHub request with the App's current installation token, renewing it as it ages. When renewal fails, the
-/// request goes out with the user token instead, and the App is tried again after <see cref="RetryAfter"/>.
+/// request goes out with the user token instead, and the App is tried again after <see cref="GitHubAppTokenSource.RetryAfter"/>.
 /// </summary>
 public sealed class GitHubAppAuthHandler : DelegatingHandler {
-    /// <summary>How long requests use the user token after the App failed to renew.</summary>
-    public static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(5);
+    /// <summary>Set on a request this handler signed as the App, so usage can be counted per identity.</summary>
+    public static readonly HttpRequestOptionsKey<bool> SignedByApp = new("intelligencex-github-app");
     private readonly GitHubAppTokenSource _tokens;
     private readonly string? _fallback;
-    private readonly Func<DateTimeOffset> _clock;
-    private DateTimeOffset _appFailedUntil;
 
     /// <summary>Creates the handler in front of <paramref name="inner"/>, falling back to <paramref name="fallbackToken"/>.</summary>
-    public GitHubAppAuthHandler(GitHubAppTokenSource tokens, HttpMessageHandler inner, string? fallbackToken = null, Func<DateTimeOffset>? clock = null)
-        : base(inner) {
+    public GitHubAppAuthHandler(GitHubAppTokenSource tokens, HttpMessageHandler inner, string? fallbackToken = null) : base(inner) {
         _tokens = tokens;
         _fallback = fallbackToken;
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     /// <inheritdoc />
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(cancellationToken).ConfigureAwait(false));
-        return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<string> TokenAsync(CancellationToken cancellationToken) {
-        if (_fallback is not null && _clock() < _appFailedUntil) return _fallback;
+        string token;
         try {
-            return await _tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            token = await _tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            request.Options.Set(SignedByApp, true);
         } catch (Exception error) when (_fallback is not null && GitHubAppTokenSource.IsSignInFailure(error, cancellationToken)) {
-            _appFailedUntil = _clock() + RetryAfter;
-            return _fallback;
+            // The token source holds off the App for its retry time; until then requests go out as the user.
+            token = _fallback;
         }
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
     }
 }
 #endif

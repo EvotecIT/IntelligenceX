@@ -57,17 +57,19 @@ public sealed class GitHubAppCredentialsTests : IDisposable {
         var stub = new TokenStub(now) { Answer = HttpStatusCode.OK, Body = "{}" };
         using var source = new GitHubAppTokenSource(Settings(), new HttpClient(stub), () => now);
         var api = new EchoAuth();
-        using var client = new HttpClient(new GitHubAppAuthHandler(source, api, "user-token", () => now));
+        using var client = new HttpClient(new GitHubAppAuthHandler(source, api, "user-token"));
 
         await client.GetAsync("https://api.github.com/repos/a/b/pulls");
-        Assert.Equal("Bearer user-token", api.Seen);
+        Assert.Equal(("Bearer user-token", false), (api.Seen, api.SignedByApp));
+        // Every caller shares the retry time, so a second request doesn't ask the App again.
         await client.GetAsync("https://api.github.com/repos/a/b/pulls");
         Assert.Single(stub.Requests);
 
         stub.Body = null;
-        now += GitHubAppAuthHandler.RetryAfter;
+        now += GitHubAppTokenSource.RetryAfter;
         await client.GetAsync("https://api.github.com/repos/a/b/pulls");
-        Assert.Equal("Bearer token-2", api.Seen);
+        // Signed as the App, so usage is counted under the App's own component.
+        Assert.Equal(("Bearer token-2", true), (api.Seen, api.SignedByApp));
 
         Assert.True(GitHubAppTokenSource.IsSignInFailure(new TaskCanceledException(), CancellationToken.None));
         using var cancelled = new CancellationTokenSource();
@@ -120,8 +122,11 @@ public sealed class GitHubAppCredentialsTests : IDisposable {
     private sealed class EchoAuth : HttpMessageHandler {
         public string? Seen { get; private set; }
 
+        public bool SignedByApp { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
             Seen = request.Headers.Authorization?.ToString();
+            SignedByApp = request.Options.TryGetValue(GitHubAppAuthHandler.SignedByApp, out var app) && app;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
         }
     }

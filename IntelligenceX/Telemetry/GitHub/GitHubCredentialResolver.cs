@@ -137,8 +137,9 @@ public static class GitHubCredentialResolver {
                 App = app, AppFallbackToken = user.Token
             };
         } catch (Exception error) when (GitHubAppTokenSource.IsSignInFailure(error, cancellationToken)) {
-            // An App that can't sign in leaves the user token in charge, so a bad App setup never stops GitHub reads.
-            return user;
+            // An App that can't sign in now leaves the user token in charge, so a bad App setup never stops GitHub reads.
+            // With a user token to fall back to, the App stays attached and long-running clients try it again later.
+            return user.HasToken ? new GitHubCredentialResolution(user.Token, user.Source) { App = app, AppFallbackToken = user.Token } : user;
         }
     }
 

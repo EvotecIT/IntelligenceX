@@ -70,7 +70,9 @@ internal sealed class GitHubUsageMeter(TimeProvider? clock = null) {
 internal sealed class GitHubUsageHandler(GitHubUsageMeter meter, string component, HttpMessageHandler inner) : DelegatingHandler(inner) {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
         var response = await base.SendAsync(request, cancellationToken);
-        if (request.RequestUri is { Host: "api.github.com" }) meter.Record(component, response);
+        // Requests signed as a GitHub App spend the App's budget, so they are counted apart, with the App's own readings.
+        var signedByApp = request.Options.TryGetValue(IntelligenceX.Telemetry.GitHub.GitHubAppAuthHandler.SignedByApp, out var app) && app;
+        if (request.RequestUri is { Host: "api.github.com" }) meter.Record(signedByApp ? component + "-app" : component, response);
         return response;
     }
 }
