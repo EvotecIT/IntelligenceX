@@ -6,9 +6,20 @@ namespace IntelligenceX.Ledger.Hosting;
 
 internal sealed partial class LedgerRuntime {
     private readonly SemaphoreSlim _workGate = new(1, 1);
+    /// <summary>The refresh gate, so tests can hold a refresh in progress.</summary>
+    internal SemaphoreSlim WorkGate => _workGate;
     private long _workRevision;
     private WorkSnapshot? _workSnapshot;
-    private sealed record WorkSnapshot(DateTimeOffset At, long Revision, LedgerItem[] Current, MachineRow[] Machines, int HistoricalDeliveries);
+    private sealed record WorkSnapshot(DateTimeOffset At, long Revision, LedgerItem[] Current, MachineRow[] Machines, int HistoricalDeliveries) {
+        public long BuiltAtTicks { get; } = Environment.TickCount64;
+    }
+
+    /// <summary>
+    /// A refresh evaluates every item and takes seconds, and every ingest invalidates the view, so on a busy Ledger nearly
+    /// every read refreshed. Callers that arrive while one refresh runs get the previous view (its as-of time says how old)
+    /// instead of queueing behind it, as long as it was built within this long.
+    /// </summary>
+    internal static readonly TimeSpan ServeWhileRefreshing = TimeSpan.FromMinutes(2);
 
     internal void InvalidateWork() => Interlocked.Increment(ref _workRevision);
 
@@ -16,7 +27,11 @@ internal sealed partial class LedgerRuntime {
         string? verdict = null, int limit = 200) {
         var labels = await context.LabelsAsync(token);
         WorkSnapshot snapshot;
-        await _workGate.WaitAsync(token);
+        var refreshing = !await _workGate.WaitAsync(0, token);
+        if (refreshing && Volatile.Read(ref _workSnapshot) is { } previous &&
+            Environment.TickCount64 - previous.BuiltAtTicks < (long)ServeWhileRefreshing.TotalMilliseconds)
+            return View(previous, labels, verdict, limit, servedWhileRefreshing: true);
+        if (refreshing) await _workGate.WaitAsync(token);
         try {
             var revision = Interlocked.Read(ref _workRevision);
             if (_workSnapshot is { } cached && cached.Revision == revision && now >= cached.At && now - cached.At < TimeSpan.FromSeconds(10)) snapshot = cached;
@@ -35,9 +50,15 @@ internal sealed partial class LedgerRuntime {
                         item.Deliveries.Values.Any(x => x.LastStageOrderAtUtc >= now.AddDays(-1)))))
                     .OrderBy(item => Priority(item.Current!.Value)).ThenByDescending(item => item.Current!.LastProgressAtUtc)
                     .ThenBy(item => item.Id, StringComparer.Ordinal).ToArray();
-                snapshot = _workSnapshot = new(now, revision, current, await MachinesAsync(now, token), historicalDeliveries.Count);
+                snapshot = new(now, revision, current, await MachinesAsync(now, token), historicalDeliveries.Count);
+                Volatile.Write(ref _workSnapshot, snapshot);
             }
         } finally { _workGate.Release(); }
+        return View(snapshot, labels, verdict, limit, servedWhileRefreshing: false);
+    }
+
+    private static LedgerWorkView View(WorkSnapshot snapshot, IReadOnlyDictionary<string, WorkLabel> labels, string? verdict, int limit,
+        bool servedWhileRefreshing) {
         var selected = snapshot.Current.Where(item => verdict is null || item.Current!.Value == verdict).ToArray();
         var visible = verdict is null ? Interleave(selected).Take(limit) : selected.Take(limit);
         var rows = visible.Select(item => {
@@ -50,7 +71,8 @@ internal sealed partial class LedgerRuntime {
             snapshot.Current.GroupBy(x => x.Current!.Value).ToDictionary(x => x.Key, x => x.Count()), rows,
             ["current-work:unfinished-turn-or-explicit-follow-up", "display-labels:explicit-local-catalog",
              "imported-delivery-history-older-than-24h:" + snapshot.HistoricalDeliveries,
-             "work-view-cache:max-age-10s"], selected.Length > rows.Length);
+             servedWhileRefreshing ? "work-view-cache:previous-view-while-refreshing" : "work-view-cache:max-age-10s"],
+            selected.Length > rows.Length);
     }
 
     private static bool IsHistoricalDelivery(LedgerItem item, DateTimeOffset now) =>

@@ -1,3 +1,4 @@
+using IntelligenceX.Ledger.Context;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Ledger.Coordination;
 using IntelligenceX.Ledger.Hosting;
@@ -71,6 +72,29 @@ public sealed class LedgerReadConcurrencyTests : IDisposable {
         var status = await store.SessionStatusAsync(SessionId.ToString(), later);
         Assert.False(status.TurnOpen);
         Assert.Equal(later, status.LastActivityAtUtc);
+    }
+
+    [Fact]
+    public async Task WorkReadsGetThePreviousViewWhileOneRefreshRuns() {
+        using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
+        await store.InitializeAsync();
+        var opened = new DateTimeOffset(2030, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        await store.IngestAsync([Session(opened, 1, turnOpen: true)], opened);
+        var runtime = new LedgerRuntime(store, new LedgerSettings { DataDirectory = _directory, ReadToken = new('r', 32),
+            WriteToken = new('w', 32), ExpectedReporters = new() { ["synthetic-machine"] = ["synthetic-reporter"] } });
+        var context = new ProjectContextService(null);
+        Assert.Equal(opened, (await runtime.WorkAsync(context, opened, default)).AsOfUtc);
+
+        // Another reader's refresh is running.
+        var later = opened.AddMinutes(5);
+        runtime.InvalidateWork();
+        await runtime.WorkGate.WaitAsync();
+        try {
+            var meanwhile = await runtime.WorkAsync(context, later, default).WaitAsync(Bound);
+            Assert.Equal(opened, meanwhile.AsOfUtc);
+            Assert.Contains("work-view-cache:previous-view-while-refreshing", meanwhile.Coverage);
+        } finally { runtime.WorkGate.Release(); }
+        Assert.Equal(later, (await runtime.WorkAsync(context, later, default)).AsOfUtc);
     }
 
     [Fact]
