@@ -44,9 +44,13 @@ internal sealed class GitHubUsageMeter(TimeProvider? clock = null) {
                 foreach (var key in minutes.Keys.Where(key => key.Minute < cutoff).ToArray()) minutes.Remove(key);
             return _minutes.Where(pair => pair.Value.Count > 0).OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => new GitHubUsageReport(
                 pair.Key, Instance,
+                // Within what the health route accepts, so a busy component can never get a whole health report refused.
                 pair.Value.OrderBy(entry => entry.Key.Minute).ThenBy(entry => entry.Key.Resource, StringComparer.Ordinal)
+                    .TakeLast(GitHubUsageValidation.MaximumMinutes)
                     .Select(entry => new GitHubUsageMinute(entry.Key.Minute, entry.Key.Resource, entry.Value.Charged, entry.Value.NotModified)).ToArray(),
-                _readings.TryGetValue(pair.Key, out var readings) ? readings.Values.OrderBy(r => r.Resource, StringComparer.Ordinal).ToArray() : null)).ToArray();
+                _readings.TryGetValue(pair.Key, out var readings) ? readings.Values.Where(r => r.ObservedAtUtc >= cutoff)
+                    .OrderByDescending(r => r.ObservedAtUtc).Take(GitHubUsageValidation.MaximumReadings)
+                    .OrderBy(r => r.Resource, StringComparer.Ordinal).ToArray() : null)).ToArray();
         }
     }
 
@@ -75,6 +79,7 @@ internal sealed class GitHubUsageHandler(GitHubUsageMeter meter, string componen
 internal static class GitHubUsageValidation {
     internal const int MaximumReports = 16;
     internal const int MaximumMinutes = 400;
+    internal const int MaximumReadings = 8;
 
     internal static bool Name(string? value) => value is { Length: > 0 and <= 64 } &&
         value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.');
@@ -85,7 +90,7 @@ internal static class GitHubUsageValidation {
             report.Minutes.All(minute => minute is not null && Name(minute.Resource) && minute.Charged is >= 0 and <= 100_000 &&
                 minute.NotModified is >= 0 and <= 100_000 && minute.MinuteUtc.Offset == TimeSpan.Zero &&
                 minute.MinuteUtc.Second == 0 && minute.MinuteUtc.Millisecond == 0 && minute.MinuteUtc <= now.AddMinutes(2)) &&
-            (report.RateLimits is null || report.RateLimits.Length <= 8 && report.RateLimits.All(reading => reading is not null &&
+            (report.RateLimits is null || report.RateLimits.Length <= MaximumReadings && report.RateLimits.All(reading => reading is not null &&
                 Name(reading.Resource) && reading.Limit is > 0 and <= 1_000_000 && reading.Used is >= 0 and <= 1_000_000 &&
                 reading.Remaining is >= 0 and <= 1_000_000 && reading.ObservedAtUtc <= now.AddMinutes(2))));
 }

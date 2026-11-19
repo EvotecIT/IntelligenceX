@@ -46,6 +46,22 @@ public sealed class GitHubUsageTests : IDisposable {
         Assert.Equal(minute.AddMinutes(1), Assert.Single(Assert.Single(meter.Snapshot()).Minutes).MinuteUtc);
     }
 
+    // Protects health delivery: a component spending on many resources each minute still sends a report the health
+    // route accepts, newest minutes and readings first, instead of getting the whole heartbeat refused.
+    [Fact]
+    public void SnapshotStaysWithinWhatTheHealthRouteAccepts() {
+        var clock = new FakeTimeProvider(Now);
+        var meter = new GitHubUsageMeter(clock);
+        for (var minute = 0; minute < 85; minute++) {
+            for (var resource = 0; resource < 10; resource++) meter.Record("reporter", Answer(HttpStatusCode.OK, 1, "r" + resource));
+            clock.Advance(TimeSpan.FromMinutes(1));
+        }
+        var report = Assert.Single(meter.Snapshot());
+        Assert.Equal(GitHubUsageValidation.MaximumMinutes, report.Minutes.Length);
+        Assert.Equal(GitHubUsageValidation.MaximumReadings, report.RateLimits!.Length);
+        Assert.True(GitHubUsageValidation.Valid([report], clock.GetUtcNow()));
+    }
+
     [Fact]
     public async Task HandlerCountsOnlyGitHubApiAnswers() {
         var meter = new GitHubUsageMeter(new FakeTimeProvider(Now));

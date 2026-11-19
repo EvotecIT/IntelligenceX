@@ -85,7 +85,7 @@ Other local tools leave the same tally as `<component>.json` in `%LOCALAPPDATA%\
                     "resetAtUtc": "2026-11-18T15:41:07+00:00", "observedAtUtc": "2026-11-18T15:04:31+00:00" } ] }
 ```
 
-Each minute holds the running total for that process, so rewriting the file is safe. Keep the last 90 minutes; files older than that are ignored.
+Each minute holds the running total for that process, so rewriting the file is safe. The reporter reads every `.json` file in the folder, so a tool that can run more than once at a time, or restart within a minute, writes one file per process (for example `<component>-<instance>.json`); otherwise a new process overwrites totals the reporter hasn't collected yet. Keep the last 90 minutes; files older than that are ignored, and a tool removes its own old files when it starts.
 
 `github_budget` (MCP, CLI, `GET /github-budget`) lists charged requests per component and machine for the last hour and the last five minutes, and each live rate-limit window with its limit, used, remaining and reset. A window's `unattributed` count is what it used that no reporting component accounts for: ad-hoc `gh`, scripts and other tools on the same identity. A second `core` window means a second identity or token is in use.
 
