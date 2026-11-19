@@ -42,7 +42,7 @@ public static class CoordinationValidation {
             p.Ask.MaximumQuestions is >= 0 and <= 64 && Positive(p.Ask.AdmissionMinutes) && Positive(p.Ask.TurnMinutes) &&
             p.Ask.ResumeAttempts is >= 0 and <= 8 && Positive(p.Ask.WakeUsageMinutes) &&
             (p.Ask.CodexModel is null || Id(p.Ask.CodexModel)) && (p.Ask.CodexEffort is null or "low" or "medium" or "high" or "xhigh" or "max" or "ultra") &&
-            Id(p.Ask.ClaudeDeliveryModel) && Positive(p.Ask.DeliveryUnconfirmedMinutes) && Positive(p.Ask.UsageLimitProbeMinutes) &&
+            Id(p.Ask.ClaudeDeliveryModel) && p.Ask.ClaudeSenderMode is "default" or "recipient" && Positive(p.Ask.DeliveryUnconfirmedMinutes) && Positive(p.Ask.UsageLimitProbeMinutes) &&
             p.Ask.UnreachableRetries is >= 0 and <= 16 && Positive(p.Ask.UnreachableRetryMinutes) &&
             Positive(p.Ask.WakeExpiryHours) && p.Ask.WakeExpiryHours <= 24 * 30 && p.Ask.MaximumWakes is >= 1 and <= 1024, "invalid-ask-policy");
         Require(p.Priority is { Count: > 0 and <= 64 } && p.Priority.All(pair => Id(pair.Key) &&

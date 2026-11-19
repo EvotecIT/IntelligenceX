@@ -66,10 +66,10 @@ internal sealed class WakeWatcher(CoordinationStore store, PullRequestReadinessS
         return read.Checks switch {
             // Green with no checks reported means none have started yet on a fresh head, not that they passed.
             "green" when read.CheckCount > 0 => "The checks on " + name + head + " passed.",
-            "failing" when read.PendingCheckCount == 0 && read.FailingCheckCount == 0 => "The checks on " + name + head +
-                " finished failing; GitHub named no failing check.",
-            "failing" when read.PendingCheckCount == 0 => "The checks on " + name + head + " finished with " + read.FailingCheckCount +
-                " failing: " + string.Join(", ", read.FailingChecks) + (read.FailingCheckCount > read.FailingChecks.Length ? ", ..." : "") + ".",
+            // Check names are text from GitHub that a workflow's author chooses, so the wake leaves them out; the session reads
+            // the failures from GitHub itself, as data.
+            "failing" when read.PendingCheckCount == 0 => "The checks on " + name + head + " finished with " +
+                (read.FailingCheckCount > 0 ? read.FailingCheckCount + " failing" : "a failure") + "; read the failures on GitHub.",
             _ => null
         };
     }

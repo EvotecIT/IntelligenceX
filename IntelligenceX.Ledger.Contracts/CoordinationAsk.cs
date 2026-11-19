@@ -22,6 +22,11 @@ public sealed record AskPolicy {
     public string? CodexEffort { get; set; }
     /// <summary>Model for the one-shot <c>claude -p</c> that only sends a message with SendMessage.</summary>
     public string ClaudeDeliveryModel { get; set; } = "haiku";
+    /// <summary>The permission mode of that one-shot sender. "default" keeps the Claude desktop app's hold on a message from a
+    /// session in another mode (its user approves it), and such a delivery is recorded as uncertain. "recipient" runs the
+    /// sender in each session's recorded mode, so a delivery starts a turn at once, including in sessions that run with
+    /// permissions bypassed; set it only where every session that can deliver through this Ledger is trusted.</summary>
+    public string ClaudeSenderMode { get; set; } = "default";
     /// <summary>How long a delivery may stay in sending before the service marks it uncertain and tells the requester
     /// where to read the result.</summary>
     public double DeliveryUnconfirmedMinutes { get; set; } = 30;

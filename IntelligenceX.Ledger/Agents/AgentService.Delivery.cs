@@ -64,6 +64,15 @@ internal sealed partial class AgentService {
         Log("wake-delivered", wake.Id + " " + stage);
     }
 
+    /// <summary>The one-shot sender's permission mode and whether a SendMessage success then means the session has it. Under
+    /// ask.claudeSenderMode "recipient" the sender runs in the recipient's recorded mode; under "default" it runs in the
+    /// default mode. The desktop app holds a message from another mode for its user's approval, so a send counts only when
+    /// the two modes match; with no recorded mode nothing is known.</summary>
+    internal static (string? SenderMode, bool Matched) ClaudeDelivery(string policyMode, string? recipientMode) {
+        var sender = policyMode == "recipient" ? recipientMode : null;
+        return (sender, recipientMode is not null && (sender ?? "default") == recipientMode);
+    }
+
     private string ReceiptFile(PendingReceipt receipt) =>
         Path.Combine(_settings.StateDirectory, "receipts", LocalFiles.Hash(receipt.Kind, receipt.RequestId, receipt.Generation, receipt.Number)[..32] + ".json");
 
@@ -120,7 +129,11 @@ internal sealed partial class AgentService {
         if (to.Provider == "claude") {
             // SendMessage addresses sessions by the name ListAgents shows; the asker supplied its own.
             ClaudeSendOutcome sent;
-            try { sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop).ConfigureAwait(false); }
+            var recorded = ClaudeSessionModes.Read(_settings.StateDirectory, to.SessionId);
+            var (senderMode, matched) = ClaudeDelivery(_policy.ClaudeSenderMode, recorded);
+            try {
+                sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop, senderMode).ConfigureAwait(false);
+            }
             catch (ClaudeLaunchException error) {
                 // The CLI didn't start, so nothing was sent: the delivery returns to pending and is retried after a pause.
                 Log("delivery-not-submitted", requestId + " claude " + error.Message);
@@ -136,6 +149,10 @@ internal sealed partial class AgentService {
                 // session's next turn (inbox hook), and is sent again only as often as the policy allows.
                 if (sent.Failure is null) MarkUnreachable(requestId);
             }
+            // Sent from another mode, the app may hold it for the user's approval and tells only the sender, which has exited.
+            // A mode the session recorded during the send may not be the one the message met.
+            if (sent.Stage == "submitted" && (!matched || ClaudeSessionModes.Read(_settings.StateDirectory, to.SessionId) != recorded))
+                return ("uncertain", "claude-may-be-held-for-approval");
             return (sent.Stage, sent.Evidence);
         }
         // One delivery per thread at a time. A turn this agent started stays open on its private server, which holds the

@@ -48,6 +48,10 @@ public static class LedgerInbox {
             using var hook = JsonDocument.Parse(payload.Length > 1024 * 1024 ? "{}" : payload);
             if (!hook.RootElement.TryGetProperty("session_id", out var id) || id.GetString() is not { Length: > 0 } session) return 0;
             var eventName = hook.RootElement.TryGetProperty("hook_event_name", out var name) ? name.GetString() ?? "SessionStart" : "SessionStart";
+            // The agent's sender runs in this mode, so the desktop app doesn't hold its messages for approval.
+            if (hook.RootElement.TryGetProperty("permission_mode", out var mode) && mode.ValueKind == JsonValueKind.String)
+                try { ClaudeSessionModes.Record(stateDirectory, session, mode.GetString()); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
             if (eventName != "UserPromptSubmit") return 0;
             if (BootId(stateDirectory) is not { } bootId) return 0;
             var ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(coordinationConfig));
