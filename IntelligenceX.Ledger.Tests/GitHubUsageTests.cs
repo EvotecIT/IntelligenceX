@@ -104,9 +104,20 @@ public sealed class GitHubUsageTests : IDisposable {
             new("win-pc", "bridge", "bridge", new GitHubRateLimitReading("core", 5000, 40, 4960, other, Now)),
             new("win-pc", "old", "old", new GitHubRateLimitReading("core", 5000, 4000, 1000, Now.AddMinutes(-10), Now.AddMinutes(-40)))]);
         Assert.Equal(130, view.Spenders.Single(s => s.Component == "marquee").ChargedLastHour);
+        Assert.Equal(134, view.ChargedLastHour);
         Assert.Equal(30, view.Spenders.Single(s => s.Component == "marquee").ChargedLast5Minutes);
         Assert.Equal([(Reset, 2000, 1870), (other, 40, 36)], view.Windows.Select(w => (w.ResetAtUtc, w.Used, w.Unattributed)));
         Assert.Contains("several-core-windows:more-than-one-identity-or-token", view.Coverage);
+    }
+
+    // Protects the fleet total: listing only the top spenders never understates what was reported, and says so.
+    [Fact]
+    public void TheHourlyTotalCountsSpendersBeyondTheListedOnes() {
+        var rows = Enumerable.Range(0, 40).Select(index => new LedgerStore.GitHubUsageRow("win-pc", "tool" + index, "i" + index,
+            new DateTimeOffset(2026, 11, 18, 15, 20, 0, TimeSpan.Zero), "core", 1, 0)).ToArray();
+        var view = LedgerStore.GitHubBudget(Now, rows, []);
+        Assert.Equal((32, 40), (view.Spenders.Length, view.ChargedLastHour));
+        Assert.Contains("spenders-listed:32-of-40", view.Coverage);
     }
 
     [Fact]
@@ -155,7 +166,12 @@ public sealed class GitHubUsageTests : IDisposable {
         var stale = Path.Combine(folder, "stale.json");
         File.WriteAllText(stale, JsonSerializer.Serialize(new GitHubUsageReport("stale", Guid.NewGuid(), [new(minute, "core", 1)]), LedgerJson.Options));
         File.SetLastWriteTimeUtc(stale, now.UtcDateTime.AddHours(-3));
-        // Invalid files that sort first don't use up the limit before the valid one is read.
+        // Stale files and invalid ones that sort first don't use up the limits before the valid one is read.
+        for (var index = 0; index < GitHubUsageValidation.MaximumReports * 5; index++) {
+            var old = Path.Combine(folder, $"0{index:000}.json");
+            File.WriteAllText(old, "{");
+            File.SetLastWriteTimeUtc(old, now.UtcDateTime.AddHours(-3));
+        }
         for (var index = 0; index < GitHubUsageValidation.MaximumReports; index++) File.WriteAllText(Path.Combine(folder, $"a{index:00}.json"), "{");
 
         var report = Assert.Single(GitHubUsageDropFolder.Read(folder, now));

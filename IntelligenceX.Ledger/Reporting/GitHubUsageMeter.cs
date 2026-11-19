@@ -114,11 +114,17 @@ internal static class GitHubUsageDropFolder {
         try { files = Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json") : []; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { return []; }
         var reports = new List<GitHubUsageReport>();
-        foreach (var file in files.Order(StringComparer.Ordinal).Take(GitHubUsageValidation.MaximumReports * 4)) {
+        // Stale files are skipped before the scan limit, so old leftovers can never hide a current tally.
+        bool Current(FileInfo info) {
+            try { return info.Exists && info.Length <= MaximumFileBytes && now - info.LastWriteTimeUtc <= GitHubUsageMeter.Retention; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+        }
+        var fresh = files.Select(file => new FileInfo(file)).Where(Current)
+            .OrderBy(info => info.Name, StringComparer.Ordinal).Take(GitHubUsageValidation.MaximumReports * 4);
+        foreach (var info in fresh) {
             if (reports.Count == GitHubUsageValidation.MaximumReports) break;
+            var file = info.FullName;
             try {
-                var info = new FileInfo(file);
-                if (info.Length > MaximumFileBytes || now - info.LastWriteTimeUtc > GitHubUsageMeter.Retention) continue;
                 var report = JsonSerializer.Deserialize<GitHubUsageReport>(File.ReadAllBytes(file), LedgerJson.Options);
                 if (report is null) continue;
                 var cutoff = now - GitHubUsageMeter.Retention;

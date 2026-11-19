@@ -89,13 +89,15 @@ public sealed partial class LedgerStore {
         DateTimeOffset? WindowOf(string machine, string component) => readings
             .Where(r => r.Machine == machine && r.Component == component && r.Reading.Resource == "core")
             .OrderByDescending(r => r.Reading.ObservedAtUtc).Select(r => (DateTimeOffset?)r.Reading.ResetAtUtc).FirstOrDefault();
-        var spenders = minutes.Where(m => m.Resource == "core" && m.Minute >= hourAgo).GroupBy(m => (m.Machine, m.Component))
+        var hourly = minutes.Where(m => m.Resource == "core" && m.Minute >= hourAgo).ToArray();
+        var spenders = hourly.GroupBy(m => (m.Machine, m.Component))
             .Select(group => new GitHubBudgetSpender(group.Key.Machine, group.Key.Component, group.Sum(m => m.Charged),
                 group.Where(m => m.Minute >= recent).Sum(m => m.Charged), group.Sum(m => m.NotModified), group.Max(m => m.Minute)) {
                 WindowResetAtUtc = WindowOf(group.Key.Machine, group.Key.Component)
             })
             .OrderByDescending(s => s.ChargedLastHour).ThenBy(s => s.Machine, StringComparer.Ordinal).ThenBy(s => s.Component, StringComparer.Ordinal)
-            .Take(32).ToArray();
+            .ToArray();
+        var listed = spenders.Take(32).ToArray();
         // One window per resource and reset time. Each process's requests count toward the window its own readings name,
         // so requests with another identity's token land in a window of their own.
         var windows = readings.Where(r => r.Reading.ResetAtUtc > now.AddMinutes(-1))
@@ -120,6 +122,7 @@ public sealed partial class LedgerStore {
         coverage.AddRange(other);
         if (windows.Count(w => w.Resource == "core") > 1) coverage.Add("several-core-windows:more-than-one-identity-or-token");
         if (windows.Length == 0) coverage.Add("no-rate-limit-reading");
-        return new(now, windows, spenders, coverage.ToArray());
+        if (listed.Length < spenders.Length) coverage.Add("spenders-listed:" + listed.Length + "-of-" + spenders.Length);
+        return new(now, windows, listed, coverage.ToArray()) { ChargedLastHour = hourly.Sum(m => m.Charged) };
     }
 }

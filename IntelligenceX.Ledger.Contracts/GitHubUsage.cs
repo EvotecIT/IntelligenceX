@@ -35,5 +35,6 @@ public sealed record GitHubBudgetWindow(string Resource, int Limit, int Used, in
 /// <summary>Who is spending the GitHub REST budget, now (last 5 minutes) and over the last hour.</summary>
 public sealed record GitHubBudgetView(DateTimeOffset GeneratedAtUtc, GitHubBudgetWindow[] Windows, GitHubBudgetSpender[] Spenders,
     string[] Coverage) {
-    public int ChargedLastHour => Spenders.Sum(spender => spender.ChargedLastHour);
+    /// <summary>Every reported core request in the last hour, including spenders beyond the ones listed.</summary>
+    public int ChargedLastHour { get; init; }
 }
