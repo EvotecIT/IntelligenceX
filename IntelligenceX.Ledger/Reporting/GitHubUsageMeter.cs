@@ -131,7 +131,9 @@ internal static class GitHubUsageDropFolder {
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "IntelligenceX", "Ledger", "github-usage");
 
     /// <summary>Reads the current tallies. Unreadable, oversized or stale files are skipped, never fatal.</summary>
-    internal static GitHubUsageReport[] Read(string folder, DateTimeOffset now) {
+    /// <param name="turn">Moves the starting file each heartbeat, so with more current files than one heartbeat reads,
+    /// every file still gets its turn.</param>
+    internal static GitHubUsageReport[] Read(string folder, DateTimeOffset now, int turn = 0) {
         string[] files;
         // The folder is optional input: one that vanishes or can't be listed counts as empty and never stops the reporter.
         try { files = Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json") : []; }
@@ -142,8 +144,9 @@ internal static class GitHubUsageDropFolder {
             try { return info.Exists && info.Length <= MaximumFileBytes && now - info.LastWriteTimeUtc <= GitHubUsageMeter.Retention; }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
         }
-        var fresh = files.Select(file => new FileInfo(file)).Where(Current)
-            .OrderBy(info => info.Name, StringComparer.Ordinal).Take(GitHubUsageValidation.MaximumReports * 4);
+        var current = files.Select(file => new FileInfo(file)).Where(Current).OrderBy(info => info.Name, StringComparer.Ordinal).ToArray();
+        var start = current.Length == 0 ? 0 : (int)((uint)turn % (uint)current.Length);
+        var fresh = current.Skip(start).Concat(current.Take(start)).Take(GitHubUsageValidation.MaximumReports * 4);
         foreach (var info in fresh) {
             if (reports.Count == GitHubUsageValidation.MaximumReports) break;
             var file = info.FullName;

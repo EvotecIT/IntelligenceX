@@ -200,6 +200,16 @@ public sealed class GitHubUsageTests : IDisposable {
         Assert.Equal("marquee", report.Component);
         Assert.Equal(new GitHubUsageMinute(minute, "core", 12, 30), Assert.Single(report.Minutes));
         Assert.Empty(GitHubUsageDropFolder.Read(Path.Combine(folder, "missing"), now));
+
+        // With more current files than one heartbeat reads, successive heartbeats reach every one.
+        var many = Path.Combine(_directory, "many");
+        Directory.CreateDirectory(many);
+        for (var index = 0; index < GitHubUsageValidation.MaximumReports + 4; index++)
+            File.WriteAllText(Path.Combine(many, $"tool{index:00}.json"), JsonSerializer.Serialize(new GitHubUsageReport($"tool{index:00}", Guid.NewGuid(),
+                [new(minute, "core", 1)]), LedgerJson.Options));
+        var seen = Enumerable.Range(0, GitHubUsageValidation.MaximumReports + 4).SelectMany(turn => GitHubUsageDropFolder.Read(many, now, turn))
+            .Select(report => report.Component).ToHashSet();
+        Assert.Equal(GitHubUsageValidation.MaximumReports + 4, seen.Count);
     }
 
     private sealed class StubHandler : HttpMessageHandler {

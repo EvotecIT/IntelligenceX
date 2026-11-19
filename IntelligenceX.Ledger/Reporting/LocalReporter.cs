@@ -182,7 +182,7 @@ public static class LocalReporter {
             using var heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
             do {
                 var machineFacts = await probe.ReadAsync(stop.Token);
-                var usage = GitHubUsageValidation.Fit(githubUsage.Snapshot(), GitHubUsageDropFolder.Read(githubUsageFolder, DateTimeOffset.UtcNow), usageTurn++);
+                var usage = GitHubUsageValidation.Fit(githubUsage.Snapshot(), GitHubUsageDropFolder.Read(githubUsageFolder, DateTimeOffset.UtcNow, usageTurn), usageTurn++);
                 var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts, usage);
                 if (receipt is { Ok: true, PolicyRevision: > 0, Session: not null }) Volatile.Write(ref lifecyclePolicy, receipt.Session);
             } while (await heartbeatTimer.WaitForNextTickAsync(stop.Token));
