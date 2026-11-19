@@ -231,7 +231,8 @@ starting an app server every minute.
 - A Claude desktop session running in a different permission mode from the sender holds incoming SendMessage
   deliveries for its user's approval. The delivery is recorded as submitted; the session sees it once approved.
 - When the Codex app holds the thread, `codex queue --resume` stores the message and asks the local app-server daemon to
-  run it. That is recorded as submitted. Without a daemon (or with a CLI too old for `--resume`) the message only waits
+  run it. That is recorded as submitted, as is a message whose resume is refused because the app holds the thread: the
+  app runs it as its next turn (`codex-queued-in-app`). Without a daemon (or with a CLI too old for `--resume`) the message only waits
   in the queue, which nothing may drain, so the delivery is recorded as uncertain (`codex-queued-not-resumed`), never as
   delivered, and isn't sent again.
 - After a reboot or a lapsed grant the helper is stopped and its work so far is returned as a failed result; it isn't

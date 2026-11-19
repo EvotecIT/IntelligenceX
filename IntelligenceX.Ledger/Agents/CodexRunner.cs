@@ -217,6 +217,15 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         ? status.ValueKind == JsonValueKind.String ? status.GetString()! : status.TryGetProperty("type", out var type) ? type.GetString()! : "unknown"
         : "unknown";
 
+    /// <summary>How many user inputs across the turns are exactly <paramref name="text"/>.</summary>
+    internal static int InputCount(JsonElement turns, string text) => turns.ValueKind != JsonValueKind.Array ? 0 :
+        turns.EnumerateArray().Sum(turn => turn.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
+            ? items.EnumerateArray().Count(item => item.TryGetProperty("type", out var type) && type.GetString() == "userMessage" &&
+                item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array &&
+                content.EnumerateArray().Any(part => part.TryGetProperty("text", out var value) && value.ValueKind == JsonValueKind.String &&
+                    string.Equals(value.GetString()?.Trim(), text.Trim(), StringComparison.Ordinal)))
+            : 0);
+
     internal static string? FinalText(JsonElement turn) => turn.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
         ? items.EnumerateArray().Where(item => item.TryGetProperty("type", out var type) && type.GetString() == "agentMessage")
             .Select(item => item.TryGetProperty("text", out var text) ? text.GetString() : null).LastOrDefault(text => !string.IsNullOrWhiteSpace(text))
@@ -247,8 +256,17 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
             var running = read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
                 ? turns.EnumerateArray().LastOrDefault() : default;
-            var model = await ResumeAsync(server, threadId, read.GetProperty("thread").TryGetProperty("cwd", out var cwd) &&
-                cwd.ValueKind == JsonValueKind.String ? cwd.GetString()! : Environment.CurrentDirectory, token).ConfigureAwait(false);
+            // How often the thread already holds this exact text as user input, before anything is queued.
+            var known = InputCount(turns, text);
+            // The Codex app (or the local daemon) holding the thread refuses this server's resume with "active writer", the
+            // same answer turn/start gives; either way the message goes through the queue to the holder.
+            string model;
+            try {
+                model = await ResumeAsync(server, threadId, read.GetProperty("thread").TryGetProperty("cwd", out var cwd) &&
+                    cwd.ValueKind == JsonValueKind.String ? cwd.GetString()! : Environment.CurrentDirectory, token).ConfigureAwait(false);
+            } catch (CodexRpcException error) when (ActiveWriter(error)) {
+                return await QueueInsteadAsync(server, watch, threadId, text, "unknown", known, token).ConfigureAwait(false);
+            }
             try {
                 if (running.ValueKind == JsonValueKind.Object && Status(running) == "inProgress") {
                     var turnId = running.GetProperty("id").GetString()!;
@@ -263,13 +281,8 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 var started = response.GetProperty("turn").GetProperty("id").GetString()!;
                 watch.Follow(started);
                 return (new("turn", started, model), server, watch);
-            } catch (CodexRpcException error) when (error.Message.Contains("active writer", StringComparison.OrdinalIgnoreCase)) {
-                // The Codex app has the thread open over its own stdio server. The supported route for outside input is
-                // `codex queue --resume`: the message is stored and the local app-server daemon is asked to run it. Without
-                // a daemon the message only waits in the queue, which nothing may ever drain, so that is reported apart.
-                await server.DisposeAsync().ConfigureAwait(false);
-                var queued = await QueueAsync(threadId, text, token).ConfigureAwait(false);
-                return (new(queued == QueueOutcome.Resumed ? "queue" : "queue-parked", "queued", model), server, watch);
+            } catch (CodexRpcException error) when (ActiveWriter(error)) {
+                return await QueueInsteadAsync(server, watch, threadId, text, model, known, token).ConfigureAwait(false);
             } catch (Exception error) when (error is TimeoutException or System.Net.WebSockets.WebSocketException ||
                 error is IOException and not CodexRpcException) {
                 // The request was written; whether the thread took it is unknown.
@@ -318,15 +331,61 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         }
     }
 
-    /// <summary>What `codex queue` did: queued and resumed by the local daemon, queued only (no daemon resumed it, or the
-    /// CLI can't ask), a CLI too old for --resume (nothing was queued, so it can be asked again without it), or failed.</summary>
-    internal enum QueueOutcome { Resumed, Parked, ResumeUnsupported, Failed }
+    private static bool ActiveWriter(CodexRpcException error) => error.Message.Contains("active writer", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The Codex app (or the local daemon) holds the thread. The supported route for outside input is
+    /// `codex queue --resume`: the message is stored for the holder, or the daemon is asked to run it. Without either the
+    /// message only waits in the queue, which nothing may drain, so that is reported apart. A writer lock alone doesn't
+    /// show that its holder reads the queue, so a message left with a holder counts as delivered only once the thread has
+    /// a new turn (queue-app); otherwise it stays unconfirmed (queue-held).</summary>
+    private async Task<(CodexDelivery, CodexAppServer, TurnWatch)> QueueInsteadAsync(CodexAppServer server, TurnWatch watch, string threadId,
+        string text, string model, int knownInputs, CancellationToken token) {
+        await server.DisposeAsync().ConfigureAwait(false);
+        var queued = await QueueAsync(threadId, text, token).ConfigureAwait(false);
+        var route = queued switch {
+            QueueOutcome.Resumed => "queue",
+            QueueOutcome.HolderOwned => await TookInputAsync(threadId, knownInputs, text, HolderConfirmTimeout, token).ConfigureAwait(false) ? "queue-app" : "queue-held",
+            _ => "queue-parked"
+        };
+        return (new(route, "queued", model), server, watch);
+    }
+
+    /// <summary>How long a message left with the thread's holder is watched for the turn that takes it.</summary>
+    internal static readonly TimeSpan HolderConfirmTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>True once the thread holds <paramref name="text"/> as user input more often than it did when the delivery
+    /// began (<paramref name="knownInputs"/>), read without taking the thread: the same words already in its history, or a
+    /// turn the user started meanwhile, don't confirm this delivery.</summary>
+    private async Task<bool> TookInputAsync(string threadId, int knownInputs, string text, TimeSpan timeout, CancellationToken token) {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        try {
+            await using var reader = await OpenAsync(token).ConfigureAwait(false);
+            while (true) {
+                var read = await reader.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
+                if (read.GetProperty("thread").TryGetProperty("turns", out var turns) && InputCount(turns, text) > knownInputs) return true;
+                if (DateTimeOffset.UtcNow >= deadline) return false;
+                await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
+            }
+        } catch (Exception error) when (error is IOException or TimeoutException or System.ComponentModel.Win32Exception or
+            InvalidOperationException or System.Net.WebSockets.WebSocketException) {
+            // The message is already queued: a failed look is an unconfirmed delivery, never a reason to queue it again.
+            return false;
+        }
+    }
+
+    /// <summary>What `codex queue` did: queued and resumed by the local daemon; queued for the client that holds the thread
+    /// (the app runs it as its next turn); queued only (no daemon resumed it, or the CLI can't ask); a CLI too old for
+    /// --resume (nothing was queued, so it can be asked again without it); or failed.</summary>
+    internal enum QueueOutcome { Resumed, HolderOwned, Parked, ResumeUnsupported, Failed }
 
     internal static QueueOutcome ClassifyQueue(int exitCode, string stderr, bool askedToResume) {
         // clap rejects an unknown flag with exit code 2 before doing anything.
         if (exitCode == 2 && askedToResume && stderr.Contains("unexpected argument '--resume'", StringComparison.Ordinal)) return QueueOutcome.ResumeUnsupported;
         if (exitCode != 0) return QueueOutcome.Failed;
-        return askedToResume && !stderr.Contains("could not resume thread", StringComparison.OrdinalIgnoreCase) ? QueueOutcome.Resumed : QueueOutcome.Parked;
+        if (!askedToResume) return QueueOutcome.Parked;
+        if (!stderr.Contains("could not resume thread", StringComparison.OrdinalIgnoreCase)) return QueueOutcome.Resumed;
+        // The resume was refused because a client already holds the thread: that client takes the queued message next.
+        return stderr.Contains("active writer", StringComparison.OrdinalIgnoreCase) ? QueueOutcome.HolderOwned : QueueOutcome.Parked;
     }
 
     private async Task<QueueOutcome> QueueAsync(string threadId, string text, CancellationToken token) {

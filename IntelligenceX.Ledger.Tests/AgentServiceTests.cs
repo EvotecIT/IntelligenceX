@@ -194,6 +194,21 @@ public sealed class AgentServiceTests {
     }
 
     [Fact]
+    public void AQueuedMessageIsConfirmedOnlyByATurnWhoseInputIsThatMessage() {
+        static JsonElement Turns(params string[] inputs) => JsonDocument.Parse("[" + string.Join(",", inputs.Select(input =>
+            "{\"items\":[{\"type\":\"userMessage\",\"content\":[{\"type\":\"text\",\"text\":" + JsonSerializer.Serialize(input) +
+            "}]},{\"type\":\"agentMessage\",\"text\":\"Merging.\"}]}")) + "]").RootElement;
+        const string notice = "Notice about your ask a-1: the helper is waiting.";
+        // The same words already in the history are the baseline, so an unchanged history never confirms a new delivery.
+        var before = Turns(notice, "Something the user typed.");
+        Assert.Equal(1, CodexRunner.InputCount(before, notice));
+        Assert.Equal(1, CodexRunner.InputCount(Turns(notice, "Something the user typed.", "Another user turn."), notice));
+        // Only the message itself, taken again, raises the count; agent text with the same words doesn't.
+        Assert.Equal(2, CodexRunner.InputCount(Turns(notice, "Something the user typed.", notice), notice));
+        Assert.Equal(0, CodexRunner.InputCount(Turns("Something the user typed."), "Merging."));
+    }
+
+    [Fact]
     public void AQueuedMessageCountsAsDeliveredOnlyWhenTheDaemonResumedTheThread() {
         // The exact output of codex 0.169 (app) and 0.162 (npm) on a machine without the local app-server daemon.
         const string parked = "Warning: message was queued, but could not resume thread 01a1f04c-2799-7f33-b8ee-8e45e5fc36f1: " +
@@ -201,6 +216,10 @@ public sealed class AgentServiceTests {
         const string old = "error: unexpected argument '--resume' found\n\n  tip: a similar argument exists: '--remote'\n";
         Assert.Equal(CodexRunner.QueueOutcome.Resumed, CodexRunner.ClassifyQueue(0, "", askedToResume: true));
         Assert.Equal(CodexRunner.QueueOutcome.Parked, CodexRunner.ClassifyQueue(0, parked, askedToResume: true));
+        // With the Codex app holding the thread, the queued message is the app's next turn (seen live on win-pc).
+        Assert.Equal(CodexRunner.QueueOutcome.HolderOwned, CodexRunner.ClassifyQueue(0, "Warning: message was queued, but could not " +
+            "resume thread 01a1f068-824a-7fb1-9112-782fffce7e77: thread 01a1f068-824a-7fb1-9112-782fffce7e77 already has an active writer\n",
+            askedToResume: true));
         Assert.Equal(CodexRunner.QueueOutcome.ResumeUnsupported, CodexRunner.ClassifyQueue(2, old, askedToResume: true));
         // Without --resume nothing asks the daemon, so the message is only parked.
         Assert.Equal(CodexRunner.QueueOutcome.Parked, CodexRunner.ClassifyQueue(0, "", askedToResume: false));

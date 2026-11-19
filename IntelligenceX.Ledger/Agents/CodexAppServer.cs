@@ -32,6 +32,8 @@ internal sealed class CodexAppServer : IAsyncDisposable {
     /// <summary>True when connected to the Codex app's daemon rather than a private server.</summary>
     public bool Live => _socket is not null;
     public bool Closed => _failure is not null;
+    /// <summary>Completes when the connection ends, whether closed here or lost (the server exited).</summary>
+    public Task Ended => _reader;
     /// <summary>Raised for every server notification, on the reader thread.</summary>
     public event Action<string, JsonElement>? Notification;
     /// <summary>Raised when the server sends a request to clients (for example an approval).</summary>
