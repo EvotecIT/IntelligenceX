@@ -138,12 +138,15 @@ internal sealed partial class AgentService {
             }
             return (sent.Stage, sent.Evidence);
         }
-        // A turn this agent started is still open on its private server, which holds the thread: a second delivery now would
-        // be refused by that server and queued where nothing reads it, so it waits for the turn to end.
-        if (_following.ContainsKey(to.SessionId)) {
+        // One delivery per thread at a time. A turn this agent started stays open on its private server, which holds the
+        // thread: a second delivery then would be refused by that server and queued where nothing reads it, so it waits.
+        // The thread is reserved before the first await and released on every outcome except a started turn, whose
+        // follower releases it when the turn or its server ends.
+        if (!_following.TryAdd(to.SessionId, 0)) {
             Defer("deliver:" + requestId);
             return ("not-submitted", "codex-thread-busy-with-agent-turn");
         }
+        var followed = false;
         try {
             var (delivery, server, watch) = await _codex.DeliverAsync(to.SessionId, text, stop).ConfigureAwait(false);
             if (delivery.Route is "queue" or "queue-app" or "queue-held" or "queue-parked") {
@@ -159,7 +162,7 @@ internal sealed partial class AgentService {
                 };
             }
             if (delivery.Route == "turn") {
-                _following[to.SessionId] = 0;
+                followed = true;
                 Start("wake:" + requestId + ":" + delivery.TurnId, () => FollowWakeAsync(requestId, to.SessionId, delivery, server, watch, stop, usage));
             }
             else {
@@ -180,6 +183,8 @@ internal sealed partial class AgentService {
             Log("delivery-not-submitted", requestId + " " + error.Message);
             Defer("deliver:" + requestId);
             return ("not-submitted", "codex-thread-unreachable");
+        } finally {
+            if (!followed) _following.TryRemove(to.SessionId, out _);
         }
     }
 
@@ -196,12 +201,13 @@ internal sealed partial class AgentService {
     private async Task FollowAsync(string requestId, string sessionId, CodexDelivery delivery, CodexAppServer server, TurnWatch watch,
         CancellationToken stop, bool usage) {
         await using (server) {
-            await Task.WhenAny(watch.Completed, Task.Delay(TimeSpan.FromMinutes(_policy.WakeUsageMinutes), stop)).ConfigureAwait(false);
+            await Task.WhenAny(watch.Completed, server.Ended, Task.Delay(TimeSpan.FromMinutes(_policy.WakeUsageMinutes), stop)).ConfigureAwait(false);
             if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, watch.Tokens, null, sessionId, stop).ConfigureAwait(false);
             Log("wake-recorded", requestId + " " + watch.Tokens.Total + " tokens" + (watch.Completed.IsCompleted ? "" : " (partial)"));
-            // Closing a private server ends its turn, so it stays open until the requester's turn finishes (or the service stops).
+            // Closing a private server ends its turn, so it stays open until the requester's turn finishes, the server exits on
+            // its own (which ends the turn and frees the thread), or the service stops.
             if (!server.Live && !watch.Completed.IsCompleted)
-                try { await watch.Completed.WaitAsync(stop).ConfigureAwait(false); } catch (OperationCanceledException) { }
+                try { await Task.WhenAny(watch.Completed, server.Ended).WaitAsync(stop).ConfigureAwait(false); } catch (OperationCanceledException) { }
         }
     }
 

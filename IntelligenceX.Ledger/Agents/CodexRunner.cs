@@ -355,7 +355,11 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 if (DateTimeOffset.UtcNow >= deadline) return false;
                 await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
             }
-        } catch (Exception error) when (error is IOException or TimeoutException) { return false; }
+        } catch (Exception error) when (error is IOException or TimeoutException or System.ComponentModel.Win32Exception or
+            InvalidOperationException or System.Net.WebSockets.WebSocketException) {
+            // The message is already queued: a failed look is an unconfirmed delivery, never a reason to queue it again.
+            return false;
+        }
     }
 
     /// <summary>What `codex queue` did: queued and resumed by the local daemon; queued for the client that holds the thread
