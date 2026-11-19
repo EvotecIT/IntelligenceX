@@ -19,7 +19,8 @@ public sealed partial class LedgerStore {
             """, cancellationToken: token);
 
     /// <summary>
-    /// Stores running per-minute totals. A repeated report for the same process replaces its earlier counts. An empty
+    /// Stores running per-minute totals. A repeated report for the same process keeps the larger count, since totals only
+    /// grow and an older snapshot may arrive late (two reporters forwarding one drop folder). An empty
     /// report still removes tallies older than two hours.
     /// </summary>
     public async Task RecordGitHubUsageAsync(string machine, GitHubUsageReport[] reports, DateTimeOffset now, CancellationToken token = default) {
@@ -38,7 +39,7 @@ public sealed partial class LedgerStore {
                 await db.ExecuteNonQueryAsync("""
                     INSERT INTO github_usage(machine,component,instance,minute,resource,charged,not_modified)
                     VALUES(@machine,@component,@instance,@minute,@resource,@charged,@free)
-                    ON CONFLICT(machine,component,instance,minute,resource) DO UPDATE SET charged=excluded.charged,not_modified=excluded.not_modified
+                    ON CONFLICT(machine,component,instance,minute,resource) DO UPDATE SET charged=MAX(charged,excluded.charged),not_modified=MAX(not_modified,excluded.not_modified)
                     """, new Dictionary<string, object?> { ["machine"] = machine, ["component"] = report.Component,
                         ["instance"] = instance, ["minute"] = minute.MinuteUtc.ToUniversalTime().ToString("O"),
                         ["resource"] = minute.Resource, ["charged"] = minute.Charged, ["free"] = minute.NotModified }, token);

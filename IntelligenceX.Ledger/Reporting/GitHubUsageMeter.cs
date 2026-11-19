@@ -81,6 +81,23 @@ internal static class GitHubUsageValidation {
     internal const int MaximumMinutes = 400;
     internal const int MaximumReadings = 8;
 
+    /// <summary>The most usage a heartbeat carries, well inside the service's request limit, so it never costs the heartbeat.</summary>
+    internal const int MaximumHeartbeatBytes = 256 * 1024;
+
+    /// <summary>The reports a heartbeat can carry: at most <see cref="MaximumReports"/>, within <see cref="MaximumHeartbeatBytes"/>.</summary>
+    internal static GitHubUsageReport[] Fit(IEnumerable<GitHubUsageReport> reports) {
+        var fitted = new List<GitHubUsageReport>();
+        var bytes = 0;
+        foreach (var report in reports) {
+            if (fitted.Count == MaximumReports) break;
+            var size = JsonSerializer.SerializeToUtf8Bytes(report, LedgerJson.Options).Length;
+            if (bytes + size > MaximumHeartbeatBytes) continue;
+            bytes += size;
+            fitted.Add(report);
+        }
+        return fitted.ToArray();
+    }
+
     internal static bool Name(string? value) => value is { Length: > 0 and <= 64 } &&
         value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.');
 

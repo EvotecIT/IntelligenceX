@@ -80,6 +80,8 @@ public sealed class GitHubUsageTests : IDisposable {
         GitHubRateLimitReading Reading(int used) => new("core", 5000, used, 5000 - used, Reset, Now);
         await store.RecordGitHubUsageAsync("win-pc", [new("marquee", first, [new(minute, "core", 5)], [Reading(900)])], Now);
         await store.RecordGitHubUsageAsync("win-pc", [new("marquee", first, [new(minute, "core", 40, 7)], [Reading(950)])], Now);
+        // An older snapshot arriving late (two reporters forwarding one folder) doesn't lower the running total.
+        await store.RecordGitHubUsageAsync("win-pc", [new("marquee", first, [new(minute, "core", 20, 3)])], Now);
         await store.RecordGitHubUsageAsync("win-pc", [new("marquee", Guid.NewGuid(), [new(minute, "core", 10)])], Now);
         await store.RecordGitHubUsageAsync("mac", [new("ledger-reporter", Guid.NewGuid(), [new(minute, "core", 25)],
             [Reading(960) with { ObservedAtUtc = Now.AddSeconds(5) }])], Now);
@@ -108,6 +110,19 @@ public sealed class GitHubUsageTests : IDisposable {
         Assert.Equal(30, view.Spenders.Single(s => s.Component == "marquee").ChargedLast5Minutes);
         Assert.Equal([(Reset, 2000, 1870), (other, 40, 36)], view.Windows.Select(w => (w.ResetAtUtc, w.Used, w.Unattributed)));
         Assert.Contains("several-core-windows:more-than-one-identity-or-token", view.Coverage);
+    }
+
+    // Protects heartbeat delivery: forwarded usage stays within a byte budget, so large but valid tallies never push
+    // the heartbeat past the service's request limit.
+    [Fact]
+    public void AHeartbeatCarriesOnlyTheUsageThatFits() {
+        var minute = new DateTimeOffset(2026, 11, 18, 15, 0, 0, TimeSpan.Zero);
+        var name = new string('c', 64);
+        var large = Enumerable.Range(0, GitHubUsageValidation.MaximumReports).Select(index => new GitHubUsageReport(name[..60] + index.ToString("00"), Guid.NewGuid(),
+            Enumerable.Range(0, GitHubUsageValidation.MaximumMinutes).Select(m => new GitHubUsageMinute(minute.AddMinutes(m), name, 99_999, 99_999)).ToArray())).ToArray();
+        var fitted = GitHubUsageValidation.Fit(large);
+        Assert.InRange(fitted.Length, 1, GitHubUsageValidation.MaximumReports - 1);
+        Assert.True(JsonSerializer.SerializeToUtf8Bytes(fitted, LedgerJson.Options).Length <= GitHubUsageValidation.MaximumHeartbeatBytes + 1024);
     }
 
     // Protects the fleet total: listing only the top spenders never understates what was reported, and says so.
