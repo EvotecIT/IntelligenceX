@@ -213,7 +213,7 @@ public sealed class LedgerHttpTests {
         } finally {
             if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
             await Task.WhenAll(output, error);
-            Directory.Delete(directory, true);
+            await LedgerTestPaths.DeleteServedDirectoryAsync(directory);
         }
     }
 }
