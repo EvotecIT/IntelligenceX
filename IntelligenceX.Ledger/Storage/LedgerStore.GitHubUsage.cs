@@ -106,9 +106,11 @@ public sealed partial class LedgerStore {
             .Select(group => {
                 var latest = group.OrderByDescending(r => r.Reading.ObservedAtUtc).ThenByDescending(r => r.Reading.Used).First();
                 var start = group.Key.ResetAtUtc - GitHubWindowLength(group.Key.Resource);
+                // The minute bucket holding the window's start; buckets wholly before it belong to an earlier window.
+                var first = new DateTimeOffset(start.UtcDateTime.Ticks - start.UtcDateTime.Ticks % TimeSpan.TicksPerMinute, TimeSpan.Zero);
                 var members = group.Select(r => (r.Machine, r.Component, r.Instance)).ToHashSet();
                 var reported = minutes.Where(m => m.Resource == group.Key.Resource && members.Contains((m.Machine, m.Component, m.Instance)) &&
-                    m.Minute >= start.AddMinutes(-1) && m.Minute <= latest.Reading.ObservedAtUtc).Sum(m => m.Charged);
+                    m.Minute >= first && m.Minute <= latest.Reading.ObservedAtUtc).Sum(m => m.Charged);
                 // GraphQL's Used counts points, not requests, so the two can't be subtracted.
                 var unattributed = group.Key.Resource == "graphql" ? 0 : Math.Max(0, latest.Reading.Used - reported);
                 return new GitHubBudgetWindow(group.Key.Resource, latest.Reading.Limit, latest.Reading.Used, latest.Reading.Remaining,

@@ -120,9 +120,12 @@ public sealed class GitHubUsageTests : IDisposable {
         var name = new string('c', 64);
         var large = Enumerable.Range(0, GitHubUsageValidation.MaximumReports).Select(index => new GitHubUsageReport(name[..60] + index.ToString("00"), Guid.NewGuid(),
             Enumerable.Range(0, GitHubUsageValidation.MaximumMinutes).Select(m => new GitHubUsageMinute(minute.AddMinutes(m), name, 99_999, 99_999)).ToArray())).ToArray();
-        var fitted = GitHubUsageValidation.Fit(large);
+        var fitted = GitHubUsageValidation.Fit([], large);
         Assert.InRange(fitted.Length, 1, GitHubUsageValidation.MaximumReports - 1);
         Assert.True(JsonSerializer.SerializeToUtf8Bytes(fitted, LedgerJson.Options).Length <= GitHubUsageValidation.MaximumHeartbeatBytes + 1024);
+        // Later heartbeats take turns, so every report gets through in time.
+        var delivered = Enumerable.Range(0, large.Length).SelectMany(turn => GitHubUsageValidation.Fit([], large, turn)).Select(r => r.Component).ToHashSet();
+        Assert.Equal(large.Length, delivered.Count);
     }
 
     // Protects the fleet total: listing only the top spenders never understates what was reported, and says so.
@@ -149,6 +152,10 @@ public sealed class GitHubUsageTests : IDisposable {
             new("win-pc", "ledger-reporter", "new", new GitHubRateLimitReading("graphql", 5000, 5, 4995, Reset, Now))]);
         Assert.Equal([(otherAccount, 100, 200), (Reset, 1, 6)],
             view.Windows.Where(w => w.Resource == "core").Select(w => (w.ResetAtUtc, w.Reported, w.Unattributed)));
+        // A search in the minute just before the window belongs to the window before it.
+        var adjacent = LedgerStore.GitHubBudget(Now, [Row("new", "search", 1, 20), Row("new", "search", 0, 1)], [
+            new("win-pc", "ledger-reporter", "new", new GitHubRateLimitReading("search", 30, 5, 25, at.AddMinutes(1), Now))]);
+        Assert.Equal((1, 4), adjacent.Windows.Select(w => (w.Reported, w.Unattributed)).Single());
         // Search resets every minute, so the search from twenty minutes ago belongs to an earlier window.
         Assert.Equal((1, 2), view.Windows.Where(w => w.Resource == "search").Select(w => (w.Reported, w.Unattributed)).Single());
         // GraphQL's Used counts points, which can't be compared with requests.

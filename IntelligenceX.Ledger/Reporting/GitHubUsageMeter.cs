@@ -84,11 +84,17 @@ internal static class GitHubUsageValidation {
     /// <summary>The most usage a heartbeat carries, well inside the service's request limit, so it never costs the heartbeat.</summary>
     internal const int MaximumHeartbeatBytes = 256 * 1024;
 
-    /// <summary>The reports a heartbeat can carry: at most <see cref="MaximumReports"/>, within <see cref="MaximumHeartbeatBytes"/>.</summary>
-    internal static GitHubUsageReport[] Fit(IEnumerable<GitHubUsageReport> reports) {
+    /// <summary>
+    /// The reports a heartbeat can carry: at most <see cref="MaximumReports"/>, within <see cref="MaximumHeartbeatBytes"/>.
+    /// The reporter's own come first; the forwarded ones start at <paramref name="turn"/>, so when they don't all fit,
+    /// successive heartbeats take turns and every report that fits on its own still gets through.
+    /// </summary>
+    internal static GitHubUsageReport[] Fit(IReadOnlyList<GitHubUsageReport> own, IReadOnlyList<GitHubUsageReport> forwarded, int turn = 0) {
+        var start = forwarded.Count == 0 ? 0 : (int)((uint)turn % (uint)forwarded.Count);
+        var ordered = own.Concat(forwarded.Skip(start)).Concat(forwarded.Take(start));
         var fitted = new List<GitHubUsageReport>();
         var bytes = 0;
-        foreach (var report in reports) {
+        foreach (var report in ordered) {
             if (fitted.Count == MaximumReports) break;
             var size = JsonSerializer.SerializeToUtf8Bytes(report, LedgerJson.Options).Length;
             if (bytes + size > MaximumHeartbeatBytes) continue;
