@@ -245,7 +245,8 @@ public sealed class RepositoryActivityTests : IDisposable {
 
         using (var sqlite = new SQLite()) {
             await using var db = await sqlite.OpenSessionAsync(Database);
-            await db.ExecuteNonQueryAsync("DROP TABLE repository_sessions");
+            // A database from before the index existed also predates the projection version mark.
+            await db.ExecuteNonQueryAsync("DROP TABLE repository_sessions; PRAGMA user_version=0");
         }
         await store.InitializeAsync();
         Assert.Equal(JsonSerializer.Serialize(moved, LedgerJson.Options),

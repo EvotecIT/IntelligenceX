@@ -14,11 +14,6 @@ public sealed partial class LedgerStore {
             CREATE INDEX IF NOT EXISTS repository_sessions_live ON repository_sessions(repo,open,archived);
             CREATE INDEX IF NOT EXISTS repository_sessions_activity ON repository_sessions(repo,activity);
             """, cancellationToken: token);
-        var items = await db.QueryAsListAsync("""
-            SELECT json FROM items WHERE json_extract(json,'$.kind')='session'
-              AND json_type(json,'$.session.repository')='object'
-            """, row => Read<LedgerItem>(row.GetString(0)), cancellationToken: token);
-        foreach (var item in items) await UpsertRepositorySessionAsync(db, item, token);
     }
 
     /// <summary>Refreshes the compact index inside the current ingest or health-activity transaction.</summary>

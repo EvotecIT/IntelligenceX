@@ -34,8 +34,22 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
     private static string Json<T>(T value) => JsonSerializer.Serialize(value, LedgerJson.Options);
     private static T Read<T>(string value) => JsonSerializer.Deserialize<T>(value, LedgerJson.Options)!;
 
-    public async Task InitializeAsync(CancellationToken token = default) {
+    /// <summary>
+    /// Version of the derived tables (session_status, session_lookup, repository_sessions) that startup rebuilds from
+    /// items. Ingest keeps them current, so the rebuild runs once per version instead of on every start. Raise it when a
+    /// projection's derivation changes and existing rows need rebuilding.
+    /// </summary>
+    internal const int ProjectionVersion = 1;
+
+    /// <summary>
+    /// Requests open their own short-lived connections. Without one connection that stays open, the last request to
+    /// close checkpoints the whole WAL into the database, so one connection is kept for the store's lifetime.
+    /// </summary>
+    private Microsoft.Data.Sqlite.SqliteConnection? _walAnchor;
+
+    public async Task InitializeAsync(CancellationToken token = default, IProgress<StartupStep>? progress = null) {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        progress?.Report(new("opening-ledger"));
         await using var db = await _database.OpenSessionAsync(path, token);
         // A new database starts with incremental vacuum; an existing one switches with the stopped compact command.
         await db.ExecuteNonQueryAsync("""
@@ -61,11 +75,6 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
             CREATE TABLE IF NOT EXISTS session_status (item TEXT PRIMARY KEY, machine TEXT NOT NULL, provider TEXT NOT NULL,
               open INTEGER NOT NULL, limited INTEGER NOT NULL, archived INTEGER NOT NULL, account TEXT);
             CREATE INDEX IF NOT EXISTS session_status_machine ON session_status(machine,archived,open);
-            INSERT OR IGNORE INTO session_status(item,machine,provider,open,limited,archived,account)
-              SELECT id,json_extract(json,'$.machineId'),json_extract(json,'$.provider'),
-                COALESCE(json_extract(json,'$.session.turnOpen'),0),COALESCE(json_extract(json,'$.session.usageLimit'),0),
-                COALESCE(json_extract(json,'$.session.archived'),0),json_extract(json,'$.session.accountId')
-              FROM items WHERE json_extract(json,'$.kind')='session' AND json_type(json,'$.session')='object';
             CREATE TABLE IF NOT EXISTS global_work (id INTEGER PRIMARY KEY CHECK(id=1), json TEXT NOT NULL, received TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS transitions (ordinal INTEGER PRIMARY KEY AUTOINCREMENT,
               item TEXT NOT NULL, recorded TEXT NOT NULL, json TEXT NOT NULL);
@@ -78,6 +87,51 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         await InitializeReservationsAsync(db, token);
         await InitializeSessionLookupAsync(db, token);
         await InitializeLineageAsync(db, token);
+        if (Convert.ToInt32(await db.ExecuteScalarAsync("PRAGMA user_version", cancellationToken: token)) < ProjectionVersion)
+            await RebuildProjectionsAsync(db, progress, token);
+        _walAnchor ??= OpenAnchor(path);
+        progress?.Report(new("ledger-ready"));
+    }
+
+    private static Microsoft.Data.Sqlite.SqliteConnection OpenAnchor(string path) {
+        var anchor = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder {
+            DataSource = path, Pooling = false }.ToString());
+        anchor.Open();
+        // SQLite opens files lazily; the first statement attaches the connection to the WAL, which it then holds open.
+        using var attach = anchor.CreateCommand();
+        attach.CommandText = "PRAGMA journal_mode";
+        attach.ExecuteScalar();
+        return anchor;
+    }
+
+    /// <summary>
+    /// Rebuilds the derived session tables from items in one transaction, so a large rebuild costs one commit instead
+    /// of one per session, and records the version so later starts skip it. Progress is reported every 100 sessions.
+    /// </summary>
+    private static async Task RebuildProjectionsAsync(SQLiteAsyncSession db, IProgress<StartupStep>? progress, CancellationToken token) {
+        progress?.Report(new("rebuilding-projections"));
+        var items = await db.QueryAsListAsync("""
+            SELECT json FROM items WHERE json_extract(json,'$.kind')='session'
+              AND json_type(json,'$.session.repository')='object'
+            """, row => Read<LedgerItem>(row.GetString(0)), cancellationToken: token);
+        await db.RunInTransactionAsync(async (tx, ct) => {
+            await tx.ExecuteNonQueryAsync("""
+                INSERT OR IGNORE INTO session_status(item,machine,provider,open,limited,archived,account)
+                  SELECT id,json_extract(json,'$.machineId'),json_extract(json,'$.provider'),
+                    COALESCE(json_extract(json,'$.session.turnOpen'),0),COALESCE(json_extract(json,'$.session.usageLimit'),0),
+                    COALESCE(json_extract(json,'$.session.archived'),0),json_extract(json,'$.session.accountId')
+                  FROM items WHERE json_extract(json,'$.kind')='session' AND json_type(json,'$.session')='object';
+                INSERT OR IGNORE INTO session_lookup(item,native,title,machine,provider)
+                  SELECT i.id,json_extract(i.json,'$.session.sourceSessionId'),
+                    COALESCE(json_extract(i.json,'$.session.title'),json_extract(i.json,'$.session.repository.title')),
+                    s.machine,s.provider FROM session_status s JOIN items i ON i.id=s.item;
+                """, cancellationToken: ct);
+            for (var index = 0; index < items.Count; index++) {
+                await UpsertRepositorySessionAsync(tx, items[index], ct);
+                if ((index + 1) % 100 == 0) progress?.Report(new("rebuilding-projections", index + 1, items.Count));
+            }
+            await tx.ExecuteNonQueryAsync("PRAGMA user_version=" + ProjectionVersion, cancellationToken: ct);
+        }, token);
     }
 
     public async Task<Guid[]> IngestAsync(LedgerEvent[] events, DateTimeOffset received, CancellationToken token = default, bool journal = true) {
@@ -612,7 +666,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                 .Select(i => new { i.Id, i.MachineId, i.Provider, i.Current!.SinceUtc, i.Current.MissingFacts }).ToArray(), transitions };
     }
 
-    public void Dispose() { _database.Dispose(); _gate.Dispose(); _leaseGate.Dispose(); }
+    public void Dispose() { _database.Dispose(); _gate.Dispose(); _leaseGate.Dispose(); _walAnchor?.Dispose(); }
 }
 
 public sealed class EventConflictException : Exception;
