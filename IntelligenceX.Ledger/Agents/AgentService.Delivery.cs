@@ -138,20 +138,30 @@ internal sealed partial class AgentService {
             }
             return (sent.Stage, sent.Evidence);
         }
+        // A turn this agent started is still open on its private server, which holds the thread: a second delivery now would
+        // be refused by that server and queued where nothing reads it, so it waits for the turn to end.
+        if (_following.ContainsKey(to.SessionId)) {
+            Defer("deliver:" + requestId);
+            return ("not-submitted", "codex-thread-busy-with-agent-turn");
+        }
         try {
             var (delivery, server, watch) = await _codex.DeliverAsync(to.SessionId, text, stop).ConfigureAwait(false);
-            if (delivery.Route is "queue" or "queue-app" or "queue-parked") {
+            if (delivery.Route is "queue" or "queue-app" or "queue-held" or "queue-parked") {
                 if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
                 // A queued message the daemon resumed runs as the thread's next turn. One only parked in the queue (no
                 // local daemon) may never run, so it is recorded as uncertain, never as delivered, and never sent again.
-                // One the Codex app holds runs as the app's next turn.
+                // One left with the thread's holder counts once a new turn took it; until then it is unconfirmed.
                 return delivery.Route switch {
                     "queue" => ("submitted", "codex-queued-resumed"),
                     "queue-app" => ("submitted", "codex-queued-in-app"),
+                    "queue-held" => ("uncertain", "codex-queued-for-holder"),
                     _ => ("uncertain", "codex-queued-not-resumed")
                 };
             }
-            if (delivery.Route == "turn") Start("wake:" + requestId + ":" + delivery.TurnId, () => FollowWakeAsync(requestId, to.SessionId, delivery, server, watch, stop, usage));
+            if (delivery.Route == "turn") {
+                _following[to.SessionId] = 0;
+                Start("wake:" + requestId + ":" + delivery.TurnId, () => FollowWakeAsync(requestId, to.SessionId, delivery, server, watch, stop, usage));
+            }
             else {
                 await server.DisposeAsync().ConfigureAwait(false);
                 if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
@@ -160,6 +170,10 @@ internal sealed partial class AgentService {
         } catch (DeliveryUncertainException error) {
             Log("delivery-uncertain", requestId + " " + error.Message);
             return ("uncertain", "codex-delivery-unresolved");
+        } catch (CodexRpcException error) when (error.Message.Contains("is archived", StringComparison.OrdinalIgnoreCase)) {
+            // An archived thread can't take input, and retrying won't change that: the delivery ends, unsent.
+            Log("delivery-archived", requestId + " " + to.SessionId);
+            return ("uncertain", "codex-thread-archived");
         } catch (Exception error) when (error is IOException or TimeoutException or System.ComponentModel.Win32Exception or
             InvalidOperationException or System.Net.WebSockets.WebSocketException) {
             // Nothing reached the thread: the attempt returns to pending and is retried after a pause.
@@ -172,6 +186,15 @@ internal sealed partial class AgentService {
     /// <summary>Follows the woken turn through its notifications to record its tokens, for at most the policy's window.</summary>
     private async Task FollowWakeAsync(string requestId, string sessionId, CodexDelivery delivery, CodexAppServer server, TurnWatch watch,
         CancellationToken stop, bool usage = true) {
+        try { await FollowAsync(requestId, sessionId, delivery, server, watch, stop, usage).ConfigureAwait(false); }
+        finally { _following.TryRemove(sessionId, out _); }
+    }
+
+    /// <summary>Codex threads with a turn this agent started and still follows on its private server.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _following = new(StringComparer.OrdinalIgnoreCase);
+
+    private async Task FollowAsync(string requestId, string sessionId, CodexDelivery delivery, CodexAppServer server, TurnWatch watch,
+        CancellationToken stop, bool usage) {
         await using (server) {
             await Task.WhenAny(watch.Completed, Task.Delay(TimeSpan.FromMinutes(_policy.WakeUsageMinutes), stop)).ConfigureAwait(false);
             if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, watch.Tokens, null, sessionId, stop).ConfigureAwait(false);
