@@ -217,13 +217,14 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         ? status.ValueKind == JsonValueKind.String ? status.GetString()! : status.TryGetProperty("type", out var type) ? type.GetString()! : "unknown"
         : "unknown";
 
-    /// <summary>True when one of the turn's user inputs is exactly <paramref name="text"/>.</summary>
-    internal static bool HasInput(JsonElement turn, string text) => turn.TryGetProperty("items", out var items) &&
-        items.ValueKind == JsonValueKind.Array && items.EnumerateArray().Any(item =>
-            item.TryGetProperty("type", out var type) && type.GetString() == "userMessage" &&
-            item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array &&
-            content.EnumerateArray().Any(part => part.TryGetProperty("text", out var value) && value.ValueKind == JsonValueKind.String &&
-                string.Equals(value.GetString()?.Trim(), text.Trim(), StringComparison.Ordinal)));
+    /// <summary>How many user inputs across the turns are exactly <paramref name="text"/>.</summary>
+    internal static int InputCount(JsonElement turns, string text) => turns.ValueKind != JsonValueKind.Array ? 0 :
+        turns.EnumerateArray().Sum(turn => turn.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
+            ? items.EnumerateArray().Count(item => item.TryGetProperty("type", out var type) && type.GetString() == "userMessage" &&
+                item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array &&
+                content.EnumerateArray().Any(part => part.TryGetProperty("text", out var value) && value.ValueKind == JsonValueKind.String &&
+                    string.Equals(value.GetString()?.Trim(), text.Trim(), StringComparison.Ordinal)))
+            : 0);
 
     internal static string? FinalText(JsonElement turn) => turn.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
         ? items.EnumerateArray().Where(item => item.TryGetProperty("type", out var type) && type.GetString() == "agentMessage")
@@ -255,7 +256,8 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             var read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
             var running = read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
                 ? turns.EnumerateArray().LastOrDefault() : default;
-            var known = turns.ValueKind == JsonValueKind.Array ? turns.GetArrayLength() : 0;
+            // How often the thread already holds this exact text as user input, before anything is queued.
+            var known = InputCount(turns, text);
             // The Codex app (or the local daemon) holding the thread refuses this server's resume with "active writer", the
             // same answer turn/start gives; either way the message goes through the queue to the holder.
             string model;
@@ -337,12 +339,12 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     /// show that its holder reads the queue, so a message left with a holder counts as delivered only once the thread has
     /// a new turn (queue-app); otherwise it stays unconfirmed (queue-held).</summary>
     private async Task<(CodexDelivery, CodexAppServer, TurnWatch)> QueueInsteadAsync(CodexAppServer server, TurnWatch watch, string threadId,
-        string text, string model, int knownTurns, CancellationToken token) {
+        string text, string model, int knownInputs, CancellationToken token) {
         await server.DisposeAsync().ConfigureAwait(false);
         var queued = await QueueAsync(threadId, text, token).ConfigureAwait(false);
         var route = queued switch {
             QueueOutcome.Resumed => "queue",
-            QueueOutcome.HolderOwned => await TookInputAsync(threadId, knownTurns, text, HolderConfirmTimeout, token).ConfigureAwait(false) ? "queue-app" : "queue-held",
+            QueueOutcome.HolderOwned => await TookInputAsync(threadId, knownInputs, text, HolderConfirmTimeout, token).ConfigureAwait(false) ? "queue-app" : "queue-held",
             _ => "queue-parked"
         };
         return (new(route, "queued", model), server, watch);
@@ -351,16 +353,16 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     /// <summary>How long a message left with the thread's holder is watched for the turn that takes it.</summary>
     internal static readonly TimeSpan HolderConfirmTimeout = TimeSpan.FromMinutes(2);
 
-    /// <summary>True once a turn of the thread holds <paramref name="text"/> as its input, read without taking the thread. Only
-    /// the turn running when the delivery began and later ones are searched; a turn the user started meanwhile doesn't count.</summary>
-    private async Task<bool> TookInputAsync(string threadId, int knownTurns, string text, TimeSpan timeout, CancellationToken token) {
+    /// <summary>True once the thread holds <paramref name="text"/> as user input more often than it did when the delivery
+    /// began (<paramref name="knownInputs"/>), read without taking the thread: the same words already in its history, or a
+    /// turn the user started meanwhile, don't confirm this delivery.</summary>
+    private async Task<bool> TookInputAsync(string threadId, int knownInputs, string text, TimeSpan timeout, CancellationToken token) {
         var deadline = DateTimeOffset.UtcNow + timeout;
         try {
             await using var reader = await OpenAsync(token).ConfigureAwait(false);
             while (true) {
                 var read = await reader.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
-                if (read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array &&
-                    turns.EnumerateArray().Skip(Math.Max(0, knownTurns - 1)).Any(turn => HasInput(turn, text))) return true;
+                if (read.GetProperty("thread").TryGetProperty("turns", out var turns) && InputCount(turns, text) > knownInputs) return true;
                 if (DateTimeOffset.UtcNow >= deadline) return false;
                 await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
             }

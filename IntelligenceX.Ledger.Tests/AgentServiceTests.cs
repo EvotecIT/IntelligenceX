@@ -195,12 +195,17 @@ public sealed class AgentServiceTests {
 
     [Fact]
     public void AQueuedMessageIsConfirmedOnlyByATurnWhoseInputIsThatMessage() {
-        using var turn = JsonDocument.Parse("{\"id\":\"t2\",\"items\":[{\"type\":\"userMessage\",\"content\":[{\"type\":\"text\"," +
-            "\"text\":\"Wake w-1: passed.\\n\\nMerge it.\"}]},{\"type\":\"agentMessage\",\"text\":\"Merging.\"}]}");
-        Assert.True(CodexRunner.HasInput(turn.RootElement, "Wake w-1: passed.\n\nMerge it."));
-        // A turn the user started in the app meanwhile, or an agent message with the same words, doesn't confirm it.
-        Assert.False(CodexRunner.HasInput(turn.RootElement, "Something the user typed."));
-        Assert.False(CodexRunner.HasInput(turn.RootElement, "Merging."));
+        static JsonElement Turns(params string[] inputs) => JsonDocument.Parse("[" + string.Join(",", inputs.Select(input =>
+            "{\"items\":[{\"type\":\"userMessage\",\"content\":[{\"type\":\"text\",\"text\":" + JsonSerializer.Serialize(input) +
+            "}]},{\"type\":\"agentMessage\",\"text\":\"Merging.\"}]}")) + "]").RootElement;
+        const string notice = "Notice about your ask a-1: the helper is waiting.";
+        // The same words already in the history are the baseline, so an unchanged history never confirms a new delivery.
+        var before = Turns(notice, "Something the user typed.");
+        Assert.Equal(1, CodexRunner.InputCount(before, notice));
+        Assert.Equal(1, CodexRunner.InputCount(Turns(notice, "Something the user typed.", "Another user turn."), notice));
+        // Only the message itself, taken again, raises the count; agent text with the same words doesn't.
+        Assert.Equal(2, CodexRunner.InputCount(Turns(notice, "Something the user typed.", notice), notice));
+        Assert.Equal(0, CodexRunner.InputCount(Turns("Something the user typed."), "Merging."));
     }
 
     [Fact]
