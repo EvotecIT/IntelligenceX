@@ -234,7 +234,10 @@ starting an app server every minute.
   `default` (the default) keeps the hold, and a delivery to a session in another mode is recorded as uncertain
   (`claude-may-be-held-for-approval`); `recipient` runs the sender in the session's recorded mode, so a delivery starts a
   turn at once, for installations where every session delivering through the Ledger is trusted. Either way a session
-  with no recorded mode yet counts as uncertain.
+  with no recorded mode yet counts as uncertain. The recorded mode is the one the session had at its last prompt (or
+  start): no hook fires when a session switches mode while idle, so a delivery right after such a switch can still be held
+  while its receipt says submitted. The mode is taken from the session the delivery is for; the address it is sent to is
+  the one that session gave for itself.
 - A CI wake's reason names the pull request and how many checks failed, never the check names: those are text from
   GitHub that a workflow's author chooses. The woken session reads the failures from GitHub itself, as data.
 - When the Codex app holds the thread, `codex queue --resume` stores the message and asks the local app-server daemon to
