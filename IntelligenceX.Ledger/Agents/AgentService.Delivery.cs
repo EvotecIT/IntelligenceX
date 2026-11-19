@@ -129,7 +129,8 @@ internal sealed partial class AgentService {
         if (to.Provider == "claude") {
             // SendMessage addresses sessions by the name ListAgents shows; the asker supplied its own.
             ClaudeSendOutcome sent;
-            var (senderMode, matched) = ClaudeDelivery(_policy.ClaudeSenderMode, ClaudeSessionModes.Read(_settings.StateDirectory, to.SessionId));
+            var recorded = ClaudeSessionModes.Read(_settings.StateDirectory, to.SessionId);
+            var (senderMode, matched) = ClaudeDelivery(_policy.ClaudeSenderMode, recorded);
             try {
                 sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop, senderMode).ConfigureAwait(false);
             }
@@ -149,7 +150,9 @@ internal sealed partial class AgentService {
                 if (sent.Failure is null) MarkUnreachable(requestId);
             }
             // Sent from another mode, the app may hold it for the user's approval and tells only the sender, which has exited.
-            if (sent.Stage == "submitted" && !matched) return ("uncertain", "claude-may-be-held-for-approval");
+            // A mode the session recorded during the send may not be the one the message met.
+            if (sent.Stage == "submitted" && (!matched || ClaudeSessionModes.Read(_settings.StateDirectory, to.SessionId) != recorded))
+                return ("uncertain", "claude-may-be-held-for-approval");
             return (sent.Stage, sent.Evidence);
         }
         // One delivery per thread at a time. A turn this agent started stays open on its private server, which holds the
