@@ -24,7 +24,8 @@ internal sealed class PullRequestReadinessService(LedgerStore store, GitHubUsage
             try {
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(12));
-                var credentials = await GitHubCredentialResolver.ResolveAsync(deadline.Token);
+                // Readiness only reads the repository, which a configured GitHub App can do on its own budget.
+                var credentials = await GitHubCredentialResolver.ResolveRepositoryAccessAsync(deadline.Token);
                 if (!credentials.HasToken) throw new InvalidOperationException("GitHub credentials unavailable.");
                 var network = credentials.WrapHandler(new HttpClientHandler());
                 using var github = new GitHubDashboardService(credentials.Token!,

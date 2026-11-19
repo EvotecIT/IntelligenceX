@@ -49,6 +49,32 @@ public sealed class GitHubAppCredentialsTests : IDisposable {
         Assert.Equal("Bearer token-1", api.Seen);
     }
 
+    // Protects the fallback: when the App can't renew its token (refused, malformed answer or a timeout), requests go
+    // out with the user token, the App is retried after five minutes, and the caller's own cancellation still wins.
+    [Fact]
+    public async Task RequestsFallBackToTheUserTokenWhileTheAppCannotRenew() {
+        var now = new DateTimeOffset(2026, 11, 19, 9, 0, 0, TimeSpan.Zero);
+        var stub = new TokenStub(now) { Answer = HttpStatusCode.OK, Body = "{}" };
+        using var source = new GitHubAppTokenSource(Settings(), new HttpClient(stub), () => now);
+        var api = new EchoAuth();
+        using var client = new HttpClient(new GitHubAppAuthHandler(source, api, "user-token", () => now));
+
+        await client.GetAsync("https://api.github.com/repos/a/b/pulls");
+        Assert.Equal("Bearer user-token", api.Seen);
+        await client.GetAsync("https://api.github.com/repos/a/b/pulls");
+        Assert.Single(stub.Requests);
+
+        stub.Body = null;
+        now += GitHubAppAuthHandler.RetryAfter;
+        await client.GetAsync("https://api.github.com/repos/a/b/pulls");
+        Assert.Equal("Bearer token-2", api.Seen);
+
+        Assert.True(GitHubAppTokenSource.IsSignInFailure(new TaskCanceledException(), CancellationToken.None));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.False(GitHubAppTokenSource.IsSignInFailure(new OperationCanceledException(), cancelled.Token));
+    }
+
     // Protects the switch: no file or "enabled": false keeps the user token; a complete file selects the App.
     [Fact]
     public void SettingsSelectTheAppOnlyWhenCompleteAndEnabled() {
@@ -77,11 +103,16 @@ public sealed class GitHubAppCredentialsTests : IDisposable {
     private sealed class TokenStub(DateTimeOffset issued) : HttpMessageHandler {
         public List<(string Url, string Jwt)> Requests { get; } = [];
 
+        public HttpStatusCode Answer { get; set; } = HttpStatusCode.Created;
+
+        /// <summary>Replaces the token answer when set, as a misbehaving endpoint would.</summary>
+        public string? Body { get; set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
             Requests.Add((request.RequestUri!.ToString(), request.Headers.Authorization!.Parameter!));
             var expires = issued.AddHours(Requests.Count).ToString("O");
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created) {
-                Content = new StringContent("{\"token\":\"token-" + Requests.Count + "\",\"expires_at\":\"" + expires + "\"}")
+            return Task.FromResult(new HttpResponseMessage(Body is null ? HttpStatusCode.Created : Answer) {
+                Content = new StringContent(Body ?? "{\"token\":\"token-" + Requests.Count + "\",\"expires_at\":\"" + expires + "\"}")
             });
         }
     }

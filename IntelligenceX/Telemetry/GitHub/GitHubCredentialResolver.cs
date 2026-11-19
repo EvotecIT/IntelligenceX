@@ -64,11 +64,14 @@ public sealed class GitHubCredentialResolution {
     /// </summary>
     public GitHubAppTokenSource? App { get; init; }
 
+    /// <summary>The user token a request falls back to when the App can't renew its token.</summary>
+    public string? AppFallbackToken { get; init; }
+
     /// <summary>
     /// Puts App signing in front of <paramref name="inner"/> when signed in as an App; otherwise returns it unchanged.
     /// </summary>
     public System.Net.Http.HttpMessageHandler WrapHandler(System.Net.Http.HttpMessageHandler inner) =>
-        App is null ? inner : new GitHubAppAuthHandler(App, inner);
+        App is null ? inner : new GitHubAppAuthHandler(App, inner, AppFallbackToken);
 #else
     /// <summary>Returns <paramref name="inner"/>; App sign-in needs .NET 8 or newer.</summary>
     public System.Net.Http.HttpMessageHandler WrapHandler(System.Net.Http.HttpMessageHandler inner) => inner;
@@ -105,20 +108,6 @@ public static class GitHubCredentialResolver {
     /// Resolves GitHub credentials from the preferred source chain.
     /// </summary>
     public static async Task<GitHubCredentialResolution> ResolveAsync(CancellationToken cancellationToken = default) {
-#if NET8_0_OR_GREATER
-        // A configured GitHub App comes first: it is what someone sets up to stop sharing the user's hourly budget.
-        if (ResolveApp() is { } app) {
-            try {
-                return new GitHubCredentialResolution(await app.GetTokenAsync(cancellationToken).ConfigureAwait(false), GitHubCredentialSource.GitHubApp) { App = app };
-            } catch (System.Net.Http.HttpRequestException) {
-                // An App that can't sign in falls back to the user token, so a bad key never stops GitHub reads.
-            } catch (System.IO.IOException) {
-            } catch (System.Security.Cryptography.CryptographicException) {
-            } catch (ArgumentException) {
-            } catch (UnauthorizedAccessException) {
-            }
-        }
-#endif
         var environmentToken = ResolveFromEnvironment();
         if (!string.IsNullOrWhiteSpace(environmentToken)) {
             return new GitHubCredentialResolution(environmentToken, GitHubCredentialSource.Environment);
@@ -133,6 +122,26 @@ public static class GitHubCredentialResolver {
     }
 
 #if NET8_0_OR_GREATER
+    /// <summary>
+    /// Credentials for reading repositories (pull requests, checks, reviews, projects), which a GitHub App installation
+    /// can do with a rate limit of its own. A configured App that signs in is used, with the user token as its fallback;
+    /// otherwise this is the user token. Callers that need a person (<c>/user</c>, notifications, "my" repositories)
+    /// keep <see cref="ResolveAsync"/>.
+    /// </summary>
+    public static async Task<GitHubCredentialResolution> ResolveRepositoryAccessAsync(CancellationToken cancellationToken = default) {
+        var user = await ResolveAsync(cancellationToken).ConfigureAwait(false);
+        if (ResolveApp() is not { } app) return user;
+        try {
+            var appToken = await app.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            return new GitHubCredentialResolution(user.Token ?? appToken, user.HasToken ? user.Source : GitHubCredentialSource.GitHubApp) {
+                App = app, AppFallbackToken = user.Token
+            };
+        } catch (Exception error) when (GitHubAppTokenSource.IsSignInFailure(error, cancellationToken)) {
+            // An App that can't sign in leaves the user token in charge, so a bad App setup never stops GitHub reads.
+            return user;
+        }
+    }
+
     private static GitHubAppTokenSource? _app;
     private static string? _appKey;
 

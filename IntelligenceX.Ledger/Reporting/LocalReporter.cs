@@ -106,17 +106,24 @@ public static class LocalReporter {
         // components left in the drop folder.
         var githubUsage = new GitHubUsageMeter();
         var githubUsageFolder = GitHubUsageDropFolder.DefaultPath();
+        // Agent work starts from the signed-in person (/user and their searches), so it keeps the user token. Pull
+        // request proofs and project claims only read repositories and projects, which a GitHub App can do on its own
+        // budget when one is configured.
+        var repositoryAccess = settings.ProjectClaims is not null && credentials?.HasToken == true
+            ? await GitHubCredentialResolver.ResolveRepositoryAccessAsync(stop.Token) : credentials;
         using var github = credentials?.HasToken == true
-            ? new GitHubDashboardService(credentials.Token!, new GitHubUsageHandler(githubUsage, "ledger-reporter", credentials.WrapHandler(new HttpClientHandler()))) : null;
+            ? new GitHubDashboardService(credentials.Token!, new GitHubUsageHandler(githubUsage, "ledger-reporter", new HttpClientHandler())) : null;
+        using var repositoryGitHub = repositoryAccess?.App is null ? null
+            : new GitHubDashboardService(repositoryAccess.Token!, new GitHubUsageHandler(githubUsage, "ledger-reporter", repositoryAccess.WrapHandler(new HttpClientHandler())));
         using var projectClient = new HttpClient(new GitHubUsageHandler(githubUsage, "ledger-reporter",
-            credentials?.WrapHandler(new HttpClientHandler()) ?? new HttpClientHandler()), disposeHandler: true) {
+            repositoryAccess?.WrapHandler(new HttpClientHandler()) ?? new HttpClientHandler()), disposeHandler: true) {
             Timeout = TimeSpan.FromSeconds(20)
         };
         projectClient.DefaultRequestHeaders.UserAgent.ParseAdd("IntelligenceX-Ledger/1");
-        if (credentials?.HasToken == true) projectClient.DefaultRequestHeaders.Authorization = new("Bearer", credentials.Token);
+        if (repositoryAccess?.HasToken == true) projectClient.DefaultRequestHeaders.Authorization = new("Bearer", repositoryAccess.Token);
         var claimReader = settings.ProjectClaims is not null && credentials?.HasToken == true
             ? new ProjectClaimReader(projectClient, settings.ProjectClaims) : null;
-        var prCatalog = github is null || settings.ProjectClaims is null ? null : new PullRequestCatalog(settings.SpoolDirectory, github);
+        var prCatalog = github is null || settings.ProjectClaims is null ? null : new PullRequestCatalog(settings.SpoolDirectory, repositoryGitHub ?? github);
         ClaimSnapshot? claimSnapshot = null;
         AgentSourceDiagnostic[] metadataDiagnostics = [];
         var archives = new SessionArchiveCache();

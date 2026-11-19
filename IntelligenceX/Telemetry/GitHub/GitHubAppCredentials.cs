@@ -1,6 +1,7 @@
 #if NET8_0_OR_GREATER
 // GitHub App sign-in reads PEM keys, which needs .NET 8 or newer; older targets keep user tokens only.
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -111,7 +112,11 @@ public sealed class GitHubAppTokenSource : IDisposable {
             if (!response.IsSuccessStatusCode)
                 throw new HttpRequestException("GitHub App token request failed: " + (int)response.StatusCode, null, response.StatusCode);
             using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false));
-            _token = body.RootElement.GetProperty("token").GetString() ?? throw new InvalidDataException("GitHub App token missing.");
+            // An answer without a token is a failed sign-in like any other, so callers fall back the same way.
+            if (body.RootElement.ValueKind != JsonValueKind.Object || !body.RootElement.TryGetProperty("token", out var issued) ||
+                issued.ValueKind != JsonValueKind.String || issued.GetString() is not { Length: > 0 } value)
+                throw new HttpRequestException("GitHub App token response had no token.");
+            _token = value;
             _expires = body.RootElement.TryGetProperty("expires_at", out var expires) && expires.TryGetDateTimeOffset(out var at)
                 ? at : now.AddHours(1);
             return _token;
@@ -119,6 +124,17 @@ public sealed class GitHubAppTokenSource : IDisposable {
             _gate.Release();
         }
     }
+
+    /// <summary>
+    /// Whether <paramref name="error"/> means the App couldn't sign in (unreachable, timed out, refused, bad key or
+    /// answer), as opposed to the caller cancelling.
+    /// </summary>
+    public static bool IsSignInFailure(Exception error, CancellationToken cancellationToken) => error switch {
+        OperationCanceledException => !cancellationToken.IsCancellationRequested,
+        HttpRequestException or IOException or UnauthorizedAccessException or CryptographicException or ArgumentException
+            or JsonException or InvalidOperationException or KeyNotFoundException => true,
+        _ => false
+    };
 
     /// <summary>The App's JWT: issued a minute back to allow for clock drift, valid for nine minutes after.</summary>
     internal string CreateJwt(DateTimeOffset now) {
@@ -140,17 +156,40 @@ public sealed class GitHubAppTokenSource : IDisposable {
     }
 }
 
-/// <summary>Signs each GitHub request with the App's current installation token, renewing it as it ages.</summary>
+/// <summary>
+/// Signs each GitHub request with the App's current installation token, renewing it as it ages. When renewal fails, the
+/// request goes out with the user token instead, and the App is tried again after <see cref="RetryAfter"/>.
+/// </summary>
 public sealed class GitHubAppAuthHandler : DelegatingHandler {
+    /// <summary>How long requests use the user token after the App failed to renew.</summary>
+    public static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(5);
     private readonly GitHubAppTokenSource _tokens;
+    private readonly string? _fallback;
+    private readonly Func<DateTimeOffset> _clock;
+    private DateTimeOffset _appFailedUntil;
 
-    /// <summary>Creates the handler in front of <paramref name="inner"/>.</summary>
-    public GitHubAppAuthHandler(GitHubAppTokenSource tokens, HttpMessageHandler inner) : base(inner) => _tokens = tokens;
+    /// <summary>Creates the handler in front of <paramref name="inner"/>, falling back to <paramref name="fallbackToken"/>.</summary>
+    public GitHubAppAuthHandler(GitHubAppTokenSource tokens, HttpMessageHandler inner, string? fallbackToken = null, Func<DateTimeOffset>? clock = null)
+        : base(inner) {
+        _tokens = tokens;
+        _fallback = fallbackToken;
+        _clock = clock ?? (() => DateTimeOffset.UtcNow);
+    }
 
     /// <inheritdoc />
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await _tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(cancellationToken).ConfigureAwait(false));
         return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> TokenAsync(CancellationToken cancellationToken) {
+        if (_fallback is not null && _clock() < _appFailedUntil) return _fallback;
+        try {
+            return await _tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+        } catch (Exception error) when (_fallback is not null && GitHubAppTokenSource.IsSignInFailure(error, cancellationToken)) {
+            _appFailedUntil = _clock() + RetryAfter;
+            return _fallback;
+        }
     }
 }
 #endif

@@ -94,8 +94,7 @@ internal sealed class WorkCatalogService : BackgroundService {
     private static async Task<HttpClient?> CreateGitHubClientAsync(GitHubUsageMeter? usage, CancellationToken token) {
         var credentials = await GitHubCredentialResolver.ResolveAsync(token);
         if (!credentials.HasToken) return null;
-        // A GitHub App signs each request with a fresh installation token; a user token goes in the default header.
-        var handler = credentials.WrapHandler(new HttpClientHandler { AllowAutoRedirect = false });
+        HttpMessageHandler handler = new HttpClientHandler { AllowAutoRedirect = false };
         if (usage is not null) handler = new GitHubUsageHandler(usage, "ledger-catalog", handler);
         var client = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("IntelligenceX-Ledger/1");
