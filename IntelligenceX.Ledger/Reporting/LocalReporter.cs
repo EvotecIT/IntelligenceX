@@ -107,8 +107,9 @@ public static class LocalReporter {
         var githubUsage = new GitHubUsageMeter();
         var githubUsageFolder = GitHubUsageDropFolder.DefaultPath();
         using var github = credentials?.HasToken == true
-            ? new GitHubDashboardService(credentials.Token!, new GitHubUsageHandler(githubUsage, "ledger-reporter", new HttpClientHandler())) : null;
-        using var projectClient = new HttpClient(new GitHubUsageHandler(githubUsage, "ledger-reporter", new HttpClientHandler()), disposeHandler: true) {
+            ? new GitHubDashboardService(credentials.Token!, new GitHubUsageHandler(githubUsage, "ledger-reporter", credentials.WrapHandler(new HttpClientHandler()))) : null;
+        using var projectClient = new HttpClient(new GitHubUsageHandler(githubUsage, "ledger-reporter",
+            credentials?.WrapHandler(new HttpClientHandler()) ?? new HttpClientHandler()), disposeHandler: true) {
             Timeout = TimeSpan.FromSeconds(20)
         };
         projectClient.DefaultRequestHeaders.UserAgent.ParseAdd("IntelligenceX-Ledger/1");
