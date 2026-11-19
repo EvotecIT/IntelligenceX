@@ -30,7 +30,9 @@ public sealed class LedgerStabilityTests {
         using (var begin = blocker.CreateCommand()) { begin.CommandText = "BEGIN IMMEDIATE"; begin.ExecuteNonQuery(); }
         // SQLite calls complete synchronously, so the ingest runs on its own thread to overlap the probe.
         var stuck = Task.Run(() => store.IngestAsync([RepositorySession("synthetic-stuck", 1, Guid.NewGuid())], Now));
-        await Task.Delay(200);
+        // Under a loaded test run the ingest can take a while to start, so wait until it actually holds the gate.
+        using (var entering = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
+            while (store.WriterGate.CurrentCount != 0) await Task.Delay(10, entering.Token);
 
         var started = DateTimeOffset.UtcNow;
         var probe = await store.ProbeAsync(TimeSpan.FromSeconds(1));
