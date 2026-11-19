@@ -229,9 +229,20 @@ starting an app server every minute.
 ### Known limits
 
 - A Claude desktop session running in a different permission mode from the sender holds incoming SendMessage
-  deliveries for its user's approval. The delivery is recorded as submitted; the session sees it once approved.
+  deliveries for its user's approval, and the notice of that hold goes to a sender that has already exited. The inbox
+  hook records each session's permission mode from its prompts. `ask.claudeSenderMode` decides the sender's mode:
+  `default` (the default) keeps the hold, and a delivery to a session in another mode is recorded as uncertain
+  (`claude-may-be-held-for-approval`); `recipient` runs the sender in the session's recorded mode, so a delivery starts a
+  turn at once, for installations where every session delivering through the Ledger is trusted. Either way a session
+  with no recorded mode yet counts as uncertain. The recorded mode is the one the session had at its last prompt (or
+  start): no hook fires when a session switches mode while idle, so a delivery right after such a switch can still be held
+  while its receipt says submitted. The mode is taken from the session the delivery is for; the address it is sent to is
+  the one that session gave for itself.
+- A CI wake's reason names the pull request and how many checks failed, never the check names: those are text from
+  GitHub that a workflow's author chooses. The woken session reads the failures from GitHub itself, as data.
 - When the Codex app holds the thread, `codex queue --resume` stores the message and asks the local app-server daemon to
-  run it. That is recorded as submitted. Without a daemon (or with a CLI too old for `--resume`) the message only waits
+  run it. That is recorded as submitted, as is a message whose resume is refused because the app holds the thread: the
+  app runs it as its next turn (`codex-queued-in-app`). Without a daemon (or with a CLI too old for `--resume`) the message only waits
   in the queue, which nothing may drain, so the delivery is recorded as uncertain (`codex-queued-not-resumed`), never as
   delivered, and isn't sent again.
 - After a reboot or a lapsed grant the helper is stopped and its work so far is returned as a failed result; it isn't

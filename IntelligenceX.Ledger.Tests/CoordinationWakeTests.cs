@@ -153,13 +153,13 @@ public sealed class CoordinationWakeTests {
 
     [Theory]
     [InlineData("open", "green", 0, true, null, "The checks on EvotecIT/Sample#7 on abcdef1 passed.")]
-    [InlineData("open", "failing", 0, true, null, "The checks on EvotecIT/Sample#7 on abcdef1 finished with 1 failing: build.")]
+    [InlineData("open", "failing", 0, true, null, "The checks on EvotecIT/Sample#7 on abcdef1 finished with 1 failing; read the failures on GitHub.")]
     [InlineData("open", "failing", 2, true, null, null)]
     [InlineData("open", "pending", 2, true, null, null)]
     [InlineData("open", "green", 0, false, null, null)]
     [InlineData("open", "green", 0, true, "1234567", null)]
     [InlineData("open", "green", -1, true, null, null)]
-    [InlineData("open", "failing", -2, true, null, "The checks on EvotecIT/Sample#7 on abcdef1 finished failing; GitHub named no failing check.")]
+    [InlineData("open", "failing", -2, true, null, "The checks on EvotecIT/Sample#7 on abcdef1 finished with a failure; read the failures on GitHub.")]
     [InlineData("merged", "green", 0, true, null, "EvotecIT/Sample#7 was merged.")]
     [InlineData("unknown", "unknown", 0, false, null, null)]
     public void TheWatcherFiresOnlyOnFinishedChecksForTheCurrentHeadOrAClosedPullRequest(string state, string checks, int pending,
