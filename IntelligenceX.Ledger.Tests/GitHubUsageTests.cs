@@ -73,7 +73,8 @@ public sealed class GitHubUsageTests : IDisposable {
         Assert.Equal((50, 50, 7, Reset), (view.Spenders[0].ChargedLastHour, view.Spenders[0].ChargedLast5Minutes,
             view.Spenders[0].NotModifiedLastHour, view.Spenders[0].WindowResetAtUtc!.Value));
         var window = Assert.Single(view.Windows);
-        Assert.Equal((960, 75, 885, "mac/ledger-reporter"), (window.Used, window.Reported, window.Unattributed, window.ObservedBy));
+        // The restarted run sent no reading yet, so its 10 requests are not placed in any window.
+        Assert.Equal((960, 65, 895, "mac/ledger-reporter"), (window.Used, window.Reported, window.Unattributed, window.ObservedBy));
         Assert.Equal(75, view.ChargedLastHour);
     }
 
@@ -81,15 +82,47 @@ public sealed class GitHubUsageTests : IDisposable {
     public void ViewSeparatesWindowsOfDifferentIdentitiesAndCountsOnlyTheLastHour() {
         var other = Reset.AddMinutes(-17);
         LedgerStore.GitHubUsageRow Row(string component, int minutesAgo, int charged) =>
-            new("win-pc", component, new DateTimeOffset(2026, 11, 18, 15, 30, 0, TimeSpan.Zero).AddMinutes(-minutesAgo), "core", charged, 0);
+            new("win-pc", component, component, new DateTimeOffset(2026, 11, 18, 15, 30, 0, TimeSpan.Zero).AddMinutes(-minutesAgo), "core", charged, 0);
         var view = LedgerStore.GitHubBudget(Now, [Row("marquee", 2, 30), Row("marquee", 20, 100), Row("marquee", 70, 999), Row("bridge", 1, 4)], [
-            ("win-pc", "marquee", new GitHubRateLimitReading("core", 5000, 2000, 3000, Reset, Now)),
-            ("win-pc", "bridge", new GitHubRateLimitReading("core", 5000, 40, 4960, other, Now)),
-            ("win-pc", "old", new GitHubRateLimitReading("core", 5000, 4000, 1000, Now.AddMinutes(-10), Now.AddMinutes(-40)))]);
+            new("win-pc", "marquee", "marquee", new GitHubRateLimitReading("core", 5000, 2000, 3000, Reset, Now)),
+            new("win-pc", "bridge", "bridge", new GitHubRateLimitReading("core", 5000, 40, 4960, other, Now)),
+            new("win-pc", "old", "old", new GitHubRateLimitReading("core", 5000, 4000, 1000, Now.AddMinutes(-10), Now.AddMinutes(-40)))]);
         Assert.Equal(130, view.Spenders.Single(s => s.Component == "marquee").ChargedLastHour);
         Assert.Equal(30, view.Spenders.Single(s => s.Component == "marquee").ChargedLast5Minutes);
         Assert.Equal([(Reset, 2000, 1870), (other, 40, 36)], view.Windows.Select(w => (w.ResetAtUtc, w.Used, w.Unattributed)));
         Assert.Contains("several-core-windows:more-than-one-identity-or-token", view.Coverage);
+    }
+
+    [Fact]
+    public void WindowsFollowEachRunsAccountAndEachResourcesLength() {
+        var at = new DateTimeOffset(2026, 11, 18, 15, 30, 0, TimeSpan.Zero);
+        LedgerStore.GitHubUsageRow Row(string instance, string resource, int minutesAgo, int charged) =>
+            new("win-pc", "ledger-reporter", instance, at.AddMinutes(-minutesAgo), resource, charged, 0);
+        var otherAccount = Reset.AddMinutes(-20);
+        var view = LedgerStore.GitHubBudget(Now, [Row("old", "core", 10, 100), Row("new", "core", 1, 1),
+            Row("new", "search", 20, 10), Row("new", "search", 0, 1), Row("new", "graphql", 1, 1)], [
+            new("win-pc", "ledger-reporter", "old", new GitHubRateLimitReading("core", 5000, 300, 4700, otherAccount, Now.AddMinutes(-9))),
+            new("win-pc", "ledger-reporter", "new", new GitHubRateLimitReading("core", 5000, 7, 4993, Reset, Now)),
+            new("win-pc", "ledger-reporter", "new", new GitHubRateLimitReading("search", 30, 3, 27, Now.AddSeconds(30), Now)),
+            new("win-pc", "ledger-reporter", "new", new GitHubRateLimitReading("graphql", 5000, 5, 4995, Reset, Now))]);
+        Assert.Equal([(otherAccount, 100, 200), (Reset, 1, 6)],
+            view.Windows.Where(w => w.Resource == "core").Select(w => (w.ResetAtUtc, w.Reported, w.Unattributed)));
+        // Search resets every minute, so the search from twenty minutes ago belongs to an earlier window.
+        Assert.Equal((1, 2), view.Windows.Where(w => w.Resource == "search").Select(w => (w.Reported, w.Unattributed)).Single());
+        // GraphQL's Used counts points, which can't be compared with requests.
+        Assert.Equal(0, view.Windows.Single(w => w.Resource == "graphql").Unattributed);
+    }
+
+    [Fact]
+    public async Task AnEmptyReportStillRemovesOldTallies() {
+        using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
+        await store.InitializeAsync();
+        await store.RecordGitHubUsageAsync("win-pc", [new("marquee", Guid.NewGuid(), [new(Now.AddMinutes(-30), "core", 5)],
+            [new("core", 5000, 5, 4995, Reset, Now.AddMinutes(-30))])], Now.AddMinutes(-30));
+        await store.RecordGitHubUsageAsync("win-pc", [], Now.AddHours(3));
+        var view = await store.GitHubBudgetAsync(Now.AddHours(-1));
+        Assert.Empty(view.Spenders);
+        Assert.Empty(view.Windows);
     }
 
     [Fact]
@@ -106,10 +139,13 @@ public sealed class GitHubUsageTests : IDisposable {
         var stale = Path.Combine(folder, "stale.json");
         File.WriteAllText(stale, JsonSerializer.Serialize(new GitHubUsageReport("stale", Guid.NewGuid(), [new(minute, "core", 1)]), LedgerJson.Options));
         File.SetLastWriteTimeUtc(stale, now.UtcDateTime.AddHours(-3));
+        // Invalid files that sort first don't use up the limit before the valid one is read.
+        for (var index = 0; index < GitHubUsageValidation.MaximumReports; index++) File.WriteAllText(Path.Combine(folder, $"a{index:00}.json"), "{");
 
         var report = Assert.Single(GitHubUsageDropFolder.Read(folder, now));
         Assert.Equal("marquee", report.Component);
         Assert.Equal(new GitHubUsageMinute(minute, "core", 12, 30), Assert.Single(report.Minutes));
+        Assert.Empty(GitHubUsageDropFolder.Read(Path.Combine(folder, "missing"), now));
     }
 
     private sealed class StubHandler : HttpMessageHandler {

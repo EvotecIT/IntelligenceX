@@ -7,7 +7,8 @@ The agent service runs as its own process: the sign-in task EvotecIT-IX-Ledger-a
 com.evotec.intelligencex-ledger.agent on macOS. It installs from a kit built by Build/Publish-LedgerAgent.ps1; the kit's
 agent-manifest.json names the source commit and every file's SHA-256. Each version lives in
 agent-service/versions/<commit>, and agent-service/install.json records the current and previous one, so Rollback
-returns to the previous version without a kit.
+returns to the previous version without a kit. A kit built with -Unmerged installs only with -AllowUnmerged, for an
+isolated test instance.
 
 Install and Rollback preview by default; -Apply makes the change. Stop stops only the agent process its own receipt
 names (with a matching start time) and the startup task that runs this install, never other Ledger processes such as
@@ -32,6 +33,7 @@ param(
     [string]$WorkspaceRoot,
     [string]$Codex,
     [string]$Claude,
+    [switch]$AllowUnmerged,
     [switch]$Apply
 )
 $ErrorActionPreference = 'Stop'
@@ -78,6 +80,10 @@ function Assert-Kit([string]$Path) {
     if (-not $manifest -or $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$') { throw "No agent-manifest.json with a source commit in $Path." }
     $expected = $IsWindows ? 'win-x64' : 'osx-arm64'
     if ($manifest.runtime -cne $expected) { throw "The kit is for $($manifest.runtime); this machine needs $expected." }
+    # Live machines run merged master only; a kit built with -Unmerged is for an isolated test instance.
+    # Kits from before the rule have no merged field and stay installable, so rollback to them keeps working.
+    $merged = $manifest.PSObject.Properties['merged']
+    if ($merged -and $merged.Value -eq $false -and -not $AllowUnmerged) { throw "The kit was built from unmerged commit $($manifest.sourceCommit). Live machines run merged master only." }
     $listed = @{}
     foreach ($file in $manifest.files) {
         $full = [IO.Path]::GetFullPath((Join-Path $Path $file.path))

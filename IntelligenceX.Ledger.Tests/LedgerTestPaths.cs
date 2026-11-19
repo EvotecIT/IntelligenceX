@@ -17,4 +17,15 @@ internal static class LedgerTestPaths {
         }
         return Path.Combine(physical, "ix-ledger-" + name + "-" + Guid.NewGuid().ToString("N"));
     }
+
+    /// <summary>
+    /// Deletes a served test's directory after its process was killed. A killed service leaves its SQLite WAL and
+    /// shared-memory files, and Windows can still hold them for a moment after the process has exited.
+    /// </summary>
+    internal static async Task DeleteServedDirectoryAsync(string directory) {
+        for (var attempt = 1; ; attempt++) {
+            try { Directory.Delete(directory, recursive: true); return; }
+            catch (Exception error) when (attempt < 20 && error is IOException or UnauthorizedAccessException) { await Task.Delay(250); }
+        }
+    }
 }

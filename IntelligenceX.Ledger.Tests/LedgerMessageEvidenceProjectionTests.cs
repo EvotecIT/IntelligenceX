@@ -157,7 +157,7 @@ public sealed class LedgerMessageEvidenceProjectionTests {
         } finally {
             if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
             await Task.WhenAll(output, error);
-            Directory.Delete(directory, recursive: true);
+            await LedgerTestPaths.DeleteServedDirectoryAsync(directory);
         }
     }
 

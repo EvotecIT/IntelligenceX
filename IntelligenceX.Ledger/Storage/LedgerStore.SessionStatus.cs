@@ -9,10 +9,6 @@ public sealed partial class LedgerStore {
             CREATE TABLE IF NOT EXISTS session_lookup(item TEXT PRIMARY KEY,native TEXT,title TEXT,machine TEXT NOT NULL,provider TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS session_lookup_native ON session_lookup(native);
             CREATE INDEX IF NOT EXISTS items_parent ON items(json_extract(json,'$.parentItemId'));
-            INSERT OR IGNORE INTO session_lookup(item,native,title,machine,provider)
-              SELECT i.id,json_extract(i.json,'$.session.sourceSessionId'),
-                COALESCE(json_extract(i.json,'$.session.title'),json_extract(i.json,'$.session.repository.title')),
-                s.machine,s.provider FROM session_status s JOIN items i ON i.id=s.item;
             """, cancellationToken: token);
     }
 

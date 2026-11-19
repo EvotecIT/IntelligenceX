@@ -80,6 +80,13 @@ public sealed class LedgerHttpTests {
             using (var conflict = await client.PostAsJsonAsync("events", new[] { observation with { Sequence = 2 } }, LedgerJson.Options, timeout.Token))
                 Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ReadToken);
+            using (var health = await client.GetAsync("health", timeout.Token)) {
+                Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+                using var body = JsonDocument.Parse(await health.Content.ReadAsStringAsync(timeout.Token));
+                Assert.Equal("ok", body.RootElement.GetProperty("status").GetString());
+            }
+            using (var startup = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(directory, StartupProgress.FileName), timeout.Token)))
+                Assert.True(startup.RootElement.GetProperty("ready").GetBoolean());
             using var reader = new LedgerReadClient(new() { Endpoint = $"http://127.0.0.1:{port}/", ReadToken = settings.ReadToken });
             Assert.Empty((await reader.WhoAsync("bench:synthetic", token: timeout.Token)).Leases);
             using (var denied = await client.PostAsJsonAsync("leases/acquire", new LeaseAcquire("bench:synthetic", "agent", "synthetic-machine", "benchmark", 600), timeout.Token))
@@ -215,7 +222,7 @@ public sealed class LedgerHttpTests {
         } finally {
             if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
             await Task.WhenAll(output, error);
-            Directory.Delete(directory, true);
+            await LedgerTestPaths.DeleteServedDirectoryAsync(directory);
         }
     }
 }

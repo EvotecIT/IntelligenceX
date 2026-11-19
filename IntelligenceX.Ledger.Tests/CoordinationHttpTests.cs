@@ -628,7 +628,7 @@ public sealed class CoordinationHttpTests {
         } finally {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(); await Task.WhenAll(stdout, stderr);
-            Directory.Delete(directory, true);
+            await LedgerTestPaths.DeleteServedDirectoryAsync(directory);
         }
     }
 }

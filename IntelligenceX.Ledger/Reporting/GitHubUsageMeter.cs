@@ -104,9 +104,13 @@ internal static class GitHubUsageDropFolder {
 
     /// <summary>Reads the current tallies. Unreadable, oversized or stale files are skipped, never fatal.</summary>
     internal static GitHubUsageReport[] Read(string folder, DateTimeOffset now) {
-        if (!Directory.Exists(folder)) return [];
+        string[] files;
+        // The folder is optional input: one that vanishes or can't be listed counts as empty and never stops the reporter.
+        try { files = Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json") : []; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { return []; }
         var reports = new List<GitHubUsageReport>();
-        foreach (var file in Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.Ordinal).Take(GitHubUsageValidation.MaximumReports)) {
+        foreach (var file in files.Order(StringComparer.Ordinal).Take(GitHubUsageValidation.MaximumReports * 4)) {
+            if (reports.Count == GitHubUsageValidation.MaximumReports) break;
             try {
                 var info = new FileInfo(file);
                 if (info.Length > MaximumFileBytes || now - info.LastWriteTimeUtc > GitHubUsageMeter.Retention) continue;
