@@ -34,7 +34,11 @@ public static class Program {
         if (args.Length == 3 && args[0] == "compact" && args[1] == "--config") return await CompactAsync(args[2]);
         if (args.Length == 4 && args[0] == "hook" && args[1] == "--config")
             return await LocalReporter.RunAsync(args[2], hook: true, suppliedPayload: args[3]);
-        if (args.Length == 3 && args[0] == "agent" && args[1] == "--config") return await Agents.AgentHost.RunProcessAsync(args[2]);
+        if (args.Length == 3 && args[0] == "agent" && args[1] == "--config") {
+            // A sign-in task like the service and reporter; helper sessions it starts inherit its priority.
+            ProcessPriority.EnsureNormal();
+            return await Agents.AgentHost.RunProcessAsync(args[2]);
+        }
         if (args.Length == 3 && args[0] == "agent-check" && args[1] == "--config") return await Agents.AgentHost.CheckAsync(Agents.AgentHost.Load(args[2]));
         if (args.Length > 0 && args[0] == "agent-install") return await Agents.AgentInstaller.RunAsync(args);
         if (args.Length > 0 && args[0] == "agent-enroll") return Agents.AgentEnrollment.Run(args);

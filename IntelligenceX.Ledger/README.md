@@ -19,7 +19,7 @@ The reporter configuration requires `endpoint`, `token` (the write token), `mach
 
 An expected machine with no heartbeat is `not-enrolled`. A reporter silent for ten minutes makes its machine Stuck; item rows retain their last-known state. Startup and partial-source diagnostics appear separately in status. Local-only automatic discovery includes new source roots during reconciliation without relabeling recovered history as local activity.
 
-`serve` and `report` raise their own CPU, disk and memory priority to normal at startup and print the result. Windows starts scheduled tasks below normal priority, which also lowers disk priority, and at low disk priority the service stalled for minutes whenever another process wrote heavily to the same volume.
+`serve`, `report` and `agent` raise their own CPU, disk and memory priority to normal at startup; `serve` and `report` print the result. Windows starts scheduled tasks below normal priority, which also lowers disk priority, and at low disk priority the service stalled for minutes whenever another process wrote heavily to the same volume.
 
 While it starts, the service writes its current phase to `service-startup.json` in the data directory and to standard output: `opening-coordination`, `opening-ledger`, `rebuilding-projections` (with done and total counts), `ledger-ready`, `starting-listener` and finally `ready`. A supervisor can wait while the phase or its counts change and treat a start that stops moving as unhealthy. The derived session tables are rebuilt from items only when the database's projection version is older than the service's, in one transaction, so a normal restart skips that pass.
 
