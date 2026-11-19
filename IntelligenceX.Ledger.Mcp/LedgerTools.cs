@@ -40,6 +40,10 @@ public sealed class LedgerTools(LedgerReadClient client) {
     [Description("Read observed usage-limit groups, the next policy provider suggested for limited sessions, and the Ledger host's accounts: Codex window use, reset, credits and free resets from its app server; Claude 5-hour and weekly use from the last status line. Unmapped accounts are session-scoped evidence. Routing is advice and any session can do any kind of work.")]
     public Task<BudgetStatus> BudgetStatus(CancellationToken cancellationToken = default) => client.BudgetStatusAsync(cancellationToken);
 
+    [McpServerTool(Name = "github_budget", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read who is spending the GitHub REST budget: charged requests (304s are free) per component and machine over the last hour and the last 5 minutes, and each rate-limit window's limit, used, remaining and reset. Unattributed is what a window used that no reporting component accounts for: ad-hoc gh, scripts and other tools on the same identity. A second core window means a second identity or token.")]
+    public Task<GitHubBudgetView> GitHubBudget(CancellationToken cancellationToken = default) => client.GitHubBudgetAsync(cancellationToken);
+
     [McpServerTool(Name = "policy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read the current revisioned policy for session lifecycle, resource reservations, load and routing preferences.")]
     public Task<CoordinationPolicy> Policy(CancellationToken cancellationToken = default) => client.ReadPolicyAsync(cancellationToken);

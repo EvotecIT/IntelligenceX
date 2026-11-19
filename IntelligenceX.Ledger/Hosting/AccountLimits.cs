@@ -20,9 +20,12 @@ public static class AccountLimits {
     public static async Task<AccountLimit[]> ReadAsync(CancellationToken token) {
         var codex = await CodexAsync(token).ConfigureAwait(false);
         var claude = Claude(ClaudeSnapshotPath(), DateTimeOffset.UtcNow);
-        var machine = Environment.GetEnvironmentVariable("EVOTEC_MACHINE") is { Length: > 0 } named ? named : Environment.MachineName.ToLowerInvariant();
-        return new[] { codex, claude }.OfType<AccountLimit>().Select(limit => limit with { Machine = machine }).ToArray();
+        return new[] { codex, claude }.OfType<AccountLimit>().Select(limit => limit with { Machine = LocalMachine }).ToArray();
     }
+
+    /// <summary>The Ledger host's machine name: <c>EVOTEC_MACHINE</c>, otherwise the host name.</summary>
+    internal static string LocalMachine =>
+        Environment.GetEnvironmentVariable("EVOTEC_MACHINE") is { Length: > 0 } named ? named : Environment.MachineName.ToLowerInvariant();
 
     private static async Task<AccountLimit?> CodexAsync(CancellationToken token) {
         await Gate.WaitAsync(token).ConfigureAwait(false);

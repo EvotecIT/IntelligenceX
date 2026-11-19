@@ -87,6 +87,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         await InitializeReservationsAsync(db, token);
         await InitializeSessionLookupAsync(db, token);
         await InitializeLineageAsync(db, token);
+        await InitializeGitHubUsageAsync(db, token);
         if (Convert.ToInt32(await db.ExecuteScalarAsync("PRAGMA user_version", cancellationToken: token)) < ProjectionVersion)
             await RebuildProjectionsAsync(db, progress, token);
         _walAnchor ??= OpenAnchor(path);

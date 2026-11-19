@@ -6,12 +6,16 @@ namespace IntelligenceX.Ledger.Storage;
 public sealed partial class LedgerStore {
     public async Task UpdateReporterHealthAsync(ReporterHealth health, CancellationToken token = default) {
         var policy = await ReadPolicyAsync(token);
+        // GitHub tallies have their own table; the health row keeps only the reporter's own state.
+        var usage = health.GitHubUsage ?? [];
+        health = health with { GitHubUsage = null };
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
             await db.RunInTransactionAsync(async (tx, ct) => {
                 await UpsertReporterHealthAsync(tx, health, preserveCoverage: false, ct);
                 await UpdateLoadAsync(tx, health, policy, ct);
+                if (usage.Length > 0) await RecordGitHubUsageAsync(tx, health.MachineId, usage, DateTimeOffset.UtcNow, ct);
                 foreach (var progress in health.Progress ?? []) {
                     var json = await tx.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
                         new Dictionary<string, object?> { ["id"] = progress.ItemId }, ct);

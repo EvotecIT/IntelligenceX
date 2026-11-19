@@ -15,6 +15,9 @@ public sealed partial class LedgerReadClient {
         GetAsync("api/ledger/v1/machine-status/" + Uri.EscapeDataString(id), LedgerReadJson.Default.MachineStatus, token);
     public Task<BudgetStatus> BudgetStatusAsync(CancellationToken token = default) =>
         GetAsync("api/ledger/v1/budget-status", LedgerReadJson.Default.BudgetStatus, token);
+    /// <summary>Reads who is spending the GitHub REST budget: per component and machine, and per rate-limit window.</summary>
+    public Task<GitHubBudgetView> GitHubBudgetAsync(CancellationToken token = default) =>
+        GetAsync("api/ledger/v1/github-budget", LedgerReadJson.Default.GitHubBudgetView, token);
     public Task<SessionStatus> SessionStatusAsync(string id, CancellationToken token = default) =>
         GetAsync("api/ledger/v1/session-status?id=" + Uri.EscapeDataString(id), LedgerReadJson.Default.SessionStatus, token);
     public Task<PullRequestReadiness> PullRequestReadinessAsync(string repo, int pr, CancellationToken token = default) =>

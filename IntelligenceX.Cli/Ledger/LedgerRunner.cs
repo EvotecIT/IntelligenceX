@@ -12,7 +12,7 @@ internal static class LedgerRunner {
     internal static async Task<int> RunAsync(string[] args) {
         if (args.Length > 0 && args[0] == "policy") return await LedgerPolicyRunner.RunAsync(args).ConfigureAwait(false);
         if (args.Length > 0 && args[0] is "repo_activity" or "overlap") return await LedgerRepositoryRunner.RunAsync(args).ConfigureAwait(false);
-        if (args.Length > 0 && args[0] is "who" or "machine_status" or "budget_status" or "session_status" or "pr_ready" or "cleanup" or "lease_acquire" or "lease_renew" or "lease_release" or
+        if (args.Length > 0 && args[0] is "who" or "machine_status" or "budget_status" or "github_budget" or "session_status" or "pr_ready" or "cleanup" or "lease_acquire" or "lease_renew" or "lease_release" or
             "session_tree" or "session_trail" or "session_takeover")
             return await LedgerLeaseRunner.RunAsync(args).ConfigureAwait(false);
         if (args.Length > 0 && args[0] is "work" or "projects" or "context" or "search" or "project_status" or "work_reconcile")
@@ -22,7 +22,7 @@ internal static class LedgerRunner {
             Console.WriteLine("ix ledger work|projects|context <project> [topic]|search <project> <topic> --config <local-client.json>");
             Console.WriteLine("ix ledger project_status [owner/repo]|work_reconcile [verdict] [owner/repo] --config <local-client.json>");
             Console.WriteLine("ix ledger status|needs-you|stuck|item <id> [--config <local-client-json>]");
-            Console.WriteLine("ix ledger who <key> [--prefix]|machine_status <id>|budget_status --config <read-json>");
+            Console.WriteLine("ix ledger who <key> [--prefix]|machine_status <id>|budget_status|github_budget --config <read-json>");
             Console.WriteLine("ix ledger session_status <session-id-or-title>|cleanup --dry-run [--machine <id>] --config <read-json>");
             Console.WriteLine("ix ledger session_tree <session-id-or-title>|session_trail <session-id-or-title> --config <read-json>");
             Console.WriteLine("ix ledger session_takeover <from-session> <by-session> [--reason <text>] --config <lease-write-json>");

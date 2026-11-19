@@ -30,6 +30,11 @@ public sealed partial class GitHubDashboardService : IDisposable {
         : this(CreateHttpClient(token, apiBaseUrl), disposeHttpClient: true) {
     }
 
+    /// <summary>Uses <paramref name="handler"/> for every request, for example to count the requests it makes.</summary>
+    internal GitHubDashboardService(string token, HttpMessageHandler handler)
+        : this(CreateHttpClient(token, apiBaseUrl: null, handler), disposeHttpClient: true) {
+    }
+
     internal GitHubDashboardService(HttpClient httpClient, bool disposeHttpClient) {
         _http = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _disposeHttpClient = disposeHttpClient;
@@ -656,14 +661,13 @@ query($login: String!, $cursor: String) {
         return repositories;
     }
 
-    private static HttpClient CreateHttpClient(string token, string? apiBaseUrl) {
+    private static HttpClient CreateHttpClient(string token, string? apiBaseUrl, HttpMessageHandler? handler = null) {
         if (string.IsNullOrWhiteSpace(token)) {
             throw new ArgumentException("GitHub token is required.", nameof(token));
         }
 
-        var http = new HttpClient {
-            BaseAddress = new Uri(string.IsNullOrWhiteSpace(apiBaseUrl) ? "https://api.github.com" : apiBaseUrl)
-        };
+        var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: true);
+        http.BaseAddress = new Uri(string.IsNullOrWhiteSpace(apiBaseUrl) ? "https://api.github.com" : apiBaseUrl);
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("IntelligenceX", "1.0"));
         http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());

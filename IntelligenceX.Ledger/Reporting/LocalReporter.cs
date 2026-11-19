@@ -102,8 +102,15 @@ public static class LocalReporter {
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
         var credentials = settings.GitHub || settings.ProjectClaims is not null
             ? await GitHubCredentialResolver.ResolveAsync(stop.Token) : null;
-        using var github = credentials?.HasToken == true ? new GitHubDashboardService(credentials.Token!) : null;
-        using var projectClient = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        // Every GitHub answer the reporter receives is counted and sent with its heartbeat, with the tallies other local
+        // components left in the drop folder.
+        var githubUsage = new GitHubUsageMeter();
+        var githubUsageFolder = GitHubUsageDropFolder.DefaultPath();
+        using var github = credentials?.HasToken == true
+            ? new GitHubDashboardService(credentials.Token!, new GitHubUsageHandler(githubUsage, "ledger-reporter", new HttpClientHandler())) : null;
+        using var projectClient = new HttpClient(new GitHubUsageHandler(githubUsage, "ledger-reporter", new HttpClientHandler()), disposeHandler: true) {
+            Timeout = TimeSpan.FromSeconds(20)
+        };
         projectClient.DefaultRequestHeaders.UserAgent.ParseAdd("IntelligenceX-Ledger/1");
         if (credentials?.HasToken == true) projectClient.DefaultRequestHeaders.Authorization = new("Bearer", credentials.Token);
         var claimReader = settings.ProjectClaims is not null && credentials?.HasToken == true
@@ -170,11 +177,13 @@ public static class LocalReporter {
             changes.Checkpoint();
             }
         }
+        var usageTurn = 0;
         async Task UploadLoop() {
             using var heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
             do {
                 var machineFacts = await probe.ReadAsync(stop.Token);
-                var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts);
+                var usage = GitHubUsageValidation.Fit(githubUsage.Snapshot(), GitHubUsageDropFolder.Read(githubUsageFolder, DateTimeOffset.UtcNow, usageTurn), usageTurn++);
+                var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts, usage);
                 if (receipt is { Ok: true, PolicyRevision: > 0, Session: not null }) Volatile.Write(ref lifecyclePolicy, receipt.Session);
             } while (await heartbeatTimer.WaitForNextTickAsync(stop.Token));
         }
@@ -370,13 +379,15 @@ public static class LocalReporter {
                 pair.Value.Select(url => ItemId("pr", "github", url)).ToArray(), !claims.IncompletePullRequestItems.Contains(pair.Key), claims.CapturedAtUtc)));
     }
     internal static async Task<ReporterHealthReceipt?> DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent healthObservation,
-        CancellationToken token, ReporterChangeTracker? changes = null, ProbeAvailability? probe = null) {
+        CancellationToken token, ReporterChangeTracker? changes = null, ProbeAvailability? probe = null, GitHubUsageReport[]? githubUsage = null) {
         var progress = changes?.Progress.Where(p => p.LastActivityAtUtc <= healthObservation.ObservedAtUtc).ToArray() ?? [];
         var coverage = (healthObservation.Coverage ?? []).Distinct(StringComparer.Ordinal).ToList();
         if (progress.Length > 128) coverage.Insert(0, "progress-truncated");
         if (coverage.Count > 32) coverage = [.. coverage.Take(31), "coverage-truncated"];
         var health = new ReporterHealth(healthObservation.MachineId, healthObservation.ReporterId,
-            healthObservation.SourceVersion, healthObservation.ObservedAtUtc, coverage.ToArray(), progress.Take(128).ToArray(), probe);
+            healthObservation.SourceVersion, healthObservation.ObservedAtUtc, coverage.ToArray(), progress.Take(128).ToArray(), probe) {
+            GitHubUsage = githubUsage is { Length: > 0 } ? githubUsage : null
+        };
         await FlushAsync(client, spool, token, changes);
         try {
             using var response = await client.PostAsJsonAsync("api/ledger/v1/reporters/health", health, LedgerJson.Options, token);

@@ -192,7 +192,16 @@ public sealed class LedgerHttpTests {
                 ObservedAtUtc = probeAt, SampledAtUtc = probeAt, CpuUse = .25, MemoryPressure = "warning", MemoryUsedBytes = 128,
                 MemoryTotalBytes = 256, SwapUsedBytes = 64, Volumes = [new("/synthetic", 1024, 2048)], RunnerBusy = true, RunnerListening = true
             });
+            var usageMinute = new DateTimeOffset(probeAt.Year, probeAt.Month, probeAt.Day, probeAt.Hour, probeAt.Minute, 0, TimeSpan.Zero);
+            probeHealth = probeHealth with { GitHubUsage = [new("ledger-reporter", Guid.NewGuid(), [new(usageMinute, "core", 12, 40)],
+                [new("core", 5000, 100, 4900, probeAt.AddMinutes(30), probeAt)])] };
+            using (var rejected = await ingress.PostAsJsonAsync("api/ledger/v1/reporters/health", probeHealth with {
+                GitHubUsage = [probeHealth.GitHubUsage[0] with { Component = "not a name" }] }, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
             using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/reporters/health", probeHealth, LedgerJson.Options, timeout.Token)) Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var githubBudget = await reader.GitHubBudgetAsync(timeout.Token);
+            Assert.Equal(("synthetic-machine", "ledger-reporter", 12), (githubBudget.Spenders[0].Machine, githubBudget.Spenders[0].Component, githubBudget.Spenders[0].ChargedLastHour));
+            Assert.Equal(88, githubBudget.Windows.Single(w => w.ObservedBy == "synthetic-machine/ledger-reporter").Unattributed);
             var joined = await reader.MachineStatusAsync("synthetic-machine", timeout.Token);
             Assert.Equal("available", joined.Probe.State);
             Assert.Equal(.25, joined.Probe.CpuUse);

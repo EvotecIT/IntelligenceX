@@ -6,7 +6,7 @@ using IntelligenceX.Telemetry.GitHub;
 namespace IntelligenceX.Ledger.Hosting;
 
 /// <summary>Bounded 60-second GitHub cache, joined with the reporter's existing checkout evidence.</summary>
-internal sealed class PullRequestReadinessService(LedgerStore store) {
+internal sealed class PullRequestReadinessService(LedgerStore store, GitHubUsageMeter? usage = null) {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, Entry> _cache = new(StringComparer.Ordinal);
     private sealed record Entry(PullRequestReadiness Value);
@@ -26,7 +26,8 @@ internal sealed class PullRequestReadinessService(LedgerStore store) {
                 deadline.CancelAfter(TimeSpan.FromSeconds(12));
                 var credentials = await GitHubCredentialResolver.ResolveAsync(deadline.Token);
                 if (!credentials.HasToken) throw new InvalidOperationException("GitHub credentials unavailable.");
-                using var github = new GitHubDashboardService(credentials.Token!);
+                using var github = usage is null ? new GitHubDashboardService(credentials.Token!)
+                    : new GitHubDashboardService(credentials.Token!, new GitHubUsageHandler(usage, "ledger-readiness", new HttpClientHandler()));
                 var report = await github.FetchPullRequestReadinessAsync(repo, pr, deadline.Token);
                 var rechecked = report.HeadSha == report.ObservedHeadSha && !report.Reasons.Contains("head-changed-during-read");
                 var checkouts = await store.PullRequestCheckoutsAsync(repo, pr, report.HeadSha, report.HeadBranch, deadline.Token);
