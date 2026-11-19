@@ -217,6 +217,14 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         ? status.ValueKind == JsonValueKind.String ? status.GetString()! : status.TryGetProperty("type", out var type) ? type.GetString()! : "unknown"
         : "unknown";
 
+    /// <summary>True when one of the turn's user inputs is exactly <paramref name="text"/>.</summary>
+    internal static bool HasInput(JsonElement turn, string text) => turn.TryGetProperty("items", out var items) &&
+        items.ValueKind == JsonValueKind.Array && items.EnumerateArray().Any(item =>
+            item.TryGetProperty("type", out var type) && type.GetString() == "userMessage" &&
+            item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array &&
+            content.EnumerateArray().Any(part => part.TryGetProperty("text", out var value) && value.ValueKind == JsonValueKind.String &&
+                string.Equals(value.GetString()?.Trim(), text.Trim(), StringComparison.Ordinal)));
+
     internal static string? FinalText(JsonElement turn) => turn.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
         ? items.EnumerateArray().Where(item => item.TryGetProperty("type", out var type) && type.GetString() == "agentMessage")
             .Select(item => item.TryGetProperty("text", out var text) ? text.GetString() : null).LastOrDefault(text => !string.IsNullOrWhiteSpace(text))
@@ -334,7 +342,7 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         var queued = await QueueAsync(threadId, text, token).ConfigureAwait(false);
         var route = queued switch {
             QueueOutcome.Resumed => "queue",
-            QueueOutcome.HolderOwned => await NewTurnAsync(threadId, knownTurns, HolderConfirmTimeout, token).ConfigureAwait(false) ? "queue-app" : "queue-held",
+            QueueOutcome.HolderOwned => await TookInputAsync(threadId, knownTurns, text, HolderConfirmTimeout, token).ConfigureAwait(false) ? "queue-app" : "queue-held",
             _ => "queue-parked"
         };
         return (new(route, "queued", model), server, watch);
@@ -343,15 +351,16 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     /// <summary>How long a message left with the thread's holder is watched for the turn that takes it.</summary>
     internal static readonly TimeSpan HolderConfirmTimeout = TimeSpan.FromMinutes(2);
 
-    /// <summary>True once the thread has more than <paramref name="knownTurns"/> turns, read without taking the thread.</summary>
-    private async Task<bool> NewTurnAsync(string threadId, int knownTurns, TimeSpan timeout, CancellationToken token) {
+    /// <summary>True once a turn of the thread holds <paramref name="text"/> as its input, read without taking the thread. Only
+    /// the turn running when the delivery began and later ones are searched; a turn the user started meanwhile doesn't count.</summary>
+    private async Task<bool> TookInputAsync(string threadId, int knownTurns, string text, TimeSpan timeout, CancellationToken token) {
         var deadline = DateTimeOffset.UtcNow + timeout;
         try {
             await using var reader = await OpenAsync(token).ConfigureAwait(false);
             while (true) {
                 var read = await reader.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false);
                 if (read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array &&
-                    turns.GetArrayLength() > knownTurns) return true;
+                    turns.EnumerateArray().Skip(Math.Max(0, knownTurns - 1)).Any(turn => HasInput(turn, text))) return true;
                 if (DateTimeOffset.UtcNow >= deadline) return false;
                 await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
             }

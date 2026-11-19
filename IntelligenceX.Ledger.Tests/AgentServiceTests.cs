@@ -194,6 +194,16 @@ public sealed class AgentServiceTests {
     }
 
     [Fact]
+    public void AQueuedMessageIsConfirmedOnlyByATurnWhoseInputIsThatMessage() {
+        using var turn = JsonDocument.Parse("{\"id\":\"t2\",\"items\":[{\"type\":\"userMessage\",\"content\":[{\"type\":\"text\"," +
+            "\"text\":\"Wake w-1: passed.\\n\\nMerge it.\"}]},{\"type\":\"agentMessage\",\"text\":\"Merging.\"}]}");
+        Assert.True(CodexRunner.HasInput(turn.RootElement, "Wake w-1: passed.\n\nMerge it."));
+        // A turn the user started in the app meanwhile, or an agent message with the same words, doesn't confirm it.
+        Assert.False(CodexRunner.HasInput(turn.RootElement, "Something the user typed."));
+        Assert.False(CodexRunner.HasInput(turn.RootElement, "Merging."));
+    }
+
+    [Fact]
     public void AQueuedMessageCountsAsDeliveredOnlyWhenTheDaemonResumedTheThread() {
         // The exact output of codex 0.169 (app) and 0.162 (npm) on a machine without the local app-server daemon.
         const string parked = "Warning: message was queued, but could not resume thread 01a1f04c-2799-7f33-b8ee-8e45e5fc36f1: " +

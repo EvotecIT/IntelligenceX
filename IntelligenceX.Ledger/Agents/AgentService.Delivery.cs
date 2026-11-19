@@ -162,7 +162,8 @@ internal sealed partial class AgentService {
                 };
             }
             if (delivery.Route == "turn") {
-                followed = true;
+                // Only a private server holds the thread for the whole turn; the app's daemon takes steered input meanwhile.
+                followed = !server.Live;
                 Start("wake:" + requestId + ":" + delivery.TurnId, () => FollowWakeAsync(requestId, to.SessionId, delivery, server, watch, stop, usage));
             }
             else {
@@ -192,7 +193,7 @@ internal sealed partial class AgentService {
     private async Task FollowWakeAsync(string requestId, string sessionId, CodexDelivery delivery, CodexAppServer server, TurnWatch watch,
         CancellationToken stop, bool usage = true) {
         try { await FollowAsync(requestId, sessionId, delivery, server, watch, stop, usage).ConfigureAwait(false); }
-        finally { _following.TryRemove(sessionId, out _); }
+        finally { if (!server.Live) _following.TryRemove(sessionId, out _); }
     }
 
     /// <summary>Codex threads with a turn this agent started and still follows on its private server.</summary>
