@@ -154,6 +154,19 @@ public sealed class CoordinationCreationTests {
         Assert.Equal(1, e.Summary(null).Machines.Single(m => m.Id == "helper-host").Used.AgentSlots);
     }
 
+    // Protects helpers on a host whose clock runs a little behind the Ledger's: a worker enrolled right after admission
+    // carries the host's earlier timestamp.
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(-20)]
+    public void ANewWorkerFromAHostSlightlyBehindStillBinds(int secondsBeforeAdmission) {
+        var state = Creator(); var e = new CoordinationEngine(state, Now); var admitted = e.Submit(Request(), Requester);
+        var worker = NewWorker() with { ObservedAtUtc = Now.AddSeconds(secondsBeforeAdmission) };
+        e.ObserveWorker(worker, HelperHost);
+        var binding = Bind(e, admitted, worker, HelperHost);
+        Assert.Equal(binding, e.BindSession(binding, HelperHost));
+    }
+
     [Fact]
     public void NewlyObservedSessionBindsExactReservedGrantWithoutBeingStolenOrRebound() {
         var state = Creator(2); var e = new CoordinationEngine(state, Now); var admitted = e.Submit(Request(), Requester);
