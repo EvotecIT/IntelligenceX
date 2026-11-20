@@ -304,6 +304,8 @@ internal sealed class AuthPaths {
     /// <summary>The paths a tool may be at, in order: the agent service's own setting, then PATH, then the usual install
     /// folders. A LaunchAgent's PATH is short, so the install folders matter on a Mac.</summary>
     public IEnumerable<string> Candidates(string tool) {
+        // The Codex app's own CLI comes first: it is the one the agent service runs.
+        if (tool == "codex" && _installFolders && Agents.CodexCli.DesktopApp() is { } desktop) yield return desktop;
         foreach (var path in _configured.GetValueOrDefault(tool) ?? []) yield return path;
         if (tool == "codex" && Variable("CODEX_BIN", EnvironmentVariableTarget.Process) is { } bin) yield return bin;
         var names = OperatingSystem.IsWindows() ? new[] { tool + ".exe", tool + ".cmd" } : [tool];
