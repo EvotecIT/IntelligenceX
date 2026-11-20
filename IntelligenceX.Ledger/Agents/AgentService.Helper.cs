@@ -76,6 +76,13 @@ internal sealed partial class AgentService {
     private string? Model(CoordinationWork work) => work.Request.Helper?.Model ?? _policy.CodexModel;
     private string? Effort(CoordinationWork work) => work.Request.Helper?.Effort ?? _policy.CodexEffort;
 
+    /// <summary>Branch and commit as the helper should read them. An ask about another repository may leave either
+    /// open (<c>HEAD</c>, all-zero commit): then the helper uses the default branch, or the latest of the branch.</summary>
+    internal static string Where(WorkCheckpoint checkpoint) {
+        var branch = checkpoint.Branch == "HEAD" ? "its default branch" : "branch " + checkpoint.Branch;
+        return checkpoint.Commit.All(c => c == '0') ? branch + ", latest commit" : branch + ", commit " + checkpoint.Commit;
+    }
+
     internal static string HelperPrompt(CoordinationWork work, string workspace) {
         var r = work.Request;
         var from = r.ReturnTo is { } back ? back.Provider + " session " + back.SessionId + " on " + back.MachineId : "another session";
@@ -85,8 +92,7 @@ internal sealed partial class AgentService {
                 "This run has its own working directory, separate from the earlier one.").AppendLine();
         prompt.Append("You are a helper for ").Append(from).AppendLine(", working through the IntelligenceX Ledger.")
             .AppendLine().AppendLine("Task:").AppendLine(r.TaskBrief ?? "(no task text)").AppendLine()
-            .Append("The requester is working on ").Append(r.Checkpoint.Project).Append(" (branch ").Append(r.Checkpoint.Branch)
-            .Append(", commit ").Append(r.Checkpoint.Commit).AppendLine(").")
+            .Append("The work is in the ").Append(r.Checkpoint.Project).Append(" repository (").Append(Where(r.Checkpoint)).AppendLine(").")
             .Append("Your working directory ").Append(workspace).AppendLine(" holds only the Ledger's marker file. To work on the code, " +
                 "clone the repository into a subfolder of it and check out that branch or commit. Anything you leave there is kept for " +
                 "review, so remove clones and scratch you don't need.");
