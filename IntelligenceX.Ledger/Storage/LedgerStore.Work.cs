@@ -1,3 +1,4 @@
+using DBAClientX;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Ledger.Rules;
 
@@ -58,6 +59,24 @@ public sealed partial class LedgerStore {
         if (limit.ResetsAtUtc is { } reset) conditions[LedgerRules.UsageLimitResetCondition] = reset;
         else conditions.Remove(LedgerRules.UsageLimitResetCondition);
         return item with { ConditionFirstObservedAtUtc = conditions };
+    }
+
+    private static async Task KeepConcurrentLimitClearanceAsync(SQLiteAsyncSession tx, LedgerItem evaluated,
+        DateTimeOffset now, CancellationToken token) {
+        if (evaluated.Current is not { UsageLimitCleared: true, UsageLimit: { } limit } verdict ||
+            evaluated.Session is not { } previous) return;
+        var args = new Dictionary<string, object?> { ["id"] = evaluated.Id };
+        if (await tx.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id", args, token) is not string json) return;
+        var current = Read<LedgerItem>(json);
+        if (current.Session is not { UsageLimit: true } session || session.TurnId != previous.TurnId ||
+            session.TurnStartedAtUtc != previous.TurnStartedAtUtc || session.AccountId != previous.AccountId ||
+            LedgerRules.UsageLimitRecordedAt(current, session) != limit.RecordedAtUtc) return;
+
+        // Commit just the clearance for the same stop. The newer observation and any other verdict inputs stay intact.
+        var merged = RememberLimitClearance(current, verdict, now);
+        if (ReferenceEquals(merged, current)) return;
+        args["json"] = Json(merged);
+        await tx.ExecuteNonQueryAsync("UPDATE items SET json=@json WHERE id=@id", args, token);
     }
 
     private static LedgerItem MergeWork(LedgerItem item, WorkFact fact, EvidenceRef evidence) {

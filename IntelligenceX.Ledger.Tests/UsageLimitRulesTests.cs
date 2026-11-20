@@ -299,6 +299,41 @@ public sealed class UsageLimitRulesTests {
         } finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AConcurrentReportKeepsItsEvidenceAndOnlyInheritsClearanceForTheSameStop(bool newStop) {
+        var directory = LedgerTestPaths.NewDirectory("limit-concurrent-report");
+        try {
+            var item = Limited(ended: true);
+            var reset = Recorded.AddHours(2);
+            AccountLimit? limit = new("claude", "synthetic-account", Recorded.AddMinutes(1)) {
+                Machine = item.MachineId, AccountId = item.Session!.AccountId, ShortUsedPercent = 100, ShortResetsAtUtc = reset
+            };
+            using var store = new LedgerStore(Path.Combine(directory, "ledger.sqlite"), new(new(), _ => limit));
+            await store.InitializeAsync();
+            var report = new LedgerEvent { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Sequence = 1,
+                ReporterId = "synthetic-reporter", MachineId = item.MachineId, ItemId = item.Id, Provider = item.Provider,
+                Source = "watcher", ObservedAtUtc = Recorded, Session = item.Session };
+            await store.IngestAsync([report], Recorded);
+
+            var recorded = newStop ? reset.AddMinutes(-1) : Recorded;
+            var newest = report with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = reset,
+                Session = item.Session with { TurnEndedAtUtc = recorded } };
+            store.BeforeEvaluationWrite = async token => {
+                store.BeforeEvaluationWrite = null;
+                limit = null;
+                await store.IngestAsync([newest], reset, token);
+            };
+            await store.EvaluateAllAsync(reset);
+            var result = Assert.Single(await store.EvaluateAllAsync(reset.AddMinutes(1)));
+
+            Assert.Equal(newest.EventId, result.SessionEvidence!.EventId);
+            Assert.Equal(newStop ? "needs-you" : "stuck", result.Current!.Value);
+            Assert.Equal(new UsageLimitView(recorded, newStop ? null : reset, newStop), result.Current.UsageLimit);
+        } finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
+
     private static LedgerItem Limited(bool ended) => new() {
         Id = "synthetic-session", Kind = "session", Provider = "claude", MachineId = "synthetic-machine",
         FirstObservedAtUtc = Recorded.AddDays(-1), Session = new() {

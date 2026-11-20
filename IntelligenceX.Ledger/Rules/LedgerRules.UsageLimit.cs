@@ -9,8 +9,7 @@ public sealed partial class LedgerRules {
 
     private (UsageLimitView? Limit, bool ConfirmedClear) UsageLimit(LedgerItem item, DateTimeOffset now) {
         if (item.Session is not { UsageLimit: true } session) return (null, false);
-        var recorded = session.TurnEndedAtUtc ??
-            item.ConditionFirstObservedAtUtc.GetValueOrDefault("usage-limit", session.LastActivityAtUtc ?? item.FirstObservedAtUtc);
+        var recorded = UsageLimitRecordedAt(item, session);
         if (item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitClearedCondition, out var clearedStop) &&
             clearedStop == recorded && item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitClearedAtCondition, out var clearedAt)) {
             var knownReset = item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitResetCondition, out var resetAt)
@@ -54,6 +53,10 @@ public sealed partial class LedgerRules {
             ? (new(recorded, at, now < at), now >= at)
             : (fallback, false);
     }
+
+    internal static DateTimeOffset UsageLimitRecordedAt(LedgerItem item, SessionFact session) =>
+        session.TurnEndedAtUtc ?? item.ConditionFirstObservedAtUtc.GetValueOrDefault("usage-limit",
+            session.LastActivityAtUtc ?? item.FirstObservedAtUtc);
 
     /// <summary>The latest time both windows were available, or when the provider explicitly allowed usage.</summary>
     internal static DateTimeOffset? AccountAvailableAt(AccountLimit account) {

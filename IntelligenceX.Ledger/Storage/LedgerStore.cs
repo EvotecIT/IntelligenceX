@@ -469,7 +469,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                     // evaluation reconsiders that row instead of overwriting it with older input.
                     var written = await tx.ExecuteNonQueryAsync("UPDATE items SET json=@json WHERE id=@id AND json=@previous",
                         new Dictionary<string, object?> { ["json"] = Json(item), ["id"] = item.Id, ["previous"] = previous }, ct);
-                    if (written != 0 && transition is not null) await InsertTransitionAsync(tx, item.Id, now, transition, ct);
+                    if (written == 0) await KeepConcurrentLimitClearanceAsync(tx, item, now, ct);
+                    else if (transition is not null) await InsertTransitionAsync(tx, item.Id, now, transition, ct);
                 }
             }, token);
         } finally { _gate.Release(); }
