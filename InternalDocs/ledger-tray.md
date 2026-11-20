@@ -9,7 +9,16 @@ The tray only reads the Ledger. It never restarts or stops the service; restarts
 to the deploy procedure in the Ledger runbook. It never signs in by itself: **Sign in to …** opens a terminal with the
 provider's own sign-in command for you to complete.
 
+**Show details…** (or a click on the icon) opens the full picture. The example below comes from a test instance
+with one machine signed out of Codex and a token variable set on another:
+
+| Light | Dark |
+| --- | --- |
+| ![Details window, light](images/ledger-tray-details-light.png) | ![Details window, dark](images/ledger-tray-details-dark.png) |
+
 ## The icon
+
+![Icon states on a light and a dark taskbar: working, needs a look, down, reading](images/ledger-tray-icons.png)
 
 | Dot | Meaning |
 | --- | --- |
