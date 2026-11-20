@@ -7,7 +7,8 @@ namespace IntelligenceX.Ledger.Tray;
 /// <summary>
 /// <c>IntelligenceX.Ledger.Tray</c> starts the tray or menu bar app. <c>snapshot</c> prints what the menu would show and
 /// exits, for checking a machine over SSH; <c>login on|off</c> sets start at login, as the menu does. <c>--ledger-dir</c> and <c>--config</c> point at another Ledger folder or
-/// read settings; <c>--theme light|dark</c> forces the details window's theme and <c>--details</c> opens it at start. A second start leaves the first in charge.
+/// read settings; <c>--theme light|dark</c> forces the details window's theme, <c>--details</c> opens it at start and
+/// <c>--render &lt;folder&gt;</c> draws the details page in light and dark and every icon offscreen, then exits. A second start leaves the first in charge.
 /// </summary>
 internal static partial class Program {
     [STAThread]
@@ -63,7 +64,7 @@ internal static partial class Program {
 
     private static void Usage() {
         AttachParentConsole();
-        Console.Error.WriteLine("IntelligenceX.Ledger.Tray [snapshot | login on|off] [--ledger-dir <folder>] [--config <client.json>] [--theme light|dark] [--details]");
+        Console.Error.WriteLine("IntelligenceX.Ledger.Tray [snapshot | login on|off] [--ledger-dir <folder>] [--config <client.json>] [--theme light|dark] [--details] [--render <folder>]");
     }
 
     /// <summary>A Windows GUI build has no console of its own; commands write to the one they were started from.</summary>

@@ -9,8 +9,11 @@ The tray only reads the Ledger. It never restarts or stops the service; restarts
 to the deploy procedure in the Ledger runbook. It never signs in by itself: **Sign in to …** opens a terminal with the
 provider's own sign-in command for you to complete.
 
-**Show details…** (or a click on the icon) opens the full picture. The example below comes from a test instance
-with one machine signed out of Codex and a token variable set on another:
+**Show details…** (or a click on the icon) opens the full picture. It answers first ("All good" or how many things
+need you), then lists each problem as a card: what is wrong and where, what it means, and the one thing to do, with
+the exact command or path. Below are the machines, each with GitHub, Codex and Claude at a glance and their facts on
+hover, the recent changes as a timeline, and the Ledger's own health in the footer. The example comes from a test
+instance:
 
 | Light | Dark |
 | --- | --- |
@@ -33,7 +36,7 @@ with one machine signed out of Codex and a token variable set on another:
 | --- | --- |
 | ✓ | Signed in. For Codex and Claude this comes from the agent service's own sign-in check on that machine. |
 | ✗ | Signed out or the sign-in expired. For Codex it also shows when `auth.json` is gone and Codex keeps its sign-in in that file. |
-| ! | Signed in, with something to check: a `GH_TOKEN` or `GITHUB_TOKEN` that overrides the stored gh sign-in, or more than one installed version. |
+| ! | Signed in, with something to check: a `GH_TOKEN` or `GITHUB_TOKEN` that overrides the stored gh sign-in, or an older copy of the CLI you installed yourself. A copy an app ships and updates (inside ChatGPT.app, the Codex app's service, WindowsApps) shows in the facts but needs nothing. |
 | ? | Unknown: the check timed out or couldn't run, or gh couldn't read its stored token (often a locked keychain for a background process on a Mac; the facts say `token-unreadable`). |
 | – | Not installed, or the machine's reporter doesn't send sign-in facts yet. |
 
