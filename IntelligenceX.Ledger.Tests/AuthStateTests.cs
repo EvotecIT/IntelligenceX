@@ -85,6 +85,25 @@ public sealed class AuthStateTests : IDisposable {
         Assert.Equal(4, (await store.AuthStateAsync(Now.AddMinutes(6), expected, TimeSpan.FromMinutes(10), null, 50)).Changes.Length);
     }
 
+    // Agent events that arrive after a newer reporter reading fold into that reading, not into each other: a sign-out
+    // from the agent doesn't hold back the agent's own later sign-in.
+    [Fact]
+    public async Task DelayedAgentEventsFoldIntoTheReportersOwnReading() {
+        using var store = new LedgerStore(Path.Combine(_directory, "delayed.sqlite"), new(new()));
+        await store.InitializeAsync();
+        var expected = new Dictionary<string, string[]> { ["win-pc"] = ["win-pc-watcher"] };
+        await store.UpdateReporterHealthAsync(Health(Now.AddMinutes(5), new AuthFact("codex", "unknown", Now.AddMinutes(5))), now: Now.AddMinutes(5));
+        await store.IngestAsync([SignIn(true, "signed-out", Now.AddMinutes(3), 1)], Now.AddMinutes(6));
+        await store.IngestAsync([SignIn(false, "signed-in", Now.AddMinutes(4), 2)], Now.AddMinutes(7));
+        var view = await store.AuthStateAsync(Now.AddMinutes(7), expected, TimeSpan.FromMinutes(10), null, 50);
+        Assert.Equal("signed-in", Assert.Single(Assert.Single(view.Machines).Providers).State);
+        Assert.Contains(view.Changes, c => (c.Field, c.Before, c.After) == ("state", "signed-out", "signed-in"));
+
+        // A sign-out the reporter itself saw still outweighs an older agent sign-in.
+        await store.UpdateReporterHealthAsync(Health(Now.AddMinutes(8), new AuthFact("codex", "signed-out", Now.AddMinutes(8))), now: Now.AddMinutes(8));
+        Assert.Equal("signed-out", Assert.Single(Assert.Single((await store.AuthStateAsync(Now.AddMinutes(8), expected, TimeSpan.FromMinutes(10), null, 50)).Machines).Providers).State);
+    }
+
     [Theory]
     [InlineData("usage-limit", "signed-in")]
     [InlineData("expired", "signed-out")]

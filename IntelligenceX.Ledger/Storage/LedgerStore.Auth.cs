@@ -12,7 +12,7 @@ public sealed partial class LedgerStore {
     private static async Task InitializeAuthAsync(SQLiteAsyncSession db, CancellationToken token) =>
         await db.ExecuteNonQueryAsync("""
             CREATE TABLE IF NOT EXISTS auth_state(machine TEXT NOT NULL,provider TEXT NOT NULL,checked TEXT NOT NULL,json TEXT NOT NULL,
-              PRIMARY KEY(machine,provider));
+              raw TEXT NULL,PRIMARY KEY(machine,provider));
             CREATE TABLE IF NOT EXISTS auth_changes(id INTEGER PRIMARY KEY AUTOINCREMENT,machine TEXT NOT NULL,provider TEXT NOT NULL,
               at TEXT NOT NULL,field TEXT NOT NULL,before TEXT NULL,after TEXT NULL);
             CREATE INDEX IF NOT EXISTS auth_changes_machine ON auth_changes(machine,id);
@@ -39,10 +39,10 @@ public sealed partial class LedgerStore {
                         new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = change.Provider, ["at"] = change.AtUtc.ToString("O"),
                             ["field"] = change.Field, ["before"] = change.Before, ["after"] = change.After }, token);
             await db.ExecuteNonQueryAsync("""
-                INSERT INTO auth_state(machine,provider,checked,json) VALUES(@machine,@provider,@checked,@json)
-                ON CONFLICT(machine,provider) DO UPDATE SET checked=excluded.checked,json=excluded.json
+                INSERT INTO auth_state(machine,provider,checked,json,raw) VALUES(@machine,@provider,@checked,@json,@raw)
+                ON CONFLICT(machine,provider) DO UPDATE SET checked=excluded.checked,json=excluded.json,raw=excluded.raw
                 """, new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = fact.Provider,
-                    ["checked"] = merged.CheckedAtUtc.ToString("O"), ["json"] = Json(merged) }, token);
+                    ["checked"] = merged.CheckedAtUtc.ToString("O"), ["json"] = Json(merged), ["raw"] = Json(fact) }, token);
         }
         await db.ExecuteNonQueryAsync("""
             DELETE FROM auth_changes WHERE at<@cutoff;
@@ -54,12 +54,16 @@ public sealed partial class LedgerStore {
     /// Folds a newly published agent sign-in state into the machine's stored facts when it arrives, so each change is
     /// recorded at the time the agent saw it, including a sign-out and sign-in that both happen between two reporter
     /// readings. A machine whose reporter hasn't sent facts yet has nothing to fold into; its first reading does it.
+    /// The event is folded into the reporter's own last reading, not into a state an earlier agent event produced, so
+    /// only a sign-out the reporter itself saw can outweigh it.
     /// </summary>
     private static async Task RecordSignInAsync(SQLiteAsyncSession db, string machine, SignInFact signIn, CancellationToken token) {
-        if (await db.ExecuteScalarAsync("SELECT json FROM auth_state WHERE machine=@machine AND provider=@provider",
-                new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = signIn.Provider }, token) is not string json) return;
-        var prior = Read<AuthFact>(json);
-        var merged = Merge(prior, signIn);
+        var row = (await db.QueryAsListAsync("SELECT json,raw FROM auth_state WHERE machine=@machine AND provider=@provider",
+            r => (Json: r.GetString(0), Raw: r.IsDBNull(1) ? null : r.GetString(1)),
+            new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = signIn.Provider }, cancellationToken: token)).FirstOrDefault();
+        if (row.Json is null) return;
+        var prior = Read<AuthFact>(row.Json);
+        var merged = Merge(row.Raw is { } raw ? Read<AuthFact>(raw) : prior, signIn);
         foreach (var change in AuthDiff(machine, prior, merged, signIn.AtUtc))
             await db.ExecuteNonQueryAsync("INSERT INTO auth_changes(machine,provider,at,field,before,after) VALUES(@machine,@provider,@at,@field,@before,@after)",
                 new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = change.Provider, ["at"] = change.AtUtc.ToString("O"),
