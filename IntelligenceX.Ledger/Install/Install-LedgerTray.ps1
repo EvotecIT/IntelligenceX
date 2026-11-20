@@ -148,7 +148,11 @@ switch ($Action) {
     'Remove' {
         if (-not $Apply) { "Would stop the tray, turn off start at login and remove $App. Add -Apply."; return }
         Stop-Tray
-        if ((Test-Path -LiteralPath $Executable) -and (Test-OwnLogin)) { & $Executable login off --ledger-dir $Root }
+        if ((Test-Path -LiteralPath $Executable) -and (Test-OwnLogin)) {
+            & $Executable login off --ledger-dir $Root
+            # Keep the app while its login entry remains, so the entry never points at a missing program.
+            if ($LASTEXITCODE -ne 0) { throw 'The tray could not turn off start at login; the app was left in place.' }
+        }
         if (Test-Path -LiteralPath $App) { Remove-Item -LiteralPath $App -Recurse -Force }
         'Removed the tray. Its settings and log stay in ' + $Home_ + '.'
     }
