@@ -117,6 +117,14 @@ switch ($Action) {
         if (-not $Kit) { throw 'Install needs -Kit.' }
         $commit = Assert-Kit $Kit
         if (-not $Apply) { "Would install the tray from $commit into $App and start it at login. Add -Apply."; return }
+        if (-not $IsWindows) {
+            # The LaunchAgent label is shared by every root; another root's loaded tray would make bootstrap fail
+            # after this install had already changed the login entry.
+            & /bin/launchctl print "gui/$Uid/$Label" *> $null
+            if ($LASTEXITCODE -eq 0 -and -not (Test-OwnLoadedJob)) {
+                throw "Another tray is loaded as $Label; remove it with its own -Root first. Nothing was changed."
+            }
+        }
         $null = New-Item -ItemType Directory -Force -Path $Home_
         $staging = Join-Path $Home_ ('app.new-' + [guid]::NewGuid().ToString('N'))
         Copy-Item -LiteralPath (Join-Path ([IO.Path]::GetFullPath($Kit)) 'tools/tray') -Destination $staging -Recurse

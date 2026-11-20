@@ -73,8 +73,8 @@ public sealed partial class LedgerStore {
             _ => "unknown"
         };
         // The agent publishes only when its state changes, so its item can be older than the reporter's reading. When
-        // the reporter sees the credentials gone (signed-out), an earlier "ready" can't stand.
-        if (fact.State is "not-installed" or "signed-out") state = fact.State;
+        // the reporter sees the credentials gone (signed-out), an earlier "ready" can't stand; a later one wins.
+        if (fact.State == "not-installed" || fact.State == "signed-out" && signIn.AtUtc <= fact.CheckedAtUtc) state = fact.State;
         return fact with { State = state, Facts = facts };
     }
 

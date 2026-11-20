@@ -10,8 +10,9 @@ namespace IntelligenceX.Ledger.Tray;
 /// <summary>Where the tray finds the Ledger's read settings and keeps its own settings and log.</summary>
 internal sealed class TrayPaths {
     public TrayPaths(string? ledgerDirectory = null, string? clientConfig = null) {
-        LedgerDirectory = ledgerDirectory ?? DefaultLedgerDirectory();
-        ClientConfig = clientConfig ?? Path.Combine(LedgerDirectory, "client.json");
+        // Absolute, since the login entry keeps these and starts without this working folder.
+        LedgerDirectory = Path.GetFullPath(ledgerDirectory ?? DefaultLedgerDirectory());
+        ClientConfig = Path.GetFullPath(clientConfig ?? Path.Combine(LedgerDirectory, "client.json"));
         Directory = Path.Combine(LedgerDirectory, "ledger-tray");
     }
 
