@@ -276,7 +276,12 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
             "binaries" => (name + " binaries changed", "neutral"),
             "config-fingerprint" => (name + " config.toml rewritten", "warn"),
             "credentials" => (name + (change.After == "none" ? " sign-in file removed" : " sign-in file is back"), change.After == "none" ? "bad" : "neutral"),
+            // A file time that goes away comes with the file itself going away, which "credentials" already says.
+            "credentials-written" when change.Before is null || change.After is null => ((string?)null, ""),
             "credentials-written" => (name + " sign-in file rewritten", "neutral"),
+            // A time that goes missing or comes back can be a failed read as well as a removed or new file; only a time
+            // that moves says the file was rewritten.
+            "hosts-written" when change.Before is null || change.After is null => ((string?)null, ""),
             "hosts-written" => ("gh sign-in file (hosts.yml) rewritten", "neutral"),
             "credential-store" => (name + " now keeps its sign-in in " + (change.After ?? "the default store"), "warn"),
             "check" when change.After == "token-unreadable" => (name + " sign-in couldn't be read", "warn"),
