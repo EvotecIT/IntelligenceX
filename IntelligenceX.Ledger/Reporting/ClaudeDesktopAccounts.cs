@@ -26,6 +26,7 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
     internal sealed record DesktopSession(string Session, string Account, bool Archived, string? LocalId = null, string? SpawnedFrom = null,
         bool SideSession = false);
     private string? _cliAccount;
+    private DateTimeOffset _cliAccountWrittenAtUtc;
     private DateTimeOffset _readAt = DateTimeOffset.MinValue;
 
     internal static string DefaultRoot() => OperatingSystem.IsMacOS()
@@ -34,9 +35,10 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
 
     /// <summary>The account id for a Claude Code session id, or null when neither the desktop app nor the CLI says. The CLI's
     /// signed-in account applies only to a session from the CLI's default profile (<paramref name="cliProfile"/>).</summary>
-    public string? For(string sessionId, bool cliProfile = true) {
+    public string? For(string sessionId, bool cliProfile = true, DateTimeOffset? stoppedAtUtc = null) {
         if (_clock.GetUtcNow() - _readAt >= RereadAfter) Reread();
-        return _accounts.TryGetValue(sessionId, out var account) ? account : cliProfile ? _cliAccount : null;
+        return _accounts.TryGetValue(sessionId, out var account) ? account :
+            cliProfile && (stoppedAtUtc is null || _cliAccountWrittenAtUtc <= stoppedAtUtc) ? _cliAccount : null;
     }
 
     /// <summary>Whether the desktop app archived the session; null when the app doesn't know it.</summary>
@@ -63,7 +65,7 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
             _accounts[file.Session] = file.Account;
             if (file.Archived) _archived.Add(file.Session);
         }
-        _cliAccount = CliAccount(_cli);
+        (_cliAccount, _cliAccountWrittenAtUtc) = ReadCliAccount(_cli);
     }
 
     /// <summary>Child CLI session id to parent CLI session id, through the app's local ids.</summary>
@@ -144,6 +146,14 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
             .Select(path => IntelligenceX.Telemetry.Usage.SourceRootRecord.CreateStableId("claude",
                 IntelligenceX.Telemetry.Usage.UsageSourceKind.LocalLogs, IntelligenceX.Telemetry.Usage.UsageTelemetryIdentity.NormalizePath(path)))
             .ToHashSet(StringComparer.Ordinal);
+    }
+
+    internal static (string? Id, DateTimeOffset WrittenAtUtc) ReadCliAccount(string settings) {
+        try {
+            var written = File.GetLastWriteTimeUtc(settings);
+            var id = CliAccount(settings);
+            return File.GetLastWriteTimeUtc(settings) == written ? (id, written) : (null, default);
+        } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return (null, default); }
     }
 
     /// <summary>The account the CLI is signed in to, from its settings' account id alone.</summary>

@@ -74,13 +74,25 @@ public sealed class WorkViewRelationshipsTests : IDisposable {
 
         var asked = limitedAt.AddSeconds(11);
         await store.IngestAsync([Next(helper, asked, helper.Session)], asked);
+        var host = new CoordinationPrincipal("mac-host", "host", "unused", ["sample"], "mac");
         await coordination.ExecuteAsync((engine, _) => engine.RaiseQuestion(request.Id,
-            new(started.Generation, binding.GrantId, started.BootId!, "Which format?"),
-            new("mac-host", "host", "unused", ["sample"], "mac")), asked);
+            new(started.Generation, binding.GrantId, started.BootId!, "Which format?"), host), asked);
         var waiting = Assert.Single((await runtime.WorkAsync(context, asked, default)).Items, row => row.Item.Id == helper.ItemId);
         Assert.Equal(("waiting", "question", "question"), (waiting.Item.Verdict, waiting.Item.ReasonCode, waiting.Helper!.State));
 
-        var finished = asked.AddSeconds(11);
+        var firstResume = asked.AddSeconds(11);
+        await ResumeAsync(1, firstResume);
+        var firstWorking = Assert.Single((await runtime.WorkAsync(context, firstResume, default)).Items, row => row.Item.Id == helper.ItemId);
+        var secondQuestion = firstResume.AddSeconds(11);
+        await coordination.ExecuteAsync((engine, _) => engine.RaiseQuestion(request.Id,
+            new(started.Generation, binding.GrantId, started.BootId!, "Which sheet?"), host), secondQuestion);
+        var secondResume = secondQuestion.AddSeconds(11);
+        await ResumeAsync(2, secondResume);
+        var secondWorking = Assert.Single((await runtime.WorkAsync(context, secondResume, default)).Items, row => row.Item.Id == helper.ItemId);
+        Assert.Equal(("working", secondResume), (secondWorking.Item.Verdict, secondWorking.Item.SinceUtc));
+        Assert.NotEqual(firstWorking.Item.EpisodeId, secondWorking.Item.EpisodeId);
+
+        var finished = secondResume.AddSeconds(11);
         await coordination.ExecuteAsync((_, state) => {
             state.Work[request.Id] = started with { State = terminal, Stages = new() { ["terminal"] = finished, ["accepted"] = finished } };
             state.Work.Remove("reused-test");
@@ -105,6 +117,16 @@ public sealed class WorkViewRelationshipsTests : IDisposable {
             Assert.True(completed.Open);
             Assert.Equal(("done", "complete", terminal), (completed.Item.Verdict, completed.Item.ReasonCode, completed.Helper!.State));
             Assert.Equal("Helper for Format workbook: Check the chart export", completed.Label);
+        }
+
+        async Task ResumeAsync(int question, DateTimeOffset at) {
+            await coordination.ExecuteAsync((engine, _) => {
+                engine.Answer(request.Id, question, new("Use the first option."), caller);
+                engine.RecordQuestionDelivery(request.Id, question, new("answer", "delivery-" + question, "sending"), host);
+                return true;
+            }, at.AddSeconds(-1));
+            await coordination.ExecuteAsync((engine, _) => engine.RecordQuestionDelivery(request.Id, question,
+                new("answer", "delivery-" + question, "submitted", "answer-observed"), host), at);
         }
     }
 

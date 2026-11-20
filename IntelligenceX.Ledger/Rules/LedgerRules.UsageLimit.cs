@@ -7,10 +7,15 @@ public sealed partial class LedgerRules {
         if (item.Session is not { UsageLimit: true } session) return null;
         var recorded = session.TurnEndedAtUtc ??
             item.ConditionFirstObservedAtUtc.GetValueOrDefault("usage-limit", session.LastActivityAtUtc ?? item.FirstObservedAtUtc);
-        // A previously cleared stop stays cleared while account observations are unavailable, including after restart.
-        var cleared = item.Current is { Value: "stuck", ReasonCode: "usage-limit" } prior &&
-            prior.SinceUtc == recorded && prior.EvaluatedAtUtc <= now &&
-            prior.EpisodeId == Match(item, "stuck", "usage-limit", recorded, "source-event", null, null).EpisodeId;
+        // The prior matches retain independent limit evidence when another hold supplies the primary verdict.
+        var prior = item.Current;
+        var cleared = false;
+        if (prior is not null && prior.EvaluatedAtUtc <= now &&
+            prior.Matches.Any(match => match is { Verdict: "stuck", ReasonCode: "usage-limit" } && match.SinceUtc == recorded)) {
+            var episode = Match(item, "stuck", "usage-limit", recorded, "source-event", null, null).EpisodeId;
+            cleared = prior.Matches.Any(match => match is { Verdict: "stuck", ReasonCode: "usage-limit" } &&
+                match.SinceUtc == recorded && match.EpisodeId == episode);
+        }
         var fallback = new UsageLimitView(recorded, null, !cleared && now - recorded < settings.UsageLimitWindow);
         var account = _accountLimit?.Invoke(item);
         if (account is null || account.Machine != item.MachineId || account.Provider != item.Provider ||
@@ -21,17 +26,17 @@ public sealed partial class LedgerRules {
 
         // A reset from a later window cannot extend the older stop. An exceeded window without a reset
         // still uses the fallback, even when another exceeded window has a known reset.
-        var windows = new (double? Used, DateTimeOffset? Reset, int? Minutes)[] {
-            (account.UsedPercent, account.ResetsAtUtc, account.WindowMinutes),
-            (account.ShortUsedPercent, account.ShortResetsAtUtc, 300)
-        };
+        var windows = new (double? Used, DateTimeOffset? Reset, int? Minutes, DateTimeOffset At)[] {
+            (account.UsedPercent, account.ResetsAtUtc, account.WindowMinutes, account.WindowObservedAtUtc ?? account.ObservedAtUtc),
+            (account.ShortUsedPercent, account.ShortResetsAtUtc, 300, account.ShortWindowObservedAtUtc ?? account.ObservedAtUtc)
+        }.Where(window => window.At > recorded && window.At <= now).ToArray();
         var reached = windows.Where(window => window.Used >= 100).ToArray();
         if (reached.Length == 0 && account.LimitReached == true) {
             var reported = windows.Where(window => window.Reset.HasValue).ToArray();
-            if (reported.Length == 1) reached = reported;
+            if (reported is [{ Used: null }]) reached = reported;
         }
         if (reached.Length == 0)
-            return account.Provider == "claude" && account.UsedPercent is < 100 && account.ShortUsedPercent is < 100
+            return account.Provider == "claude" && windows.Length == 2 && windows.All(window => window.Used is < 100)
                 ? fallback with { InForce = false }
                 : fallback;
         var reset = reached.Where(window => window.Reset > recorded &&
@@ -41,4 +46,8 @@ public sealed partial class LedgerRules {
             ? new(recorded, at, now < at)
             : fallback;
     }
+
+    private static RuleMatch MatchUsageLimit(LedgerItem item, UsageLimitView limit) =>
+        Match(item, limit.InForce ? "needs-you" : "stuck", "usage-limit", limit.RecordedAtUtc,
+            item.Session?.TurnEndedAtUtc is null ? "first-observation" : "source-event", null, null);
 }

@@ -74,9 +74,15 @@ public sealed class UsageLimitRulesTests {
         });
 
         var clear = rules.Evaluate(item, now);
-        var stored = JsonSerializer.Serialize(item with { Current = clear }, LedgerJson.Options);
+        var offline = new LedgerRules(new());
+        var question = offline.Evaluate(item with { Current = clear, Session = item.Session! with {
+            Question = true, InputId = "question", QuestionAtUtc = now.AddMinutes(1)
+        } }, now.AddMinutes(1));
+        Assert.Equal("question", question.ReasonCode);
+        Assert.False(question.UsageLimit!.InForce);
+        var stored = JsonSerializer.Serialize(item with { Current = question }, LedgerJson.Options);
         Assert.DoesNotContain("\"usageLimit\":{", stored);
-        var restarted = new LedgerRules(new()).Evaluate(JsonSerializer.Deserialize<LedgerItem>(stored, LedgerJson.Options)!, now.AddMinutes(1));
+        var restarted = offline.Evaluate(JsonSerializer.Deserialize<LedgerItem>(stored, LedgerJson.Options)!, now.AddMinutes(2));
         var resumed = rules.Evaluate(item with { Current = clear, Session = new() {
             TurnId = "next-turn", TurnOpen = true, TurnStartedAtUtc = now, LastActivityAtUtc = now
         } }, now);
@@ -101,6 +107,19 @@ public sealed class UsageLimitRulesTests {
         Assert.Equal("needs-you", rules.Evaluate(item, Recorded.AddHours(1)).Value);
     }
 
+    [Fact]
+    public void AReportedCodexBlockDoesNotUseAResetFromAnUnexhaustedQuota() {
+        var item = Limited(ended: true);
+        item = item with { Provider = "codex", Session = item.Session! with { AccountId = "codex:synthetic" } };
+        var rules = new LedgerRules(new(), _ => new("codex", "synthetic-account", Recorded.AddMinutes(1)) {
+            Machine = item.MachineId, AccountId = item.Session!.AccountId, LimitReached = true,
+            UsedPercent = 20, WindowMinutes = 10080, ResetsAtUtc = Recorded.AddDays(2)
+        });
+
+        var result = rules.Evaluate(item, Recorded.AddHours(6));
+        Assert.Equal(("stuck", new UsageLimitView(Recorded, null, false)), (result.Value, result.UsageLimit));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -120,14 +139,16 @@ public sealed class UsageLimitRulesTests {
         Assert.Equal(weeklyLimit ? "needs-you" : "stuck", afterShortReset.Value);
     }
 
-    [Fact]
-    public async Task TheStoppedAccountAndItsKnownResetSurviveAnAccountSwitchAndServiceRestart() {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AStoppedAccountsKnownResetSurvivesPartialUpdatesAccountSwitchAndServiceRestart(bool weekly) {
         var directory = LedgerTestPaths.NewDirectory("limit-restart");
         Directory.CreateDirectory(directory);
         try {
             var db = Path.Combine(directory, "ledger.sqlite");
             var snapshot = Path.Combine(directory, "status-line.json");
-            var reset = Recorded.AddHours(2);
+            var reset = weekly ? Recorded.AddDays(2) : Recorded.AddHours(2);
             var limits = new WorkAccountLimits(directory);
             var session = Limited(ended: true).Session!;
             var report = new LedgerEvent { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Sequence = 1,
@@ -137,13 +158,15 @@ public sealed class UsageLimitRulesTests {
                 await store.InitializeAsync();
                 await store.IngestAsync([report], Recorded);
                 var accountObserved = Recorded.AddMinutes(1);
-                File.WriteAllText(snapshot, Status("synthetic", 100, accountObserved));
+                File.WriteAllText(snapshot, Status("synthetic", accountObserved, includeExhausted: true));
                 limits.ObserveClaude(snapshot, accountObserved);
 
                 var switched = Recorded.AddMinutes(5);
+                File.WriteAllText(snapshot, Status("synthetic", switched.AddMinutes(-1), includeExhausted: false));
+                limits.ObserveClaude(snapshot, switched.AddMinutes(-1));
                 await store.IngestAsync([report with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = switched,
                     Session = session with { AccountId = "claude:other" } }], switched);
-                File.WriteAllText(snapshot, Status("other", 20, switched));
+                File.WriteAllText(snapshot, Status("other", switched, includeExhausted: false));
                 limits.ObserveClaude(snapshot, switched);
                 var retained = Assert.Single(await store.EvaluateAllAsync(switched));
                 Assert.Equal(("claude:synthetic", "needs-you", new UsageLimitView(Recorded, reset, true)),
@@ -158,13 +181,14 @@ public sealed class UsageLimitRulesTests {
             Assert.Equal(("stuck", "usage-limit", new UsageLimitView(Recorded, reset, false)),
                 (expired.Current!.Value, expired.Current.ReasonCode, expired.Current.UsageLimit));
 
-            string Status(string account, int shortUsed, DateTimeOffset observed) => JsonSerializer.Serialize(new {
-                observedAtUtc = observed, accountId = account,
-                rate_limits = new {
-                    five_hour = new { used_percentage = shortUsed, resets_at = reset.ToUnixTimeSeconds() },
-                    seven_day = new { used_percentage = 25, resets_at = Recorded.AddDays(2).ToUnixTimeSeconds() }
-                }
-            });
+            string Status(string account, DateTimeOffset observed, bool includeExhausted) {
+                var windows = new Dictionary<string, object> {
+                    [weekly ? "five_hour" : "seven_day"] = new { used_percentage = 25 }
+                };
+                if (includeExhausted)
+                    windows[weekly ? "seven_day" : "five_hour"] = new { used_percentage = 100, resets_at = reset.ToUnixTimeSeconds() };
+                return JsonSerializer.Serialize(new { observedAtUtc = observed, accountId = account, rate_limits = windows });
+            }
         } finally { Directory.Delete(directory, recursive: true); }
     }
 

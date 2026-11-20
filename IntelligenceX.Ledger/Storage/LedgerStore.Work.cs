@@ -21,9 +21,8 @@ public sealed partial class LedgerStore {
             item.ConditionFirstObservedAtUtc.Remove("question");
             item.ConditionFirstObservedAtUtc.Remove("input-unconfirmed");
         }
-        // A new active account does not change the account that stopped this turn. A source that
-        // no longer knows the account removes its qualification until a new stop is recorded.
-        if (!newTurn && previous?.UsageLimit == true && session.UsageLimit && session.AccountId is not null)
+        // Later observations, including a switched CLI profile, cannot reassign an existing stop.
+        if (!newTurn && previous?.UsageLimit == true && session.UsageLimit)
             session = session with { AccountId = previous.AccountId };
         ObserveCondition(item, "question", session.Question, received);
         ObserveCondition(item, "input-unconfirmed", session.InputUnconfirmed, received);

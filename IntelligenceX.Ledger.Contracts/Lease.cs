@@ -78,8 +78,10 @@ public sealed record BudgetStatus(BudgetLimit[] Limits, int TotalGroups, string 
 /// </summary>
 public sealed record AccountLimit(string Provider, string Source, DateTimeOffset ObservedAtUtc) {
     /// <summary>Local identity used to qualify the observation. Budget readers receive the usage figures only.</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
+    [JsonIgnore]
     public string? AccountId { get; init; }
+    [JsonIgnore] public DateTimeOffset? WindowObservedAtUtc { get; init; }
+    [JsonIgnore] public DateTimeOffset? ShortWindowObservedAtUtc { get; init; }
     public string? Machine { get; init; }
     public string? Plan { get; init; }
     public double? UsedPercent { get; init; }

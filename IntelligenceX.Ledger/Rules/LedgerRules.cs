@@ -70,13 +70,16 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         var operation = declarations.LastOrDefault(d => !d.Fact.Resolved && d.Fact.Blocking && d.Fact.Kind == "operation");
         Add(item.Safety is { Resolved: false }, "needs-you", "urgent-safety", item.Safety?.AtUtc,
             identity: item.Safety?.EpisodeId, evidence: item.SafetyEvidence);
-        if (pause) return Paused(item, now, matches, reporterSilent);
+        if (pause) {
+            var paused = Paused(item, now, matches, reporterSilent);
+            // Keep independent limit evidence while the deliberate hold supplies the primary verdict.
+            return usageLimit is null || paused.LastKnown ? paused :
+                paused with { Matches = [.. paused.Matches, MatchUsageLimit(item, usageLimit)] };
+        }
         // Needs you, in published rules order.
         Add(session?.Question == true && session.InputId is not null && session.QuestionBlocking,
             "needs-you", "question", session?.QuestionAtUtc, identity: session?.InputId, evidence: item.SessionEvidence);
-        if (usageLimit is not null)
-            Add(true, usageLimit.InForce ? "needs-you" : "stuck", "usage-limit", usageLimit.RecordedAtUtc,
-                session?.TurnEndedAtUtc is null ? "first-observation" : "source-event");
+        if (usageLimit is not null) matches.Add(MatchUsageLimit(item, usageLimit));
         var queued = work?.QueuedInputs ?? 0;
         var heldGoal = work?.GoalHeld == true && (queued > 0 || work.ActiveClaim == true || item.Deliveries.Values.Any(IsPending));
         Add(heldGoal && LedgerScope.SameTask(goalScope, item.Scope), "needs-you", "goal-held", work?.GoalHeldAtUtc);

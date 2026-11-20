@@ -22,8 +22,8 @@ internal sealed partial class LedgerRuntime {
             };
         var since = step.Stages.GetValueOrDefault(stage, step.Stages.GetValueOrDefault("session-bound", step.RequestedAtUtc));
         if (step.State == "question" && ask.QuestionAtUtc is { } asked) since = asked;
-        if (step.State == "started" && step.Stages.TryGetValue("question-resumed", out var resumed) && resumed > since)
-            since = resumed;
+        var resumed = ask.ResumedAtUtc ?? step.Stages.GetValueOrDefault("question-resumed");
+        if (step.State == "started" && resumed > since) since = resumed;
         var episode = LedgerScope.Id(item.Id, step.RequestId, verdict, reason, since.ToString("O"));
         return item with { Current = new Verdict(verdict, reason, since, "source-event", now, LedgerRules.Version, []) {
             EpisodeId = episode, LastProgressAtUtc = item.Session?.LastActivityAtUtc,

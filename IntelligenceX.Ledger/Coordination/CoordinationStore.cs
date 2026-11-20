@@ -151,7 +151,7 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
     }
 
     internal sealed record WorkAsk(SessionAskStep Step, string HelperMachine, string RequesterMachine, string? Title,
-        bool ResultPublished, DateTimeOffset? QuestionAtUtc = null) {
+        bool ResultPublished, DateTimeOffset? QuestionAtUtc = null, DateTimeOffset? ResumedAtUtc = null) {
         internal bool Finished => ResultPublished || Step.State is "succeeded" or "failed" or "cancelled" ||
             Step.Stages.ContainsKey("terminal");
     }
@@ -167,23 +167,29 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
             var live = state.Bindings.Values.Where(binding => Guid.TryParse(binding.SessionId, out var session) &&
                 (active.Contains((binding.MachineId, binding.Provider, session)) || candidates.Contains((binding.MachineId, binding.Provider, session))) &&
                 state.Work.TryGetValue(binding.RequestId, out var work) && !work.Request.ReuseSession && work.Request.ReturnTo is not null).ToArray();
-            var titles = await tx.QueryAsListAsync("""
-                SELECT titles.request,titles.title FROM json_each(@requests) requested
-                JOIN coordination_ask_titles titles ON titles.request=requested.value
-                """, row => (Request: row.GetString(0), Title: row.GetString(1)),
+            var display = await tx.QueryAsListAsync("""
+                SELECT requested.value,titles.title,(
+                    SELECT recorded FROM coordination_changes
+                    WHERE request=requested.value AND stage='question-resumed' ORDER BY sequence DESC LIMIT 1)
+                FROM json_each(@requests) requested
+                LEFT JOIN coordination_ask_titles titles ON titles.request=requested.value
+                """, row => (Request: row.GetString(0), Title: row.IsDBNull(1) ? null : row.GetString(1),
+                    Resumed: row.IsDBNull(2) ? (DateTimeOffset?)null :
+                        DateTimeOffset.Parse(row.GetString(2), System.Globalization.CultureInfo.InvariantCulture)),
                 new Dictionary<string, object?> { ["requests"] = JsonSerializer.Serialize(live.Select(binding => binding.RequestId)) },
                 cancellationToken: ct);
-            var byRequest = titles.ToDictionary(row => row.Request, row => row.Title, StringComparer.Ordinal);
+            var byRequest = display.ToDictionary(row => row.Request, StringComparer.Ordinal);
             var questions = state.Questions.Values.Where(question => question.Kind == "question" && question.State != "resumed")
                 .ToLookup(question => (question.RequestId, question.Generation));
             var archived = candidates.Count == 0 ? [] : await ReadArchivedWorkAsksAsync(tx, candidates, ct);
             return live.Select(binding => {
                 var work = state.Work[binding.RequestId];
                 var requester = work.Request.ReturnTo!;
+                var details = byRequest[work.Request.Id];
                 return new WorkAsk(new(work.Request.Id, requester.Provider, requester.SessionId, binding.Provider, binding.SessionId,
                     work.State, work.RequestedAtUtc, work.Stages ?? []), binding.MachineId, requester.MachineId,
-                    byRequest.GetValueOrDefault(work.Request.Id), state.ResultOutbox.ContainsKey(work.Request.Id),
-                    questions[(binding.RequestId, binding.Generation)].MaxBy(question => question.Number)?.AskedAtUtc);
+                    details.Title, state.ResultOutbox.ContainsKey(work.Request.Id),
+                    questions[(binding.RequestId, binding.Generation)].MaxBy(question => question.Number)?.AskedAtUtc, details.Resumed);
             }).Concat(archived).ToArray();
         }, token);
     }

@@ -13,7 +13,8 @@ internal sealed class WorkAccountLimits {
     private readonly string _cache;
     private DateTimeOffset _lastCodexProbe;
 
-    private sealed record StoredObservation(string AccountId, AccountLimit Limit);
+    private sealed record StoredObservation(string AccountId, AccountLimit Limit,
+        DateTimeOffset? WindowObservedAtUtc, DateTimeOffset? ShortWindowObservedAtUtc);
 
     internal WorkAccountLimits(string dataDirectory) {
         _cache = Path.Combine(dataDirectory, "account-limit-observations.json");
@@ -22,7 +23,8 @@ internal sealed class WorkAccountLimits {
             var rows = JsonSerializer.Deserialize<StoredObservation[]>(File.ReadAllText(_cache));
             foreach (var row in rows ?? []) {
                 if (row is null || string.IsNullOrEmpty(row.AccountId) || row.Limit?.Machine != _machine) continue;
-                _observed[row.AccountId] = row.Limit with { AccountId = row.AccountId };
+                _observed[row.AccountId] = row.Limit with { AccountId = row.AccountId,
+                    WindowObservedAtUtc = row.WindowObservedAtUtc, ShortWindowObservedAtUtc = row.ShortWindowObservedAtUtc };
             }
         } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) { }
     }
@@ -42,12 +44,8 @@ internal sealed class WorkAccountLimits {
         // The legacy status line omits account identity. Its profile must already have existed at observation time.
         var config = Path.Combine(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR"))
             ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) : Path.GetDirectoryName(snapshot)!, ".claude.json");
-        try {
-            var lastWrite = File.GetLastWriteTimeUtc(config);
-            if (lastWrite > observed.UtcDateTime) return null;
-            var id = ClaudeDesktopAccounts.CliAccount(config);
-            return File.GetLastWriteTimeUtc(config) == lastWrite ? id : null;
-        } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+        var (id, written) = ClaudeDesktopAccounts.ReadCliAccount(config);
+        return written <= observed ? id : null;
     }
 
     internal async Task ObserveCodexAsync(LedgerItem[] items, DateTimeOffset now, CancellationToken token) {
@@ -58,12 +56,19 @@ internal sealed class WorkAccountLimits {
         if (changed) Save();
         if (!items.Any(item => NeedsCodexProbe(item, now, cutoff))) return;
         _lastCodexProbe = now;
-        if (await AccountLimits.CodexAsync(token) is { Note: null } limit) Remember(limit);
+        if (await AccountLimits.CodexAsync(token, qualifyAccount: true) is { Note: null } limit) Remember(limit);
     }
 
     private void Remember(AccountLimit limit) {
         if (limit.AccountId is not { } identity || _observed.TryGetValue(identity, out var prior) && prior.ObservedAtUtc >= limit.ObservedAtUtc)
             return;
+        // An omitted window remains usable with its own clock. It cannot qualify a more recent stop.
+        if (prior is not null && limit.UsedPercent is null && limit.ResetsAtUtc is null)
+            limit = limit with { UsedPercent = prior.UsedPercent, WindowMinutes = prior.WindowMinutes, ResetsAtUtc = prior.ResetsAtUtc,
+                WindowObservedAtUtc = prior.WindowObservedAtUtc ?? prior.ObservedAtUtc };
+        if (prior is not null && limit.ShortUsedPercent is null && limit.ShortResetsAtUtc is null)
+            limit = limit with { ShortUsedPercent = prior.ShortUsedPercent, ShortResetsAtUtc = prior.ShortResetsAtUtc,
+                ShortWindowObservedAtUtc = prior.ShortWindowObservedAtUtc ?? prior.ObservedAtUtc };
         _observed[identity] = limit with { Machine = _machine };
         Save();
     }
@@ -71,7 +76,8 @@ internal sealed class WorkAccountLimits {
     private void Save() {
         try {
             // This data is local to the host. Account identity is excluded from the budget response.
-            LocalFiles.WriteAtomic(_cache, JsonSerializer.Serialize(_observed.Select(pair => new StoredObservation(pair.Key, pair.Value))));
+            LocalFiles.WriteAtomic(_cache, JsonSerializer.Serialize(_observed.Select(pair =>
+                new StoredObservation(pair.Key, pair.Value, pair.Value.WindowObservedAtUtc, pair.Value.ShortWindowObservedAtUtc))));
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 

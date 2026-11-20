@@ -30,6 +30,17 @@ public sealed class AccountLimitsTests {
     }
 
     [Fact]
+    public void CodexWorkspaceIdentityUsesTheSameAccountNamespaceAsTheLimitsResponse() {
+        using var withWorkspace = JsonDocument.Parse("""{"userId":"person","workspaceRouting":{"chatgptAccountId":"workspace"}}""");
+        using var limits = JsonDocument.Parse("""{"accountId":"workspace","rateLimits":{}}""");
+        using var noWorkspace = JsonDocument.Parse("""{"userId":"person","workspaceRouting":null}""");
+
+        Assert.Equal("codex:workspace", AccountLimits.CodexWorkspace(withWorkspace.RootElement));
+        Assert.Equal(AccountLimits.Codex(limits.RootElement, Now).AccountId, AccountLimits.CodexWorkspace(withWorkspace.RootElement));
+        Assert.Null(AccountLimits.CodexWorkspace(noWorkspace.RootElement));
+    }
+
+    [Fact]
     public void CodexWindowsAreSortedByDurationAndAnUnreportedStateStaysUnknown() {
         using var json = JsonDocument.Parse("""
             {"rateLimits":{"primary":{"usedPercent":12,"windowDurationMins":300,"resetsAt":1795300000},

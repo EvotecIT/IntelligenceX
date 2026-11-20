@@ -158,8 +158,9 @@ public static class LocalReporter {
                     Repository = workspaces.For(session, settings.GitHub && snapshot.GitHubCheckedAtUtc.HasValue)
                 };
                 // Claude sessions follow the account that ran them, so a switch of account can be seen and taken over.
+                var stoppedAt = fact.UsageLimit ? fact.TurnEndedAtUtc ?? fact.LastActivityAtUtc ?? DateTimeOffset.MinValue : (DateTimeOffset?)null;
                 if (fact.AccountId is null && session.Provider == "claude" && claudeAccounts.For(session.Id,
-                    !fact.UsageLimit && session.SourceRootId is { } root && claudeCliRoots.Contains(root)) is { } account)
+                    session.SourceRootId is { } root && claudeCliRoots.Contains(root), stoppedAt) is { } account)
                     fact = fact with { AccountId = "claude:" + account };
                 if (fact.Archived is null && session.Provider == "claude" && claudeAccounts.Archived(session.Id) is { } archived)
                     fact = fact with { Archived = archived, ArchiveObservedAtUtc = DateTimeOffset.UtcNow };

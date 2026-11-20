@@ -13,7 +13,7 @@ namespace IntelligenceX.Ledger.Hosting;
 /// </summary>
 public static class AccountLimits {
     private static readonly SemaphoreSlim Gate = new(1, 1);
-    private static (DateTimeOffset At, AccountLimit? Value)? _codex;
+    private static (DateTimeOffset At, AccountLimit? Value, bool CheckedWorkspace)? _codex;
     internal static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(1);
     internal static readonly TimeSpan CodexTimeout = TimeSpan.FromSeconds(8);
 
@@ -27,13 +27,14 @@ public static class AccountLimits {
     internal static string LocalMachine =>
         Environment.GetEnvironmentVariable("EVOTEC_MACHINE") is { Length: > 0 } named ? named : Environment.MachineName.ToLowerInvariant();
 
-    internal static async Task<AccountLimit?> CodexAsync(CancellationToken token) {
+    internal static async Task<AccountLimit?> CodexAsync(CancellationToken token, bool qualifyAccount = false) {
         await Gate.WaitAsync(token).ConfigureAwait(false);
         try {
-            if (_codex is { } cached && DateTimeOffset.UtcNow - cached.At < CacheFor) return cached.Value;
-            var value = CodexBinary() is { } binary ? await ReadCodexAsync(binary, token).ConfigureAwait(false)
+            if (_codex is { } cached && DateTimeOffset.UtcNow - cached.At < CacheFor &&
+                (!qualifyAccount || cached.CheckedWorkspace || cached.Value?.AccountId is not null)) return cached.Value;
+            var value = CodexBinary() is { } binary ? await ReadCodexAsync(binary, qualifyAccount, token).ConfigureAwait(false)
                 : new AccountLimit("codex", "codex-app-server", DateTimeOffset.UtcNow) { Note = "Codex isn't installed where the Ledger looks; set CODEX_BIN." };
-            _codex = (DateTimeOffset.UtcNow, value);
+            _codex = (DateTimeOffset.UtcNow, value, qualifyAccount);
             return value;
         } finally { Gate.Release(); }
     }
@@ -56,7 +57,7 @@ public static class AccountLimits {
         return candidates.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path));
     }
 
-    private static async Task<AccountLimit?> ReadCodexAsync(string binary, CancellationToken token) {
+    private static async Task<AccountLimit?> ReadCodexAsync(string binary, bool qualifyAccount, CancellationToken token) {
         var observed = DateTimeOffset.UtcNow;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(CodexTimeout);
@@ -66,27 +67,54 @@ public static class AccountLimits {
                 UseShellExecute = false, CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8
             }
         };
+        AccountLimit? limit = null;
         try {
             process.Start();
             process.ErrorDataReceived += (_, _) => { };
             process.BeginErrorReadLine();
             async Task Send(string json) { await process.StandardInput.WriteLineAsync(json.AsMemory(), timeout.Token).ConfigureAwait(false); await process.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false); }
-            await Send("""{"id":1,"method":"initialize","params":{"clientInfo":{"name":"ix-ledger","version":"1"}}}""").ConfigureAwait(false);
+            await Send(qualifyAccount
+                ? """{"id":1,"method":"initialize","params":{"clientInfo":{"name":"ix-ledger","version":"1"},"capabilities":{"experimentalApi":true}}}"""
+                : """{"id":1,"method":"initialize","params":{"clientInfo":{"name":"ix-ledger","version":"1"}}}""").ConfigureAwait(false);
+            const string before = """{"id":3,"method":"account/read","params":{"refreshToken":false}}""";
+            const string after = """{"id":4,"method":"account/read","params":{"refreshToken":false}}""";
+            const string readLimits = """{"id":2,"method":"account/rateLimits/read","params":{}}""";
+            string? workspace = null;
             while (await process.StandardOutput.ReadLineAsync(timeout.Token).ConfigureAwait(false) is { } line) {
                 using var message = TryParse(line);
-                if (message is null || !message.RootElement.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number) continue;
-                if (id.GetInt32() == 1) {
-                    await Send("""{"method":"initialized"}""").ConfigureAwait(false);
-                    await Send("""{"id":2,"method":"account/rateLimits/read","params":{}}""").ConfigureAwait(false);
-                } else if (id.GetInt32() == 2) {
-                    return message.RootElement.TryGetProperty("result", out var result) ? Codex(result, observed)
-                        : new AccountLimit("codex", "codex-app-server", observed) { Note = "Codex didn't report its limits (signed out or an API-key login)." };
+                if (message is null) continue;
+                if (!message.RootElement.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number) {
+                    if (Text(message.RootElement, "method") == "account/updated" &&
+                        Text(Child(message.RootElement, "params"), "reason") != "workspaceRoutingReady") workspace = null;
+                    continue;
+                }
+                var result = Child(message.RootElement, "result");
+                switch (id.GetInt32()) {
+                    case 1:
+                        await Send("""{"method":"initialized"}""").ConfigureAwait(false);
+                        await Send(qualifyAccount ? before : readLimits).ConfigureAwait(false);
+                        break;
+                    case 3:
+                        workspace = CodexWorkspace(result);
+                        observed = DateTimeOffset.UtcNow;
+                        await Send(readLimits).ConfigureAwait(false);
+                        break;
+                    case 2:
+                        if (result.ValueKind != JsonValueKind.Object) return new AccountLimit("codex", "codex-app-server", observed) {
+                            Note = "Codex didn't report its limits (signed out or an API-key login)."
+                        };
+                        limit = Codex(result, observed);
+                        if (limit.AccountId is not null || workspace is null) return limit;
+                        await Send(after).ConfigureAwait(false);
+                        break;
+                    case 4 when limit is not null:
+                        return workspace is not null && workspace == CodexWorkspace(result) ? limit with { AccountId = workspace } : limit;
                 }
             }
-            return new AccountLimit("codex", "codex-app-server", observed) { Note = "Codex closed before answering." };
+            return limit ?? new AccountLimit("codex", "codex-app-server", observed) { Note = "Codex closed before answering." };
         } catch (Exception error) when (error is OperationCanceledException or IOException or System.ComponentModel.Win32Exception or InvalidOperationException) {
             if (token.IsCancellationRequested) throw;
-            return new AccountLimit("codex", "codex-app-server", observed) { Note = "Codex didn't answer within " + CodexTimeout.TotalSeconds + " s." };
+            return limit ?? new AccountLimit("codex", "codex-app-server", observed) { Note = "Codex didn't answer within " + CodexTimeout.TotalSeconds + " s." };
         } finally {
             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
         }
@@ -95,6 +123,9 @@ public static class AccountLimits {
     private static JsonDocument? TryParse(string line) {
         try { return JsonDocument.Parse(line); } catch (JsonException) { return null; }
     }
+
+    internal static string? CodexWorkspace(JsonElement result) =>
+        Identity("codex", Text(Child(result, "workspaceRouting"), "chatgptAccountId"));
 
     /// <summary>The Codex app server's rate limits: the main window, credits and the free full resets left.</summary>
     internal static AccountLimit Codex(JsonElement result, DateTimeOffset observed) {
