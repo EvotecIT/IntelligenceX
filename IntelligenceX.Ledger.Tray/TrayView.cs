@@ -212,7 +212,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         // Only a copy whose version was read and is older than the newest is offered for removal; "?" means the probe failed.
         var older = (binaries ?? "").Split("; ", StringSplitOptions.RemoveEmptyEntries)
             .Select(row => (Path: row[..Math.Max(0, row.LastIndexOf(' '))], Version: row[(row.LastIndexOf(' ') + 1)..]))
-            .Where(row => row.Path.Length > 0 && row.Version != "?" && CompareVersions(row.Version, newest) < 0 && !AppManaged(row.Path) && !string.Equals(row.Path, appBinary, StringComparison.OrdinalIgnoreCase))
+            .Where(row => row.Path.Length > 0 && row.Version != "?" && CompareVersions(row.Version, newest) < 0 && !AppManaged(row.Path) && !OwnedByApp(row.Path, appBinary))
             .Select(row => row.Path + " (" + row.Version + ")").ToArray();
         var title = machine + " has " + all.Length + " " + name + " versions: " + string.Join(" and ", all);
         const string meaning = "Which one runs depends on PATH and on which app starts it, so a session can pick up the older copy, with its own sign-in and behaviour.";
@@ -222,6 +222,10 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         return new("warn", machine, provider, title, meaning,
             older.Length == 1 ? "Remove the older copy if nothing uses it:" : "Remove the older copies if nothing uses them:", string.Join(Environment.NewLine, older));
     }
+
+    /// <summary>Whether a path is one of the copies the reporter recorded as the Codex app's own.</summary>
+    private static bool OwnedByApp(string path, string? appBinaries) => appBinaries is not null &&
+        appBinaries.Split("; ", StringSplitOptions.RemoveEmptyEntries).Contains(path, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>A copy that an app installs and updates itself, which isn't Przemek's to remove.</summary>
     internal static bool AppManaged(string path) =>

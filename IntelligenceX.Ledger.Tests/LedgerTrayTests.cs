@@ -75,6 +75,9 @@ public sealed class LedgerTrayTests {
         // The Codex app's own CLI is never offered, wherever its package is installed.
         Assert.Null(TrayView.Versions("x", "codex", "Codex", "0.169.0, 0.170.0", @"E:\Apps\Codex\codex.exe 0.169.0; C:\npm\codex.cmd 0.170.0",
             appBinary: @"E:\Apps\Codex\codex.exe"));
+        // Every registered package's copy is the app's, not just the newest one.
+        Assert.Null(TrayView.Versions("x", "codex", "Codex", "0.168.0, 0.169.0", @"E:\Old\codex.exe 0.168.0; E:\New\codex.exe 0.169.0",
+            appBinary: @"E:\New\codex.exe; E:\Old\codex.exe"));
         // A prerelease of the same number is the older one.
         Assert.Contains("(0.2.0-beta)", TrayView.Versions("x", "codex", "Codex", "0.2.0-beta, 0.2.0", "/a 0.2.0-beta; /b 0.2.0")!.Command);
     }
