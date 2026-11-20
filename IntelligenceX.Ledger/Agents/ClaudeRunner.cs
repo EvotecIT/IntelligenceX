@@ -55,6 +55,8 @@ internal sealed class ClaudeRunner {
             deadline.CancelAfter(limit);
             try {
                 while (await process.StandardOutput.ReadLineAsync(deadline.Token).ConfigureAwait(false) is { } line) {
+                    // Each line is activity: the limit counts quiet time, so a long, busy turn isn't cut off.
+                    deadline.CancelAfter(limit);
                     if (!opened && line.Contains("\"type\":\"system\"", StringComparison.Ordinal) && line.Contains("\"subtype\":\"init\"", StringComparison.Ordinal)) {
                         opened = true;
                         await accepted().ConfigureAwait(false);
@@ -65,7 +67,7 @@ internal sealed class ClaudeRunner {
                 await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
             } catch (OperationCanceledException) when (!token.IsCancellationRequested) {
                 return Parse(Kept(), turnId, model) with {
-                    Status = "timed-out", Error = "The turn passed its " + limit.TotalMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-minute limit."
+                    Status = "timed-out", Error = "The turn showed no activity for " + limit.TotalMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) + " minutes."
                 };
             }
             var outcome = Parse(Kept(), turnId, model);

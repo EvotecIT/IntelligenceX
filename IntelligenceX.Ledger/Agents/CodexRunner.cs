@@ -106,7 +106,6 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     public async Task<TurnOutcome> RunTurnAsync(string threadId, string cwd, string text, JsonObject? outputSchema, string? model,
         string? effort, TimeSpan limit, int? knownTurns, Func<int, Task> submitting, Func<string, Task> started, TurnWatch watch,
         CancellationToken token) {
-        var deadline = DateTimeOffset.UtcNow + limit;
         var server = await OpenAsync(token).ConfigureAwait(false);
         try {
             server.Notification += watch.Observe;
@@ -120,8 +119,13 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 if (model is not null) parameters["model"] = model;
                 if (effort is not null) parameters["effort"] = effort;
                 if (outputSchema is not null) parameters["outputSchema"] = outputSchema.DeepClone();
+                // A turn left running (one that passed its limit, or was copied into a fork while still active) makes Codex
+                // refuse a new turn with a different output schema. It is stopped first, and a refusal for that reason waits
+                // for it to settle and tries again, instead of failing the helper.
+                var settleBy = DateTimeOffset.UtcNow + SettleTimeout;
+                await SettleActiveTurnsAsync(server, threadId, settleBy, token).ConfigureAwait(false);
                 JsonElement response;
-                try { response = await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false); }
+                try { response = await StartTurnAsync(server, threadId, parameters, settleBy, token).ConfigureAwait(false); }
                 catch (CodexRpcException error) {
                     // The app server refused the turn (for example a model or effort it doesn't offer), so nothing started.
                     // The caller sends the same input again a bounded number of times, then publishes a failure result.
@@ -131,7 +135,7 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             }
             watch.Follow(turnId);
             await started(turnId).ConfigureAwait(false);
-            return await AwaitTurnAsync(server, watch, cwd, model ?? resumed, deadline, token, reconnect: async () => {
+            return await AwaitTurnAsync(server, watch, cwd, model ?? resumed, limit, token, reconnect: async () => {
                 server.Notification -= watch.Observe;
                 await server.DisposeAsync().ConfigureAwait(false);
                 server = await OpenAsync(token).ConfigureAwait(false);
@@ -153,7 +157,7 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         try {
             server.Notification += watch.Observe;
             var model = await ResumeAsync(server, threadId, cwd, token).ConfigureAwait(false);
-            return await AwaitTurnAsync(server, watch, cwd, model, DateTimeOffset.UtcNow + limit, token, reconnect: async () => {
+            return await AwaitTurnAsync(server, watch, cwd, model, limit, token, reconnect: async () => {
                 server.Notification -= watch.Observe;
                 await server.DisposeAsync().ConfigureAwait(false);
                 server = await OpenAsync(token).ConfigureAwait(false);
@@ -167,13 +171,15 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         }
     }
 
+    /// <summary>Waits for the turn to end. It is stopped only when it has shown no activity for <paramref name="idle"/>:
+    /// a long, busy turn (a multi-hour build or release) runs to its end, and only a turn that has gone quiet is freed.</summary>
     private static async Task<TurnOutcome> AwaitTurnAsync(CodexAppServer server, TurnWatch watch, string cwd, string model,
-        DateTimeOffset deadline, CancellationToken token, Func<Task<CodexAppServer>> reconnect) {
+        TimeSpan idle, CancellationToken token, Func<Task<CodexAppServer>> reconnect) {
         while (true) {
             // The turn may have finished before this subscription; read it once, then wait for its notification.
             if (await ReadTurnAsync(server, watch.ThreadId, watch.TurnId!, token).ConfigureAwait(false) is { } finished && finished.Status != "inProgress")
                 watch.Complete(finished.Status, finished.FinalText, finished.Error);
-            var remaining = deadline - DateTimeOffset.UtcNow;
+            var remaining = watch.LastActivityUtc + idle - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero) break;
             var closed = WaitClosedAsync(server, token);
             var done = await Task.WhenAny(watch.Completed, closed, Task.Delay(remaining, token)).ConfigureAwait(false);
@@ -183,6 +189,8 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             }
             token.ThrowIfCancellationRequested();
             if (done == closed) { server = await reconnect().ConfigureAwait(false); continue; }
+            // Activity during the wait moves the idle point on; only a turn quiet for the whole period is stopped.
+            if (watch.LastActivityUtc + idle > DateTimeOffset.UtcNow) continue;
             break;
         }
         // A timed-out turn counts as ended only once it is seen stopped; otherwise a resume or terminal receipt could
@@ -193,7 +201,66 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         if (await Task.WhenAny(watch.Completed, Task.Delay(StopTimeout, token)).ConfigureAwait(false) != watch.Completed &&
             !await StoppedAsync(server, watch.ThreadId, watch.TurnId!, token).ConfigureAwait(false))
             throw new TurnStillRunningException("Turn " + watch.TurnId + " passed its limit and was not confirmed stopped.");
-        return new(watch.TurnId!, "timed-out", watch.LastMessage, watch.Tokens, model, "turn-limit-reached");
+        return new(watch.TurnId!, "timed-out", watch.LastMessage, watch.Tokens, model, "turn-idle-limit-reached");
+    }
+
+    /// <summary>How long a new turn waits for an earlier one on the same thread to finish stopping.</summary>
+    internal static readonly TimeSpan SettleTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>True for Codex's refusal to start a turn because another one is still active on the thread.</summary>
+    internal static bool ActiveTurnRefusal(CodexRpcException error) => error.Message.Contains("ActiveTurn", StringComparison.Ordinal);
+
+    /// <summary>Interrupts every turn still in progress on the thread and waits, until <paramref name="deadline"/> (shared
+    /// with the start retries, so the whole wait stays within <see cref="SettleTimeout"/>), until none is. A turn that
+    /// won't stop is left for turn/start to report.</summary>
+    private static async Task SettleActiveTurnsAsync(CodexAppServer server, string threadId, DateTimeOffset deadline, CancellationToken token) {
+        var interrupted = new HashSet<string>(StringComparer.Ordinal);
+        while (true) {
+            JsonElement read;
+            if (Remaining(deadline, CallTimeout) <= TimeSpan.Zero) return;
+            try { read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, Remaining(deadline, CallTimeout), token).ConfigureAwait(false); }
+            catch (Exception error) when (error is CodexRpcException or TimeoutException) { return; }
+            var active = read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
+                ? turns.EnumerateArray().Where(turn => Status(turn) == "inProgress").Select(turn => turn.GetProperty("id").GetString()!).ToArray() : [];
+            if (active.Length == 0 || DateTimeOffset.UtcNow > deadline) return;
+            // A turn counts as interrupted only once Codex accepted the interrupt; a failed or timed-out one is tried again
+            // on the next pass while time is left.
+            foreach (var turnId in active.Where(id => !interrupted.Contains(id))) {
+                try {
+                    if (Remaining(deadline, CallTimeout) <= TimeSpan.Zero) break;
+                    await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = threadId, ["turnId"] = turnId }, Remaining(deadline, CallTimeout), token).ConfigureAwait(false);
+                    interrupted.Add(turnId);
+                } catch (Exception error) when (error is CodexRpcException or TimeoutException) { }
+            }
+            await Task.Delay(Remaining(deadline, TimeSpan.FromSeconds(5)), token).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>turn/start, retried while Codex still has another turn active on the thread, until the same
+    /// <paramref name="deadline"/> the settling used. Any other refusal, or one past the deadline, is thrown.</summary>
+    private static async Task<JsonElement> StartTurnAsync(CodexAppServer server, string threadId, JsonObject parameters,
+        DateTimeOffset deadline, CancellationToken token) {
+        var first = true;
+        while (true) {
+            // The first attempt gets the normal call timeout; a retry may only use the time left before the deadline.
+            var timeout = first ? CallTimeout : Remaining(deadline, CallTimeout);
+            first = false;
+            try { return await server.CallAsync("turn/start", parameters, timeout, token).ConfigureAwait(false); }
+            catch (CodexRpcException error) when (ActiveTurnRefusal(error) && DateTimeOffset.UtcNow < deadline) {
+                AgentService.Log("helper-turn-waiting", threadId + " " + error.Message);
+                await SettleActiveTurnsAsync(server, threadId, deadline, token).ConfigureAwait(false);
+                var pause = Remaining(deadline, TimeSpan.FromSeconds(15));
+                // Another attempt only when time is left after the pause for it to run.
+                if (pause <= TimeSpan.Zero || Remaining(deadline, CallTimeout) <= pause) throw;
+                await Task.Delay(pause, token).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>The smaller of <paramref name="pause"/> and the time left until <paramref name="deadline"/>, never negative.</summary>
+    internal static TimeSpan Remaining(DateTimeOffset deadline, TimeSpan pause) {
+        var left = deadline - DateTimeOffset.UtcNow;
+        return left <= TimeSpan.Zero ? TimeSpan.Zero : left < pause ? left : pause;
     }
 
     private static async Task<bool> StoppedAsync(CodexAppServer server, string threadId, string turnId, CancellationToken token) {
@@ -478,6 +545,13 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
     public string? TurnId { get; private set; }
     public string? LastMessage { get; private set; }
     public bool ServerRequested { get; private set; }
+    /// <summary>When the thread last showed any activity (a message, command, tool call or usage update). Notifications
+    /// write it on the server's reader while the runner reads it, so it is kept as ticks with atomic access.</summary>
+    public DateTimeOffset LastActivityUtc {
+        get => new(Interlocked.Read(ref _lastActivityTicks), TimeSpan.Zero);
+        private set => Interlocked.Exchange(ref _lastActivityTicks, value.UtcTicks);
+    }
+    private long _lastActivityTicks = DateTimeOffset.UtcNow.UtcTicks;
     public TurnTokens Tokens { get { lock (_gate) return _tokens; } }
     public Task<(string Status, string? Text, string? Error)> Completed => _completed.Task;
 
@@ -493,6 +567,9 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
         TurnTokens? now = null;
         lock (_gate) {
             TurnId = turnId;
+            // The quiet-time limit counts from when the turn is followed, not from when the watch was made (a watch can
+            // wait through a long answer to a question before its turn starts).
+            LastActivityUtc = DateTimeOffset.UtcNow;
             if (_early.Remove(turnId, out var early)) now = _tokens = _tokens.Add(early);
             if (_earlyText.Remove(turnId, out var text)) LastMessage = text;
             _earlyDone.Remove(turnId, out var done);
@@ -509,6 +586,7 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
     public void Observe(string method, JsonElement parameters) {
         if (parameters.ValueKind != JsonValueKind.Object || !parameters.TryGetProperty("threadId", out var thread) ||
             thread.GetString() != ThreadId) return;
+        LastActivityUtc = DateTimeOffset.UtcNow;
         if (TurnId is null && method == "turn/completed" && parameters.TryGetProperty("turn", out var earlyTurn) &&
             earlyTurn.GetProperty("id").GetString() is { } earlyId) {
             lock (_gate) {
