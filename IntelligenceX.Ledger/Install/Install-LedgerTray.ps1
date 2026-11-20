@@ -45,14 +45,19 @@ if (-not $IsWindows -and -not $env:DOTNET_ROOT) {
         Where-Object { Test-Path -LiteralPath (Join-Path $_ 'dotnet') } | Select-Object -First 1
 }
 
-# The Ledger folder as one quoted argument; a trailing backslash is doubled so it doesn't escape the closing quote.
+# The Ledger folder as one quoted argument for Start-Process on Windows, where a path can't contain a quote; a trailing
+# backslash is doubled so it doesn't escape the closing quote.
 $RootArgument = '"' + ($Root.EndsWith('\') ? $Root + '\' : $Root) + '"'
 
 # Runs the tray for one command and returns its exit code. On Windows the tray is a GUI app, so calling it directly
-# neither waits nor sets $LASTEXITCODE; Start-Process -Wait does both on every platform.
+# neither waits nor sets $LASTEXITCODE. Each argument goes in as it is, so a folder name with quotes or spaces arrives
+# whole on a Mac too.
 function Invoke-Tray([string[]]$Arguments) {
-    $process = Start-Process -FilePath $Executable -ArgumentList ($Arguments + @('--ledger-dir', $RootArgument)) -Wait -PassThru -NoNewWindow
-    return $process.ExitCode
+    $start = [Diagnostics.ProcessStartInfo]::new($Executable)
+    $start.UseShellExecute = $false
+    foreach ($argument in $Arguments + @('--ledger-dir', $Root)) { $start.ArgumentList.Add($argument) }
+    $process = [Diagnostics.Process]::Start($start)
+    try { $process.WaitForExit(); return $process.ExitCode } finally { $process.Dispose() }
 }
 
 function Get-Tray {
