@@ -32,6 +32,11 @@ public sealed class LedgerTrayTests {
         Assert.Equal(("bad", "Codex is signed out on mac", "codex login"), (signedOut.Severity, signedOut.Title, signedOut.Command));
         Assert.Contains("GH_TOKEN overrides gh on mac", view.Problems);
         Assert.Equal("bad", view.Issues[0].Severity); // Broken things come before things worth a look.
+        // A usage limit from the agent is no sign-out: no card and no sign-in command.
+        var limited = new AuthMachine("studio", "healthy", Now, "v1", [], [new("claude", true, "usage-limit", "claude auth login", Now, Now)]);
+        var limitedView = TrayView.Build(Overview([limited]), "win-pc", Now);
+        Assert.Empty(limitedView.Issues);
+        Assert.Equal("at usage limit", limitedView.Others[0].Providers.Single(p => p.Provider == "claude").Short);
         // A sign-out and an overriding token are two separate things to do, and both count.
         var both = Machine("mac", Fact("github", "signed-out", new() { ["env-override"] = "GH_TOKEN (user)" }));
         Assert.Equal(["GitHub is signed out on mac", "GH_TOKEN overrides gh on mac"], TrayView.Build(Overview([both]), "win-pc", Now).Problems);

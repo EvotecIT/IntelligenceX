@@ -139,6 +139,9 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         if (fact is null) {
             if (signIn is null) return new(provider, name, Missing, "not reported", [], false) { Short = "no data" };
             var unknown = !signIn.Required && signIn.Reason == "unknown";
+            // A usage limit holds deliveries but is still a sign-in; it has no sign-in to fix.
+            if (signIn.Reason == "usage-limit")
+                return new(provider, name, Warn, "signed in (at usage limit)", [("Agent", Reason(signIn.Reason))], false) { Short = "at usage limit" };
             return new(provider, name, signIn.Required ? Bad : unknown ? Unknown : Ok,
                 signIn.Required ? Reason(signIn.Reason) : unknown ? "unknown" : "signed in", [("Agent", Reason(signIn.Reason))], signIn.Required) {
                 Short = signIn.Required ? Reason(signIn.Reason) : unknown ? "can't tell" : "signed in", Issues = signIn.Required ? [SignedOut()] : []
