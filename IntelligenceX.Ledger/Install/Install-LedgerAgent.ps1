@@ -195,6 +195,11 @@ function Start-Agent([string]$Version) {
         Start-ScheduledTask -TaskName $TaskName
     } else {
         $escape = { param($v) [Security.SecurityElement]::Escape($v) }
+        # A LaunchAgent starts with only the system PATH, so helpers would miss Homebrew tools (gh, claude, node) and the
+        # user's own. The agent and the helpers it starts get the usual user locations, then this shell's PATH.
+        $path = @((Split-Path $Dotnet), (Join-Path $HOME '.local/bin'), (Join-Path $HOME '.dotnet/tools'), '/opt/homebrew/bin', '/opt/homebrew/sbin',
+            '/usr/local/bin') + ($env:PATH -split ':') + @('/usr/bin', '/bin', '/usr/sbin', '/sbin') |
+            Where-Object { $_ } | Select-Object -Unique
         $null = New-Item -ItemType Directory -Force -Path (Split-Path $Plist)
         Set-Content -LiteralPath $Plist -Encoding utf8NoBOM -Value @"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -202,7 +207,7 @@ function Start-Agent([string]$Version) {
 <plist version="1.0"><dict>
 <key>Label</key><string>$Label</string>
 <key>ProgramArguments</key><array><string>$(& $escape $Dotnet)</string><string>$(& $escape $assembly)</string><string>agent</string><string>--config</string><string>$(& $escape $AgentConfig)</string></array>
-<key>EnvironmentVariables</key><dict><key>DOTNET_ROOT</key><string>$(& $escape (Split-Path $Dotnet))</string><key>HOME</key><string>$(& $escape $HOME)</string></dict>
+<key>EnvironmentVariables</key><dict><key>DOTNET_ROOT</key><string>$(& $escape (Split-Path $Dotnet))</string><key>HOME</key><string>$(& $escape $HOME)</string><key>PATH</key><string>$(& $escape ($path -join ':'))</string></dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>30</integer><key>ProcessType</key><string>Background</string>
 <key>StandardOutPath</key><string>$(& $escape $Log)</string><key>StandardErrorPath</key><string>$(& $escape $Log)</string>
 </dict></plist>
