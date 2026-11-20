@@ -110,11 +110,16 @@ public sealed class GitHubAppTokenSource : IDisposable {
             var now = _clock();
             if (_token is not null && now < _expires - RenewBefore) return _token;
             // Shared by every caller: after a failure nobody asks again until the retry time, however many were queued.
-            if (now < _failedUntil) throw new HttpRequestException("GitHub App sign-in is waiting to retry.");
+            // A token that is due for renewal but hasn't expired is still good to use meanwhile; an expired one never is.
+            if (now < _failedUntil) {
+                if (_token is not null && now < _expires) return _token;
+                throw new HttpRequestException("GitHub App sign-in is waiting to retry.");
+            }
             try {
                 return await RequestTokenAsync(now, cancellationToken).ConfigureAwait(false);
             } catch (Exception error) when (IsSignInFailure(error, cancellationToken)) {
                 _failedUntil = now + RetryAfter;
+                if (_token is not null && now < _expires) return _token;
                 throw;
             }
         } finally {

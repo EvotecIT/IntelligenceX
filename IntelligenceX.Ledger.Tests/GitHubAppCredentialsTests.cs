@@ -77,6 +77,27 @@ public sealed class GitHubAppCredentialsTests : IDisposable {
         Assert.False(GitHubAppTokenSource.IsSignInFailure(new OperationCanceledException(), cancelled.Token));
     }
 
+    // Protects App-only clients: when an early renewal fails, the token that hasn't expired yet keeps serving every
+    // caller until it does, and an expired token is never handed out.
+    [Fact]
+    public async Task AFailedEarlyRenewalKeepsTheUnexpiredTokenInUse() {
+        var now = new DateTimeOffset(2026, 11, 19, 9, 0, 0, TimeSpan.Zero);
+        var stub = new TokenStub(now);
+        using var source = new GitHubAppTokenSource(Settings(), new HttpClient(stub), () => now);
+        Assert.Equal("token-1", await source.GetTokenAsync());
+
+        stub.Answer = HttpStatusCode.ServiceUnavailable;
+        stub.Body = "";
+        now = now.AddMinutes(56);
+        Assert.Equal("token-1", await source.GetTokenAsync());
+        now = now.AddMinutes(2);
+        Assert.Equal("token-1", await source.GetTokenAsync());
+        Assert.Equal(2, stub.Requests.Count);
+
+        now = now.AddMinutes(3);
+        await Assert.ThrowsAsync<HttpRequestException>(() => source.GetTokenAsync());
+    }
+
     // Protects the switch: no file or "enabled": false keeps the user token; a complete file selects the App.
     [Fact]
     public void SettingsSelectTheAppOnlyWhenCompleteAndEnabled() {
