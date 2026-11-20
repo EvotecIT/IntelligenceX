@@ -68,7 +68,8 @@ internal sealed class LedgerPoller(string clientConfig, string ledgerDirectory) 
         LedgerClientSettings settings;
         try { settings = LedgerClientSettings.Load(clientConfig); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or JsonException) {
-            return new(now, null, "No Ledger read settings at " + clientConfig, null, null, null, Supervisor.Read(ledgerDirectory, now));
+            var why = File.Exists(clientConfig) ? "Ledger read settings can't be used: " : "No Ledger read settings at ";
+            return new(now, null, why + clientConfig, null, null, null, Supervisor.Read(ledgerDirectory, now));
         }
         using var client = new LedgerReadClient(settings);
         LedgerHealth? health = null;
