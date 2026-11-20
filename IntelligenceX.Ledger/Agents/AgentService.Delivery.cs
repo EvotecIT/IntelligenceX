@@ -257,17 +257,20 @@ internal sealed partial class AgentService {
             run.With(r => r with { Retired = true }).Save(_settings.StateDirectory);
             return;
         }
+        // A Claude helper's turns are processes of its run; once the run has ended none is left, and its session is a file
+        // Claude keeps for `claude --resume`, with nothing to archive.
+        var claude = b.Provider == "claude";
         if (!job.Evidence.ContainsKey("processes-released")) {
-            if (!await _codex.IdleAsync(b.SessionId, stop).ConfigureAwait(false)) return;
-            await Step("processes-released", "codex-idle-" + key).ConfigureAwait(false);
+            if (claude ? _active.ContainsKey(RunKey(b.RequestId, b.Generation)) : !await _codex.IdleAsync(b.SessionId, stop).ConfigureAwait(false)) return;
+            await Step("processes-released", (claude ? "claude-ended-" : "codex-idle-") + key).ConfigureAwait(false);
         }
         if (!job.Evidence.ContainsKey("descendants-resolved")) {
             try { await Step("descendants-resolved", "descendants-" + key).ConfigureAwait(false); }
             catch (CoordinationCommandRejectedException error) when (error.ErrorCode == "retirement-descendants-unresolved") { return; }
         }
         if (!job.Evidence.ContainsKey("archived")) {
-            await _codex.ArchiveAsync(b.SessionId, stop).ConfigureAwait(false);
-            await Step("archived", "codex-archived-" + key).ConfigureAwait(false);
+            if (!claude) await _codex.ArchiveAsync(b.SessionId, stop).ConfigureAwait(false);
+            await Step("archived", (claude ? "claude-session-kept-" : "codex-archived-") + key).ConfigureAwait(false);
         }
         const string review = "workspace-content-review";
         var marker = Path.Combine(workspace, ".ix-ledger-workspace.json");

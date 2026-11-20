@@ -89,6 +89,7 @@ internal sealed partial class AgentService {
     private readonly LedgerReadClient _ledger;
     private readonly CodexRunner _codex;
     private readonly ClaudeSender _claude;
+    private readonly ClaudeRunner _claudeHelper;
     private readonly ConcurrentDictionary<string, Task> _active = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _runs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _deferred = new(StringComparer.Ordinal);
@@ -109,6 +110,7 @@ internal sealed partial class AgentService {
         Directory.CreateDirectory(settings.StateDirectory);
         Directory.CreateDirectory(settings.WorkspaceRoot);
         _claude = new(settings.ClaudeExecutable, settings.StateDirectory);
+        _claudeHelper = new(settings.ClaudeExecutable, settings.ClaudeHelperPermissionMode);
         _bootId = BootIdentity.Get(settings.StateDirectory, machineId);
     }
 
@@ -159,13 +161,14 @@ internal sealed partial class AgentService {
     }
 
     private async Task HeartbeatAsync(CancellationToken stop) {
-        // Codex is offered while `codex login status` says it is signed in. Starting an app server just to prove it
-        // answers cost a process per machine every minute; a helper that can't start one fails and is retried instead.
-        bool codexReady;
-        lock (_signInGate) codexReady = _signIn.TryGetValue("codex", out var codex) && codex.Ready;
+        // A provider is offered while its status check says it is signed in. Starting one just to prove it answers cost a
+        // process per machine every minute; a helper that can't start fails and is retried instead.
+        string[] creatable;
+        lock (_signInGate) creatable = new[] { "codex", "claude" }
+            .Where(provider => _signIn.TryGetValue(provider, out var state) && state.Ready).ToArray();
         try {
             var ack = await _ledger.HostAsync(new CoordinationHost(_machineId, _bootId, DateTimeOffset.UtcNow, _settings.Capabilities,
-                CreatableProviders: codexReady ? ["codex"] : []), stop).ConfigureAwait(false);
+                CreatableProviders: creatable), stop).ConfigureAwait(false);
             if (ack.GrantSeconds is > 0) _grantSeconds = ack.GrantSeconds.Value;
             if (ack.Ask is not null) _policy = ack.Ask;
         } catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or
@@ -177,7 +180,7 @@ internal sealed partial class AgentService {
     /// <summary>One pass over the four feeds this host serves. Each actionable item starts at most one task.</summary>
     private async Task SweepAsync(CancellationToken stop) {
         foreach (var work in await PageAsync(after => _ledger.AssignedAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
-            if (work.Machine != _machineId || work.Request.Kind != "help" || work.Provider != "codex") continue;
+            if (work.Machine != _machineId || work.Request.Kind != "help" || work.Provider is not ("codex" or "claude")) continue;
             var creation = work.State == "admitted" && work.Assignee is null && work.Reason == "worker-creation-required";
             var record = RunRecord.Load(_settings.StateDirectory, work.Request.Id, work.Generation);
             if (work.State == "reconcile") Start("reconcile:" + work.Request.Id, () => ReconcileAsync(work, record, stop));
@@ -266,7 +269,7 @@ internal sealed partial class AgentService {
             .Select(key => key[(key.IndexOf(':') + 1)..].Split(['#', ':'])[0]));
         ForgetUnreachable(waiting);
         foreach (var job in await PageAsync(after => _ledger.RetirementsAsync(stop, after), page => page.Items, page => page.NextOrder).ConfigureAwait(false)) {
-            if (job.Binding.MachineId != _machineId || job.Binding.Provider != "codex" || job.CompletedAtUtc is not null ||
+            if (job.Binding.MachineId != _machineId || job.Binding.Provider is not ("codex" or "claude") || job.CompletedAtUtc is not null ||
                 Deferred("retire:" + job.Binding.RequestId)) continue;
             Start("retire:" + job.Binding.RequestId, () => RetireAsync(job, stop));
         }

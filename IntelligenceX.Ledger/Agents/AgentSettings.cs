@@ -23,6 +23,10 @@ public sealed record AgentSettings {
     /// <summary>The Codex app's control socket. Null uses CODEX_HOME or ~/.codex.</summary>
     public string? CodexControlSocket { get; init; }
     public string ClaudeExecutable { get; init; } = "claude";
+    /// <summary>Permission mode for Claude helpers. Nobody is there to approve a tool call, so a helper that should build,
+    /// test and push needs bypassPermissions, the same unattended access Codex helpers run with (approval policy never).
+    /// acceptEdits limits a helper to file edits; plan makes it read-only.</summary>
+    public string ClaudeHelperPermissionMode { get; init; } = "bypassPermissions";
     /// <summary>Seconds between Ledger sweeps. Sweeps are plain HTTP reads; no model is involved.</summary>
     public double SweepSeconds { get; init; } = 3;
 }

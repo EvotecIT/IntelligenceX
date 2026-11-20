@@ -207,8 +207,8 @@ internal sealed partial class AgentService {
     }, threadId);
 
     /// <summary>Result content for a helper's own text: bounded, and in the review shape for a review ask.</summary>
-    private static string TextResult(CoordinationWork work, string text, string threadId) =>
-        IsReview(work) ? ReviewWithoutVerdict(text, threadId) : Bound(text, threadId);
+    private static string TextResult(CoordinationWork work, string text, string threadId, string source = "Codex thread") =>
+        IsReview(work) ? ReviewWithoutVerdict(text, threadId) : Bound(text, threadId, source);
 
     private static string? Str(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
@@ -233,9 +233,9 @@ internal sealed partial class AgentService {
     }
 
     /// <summary>Bounds result content to the Ledger's 8 KB, pointing at the helper thread for the rest.</summary>
-    internal static string Bound(string text, string threadId) {
+    internal static string Bound(string text, string threadId, string source = "Codex thread") {
         if (Encoding.UTF8.GetByteCount(text) <= MaximumResultBytes) return text;
-        var note = "\n\n[Truncated. The full answer is in Codex thread " + threadId + ".]";
+        var note = "\n\n[Truncated. The full answer is in " + source + " " + threadId + ".]";
         var budget = MaximumResultBytes - Encoding.UTF8.GetByteCount(note);
         var builder = new StringBuilder();
         foreach (var rune in text.EnumerateRunes()) {
@@ -248,8 +248,8 @@ internal sealed partial class AgentService {
     private static string RunKey(string requestId, long generation) => "run:" + requestId + ":" + generation;
 
     /// <summary>The temporary worker a helper thread is enrolled as.</summary>
-    private CoordinationWorker HelperWorker(CoordinationWork work, string threadId) => new("codex-" + threadId, _machineId, "codex", true,
-        null, DateTimeOffset.UtcNow, threadId, WorkspaceId(work), work.Request.Checkpoint, _bootId, TemporaryWorker: true);
+    private CoordinationWorker HelperWorker(CoordinationWork work, string threadId) => new(work.Provider + "-" + threadId, _machineId,
+        work.Provider!, true, null, DateTimeOffset.UtcNow, threadId, WorkspaceId(work), work.Request.Checkpoint, _bootId, TemporaryWorker: true);
 
     private static string WorkspaceId(CoordinationWork work) => "ledger-workspace-" + LocalFiles.Hash(work.Request.Id, work.Generation)[..40];
 
@@ -273,8 +273,12 @@ internal sealed partial class AgentService {
             Directory.CreateDirectory(record.Workspace);
             var marker = Path.Combine(record.Workspace, ".ix-ledger-workspace.json");
             if (!File.Exists(marker)) LocalFiles.WriteAtomic(marker, JsonSerializer.Serialize(new { requestId = id, generation = work.Generation, grantId = grant }));
-            var receipt = new ExecutionReceipt(grant, work.Generation, _bootId, "codex-" + LocalFiles.Hash(id, work.Generation, grant)[..40]);
-            if (record.ThreadId is null) {
+            var claude = work.Provider == "claude";
+            var receipt = new ExecutionReceipt(grant, work.Generation, _bootId, work.Provider + "-" + LocalFiles.Hash(id, work.Generation, grant)[..40]);
+            if (record.ThreadId is null && claude) {
+                // A Claude session is created by its first turn, under an id chosen here and saved first.
+                record = (record with { ThreadId = Guid.NewGuid().ToString() }).Save(_settings.StateDirectory);
+            } else if (record.ThreadId is null) {
                 var task = work.Request.TaskBrief ?? id;
                 var title = "Ledger " + id + ": " + (task.Length > 60 ? task[..60] : task).ReplaceLineEndings(" ");
                 var thread = work.Request.Helper?.ForkSessionId is { } source
@@ -287,7 +291,7 @@ internal sealed partial class AgentService {
             if (!record.Bound) {
                 var worker = HelperWorker(work, threadId);
                 await _ledger.WorkerAsync(worker, stop).ConfigureAwait(false);
-                await _ledger.BindSessionAsync(new CoordinationSessionBinding(id, work.Generation, grant, worker.Id, _machineId, "codex", threadId,
+                await _ledger.BindSessionAsync(new CoordinationSessionBinding(id, work.Generation, grant, worker.Id, _machineId, work.Provider!, threadId,
                     WorkspaceId(work), work.Request.Checkpoint), stop).ConfigureAwait(false);
                 record = (record with { Bound = true }).Save(_settings.StateDirectory);
             }
@@ -298,7 +302,9 @@ internal sealed partial class AgentService {
             using var renewal = CancellationTokenSource.CreateLinkedTokenSource(stop);
             var renewing = RenewAsync(id, receipt, run, renewal.Token);
             try {
-                if (record.ResultRef is null) record = await ConverseAsync(work, record, receipt, stop).ConfigureAwait(false);
+                if (record.ResultRef is null) record = claude
+                    ? await ConverseClaudeAsync(work, record, receipt, stop).ConfigureAwait(false)
+                    : await ConverseAsync(work, record, receipt, stop).ConfigureAwait(false);
                 if (record.Phase == "done") return;
                 await _ledger.ReceiptAsync(id, "terminal", receipt with {
                     ResultRef = record.ResultRef, Succeeded = record.Phase == "succeeded", ExclusionVerified = true
@@ -516,17 +522,20 @@ internal sealed partial class AgentService {
                 "). Ask again if it is still needed.";
         } else {
             var threadId = binding?.SessionId ?? record!.ThreadId!;
-            var last = await _codex.CloseAsync(threadId, stop).ConfigureAwait(false);
+            // A Claude turn is a process this service runs, already stopped with its run; there is nothing else to close.
+            var last = work.Provider == "claude" ? null : await _codex.CloseAsync(threadId, stop).ConfigureAwait(false);
             disposition = "execution-excluded";
             if (binding is null) {
                 // Stopped between the thread's creation and its binding: enroll its worker again so the binding can be recovered.
                 var worker = HelperWorker(work, threadId);
                 await _ledger.WorkerAsync(worker, stop).ConfigureAwait(false);
                 binding = new CoordinationSessionBinding(work.Request.Id, work.Generation, work.GrantId!, worker.Id, _machineId,
-                    "codex", threadId, WorkspaceId(work), work.Request.Checkpoint);
+                    work.Provider!, threadId, WorkspaceId(work), work.Request.Checkpoint);
             }
+            var source = work.Provider == "claude" ? ClaudeSource : "Codex thread";
             content = record?.PendingResult ?? Bound("The helper on " + _machineId + " was stopped before it finished (" + (work.Reason ?? "reconcile") +
-                "). Codex thread " + threadId + " has its work so far." + (string.IsNullOrWhiteSpace(last) ? "" : "\n\nIts last message:\n" + last), threadId);
+                "). " + source + " " + threadId + " has its work so far." + (string.IsNullOrWhiteSpace(last) ? "" : "\n\nIts last message:\n" + last),
+                threadId, source);
         }
         record = record?.With(r => r with { PendingResult = content }).Save(_settings.StateDirectory);
         var artifact = await _ledger.PublishResultAsync(work.Request.Id, new CoordinationArtifactCommand(work.Generation, work.GrantId!,
