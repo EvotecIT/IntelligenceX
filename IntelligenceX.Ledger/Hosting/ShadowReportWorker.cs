@@ -6,7 +6,8 @@ using IntelligenceX.Ledger.Storage;
 namespace IntelligenceX.Ledger.Hosting;
 
 /// <summary>Reevaluates aging rules and writes daily shadow reports locally without waking any client.</summary>
-internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings settings, TimeProvider? timeProvider = null) : BackgroundService {
+internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings settings, TimeProvider? timeProvider = null,
+    WorkAccountLimits? accountLimits = null) : BackgroundService {
     /// <summary>
     /// Every pass re-evaluates every item and rereads two days of report; readers rebuild what they need themselves,
     /// so this only has to keep aging rules and the daily file current, which five minutes does.
@@ -41,7 +42,9 @@ internal sealed class ShadowReportWorker(LedgerStore store, LedgerSettings setti
         do {
             var now = clock.GetUtcNow();
             await store.PruneEventsAsync(now, token: stoppingToken);
-            await new LedgerRuntime(store, settings).ItemsAsync(now, stoppingToken);
+            accountLimits?.ObserveClaude(AccountLimits.ClaudeSnapshotPath(), now);
+            var items = await new LedgerRuntime(store, settings).ItemsAsync(now, stoppingToken);
+            if (accountLimits is not null) await accountLimits.ObserveCodexAsync(items, now, stoppingToken);
             foreach (var day in new[] { DateOnly.FromDateTime(now.UtcDateTime).AddDays(-1), DateOnly.FromDateTime(now.UtcDateTime) }) {
                 var file = Path.Combine(directory, day.ToString("yyyy-MM-dd") + ".json");
                 var temporary = file + ".tmp";

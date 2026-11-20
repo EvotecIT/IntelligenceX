@@ -25,7 +25,12 @@ public sealed partial class LedgerReadClient : IDisposable {
 
     /// <summary>Reads a current-work projection whose verdicts were evaluated by the service.</summary>
     public Task<LedgerWorkView> WorkAsync(CancellationToken token = default, string? verdict = null, int limit = 200) =>
-        GetAsync("api/ledger/v1/work?limit=" + limit + (verdict is null ? "" : "&verdict=" + Uri.EscapeDataString(verdict)),
+        WorkAsync(token, verdict, limit, includeOpen: false);
+
+    /// <summary>Reads current work and optionally the recent open-session roster.</summary>
+    public Task<LedgerWorkView> WorkAsync(CancellationToken token, string? verdict, int limit, bool includeOpen) =>
+        GetAsync("api/ledger/v1/work?limit=" + limit + (verdict is null ? "" : "&verdict=" + Uri.EscapeDataString(verdict)) +
+            (includeOpen ? "&include=open" : ""),
             LedgerReadJson.Default.LedgerWorkView, token);
 
     /// <summary>Reads one complete evidence-backed item.</summary>

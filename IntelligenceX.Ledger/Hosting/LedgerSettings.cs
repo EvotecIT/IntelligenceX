@@ -48,7 +48,7 @@ public sealed record LedgerSettings {
         }
         foreach (var interval in new[] { settings.Rules.RecentActivity, settings.Rules.AdmissionGrace,
             settings.Rules.InterruptionGrace, settings.Rules.NoProgressAfter, settings.Rules.ReporterTimeout, settings.Rules.ReviewWait,
-            settings.Rules.EvidenceMaxAge })
+            settings.Rules.EvidenceMaxAge, settings.Rules.UsageLimitWindow })
             if (interval <= TimeSpan.Zero) throw new InvalidDataException("Rule thresholds must be positive.");
         if (settings.Rules.RecentActivity >= settings.Rules.NoProgressAfter) throw new InvalidDataException("Invalid activity windows.");
         return settings;

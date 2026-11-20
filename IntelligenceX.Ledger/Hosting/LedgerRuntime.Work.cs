@@ -10,7 +10,9 @@ internal sealed partial class LedgerRuntime {
     internal SemaphoreSlim WorkGate => _workGate;
     private long _workRevision;
     private WorkSnapshot? _workSnapshot;
-    private sealed record WorkSnapshot(DateTimeOffset At, long Revision, LedgerItem[] Current, MachineRow[] Machines, int HistoricalDeliveries) {
+    private static readonly TimeSpan OpenLookback = TimeSpan.FromDays(7);
+    private sealed record WorkSnapshot(DateTimeOffset At, long Revision, LedgerItem[] Current, LedgerItem[] Open,
+        MachineRow[] Machines, int HistoricalDeliveries, WorkRelationships Relationships) {
         public long BuiltAtTicks { get; } = Environment.TickCount64;
     }
 
@@ -24,55 +26,89 @@ internal sealed partial class LedgerRuntime {
     internal void InvalidateWork() => Interlocked.Increment(ref _workRevision);
 
     internal async Task<LedgerWorkView> WorkAsync(ProjectContextService context, DateTimeOffset now, CancellationToken token,
-        string? verdict = null, int limit = 200) {
+        string? verdict = null, int limit = 200, bool includeOpen = false) {
         var labels = await context.LabelsAsync(token);
         WorkSnapshot snapshot;
         var refreshing = !await _workGate.WaitAsync(0, token);
         if (refreshing && Volatile.Read(ref _workSnapshot) is { } previous &&
             Environment.TickCount64 - previous.BuiltAtTicks < (long)ServeWhileRefreshing.TotalMilliseconds)
-            return View(previous, labels, verdict, limit, servedWhileRefreshing: true);
+            return View(previous, labels, verdict, limit, includeOpen, servedWhileRefreshing: true);
         if (refreshing) await _workGate.WaitAsync(token);
         try {
             var revision = Interlocked.Read(ref _workRevision);
             if (_workSnapshot is { } cached && cached.Revision == revision && now >= cached.At && now - cached.At < TimeSpan.FromSeconds(10)) snapshot = cached;
             else {
-                var items = await ItemsAsync(now, token);
-                var historicalDeliveries = items.Where(item => IsHistoricalDelivery(item, now)).Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-                var current = items.Where(item => !LedgerRules.IsNormallyEnded(item) && !LedgerRules.IsSessionCatalog(item) &&
-                    !historicalDeliveries.Contains(item.Id) &&
-                    (item.Work?.ActiveClaim == true || item.Current?.Hold is { Type: not "observation-gap" } ||
-                    item.Session?.Archived != true && (item.Session?.TurnOpen == true ||
-                        LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(x =>
-                            LedgerScope.Applies(x.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
-                            (x.Fact.CandidateRef is null || item.CandidateRef is null || x.Fact.CandidateRef == item.CandidateRef)))
-                            .Any(x => !x.Fact.Resolved) ||
-                        item.Session?.LastActivityAtUtc >= now.AddDays(-1) ||
-                        item.Deliveries.Values.Any(x => x.LastStageOrderAtUtc >= now.AddDays(-1)))))
-                    .OrderBy(item => Priority(item.Current!.Value)).ThenByDescending(item => item.Current!.LastProgressAtUtc)
-                    .ThenBy(item => item.Id, StringComparer.Ordinal).ToArray();
-                snapshot = new(now, revision, current, await MachinesAsync(now, token), historicalDeliveries.Count);
+                snapshot = await RefreshWorkAsync(now, revision, token);
                 Volatile.Write(ref _workSnapshot, snapshot);
             }
         } finally { _workGate.Release(); }
-        return View(snapshot, labels, verdict, limit, servedWhileRefreshing: false);
+        return View(snapshot, labels, verdict, limit, includeOpen, servedWhileRefreshing: false);
     }
 
+    private async Task<WorkSnapshot> RefreshWorkAsync(DateTimeOffset now, long revision, CancellationToken token) {
+        var machines = await MachinesAsync(now, token);
+        var items = await ItemsAsync(now, machines, token);
+        var regular = new List<LedgerItem>();
+        var recentlyEnded = new List<LedgerItem>();
+        var historical = 0;
+        var openSince = now - OpenLookback;
+        foreach (var item in items) {
+            if (IsHistoricalDelivery(item, now)) {
+                historical++;
+            } else if (LedgerRules.IsNormallyEnded(item)) {
+                if (item.Session is { Archived: not true, LastActivityAtUtc: { } activity } && activity >= openSince)
+                    recentlyEnded.Add(item);
+            } else if (!LedgerRules.IsSessionCatalog(item) && IsCurrent(item, now)) {
+                regular.Add(item);
+            }
+        }
+        var candidates = regular.Concat(recentlyEnded).ToArray();
+        var asks = _coordination is null ? [] : await _coordination.WorkAsksAsync(
+            SessionKeys(items.Where(item => item.Session?.Archived != true)), SessionKeys(candidates), token);
+        var parents = await _store.NativeParentsAsync(candidates.Where(item =>
+                item is { Kind: "session", Session: { SourceSessionId: not null, StartedBySessionId: null } })
+            .Select(item => (item.Provider, item.Session!.SourceSessionId!.Value.ToString())).ToArray(), token);
+        var relationships = new WorkRelationships(items, asks, parents);
+        var activeHelpers = items.Select(item => (Item: item, Ask: relationships.Ask(item)))
+            .Where(row => row.Ask is { Finished: false }).Select(row => ApplyAskVerdict(row.Item, row.Ask!, now));
+        var current = regular.Where(item => relationships.Ask(item) is null).Concat(activeHelpers);
+        var open = recentlyEnded.Select(item => (Item: item, Ask: relationships.Ask(item)))
+            .Where(row => row.Ask is null or { Finished: true })
+            .Select(row => row.Ask is null ? row.Item : ApplyAskVerdict(row.Item, row.Ask, now));
+        return new(now, revision, current.OrderBy(item => Priority(item.Current!.Value))
+                .ThenByDescending(item => item.Current!.LastProgressAtUtc).ThenBy(item => item.Id, StringComparer.Ordinal).ToArray(),
+            open.OrderByDescending(item => item.Session!.LastActivityAtUtc).ThenBy(item => item.Id, StringComparer.Ordinal).ToArray(),
+            machines, historical, relationships);
+    }
+
+    private static HashSet<(string Machine, string Provider, Guid Session)> SessionKeys(IEnumerable<LedgerItem> items) =>
+        items.Where(item => item is { Kind: "session", Session.SourceSessionId: not null })
+            .Select(item => (item.MachineId, item.Provider, item.Session!.SourceSessionId!.Value)).ToHashSet();
+
+    private static bool IsCurrent(LedgerItem item, DateTimeOffset now) =>
+        item.Work?.ActiveClaim == true || item.Current?.Hold is { Type: not "observation-gap" } ||
+        item.Session?.Archived != true && (item.Session?.TurnOpen == true ||
+            item.Current?.ReasonCode == "usage-limit" ||
+            LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(x =>
+                LedgerScope.Applies(x.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
+                (x.Fact.CandidateRef is null || item.CandidateRef is null || x.Fact.CandidateRef == item.CandidateRef)))
+                .Any(x => !x.Fact.Resolved) ||
+            item.Session?.LastActivityAtUtc >= now.AddDays(-1) ||
+            item.Deliveries.Values.Any(x => x.LastStageOrderAtUtc >= now.AddDays(-1)));
+
     private static LedgerWorkView View(WorkSnapshot snapshot, IReadOnlyDictionary<string, WorkLabel> labels, string? verdict, int limit,
-        bool servedWhileRefreshing) {
+        bool includeOpen, bool servedWhileRefreshing) {
         var selected = snapshot.Current.Where(item => verdict is null || item.Current!.Value == verdict).ToArray();
         var visible = verdict is null ? Interleave(selected).Take(limit) : selected.Take(limit);
-        var rows = visible.Select(item => {
-            labels.TryGetValue(item.Id, out var display);
-            var label = item.Session?.Title ?? item.Session?.Repository?.Title ?? display?.Label ??
-                item.Provider + " " + item.Kind + " " + item.Id[..Math.Min(10, item.Id.Length)];
-            return new LedgerWorkRow(label, display?.ProjectId, LedgerItemView.From(item));
-        }).ToArray();
+        var open = includeOpen ? snapshot.Open.Where(item => verdict is null || item.Current!.Value == verdict).ToArray() : [];
+        var rows = visible.Select(item => snapshot.Relationships.Row(item, labels, false))
+            .Concat(open.Take(limit).Select(item => snapshot.Relationships.Row(item, labels, true))).ToArray();
         return new(snapshot.At, LedgerRules.Version, snapshot.Machines,
             snapshot.Current.GroupBy(x => x.Current!.Value).ToDictionary(x => x.Key, x => x.Count()), rows,
             ["current-work:unfinished-turn-or-explicit-follow-up", "display-labels:explicit-local-catalog",
              "imported-delivery-history-older-than-24h:" + snapshot.HistoricalDeliveries,
              servedWhileRefreshing ? "work-view-cache:previous-view-while-refreshing" : "work-view-cache:max-age-10s"],
-            selected.Length > rows.Length);
+            selected.Length > limit || open.Length > limit) { OpenCount = includeOpen ? snapshot.Open.Length : null };
     }
 
     private static bool IsHistoricalDelivery(LedgerItem item, DateTimeOffset now) =>

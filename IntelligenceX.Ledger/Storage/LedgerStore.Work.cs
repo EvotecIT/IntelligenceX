@@ -1,30 +1,42 @@
+using DBAClientX;
 using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Rules;
 
 namespace IntelligenceX.Ledger.Storage;
 
 public sealed partial class LedgerStore {
-    private static readonly string[] SessionConditions = ["question", "input-unconfirmed", "usage-limit", "complete", "idle", "active", "quiet"];
+    private static readonly string[] SessionConditions = ["question", "input-unconfirmed", "usage-limit", "complete", "idle", "active", "quiet",
+        LedgerRules.UsageLimitClearedCondition, LedgerRules.UsageLimitClearedAtCondition, LedgerRules.UsageLimitResetCondition];
 
     private static void ObserveCondition(LedgerItem item, string condition, bool present, DateTimeOffset received) {
         if (present) item.ConditionFirstObservedAtUtc.TryAdd(condition, received);
         else item.ConditionFirstObservedAtUtc.Remove(condition);
     }
 
-    private static void ObserveSessionConditions(LedgerItem item, SessionFact session, DateTimeOffset received) {
+    private static SessionFact ObserveSessionConditions(LedgerItem item, SessionFact session, DateTimeOffset received) {
         var previous = item.Session;
         var newTurn = previous is not null &&
             (previous.TurnId is not null && session.TurnId is not null && previous.TurnId != session.TurnId ||
              previous.TurnStartedAtUtc.HasValue && session.TurnStartedAtUtc > previous.TurnStartedAtUtc);
+        var newStop = previous is { UsageLimit: true, TurnEndedAtUtc: { } stopped } && session.UsageLimit &&
+            session.TurnEndedAtUtc > stopped;
         if (newTurn) {
             foreach (var condition in SessionConditions) item.ConditionFirstObservedAtUtc.Remove(condition);
         } else if (previous?.InputId is not null && session.InputId is not null && previous.InputId != session.InputId) {
             item.ConditionFirstObservedAtUtc.Remove("question");
             item.ConditionFirstObservedAtUtc.Remove("input-unconfirmed");
         }
-        if (previous?.AccountId is not null && session.AccountId is not null && previous.AccountId != session.AccountId)
-            item.ConditionFirstObservedAtUtc.Remove("usage-limit");
+        // Later observations, including a switched CLI profile, cannot reassign an existing stop.
+        if (!newTurn && !newStop && previous?.UsageLimit == true && session.UsageLimit)
+            session = session with { AccountId = previous.AccountId };
         ObserveCondition(item, "question", session.Question, received);
         ObserveCondition(item, "input-unconfirmed", session.InputUnconfirmed, received);
+        if (newStop) item.ConditionFirstObservedAtUtc.Remove("usage-limit");
+        if (newStop || !session.UsageLimit) {
+            item.ConditionFirstObservedAtUtc.Remove(LedgerRules.UsageLimitClearedCondition);
+            item.ConditionFirstObservedAtUtc.Remove(LedgerRules.UsageLimitClearedAtCondition);
+            item.ConditionFirstObservedAtUtc.Remove(LedgerRules.UsageLimitResetCondition);
+        }
         ObserveCondition(item, "usage-limit", session.UsageLimit, received);
         ObserveCondition(item, "complete", session.Outcome == "completed", received);
         ObserveCondition(item, "idle", session.Outcome == "completed", received);
@@ -32,6 +44,39 @@ public sealed partial class LedgerStore {
             ObserveCondition(item, "active", session.TurnOpen == true, received);
             ObserveCondition(item, "quiet", session.TurnOpen == true, received);
         }
+        return session;
+    }
+
+    private static LedgerItem RememberLimitClearance(LedgerItem item, Verdict verdict, DateTimeOffset now) {
+        if (!verdict.UsageLimitCleared || verdict.UsageLimit is not { } limit ||
+            item.ConditionFirstObservedAtUtc.TryGetValue(LedgerRules.UsageLimitClearedCondition, out var prior) &&
+            prior == limit.RecordedAtUtc) return item;
+        // Copy the condition clocks so the full evaluation's snapshot comparison can see the change.
+        var conditions = new Dictionary<string, DateTimeOffset>(item.ConditionFirstObservedAtUtc, StringComparer.Ordinal) {
+            [LedgerRules.UsageLimitClearedCondition] = limit.RecordedAtUtc,
+            [LedgerRules.UsageLimitClearedAtCondition] = now
+        };
+        if (limit.ResetsAtUtc is { } reset) conditions[LedgerRules.UsageLimitResetCondition] = reset;
+        else conditions.Remove(LedgerRules.UsageLimitResetCondition);
+        return item with { ConditionFirstObservedAtUtc = conditions };
+    }
+
+    private static async Task KeepConcurrentLimitClearanceAsync(SQLiteAsyncSession tx, LedgerItem evaluated,
+        DateTimeOffset now, CancellationToken token) {
+        if (evaluated.Current is not { UsageLimitCleared: true, UsageLimit: { } limit } verdict ||
+            evaluated.Session is not { } previous) return;
+        var args = new Dictionary<string, object?> { ["id"] = evaluated.Id };
+        if (await tx.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id", args, token) is not string json) return;
+        var current = Read<LedgerItem>(json);
+        if (current.Session is not { UsageLimit: true } session || session.TurnId != previous.TurnId ||
+            session.TurnStartedAtUtc != previous.TurnStartedAtUtc || session.AccountId != previous.AccountId ||
+            LedgerRules.UsageLimitRecordedAt(current, session) != limit.RecordedAtUtc) return;
+
+        // Commit just the clearance for the same stop. The newer observation and any other verdict inputs stay intact.
+        var merged = RememberLimitClearance(current, verdict, now);
+        if (ReferenceEquals(merged, current)) return;
+        args["json"] = Json(merged);
+        await tx.ExecuteNonQueryAsync("UPDATE items SET json=@json WHERE id=@id", args, token);
     }
 
     private static LedgerItem MergeWork(LedgerItem item, WorkFact fact, EvidenceRef evidence) {

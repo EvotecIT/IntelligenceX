@@ -198,14 +198,42 @@ evidence retain their separate timestamps.
 ## Shared views and project context
 
 `GET /api/ledger/v1/work` returns current work, separate from all-history counts.
-Current work includes unfinished turns and explicit follow-up. Completed sessions and catalog-only rows retain their stored history. Questions, waits, current declarations and pending deliveries remain visible. The list contains up to 200 rows, with full
-current-work counts and a `truncated` flag. `verdict` filters returned rows;
-`limit` bounds their number from 1 to 200. Counts retain the full current scope.
-Verdicts come from the existing rules engine. The view interleaves verdict
-groups so a large backlog cannot hide every working
-item from a bounded list. Counts describe the full scope, not just visible rows.
-The view retains its `asOfUtc`
-while cached for at most ten seconds; admitted events invalidate that cache.
+Current work includes unfinished turns, questions, waits, current declarations
+and pending deliveries. The view interleaves verdict groups so a large backlog
+doesn't crowd out working items. Set `verdict` to filter rows and `limit` to
+bound them from 1 to 200. `counts` covers all current work.
+
+Use `?include=open` to append non-archived sessions that ended normally and had
+activity within seven days. These rows carry
+`open: true` and retain their verdict and `item.session.lastActivityAtUtc`.
+They are ordered newest first and have their own `limit`. `openCount` covers
+the full open roster, even when a verdict filter or row limit hides part of it.
+`truncated` is true when either list reaches its limit and has more rows.
+Both lists come from the same refresh and share `asOfUtc`.
+
+An item that stopped at a usage limit carries
+`item.usageLimit` with `recordedAtUtc`, nullable `resetsAtUtc` and `inForce`.
+A newer observation from the matching host, provider and account can supply
+the reset or show that usage is available again. Without a known reset, the
+fallback is five hours from the recorded stop (`rules.usageLimitWindow`).
+A stop at an expired limit is `stuck` with reason `usage-limit` and can be
+continued. A later turn clears the recorded stop.
+
+Codex reporters can use `accountByRoot` to associate a watched root with a
+`codex:<account-id>`. A Claude status-line snapshot can include its
+`accountId`, or the service can match the local profile when the profile
+predates the snapshot. Without a matching account, the fallback applies.
+
+Rows for dedicated ask helpers carry `helper` with `requestId`, `state`,
+`requesterProvider`, `requesterSessionId`, `requesterItemId` and
+`requesterLabel`. The request supplies the helper's verdict. Finished helpers
+leave current work. Native child threads and desktop side sessions carry
+`startedBy` with `provider`, `sessionId`, `itemId`, `label` and `via`.
+Related Ledger item IDs are nullable when the related session has no known row.
+Labels use a known session, repository or catalog title before falling back
+to the ask's display title, the parent's title or a shortened ID. An ask can
+set `displayTitle` to share a short title with work readers. Task instructions
+remain in the scoped request.
 
 Marquee's Agents settings accept a path to the local read configuration. When
 configured, the view reads this projection, including machine coverage and item
@@ -263,8 +291,11 @@ Its read-only tools are `project_context`, `knowledge_search`, `work_status`, an
 Discovery omits detailed facts. Exact context returns at most three observed
 claims by default and identifies truncation in coverage; `maxResponsibilities`
 can request up to 64. The HTTP and CLI project views retain the complete facts.
-`work_status` returns counts, machine coverage and at most eight compact rows;
-an optional verdict selects a state. Use `work_item` for full evidence. Retrieval
+`work_status` returns counts, machine coverage and at most eight compact rows.
+Set `includeOpen: true` to append up to eight recent open rows, with
+`openCount` and `session.lastActivityAtUtc`. An optional verdict filters both
+lists. Compact rows include `usageLimit`, `helper` and `startedBy` where applicable.
+Use `work_item` for full evidence. Retrieval
 and state evaluation remain service-owned and make no model calls. These tools
 grant no execution or publication authority. Register the host through the
 client's supported MCP settings after reviewing the exact configuration change.

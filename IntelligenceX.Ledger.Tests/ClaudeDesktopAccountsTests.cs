@@ -19,6 +19,8 @@ public sealed class ClaudeDesktopAccountsTests {
             var cli = Path.Combine(root, "claude.json");
             File.WriteAllText(cli, $$$"""{"oauthAccount":{"accountUuid":"{{{Current}}}","emailAddress":"private@example.invalid"}}""");
             var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 17, 10, 0, 0, TimeSpan.Zero));
+            var stoppedAt = clock.GetUtcNow();
+            File.SetLastWriteTimeUtc(cli, stoppedAt.AddHours(-1).UtcDateTime);
             var accounts = new ClaudeDesktopAccounts(root, cli, clock);
 
             Assert.Equal(Old, accounts.For("AAAA-OLD"));
@@ -27,12 +29,17 @@ public sealed class ClaudeDesktopAccountsTests {
             Assert.Equal(Current, accounts.For("bbbb-new"));
             Assert.Equal(Current, accounts.For("cccc-ignored"));
             Assert.Equal(Current, accounts.For("started-from-the-cli"));
+            Assert.Equal(Current, accounts.For("started-from-the-cli", stoppedAtUtc: stoppedAt));
 
             // A session filed after the last read shows on the next one, not before.
             Write(root, Old, "org-a", "local_5.json", """{"cliSessionId":"dddd-later"}""");
             Assert.Equal(Current, accounts.For("dddd-later"));
+            File.WriteAllText(cli, $$$"""{"oauthAccount":{"accountUuid":"{{{Old}}}"}}""");
+            File.SetLastWriteTimeUtc(cli, stoppedAt.AddMinutes(1).UtcDateTime);
             clock.Advance(ClaudeDesktopAccounts.RereadAfter);
             Assert.Equal(Old, accounts.For("dddd-later"));
+            Assert.Null(accounts.For("started-from-the-cli", stoppedAtUtc: stoppedAt));
+            Assert.Equal(Old, accounts.For("started-from-the-cli", stoppedAtUtc: clock.GetUtcNow()));
         } finally {
             Directory.Delete(root, recursive: true);
         }

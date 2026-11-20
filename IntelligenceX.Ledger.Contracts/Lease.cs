@@ -77,6 +77,12 @@ public sealed record BudgetStatus(BudgetLimit[] Limits, int TotalGroups, string 
 /// provider's own client reports it. Null fields are ones the provider didn't report.
 /// </summary>
 public sealed record AccountLimit(string Provider, string Source, DateTimeOffset ObservedAtUtc) {
+    /// <summary>Local identity used to qualify the observation. Budget readers receive the usage figures only.</summary>
+    [JsonIgnore]
+    public string? AccountId { get; init; }
+    [JsonIgnore] public DateTimeOffset? WindowObservedAtUtc { get; init; }
+    [JsonIgnore] public DateTimeOffset? ShortWindowObservedAtUtc { get; init; }
+    [JsonIgnore] public DateTimeOffset? AvailableAtUtc { get; init; }
     public string? Machine { get; init; }
     public string? Plan { get; init; }
     public double? UsedPercent { get; init; }

@@ -280,9 +280,13 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                             observation.Session.TurnEndedAtUtc >= item.Session.TurnStartedAtUtc &&
                             observation.Session.TurnEndedAtUtc > item.Session.LastActivityAtUtc) &&
                         (item.SessionEvidence is null || observation.ObservedAtUtc >= item.SessionEvidence.ObservedAtUtc)) {
-                        ObserveSessionConditions(item, observation.Session, received);
-                        decisionChanged |= Json(item.Session) != Json(observation.Session);
-                        item = item with { Session = observation.Session with { AppOwned = item.Session?.AppOwned }, SessionEvidence = evidence };
+                        var observed = ObserveSessionConditions(item, observation.Session, received) with { AppOwned = item.Session?.AppOwned };
+                        if (observed.StartedBySessionId is null && observed.SourceSessionId is { } native &&
+                            item.Session is { StartedBySessionId: not null } previous && previous.SourceSessionId == native)
+                            observed = observed with { StartedBySessionId = previous.StartedBySessionId,
+                                StartedByProvider = previous.StartedByProvider, StartedVia = previous.StartedVia };
+                        decisionChanged |= Json(item.Session) != Json(observed);
+                        item = item with { Session = observed, SessionEvidence = evidence };
                         if (observation.Session.RepositoryBranchKey is { } branchKey && !item.RepositoryBranchKeys.Contains(branchKey))
                             item = item with { RepositoryBranchKeys = item.RepositoryBranchKeys.Append(branchKey).ToArray() };
                     }
@@ -465,7 +469,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                     // evaluation reconsiders that row instead of overwriting it with older input.
                     var written = await tx.ExecuteNonQueryAsync("UPDATE items SET json=@json WHERE id=@id AND json=@previous",
                         new Dictionary<string, object?> { ["json"] = Json(item), ["id"] = item.Id, ["previous"] = previous }, ct);
-                    if (written != 0 && transition is not null) await InsertTransitionAsync(tx, item.Id, now, transition, ct);
+                    if (written == 0) await KeepConcurrentLimitClearanceAsync(tx, item, now, ct);
+                    else if (transition is not null) await InsertTransitionAsync(tx, item.Id, now, transition, ct);
                 }
             }, token);
         } finally { _gate.Release(); }
@@ -590,6 +595,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         var inferred = item.Session?.Outcome == "completed" && item.Work?.Wait is null ? owned.Select(id => waits[id]).FirstOrDefault() : null;
         item = item with { InferredReviewWaits = waits, ImplicitReviewWait = inferred };
         var verdict = rules.Evaluate(item, now, silent);
+        item = RememberLimitClearance(item, verdict, now);
         string? transition = null;
         if (!item.IsMessageEvidence && (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode || item.Current.EpisodeId != verdict.EpisodeId ||
             item.Current.SinceUtc != verdict.SinceUtc))

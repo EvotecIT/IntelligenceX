@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace IntelligenceX.Ledger.Contracts;
 
 /// <summary>Limits for asks between agents. Every value is read by the service and the machine agent services at use,
@@ -52,7 +54,11 @@ public sealed record AskPolicy {
 public sealed record CoordinationAsk(string Id, string Task, string Project, string Branch, string Commit,
     string ReturnProvider, string ReturnSessionId, string? MachineId = null, string? Provider = null,
     string? Kind = null, string? Capability = null, string? ReturnAddress = null, string? Continues = null,
-    string? Model = null, string? Effort = null, string? Output = null);
+    string? Model = null, string? Effort = null, string? Output = null) {
+    /// <summary>Optional short title visible to Ledger work readers.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DisplayTitle { get; init; }
+}
 
 /// <summary>How a help request's helper runs. Model and Effort override the policy's defaults. Output is "text" (the
 /// default) or "review" (a structured verdict with findings and checks). ForkSessionId is the earlier helper session

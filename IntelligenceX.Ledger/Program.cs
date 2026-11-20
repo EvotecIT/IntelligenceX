@@ -86,7 +86,9 @@ public static class Program {
         // Session, machine, budget and repository reads need only the committed policy, not the command writer.
         async Task<CoordinationPolicy> ReadPolicy(CancellationToken ct) => coordinationStore is null
             ? new(1, []) : await coordinationStore.ReadAsync(state => state.Policy, ct);
-        using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), new(settings.Rules), ReadPolicy);
+        var accountLimits = settings.ExpectedReporters.ContainsKey(AccountLimits.LocalMachine) ? new WorkAccountLimits(settings.DataDirectory) : null;
+        var rules = accountLimits is null ? new LedgerRules(settings.Rules) : new LedgerRules(settings.Rules, accountLimits.ForItem);
+        using var store = new LedgerStore(Path.Combine(settings.DataDirectory, "ledger.sqlite"), rules, ReadPolicy);
         await store.InitializeAsync(progress: startup);
         startup.Report(new("starting-listener"));
         var builder = CreateWebBuilder();
@@ -109,7 +111,7 @@ public static class Program {
         });
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(settings);
-        builder.Services.AddHostedService<ShadowReportWorker>();
+        builder.Services.AddHostedService(_ => new ShadowReportWorker(store, settings, accountLimits: accountLimits));
         if (coordinationStore is not null) builder.Services.AddHostedService(_ => new SessionLineageBackfill(coordinationStore, store));
         // The service's own GitHub reads are counted here and saved each minute for the github-budget view.
         var githubUsage = new GitHubUsageMeter();
@@ -119,7 +121,7 @@ public static class Program {
         var readiness = new PullRequestReadinessService(store, githubUsage);
         if (coordinationStore is not null) builder.Services.AddHostedService(_ => new WakeWatcher(coordinationStore, readiness));
         var app = builder.Build();
-        var runtime = new LedgerRuntime(store, settings);
+        var runtime = new LedgerRuntime(store, settings, coordinationStore);
         var contextService = new ProjectContextService(settings.ProjectCatalogPath);
         app.Use(async (context, next) => {
             context.Response.Headers.CacheControl = "no-store";

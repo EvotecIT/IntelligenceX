@@ -2,19 +2,22 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Coordination;
 using IntelligenceX.Ledger.Rules;
 using IntelligenceX.Ledger.Storage;
 
 namespace IntelligenceX.Ledger.Hosting;
 
-internal sealed partial class LedgerRuntime(LedgerStore store, LedgerSettings settings) {
+internal sealed partial class LedgerRuntime(LedgerStore store, LedgerSettings settings, CoordinationStore? coordination = null) {
     private readonly ConcurrentDictionary<string, (DateTimeOffset Time, LedgerItem[] Items)> _snapshots = new();
+    private readonly LedgerStore _store = store;
+    private readonly CoordinationStore? _coordination = coordination;
     internal static bool TokenEquals(string supplied, string expected) => CryptographicOperations.FixedTimeEquals(
         SHA256.HashData(Encoding.UTF8.GetBytes(supplied)), SHA256.HashData(Encoding.UTF8.GetBytes(expected)));
 
     internal async Task<MachineRow[]> MachinesAsync(DateTimeOffset now, CancellationToken token) {
-        var heartbeats = await store.HeartbeatsAsync(token);
-        var enrolled = await store.EnrollAsync(settings.ExpectedReporters.Keys, token);
+        var heartbeats = await _store.HeartbeatsAsync(token);
+        var enrolled = await _store.EnrollAsync(settings.ExpectedReporters.Keys, token);
         return settings.ExpectedReporters.Select(pair => {
             var times = pair.Value.Select(r => heartbeats.TryGetValue(r, out var time) ? (DateTimeOffset?)time : null).ToArray();
             var last = times.Where(x => x.HasValue).Select(x => x!.Value).DefaultIfEmpty().Min();
@@ -31,11 +34,14 @@ internal sealed partial class LedgerRuntime(LedgerStore store, LedgerSettings se
 
     internal async Task<LedgerItem[]> ItemsAsync(DateTimeOffset now, CancellationToken token, bool includeMessageEvidence = false) {
         var machines = await MachinesAsync(now, token);
+        return await ItemsAsync(now, machines, token, includeMessageEvidence);
+    }
+
+    private async Task<LedgerItem[]> ItemsAsync(DateTimeOffset now, MachineRow[] machines, CancellationToken token,
+        bool includeMessageEvidence = false) {
         var silent = machines.Where(m => m.State != "healthy").Select(m => m.Id).ToHashSet();
-        var items = await store.EvaluateAllAsync(now, token, silent);
-        var rules = new LedgerRules(settings.Rules);
-        return items.Where(i => includeMessageEvidence || !i.IsMessageEvidence)
-            .Select(i => i with { Current = rules.Evaluate(i, now, silent.Contains(i.MachineId)) }).ToArray();
+        var items = await _store.EvaluateAllAsync(now, token, silent);
+        return includeMessageEvidence ? items : items.Where(i => !i.IsMessageEvidence).ToArray();
     }
 
     internal async Task<ItemPage?> PageAsync(string? cursor, int limit, string? verdict, string? machineId,

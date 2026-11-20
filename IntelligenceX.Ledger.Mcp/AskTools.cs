@@ -29,13 +29,16 @@ public sealed class AskTools(LedgerReadClient client) {
     public Task<CoordinationWork> Ask(string task, string? machine = null, string? provider = null, string? kind = null,
         string? capability = null, string? id = null, string? project = null, string? branch = null, string? commit = null,
         string? sessionId = null, string? sessionProvider = null, string? sessionAddress = null, string? continues = null,
-        string? model = null, string? effort = null, string? output = null, CancellationToken token = default) {
+        string? model = null, string? effort = null, string? output = null, CancellationToken token = default,
+        [Description("Optional short title visible in the shared Ledger work view.")] string? displayTitle = null) {
         var (returnProvider, session) = CurrentSession(sessionId, sessionProvider);
         var target = Source(project, branch, commit, output, GitSource);
         // An uncertain outcome names the id, so a retry with it returns the ask the service may already have taken.
         var askId = id ?? "ask-" + Guid.NewGuid().ToString("N");
         return Command(client.AskAsync(new CoordinationAsk(askId, task, target.Project, target.Branch, target.Commit,
-            returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output), token), askId);
+            returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output) {
+            DisplayTitle = displayTitle
+        }, token), askId);
     }
 
     /// <summary>Commit recorded when work in another repository isn't pinned: the helper uses the latest of the branch.</summary>
