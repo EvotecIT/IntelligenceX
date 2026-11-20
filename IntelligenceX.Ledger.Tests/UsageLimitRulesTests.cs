@@ -233,6 +233,38 @@ public sealed class UsageLimitRulesTests {
         } finally { Directory.Delete(directory, recursive: true); }
     }
 
+    [Fact]
+    public async Task ConfirmedResetSurvivesRepeatedEvaluationsAcrossTheFallbackDeadline() {
+        var directory = LedgerTestPaths.NewDirectory("limit-deadline");
+        try {
+            var item = Limited(ended: true);
+            var reset = Recorded.AddHours(2);
+            var limit = new AccountLimit("claude", "synthetic-account", Recorded.AddMinutes(1)) {
+                Machine = item.MachineId, AccountId = item.Session!.AccountId,
+                ShortUsedPercent = 100, ShortResetsAtUtc = reset, UsedPercent = 25, WindowMinutes = 10080
+            };
+            using var store = new LedgerStore(Path.Combine(directory, "ledger.sqlite"), new(new(), _ => limit));
+            await store.InitializeAsync();
+            await store.IngestAsync([new LedgerEvent {
+                EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Sequence = 1, MachineId = item.MachineId,
+                ReporterId = "synthetic-reporter", ItemId = item.Id, Provider = item.Provider, Source = "watcher",
+                ObservedAtUtc = Recorded, Session = item.Session
+            }], Recorded);
+
+            var cleared = Assert.Single(await store.EvaluateAllAsync(reset));
+            Assert.Equal(new UsageLimitView(Recorded, reset, false), cleared.Current!.UsageLimit);
+
+            limit = limit with {
+                ObservedAtUtc = Recorded.AddHours(3), ShortUsedPercent = 50, ShortResetsAtUtc = null,
+                UsedPercent = 100, ResetsAtUtc = Recorded.AddDays(2)
+            };
+            foreach (var now in new[] { Recorded.AddHours(3), Recorded.AddHours(5), Recorded.AddHours(5).AddMinutes(1) }) {
+                var pass = Assert.Single(await store.EvaluateAllAsync(now));
+                Assert.Equal(("stuck", new UsageLimitView(Recorded, reset, false)), (pass.Current!.Value, pass.Current.UsageLimit));
+            }
+        } finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
+
     private static LedgerItem Limited(bool ended) => new() {
         Id = "synthetic-session", Kind = "session", Provider = "claude", MachineId = "synthetic-machine",
         FirstObservedAtUtc = Recorded.AddDays(-1), Session = new() {

@@ -102,6 +102,8 @@ public sealed record Verdict(string Value, string ReasonCode, DateTimeOffset Sin
     /// <summary>Current account context for the item view. Stored verdicts stay readable by earlier services.</summary>
     [JsonIgnore]
     public UsageLimitView? UsageLimit { get; init; }
+    [JsonIgnore]
+    public bool UsageLimitCleared { get; init; }
 }
 
 public sealed record MachineRow(string Id, string State, DateTimeOffset? LastHeartbeatAtUtc,

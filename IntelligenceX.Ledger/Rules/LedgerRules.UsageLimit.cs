@@ -3,10 +3,19 @@ using IntelligenceX.Ledger.Contracts;
 namespace IntelligenceX.Ledger.Rules;
 
 public sealed partial class LedgerRules {
-    private UsageLimitView? UsageLimit(LedgerItem item, DateTimeOffset now) {
-        if (item.Session is not { UsageLimit: true } session) return null;
+    internal const string UsageLimitClearedCondition = "usage-limit-cleared";
+    internal const string UsageLimitResetCondition = "usage-limit-confirmed-reset";
+
+    private (UsageLimitView? Limit, bool ConfirmedClear) UsageLimit(LedgerItem item, DateTimeOffset now) {
+        if (item.Session is not { UsageLimit: true } session) return (null, false);
         var recorded = session.TurnEndedAtUtc ??
             item.ConditionFirstObservedAtUtc.GetValueOrDefault("usage-limit", session.LastActivityAtUtc ?? item.FirstObservedAtUtc);
+        if (item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitClearedCondition, out var confirmed) &&
+            confirmed >= recorded && confirmed <= now) {
+            var knownReset = item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitResetCondition, out var resetAt)
+                ? resetAt : (DateTimeOffset?)null;
+            return (new(recorded, knownReset, false), true);
+        }
         // The prior matches retain independent limit evidence when another hold supplies the primary verdict.
         var prior = item.Current;
         var cleared = false;
@@ -20,10 +29,10 @@ public sealed partial class LedgerRules {
         var account = _accountLimit?.Invoke(item);
         if (account is null || account.Machine != item.MachineId || account.Provider != item.Provider ||
             account.AccountId is null || !string.Equals(account.AccountId, session.AccountId, StringComparison.OrdinalIgnoreCase) ||
-            account.ObservedAtUtc <= recorded || account.ObservedAtUtc > now) return fallback;
+            account.ObservedAtUtc <= recorded || account.ObservedAtUtc > now) return (fallback, false);
         var available = account.AvailableAtUtc ?? AccountAvailableAt(account);
         if (available > recorded && available <= now)
-            return fallback with { InForce = false };
+            return (fallback with { InForce = false }, true);
 
         // A reset from a later window cannot extend the older stop. An exceeded window without a reset
         // still uses the fallback, even when another exceeded window has a known reset.
@@ -36,17 +45,13 @@ public sealed partial class LedgerRules {
             var reported = windows.Where(window => window.Reset.HasValue).ToArray();
             if (reported is [{ Used: null }]) reached = reported;
         }
-        if (reached.Length == 0) return fallback;
+        if (reached.Length == 0) return (fallback, false);
         var reset = reached.Where(window => window.Reset > recorded &&
                 (window.Minutes is not > 0 || window.Reset!.Value - recorded <= TimeSpan.FromMinutes(window.Minutes.Value)))
             .Select(window => window.Reset).Max();
-        // A decision before the fallback expired was based on qualified evidence. A fallback timeout can still be
-        // refined by the first matching reset report, but a confirmed clearance cannot re-raise the old alert.
-        if (cleared && prior!.EvaluatedAtUtc - recorded < settings.UsageLimitWindow && reset > now)
-            return fallback;
         return reset is { } at && (!reached.Any(window => window.Reset is null) || at - recorded >= settings.UsageLimitWindow)
-            ? new(recorded, at, now < at)
-            : fallback;
+            ? (new(recorded, at, now < at), now >= at)
+            : (fallback, false);
     }
 
     /// <summary>The latest time both windows were available, or when the provider explicitly allowed usage.</summary>

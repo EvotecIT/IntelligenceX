@@ -1,9 +1,11 @@
 using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Rules;
 
 namespace IntelligenceX.Ledger.Storage;
 
 public sealed partial class LedgerStore {
-    private static readonly string[] SessionConditions = ["question", "input-unconfirmed", "usage-limit", "complete", "idle", "active", "quiet"];
+    private static readonly string[] SessionConditions = ["question", "input-unconfirmed", "usage-limit", "complete", "idle", "active", "quiet",
+        LedgerRules.UsageLimitClearedCondition, LedgerRules.UsageLimitResetCondition];
 
     private static void ObserveCondition(LedgerItem item, string condition, bool present, DateTimeOffset received) {
         if (present) item.ConditionFirstObservedAtUtc.TryAdd(condition, received);
@@ -27,6 +29,10 @@ public sealed partial class LedgerStore {
         ObserveCondition(item, "question", session.Question, received);
         ObserveCondition(item, "input-unconfirmed", session.InputUnconfirmed, received);
         ObserveCondition(item, "usage-limit", session.UsageLimit, received);
+        if (!session.UsageLimit) {
+            item.ConditionFirstObservedAtUtc.Remove(LedgerRules.UsageLimitClearedCondition);
+            item.ConditionFirstObservedAtUtc.Remove(LedgerRules.UsageLimitResetCondition);
+        }
         ObserveCondition(item, "complete", session.Outcome == "completed", received);
         ObserveCondition(item, "idle", session.Outcome == "completed", received);
         if (session.TurnOpen.HasValue) {
@@ -34,6 +40,19 @@ public sealed partial class LedgerStore {
             ObserveCondition(item, "quiet", session.TurnOpen == true, received);
         }
         return session;
+    }
+
+    private static LedgerItem RememberLimitClearance(LedgerItem item, Verdict verdict, DateTimeOffset now) {
+        if (!verdict.UsageLimitCleared || verdict.UsageLimit is not { } limit ||
+            item.ConditionFirstObservedAtUtc.TryGetValue(LedgerRules.UsageLimitClearedCondition, out var prior) &&
+            prior >= limit.RecordedAtUtc) return item;
+        // Copy the condition clocks so the full evaluation's snapshot comparison can see the change.
+        var conditions = new Dictionary<string, DateTimeOffset>(item.ConditionFirstObservedAtUtc, StringComparer.Ordinal) {
+            [LedgerRules.UsageLimitClearedCondition] = now
+        };
+        if (limit.ResetsAtUtc is { } reset) conditions[LedgerRules.UsageLimitResetCondition] = reset;
+        else conditions.Remove(LedgerRules.UsageLimitResetCondition);
+        return item with { ConditionFirstObservedAtUtc = conditions };
     }
 
     private static LedgerItem MergeWork(LedgerItem item, WorkFact fact, EvidenceRef evidence) {

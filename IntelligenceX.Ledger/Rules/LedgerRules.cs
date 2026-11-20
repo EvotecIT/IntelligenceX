@@ -32,8 +32,10 @@ public sealed partial class LedgerRules(RuleSettings settings) {
 
     public Verdict Evaluate(LedgerItem item, DateTimeOffset now, bool reporterSilent = false) {
         item = ApplyScope(item);
-        var usageLimit = UsageLimit(item, now);
-        return EvaluateScoped(item, now, reporterSilent, usageLimit) with { UsageLimit = usageLimit };
+        var (usageLimit, confirmedClear) = UsageLimit(item, now);
+        return EvaluateScoped(item, now, reporterSilent, usageLimit) with {
+            UsageLimit = usageLimit, UsageLimitCleared = confirmedClear
+        };
     }
 
     private Verdict EvaluateScoped(LedgerItem item, DateTimeOffset now, bool reporterSilent, UsageLimitView? usageLimit) {

@@ -594,6 +594,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         var inferred = item.Session?.Outcome == "completed" && item.Work?.Wait is null ? owned.Select(id => waits[id]).FirstOrDefault() : null;
         item = item with { InferredReviewWaits = waits, ImplicitReviewWait = inferred };
         var verdict = rules.Evaluate(item, now, silent);
+        item = RememberLimitClearance(item, verdict, now);
         string? transition = null;
         if (!item.IsMessageEvidence && (item.Current?.Value != verdict.Value || item.Current.ReasonCode != verdict.ReasonCode || item.Current.EpisodeId != verdict.EpisodeId ||
             item.Current.SinceUtc != verdict.SinceUtc))
