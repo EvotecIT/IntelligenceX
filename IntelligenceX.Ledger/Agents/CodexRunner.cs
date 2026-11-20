@@ -47,13 +47,30 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     }
 
     /// <summary>Starts a new thread holding a copy of an earlier thread's conversation, in a new working directory, so a
-    /// follow-up keeps its context while the earlier thread stays as it was. An archived thread can be forked too.</summary>
+    /// follow-up keeps its context while the earlier thread stays as it was. Codex refuses to fork an archived thread, and a
+    /// finished helper's thread is archived when it retires, so that one is unarchived for the fork and archived again.</summary>
     public async Task<string> ForkThreadAsync(string sourceThreadId, string cwd, string? model, string title, CancellationToken token) {
         await using var server = await OpenAsync(token).ConfigureAwait(false);
         var parameters = new JsonObject { ["threadId"] = sourceThreadId, ["cwd"] = cwd, ["ephemeral"] = false,
             ["approvalPolicy"] = "never", ["excludeTurns"] = true };
         if (model is not null) parameters["model"] = model;
-        var forked = await server.CallAsync("thread/fork", parameters, CallTimeout, token).ConfigureAwait(false);
+        JsonElement forked;
+        try {
+            forked = await server.CallAsync("thread/fork", parameters, CallTimeout, token).ConfigureAwait(false);
+        } catch (CodexRpcException error) when (error.Message.Contains("is archived", StringComparison.OrdinalIgnoreCase)) {
+            // The unarchive is inside the protected region: even a timed-out unarchive may have happened, so the source is
+            // archived again either way. A failed re-archive is logged and never discards a fork that succeeded.
+            try {
+                await server.CallAsync("thread/unarchive", new JsonObject { ["threadId"] = sourceThreadId }, CallTimeout, token).ConfigureAwait(false);
+                forked = await server.CallAsync("thread/fork", parameters, CallTimeout, token).ConfigureAwait(false);
+            } finally {
+                try {
+                    await server.CallAsync("thread/archive", new JsonObject { ["threadId"] = sourceThreadId }, CallTimeout, CancellationToken.None).ConfigureAwait(false);
+                } catch (Exception archive) when (archive is CodexRpcException or IOException or TimeoutException or InvalidOperationException) {
+                    AgentService.Log("fork-source-not-rearchived", sourceThreadId + " " + archive.Message);
+                }
+            }
+        }
         var id = forked.GetProperty("thread").GetProperty("id").GetString() ?? throw new InvalidDataException("thread/fork returned no id.");
         await NameAsync(server, id, title, token).ConfigureAwait(false);
         return id;

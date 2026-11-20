@@ -23,6 +23,10 @@ public sealed record AgentSettings {
     /// <summary>The Codex app's control socket. Null uses CODEX_HOME or ~/.codex.</summary>
     public string? CodexControlSocket { get; init; }
     public string ClaudeExecutable { get; init; } = "claude";
+    /// <summary>Permission mode for Claude helpers. Nobody is there to approve a tool call, so a helper that should build,
+    /// test and push needs bypassPermissions, the same unattended access Codex helpers run with (approval policy never).
+    /// acceptEdits limits a helper to file edits; plan makes it read-only.</summary>
+    public string ClaudeHelperPermissionMode { get; init; } = "bypassPermissions";
     /// <summary>Seconds between Ledger sweeps. Sweeps are plain HTTP reads; no model is involved.</summary>
     public double SweepSeconds { get; init; } = 3;
 }
@@ -125,6 +129,11 @@ internal sealed record RunRecord {
     /// <summary>Result content chosen before it is published, so a retry or reconciliation publishes the same content.</summary>
     public string? PendingResult { get; init; }
     public bool PendingSucceeded { get; init; }
+    /// <summary>A Claude helper's running process (id and start time), so a restarted service can stop one left behind.</summary>
+    public int? ProcessId { get; init; }
+    public DateTimeOffset? ProcessStartedUtc { get; init; }
+    /// <summary>A Claude turn's outcome, saved as soon as the turn ends so a restart handles it without running the turn again.</summary>
+    public TurnOutcome? LastTurn { get; init; }
     /// <summary>Set once the helper's retirement is verified; until then the record is what proves this service owns its
     /// thread and workspace, so it is kept however long the workspace waits for review.</summary>
     public bool Retired { get; init; }
