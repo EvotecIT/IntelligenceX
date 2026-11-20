@@ -101,6 +101,8 @@ public sealed class LedgerTrayTests {
         Assert.Null(Text("credentials-written", "2026-11-20T08:17:04Z", null, "codex"));
         Assert.Equal("Codex sign-in file removed", Text("credentials", "file", "none", "codex"));
         Assert.Null(Text("hosts-written", "2026-10-21T15:52:55Z", null));
+        Assert.Null(Text("hosts-written", null, "2026-10-21T15:52:55Z"));
+        Assert.Equal("gh sign-in file (hosts.yml) rewritten", Text("hosts-written", "2026-10-21T15:52:55Z", "2026-11-20T09:00:00Z"));
     }
 
     [Fact]
