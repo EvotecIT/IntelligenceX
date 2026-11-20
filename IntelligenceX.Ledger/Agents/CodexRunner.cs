@@ -223,10 +223,13 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
             var active = read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
                 ? turns.EnumerateArray().Where(turn => Status(turn) == "inProgress").Select(turn => turn.GetProperty("id").GetString()!).ToArray() : [];
             if (active.Length == 0 || DateTimeOffset.UtcNow > deadline) return;
-            foreach (var turnId in active.Where(interrupted.Add)) {
+            // A turn counts as interrupted only once Codex accepted the interrupt; a failed or timed-out one is tried again
+            // on the next pass while time is left.
+            foreach (var turnId in active.Where(id => !interrupted.Contains(id))) {
                 try {
-                    if (Remaining(deadline, CallTimeout) > TimeSpan.Zero)
-                        await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = threadId, ["turnId"] = turnId }, Remaining(deadline, CallTimeout), token).ConfigureAwait(false);
+                    if (Remaining(deadline, CallTimeout) <= TimeSpan.Zero) break;
+                    await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = threadId, ["turnId"] = turnId }, Remaining(deadline, CallTimeout), token).ConfigureAwait(false);
+                    interrupted.Add(turnId);
                 } catch (Exception error) when (error is CodexRpcException or TimeoutException) { }
             }
             await Task.Delay(Remaining(deadline, TimeSpan.FromSeconds(5)), token).ConfigureAwait(false);
@@ -542,8 +545,13 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
     public string? TurnId { get; private set; }
     public string? LastMessage { get; private set; }
     public bool ServerRequested { get; private set; }
-    /// <summary>When the thread last showed any activity (a message, command, tool call or usage update).</summary>
-    public DateTimeOffset LastActivityUtc { get; private set; } = DateTimeOffset.UtcNow;
+    /// <summary>When the thread last showed any activity (a message, command, tool call or usage update). Notifications
+    /// write it on the server's reader while the runner reads it, so it is kept as ticks with atomic access.</summary>
+    public DateTimeOffset LastActivityUtc {
+        get => new(Interlocked.Read(ref _lastActivityTicks), TimeSpan.Zero);
+        private set => Interlocked.Exchange(ref _lastActivityTicks, value.UtcTicks);
+    }
+    private long _lastActivityTicks = DateTimeOffset.UtcNow.UtcTicks;
     public TurnTokens Tokens { get { lock (_gate) return _tokens; } }
     public Task<(string Status, string? Text, string? Error)> Completed => _completed.Task;
 
