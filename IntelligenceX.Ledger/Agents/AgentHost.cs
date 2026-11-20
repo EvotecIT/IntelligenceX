@@ -50,7 +50,7 @@ public static class AgentHost {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         object codex;
         try {
-            await using var server = await CodexAppServer.OpenAsync(settings.CodexExecutable, settings.CodexControlSocket, timeout.Token);
+            await using var server = await CodexAppServer.OpenAsync(CodexCli.Resolve(settings.CodexExecutable), settings.CodexControlSocket, timeout.Token);
             var threads = await server.CallAsync("thread/list", new System.Text.Json.Nodes.JsonObject { ["limit"] = 1 }, TimeSpan.FromSeconds(20), timeout.Token);
             codex = new { available = true, live = server.Live, listed = threads.TryGetProperty("data", out var data) ? data.GetArrayLength() : -1 };
         } catch (Exception error) {

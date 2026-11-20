@@ -38,16 +38,15 @@ public static class AccountLimits {
         } finally { Gate.Release(); }
     }
 
-    /// <summary>CODEX_BIN, then the desktop app's, npm's and Homebrew's copies, then PATH.</summary>
+    /// <summary>CODEX_BIN, then the Codex desktop app's own CLI (the version the app runs), then npm's and Homebrew's
+    /// copies, then PATH.</summary>
     internal static string? CodexBinary() {
-        var candidates = new List<string?> { Environment.GetEnvironmentVariable("CODEX_BIN") };
+        var candidates = new List<string?> { Environment.GetEnvironmentVariable("CODEX_BIN"), Agents.CodexCli.DesktopApp() };
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (OperatingSystem.IsWindows()) {
-            candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenAI", "Codex", "bin", "codex.exe"));
             candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "node_modules", "@openai", "codex",
                 "node_modules", "@openai", "codex-win32-x64", "vendor", "x86_64-pc-windows-msvc", "bin", "codex.exe"));
         } else {
-            candidates.Add("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex");
             candidates.Add("/opt/homebrew/bin/codex");
             candidates.Add("/usr/local/bin/codex");
             candidates.Add(Path.Combine(home, ".npm-global", "bin", "codex"));

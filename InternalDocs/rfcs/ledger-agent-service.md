@@ -162,9 +162,13 @@ one needs attention), and learns of a Claude usage limit or lapsed login from th
 
 - While the Claude CLI can't send, Claude deliveries are held in the Ledger (`claude-sign-in-required`), never dropped.
 - The reporter publishes a `sign-in` item per provider and machine (`<machine>:sign-in:<provider>`). It is needs-you with
-  reason `sign-in-required` while sign-in is needed and done with `signed-in` afterwards. Its `signIn` field carries
-  `provider`, `required`, `reason` (signed-out, expired, usage-limit), `command` (`claude auth login` or `codex login`),
-  `sinceUtc`, `atUtc` and `held` (Claude deliveries waiting on it).
+  reason `sign-in-required` while sign-in is needed, done with `signed-in` afterwards, and done with `sign-in-unknown`
+  while the last check couldn't tell. Its `signIn` field carries `provider`, `required`, `reason` (signed-in, unknown,
+  signed-out, expired, usage-limit), `command` (`claude auth login` or `codex login`), `sinceUtc` (when this state
+  began), `atUtc` and `held` (Claude deliveries waiting on it). Read one with `GET /api/ledger/v1/items/<machine>:sign-in:<provider>`.
+- A check that times out or can't be read is `unknown`: the provider stays usable and nobody is asked to sign in. A
+  signed-out answer from a status check counts only when the next check, a minute later, agrees; until then the state
+  is `unknown`. A send that fails because of sign-in or a usage limit counts at once.
 - On a Mac the service shows a notification and a dialog whose "Sign in" button opens Terminal running that command.
   AppleScript notifications can't carry an action of their own, so the dialog is the one-tap route.
 - When the next check or send succeeds, the item is cleared and held deliveries go out.

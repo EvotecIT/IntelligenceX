@@ -31,7 +31,10 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     private static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(30);
 
-    public Task<CodexAppServer> OpenAsync(CancellationToken token) => CodexAppServer.OpenAsync(executable, controlSocket, token);
+    /// <summary>The desktop app's CLI when it is installed (see <see cref="CodexCli"/>), otherwise the configured one.</summary>
+    private string Executable => CodexCli.Resolve(executable);
+
+    public Task<CodexAppServer> OpenAsync(CancellationToken token) => CodexAppServer.OpenAsync(Executable, controlSocket, token);
 
     public async Task<string> StartThreadAsync(string cwd, string? model, string title, CancellationToken token) {
         await using var server = await OpenAsync(token).ConfigureAwait(false);
@@ -400,7 +403,7 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     }
 
     private async Task<(int Exit, string Error)> RunQueueAsync(string threadId, string text, bool resume, CancellationToken token) {
-        var start = new System.Diagnostics.ProcessStartInfo(executable) {
+        var start = new System.Diagnostics.ProcessStartInfo(Executable) {
             RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
         foreach (var argument in new[] { "queue", "--thread", threadId, "--message", text }) start.ArgumentList.Add(argument);
         if (resume) start.ArgumentList.Add("--resume");
