@@ -144,8 +144,12 @@ public sealed class AuthStateTests : IDisposable {
         Assert.Equal(("someone", "GH_TOKEN", "admin:org, repo, workflow", "bot, someone"),
             (facts["account"], facts["token-source"], facts["scopes"], facts["accounts"]));
 
-        Assert.Equal("signed-out", AuthStateCollector.ParseGitHub("""{"hosts":{"github.com":[{"state":"error","active":true,"login":"someone"}]}}""", facts = []));
+        // A token GitHub rejected is a sign-out.
+        Assert.Equal("signed-out", AuthStateCollector.ParseGitHub("""{"hosts":{"github.com":[{"state":"error","active":true,"login":"someone","tokenSource":"keyring"}]}}""", facts = []));
         Assert.Equal("error", facts["check"]);
+        // No readable token (a locked keychain for a background process) says nothing about the sign-in.
+        Assert.Equal("unknown", AuthStateCollector.ParseGitHub("""{"hosts":{"github.com":[{"state":"error","active":true,"login":"someone","tokenSource":"default"}]}}""", facts = []));
+        Assert.Equal("token-unreadable", facts["check"]);
         Assert.Equal("signed-out", AuthStateCollector.ParseGitHub("""{"hosts":{}}""", []));
         Assert.Equal("unknown", AuthStateCollector.ParseGitHub("""{"hosts":{"github.com":[{"state":"timeout","active":true}]}}""", []));
         Assert.Equal("unknown", AuthStateCollector.ParseGitHub("not json", []));

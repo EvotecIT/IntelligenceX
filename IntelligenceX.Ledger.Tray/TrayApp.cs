@@ -154,9 +154,15 @@ internal sealed class TrayApp : Application {
     private void Rerender() { if (_view is { } view) { _built = null; Render(view); } }
 
     private static NativeMenuItem ProviderItem(ProviderLine provider) {
-        var item = new NativeMenuItem("    " + provider.Mark + " " + provider.Name + "  " + provider.Summary) { Menu = new NativeMenu() };
+        var item = new NativeMenuItem("    " + provider.Mark + " " + provider.Name + "  " + provider.MenuSummary) { Menu = new NativeMenu() };
         if (provider.Details.Length == 0) item.Menu.Items.Add(Label("No facts reported"));
-        foreach (var (label, value) in provider.Details) item.Menu.Items.Add(Label(label + ": " + (value.Length <= 110 ? value : value[..109] + "…")));
+        if (provider.MenuSummary != provider.Summary) item.Menu.Items.Add(Label(provider.Summary));
+        foreach (var (label, value) in provider.Details) {
+            // A list such as the binaries gets a line each, so no line runs off the screen.
+            var lines = value.Split(Environment.NewLine);
+            for (var index = 0; index < lines.Length; index++)
+                item.Menu.Items.Add(Label((index == 0 ? label + ": " : "    ") + (lines[index].Length <= 90 ? lines[index] : "…" + lines[index][^89..])));
+        }
         return item;
     }
 

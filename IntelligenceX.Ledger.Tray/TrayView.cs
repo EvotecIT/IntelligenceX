@@ -8,7 +8,17 @@ internal enum TrayState { Starting, Healthy, Degraded, Down }
 
 /// <summary>One provider on one machine as the menu shows it: a mark, a one-line summary and the facts behind it.</summary>
 internal sealed record ProviderLine(string Provider, string Name, string Mark, string Summary, (string Label, string Value)[] Details, bool NeedsSignIn,
-    string? Warning = null);
+    string? Warning = null) {
+    /// <summary>The state and the one thing most worth seeing (the warning, or else the next fact), short enough for a
+    /// menu line that sits near a screen edge. The full summary and facts stay in the submenu and details window.</summary>
+    public string MenuSummary {
+        get {
+            var parts = Summary.Split(" · ");
+            var next = Warning ?? (parts.Length > 1 ? parts[1] : null);
+            return next is null ? parts[0] : parts[0] + " · " + next;
+        }
+    }
+}
 
 internal sealed record MachineView(string Machine, string Reporter, ProviderLine[] Providers, string? Note);
 
