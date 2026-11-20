@@ -63,7 +63,10 @@ function Test-OwnLogin {
 # The loaded job can still be another root's even after this install rewrote the shared plist.
 function Test-OwnLoadedJob {
     $loaded = & /bin/launchctl print "gui/$Uid/$Label" 2>$null
-    return $LASTEXITCODE -eq 0 -and ($loaded -join "`n").Contains($Executable)
+    if ($LASTEXITCODE -ne 0) { return $false }
+    # launchctl prints the loaded program as "program = <path>"; it has to be this executable exactly.
+    $program = @($loaded | Where-Object { $_ -match '^\s*program = (.+)$' } | ForEach-Object { $Matches[1].Trim() }) | Select-Object -First 1
+    return [string]::Equals($program, $Executable, [StringComparison]::Ordinal)
 }
 
 function Stop-Tray {
