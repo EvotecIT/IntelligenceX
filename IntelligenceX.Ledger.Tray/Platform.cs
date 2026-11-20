@@ -83,6 +83,9 @@ internal static class LoginItem {
 
     public static bool IsSupported => OperatingSystem.IsMacOS() || OperatingSystem.IsWindows();
 
+    /// <summary>The Ledger folder and read settings the tray runs with, so the next login starts the same tray.</summary>
+    public static string[] Arguments { get; set; } = [];
+
     public static bool IsEnabled => OperatingSystem.IsMacOS() ? File.Exists(AgentPath) : OperatingSystem.IsWindows() && ReadRun() is not null;
 
     public static void Set(bool enabled) {
@@ -91,7 +94,7 @@ internal static class LoginItem {
                 if (!enabled) File.Delete(AgentPath);
                 else if (Environment.ProcessPath is { } executable) {
                     System.IO.Directory.CreateDirectory(Path.GetDirectoryName(AgentPath)!);
-                    File.WriteAllText(AgentPath, Plist(executable));
+                    File.WriteAllText(AgentPath, Plist(executable, Arguments));
                 }
             } else if (OperatingSystem.IsWindows()) SetRun(enabled);
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException or SecurityException) {
@@ -100,7 +103,7 @@ internal static class LoginItem {
     }
 
     /// <summary>KeepAlive only after a crash, so Quit from the menu stays quit until the next login.</summary>
-    internal static string Plist(string executable) => $"""
+    internal static string Plist(string executable, string[] arguments) => $"""
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
@@ -109,7 +112,7 @@ internal static class LoginItem {
           <string>{Label}</string>
           <key>ProgramArguments</key>
           <array>
-            <string>{SecurityElement.Escape(executable)}</string>
+            <string>{SecurityElement.Escape(executable)}</string>{string.Concat(arguments.Select(argument => "<string>" + SecurityElement.Escape(argument) + "</string>"))}
           </array>
           <key>EnvironmentVariables</key>
           <dict>
@@ -146,7 +149,8 @@ internal static class LoginItem {
     private static void SetRun(bool enabled) {
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         if (!enabled) key.DeleteValue(RunValue, throwOnMissingValue: false);
-        else if (Environment.ProcessPath is { } executable) key.SetValue(RunValue, "\"" + executable + "\"");
+        else if (Environment.ProcessPath is { } executable)
+            key.SetValue(RunValue, string.Join(' ', new[] { executable }.Concat(Arguments).Select(part => "\"" + part + "\"")));
     }
 }
 

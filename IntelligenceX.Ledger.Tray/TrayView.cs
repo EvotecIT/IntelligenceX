@@ -7,7 +7,8 @@ namespace IntelligenceX.Ledger.Tray;
 internal enum TrayState { Starting, Healthy, Degraded, Down }
 
 /// <summary>One provider on one machine as the menu shows it: a mark, a one-line summary and the facts behind it.</summary>
-internal sealed record ProviderLine(string Provider, string Name, string Mark, string Summary, (string Label, string Value)[] Details, bool NeedsSignIn);
+internal sealed record ProviderLine(string Provider, string Name, string Mark, string Summary, (string Label, string Value)[] Details, bool NeedsSignIn,
+    string? Warning = null);
 
 internal sealed record MachineView(string Machine, string Reporter, ProviderLine[] Providers, string? Note);
 
@@ -52,13 +53,15 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
             if (view.Reporter != "healthy") problems.Add(view.Machine + " reporter " + view.Reporter);
             foreach (var provider in view.Providers.Where(p => p.Mark == Bad))
                 problems.Add(view.Machine + " " + provider.Name + " " + provider.Summary.Split(" · ")[0]);
-            foreach (var provider in view.Providers.Where(p => p.Mark == Warn))
-                problems.Add(view.Machine + " " + provider.Name + ": " + provider.Summary.Split(" · ").Last());
+            // A warning counts whatever the state: two versions with an unconfirmed sign-in still need a look.
+            foreach (var provider in view.Providers.Where(p => p.Warning is not null))
+                problems.Add(view.Machine + " " + provider.Name + ": " + provider.Warning);
         }
         if (overview.GitHub?.Windows.FirstOrDefault(w => w.Resource == "core") is { } core && core.Limit > 0 && core.Remaining < core.Limit / 10)
             problems.Add("GitHub REST " + core.Remaining.ToString("N0", CultureInfo.InvariantCulture) + " left");
         var changes = (auth?.Changes ?? []).Take(15).Select(change => Change(change, now)).ToArray();
-        var state = problems.Count == 0 ? TrayState.Healthy : TrayState.Degraded;
+        // A stalled health check is down, not just degraded: the service answers but can't reach its database.
+        var state = health.Status != "ok" ? TrayState.Down : problems.Count == 0 ? TrayState.Healthy : TrayState.Degraded;
         return new(state, headline, ledger.Where(line => line.Length > 0).ToArray(), machines.FirstOrDefault(m => m.Machine == machine),
             machines.Where(m => m.Machine != machine).ToArray(), changes, problems.ToArray());
     }
@@ -89,7 +92,8 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         if (fact is null) {
             return signIn is null
                 ? new(provider, name, Missing, "not reported", [], false)
-                : new(provider, name, signIn.Required ? Bad : Ok, signIn.Required ? Reason(signIn.Reason) : "signed in", [("Agent", Reason(signIn.Reason))], signIn.Required);
+                : new(provider, name, signIn.Required ? Bad : signIn.Reason == "unknown" ? Unknown : Ok,
+                    signIn.Required ? Reason(signIn.Reason) : signIn.Reason == "unknown" ? "unknown" : "signed in", [("Agent", Reason(signIn.Reason))], signIn.Required);
         }
         var f = fact.Facts ?? [];
         var parts = new List<string>();
@@ -121,7 +125,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         if (warning is not null) { parts.Add(warning); if (mark == Ok) mark = Warn; }
         var details = f.OrderBy(pair => Order(pair.Key)).Select(pair => (Label(pair.Key), pair.Key is "binaries" or "env-override" ? pair.Value.Replace("; ", Environment.NewLine) : pair.Value)).ToList();
         details.Add(("Checked", Ago(now - fact.CheckedAtUtc)));
-        return new(provider, name, mark, string.Join(" · ", parts), details.ToArray(), fact.State == "signed-out");
+        return new(provider, name, mark, string.Join(" · ", parts), details.ToArray(), fact.State == "signed-out", warning);
     }
 
     private static int Order(string key) => Array.IndexOf(KeyOrder, key) is var index and >= 0 ? index : KeyOrder.Length;
@@ -163,7 +167,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
 
 /// <summary>
 /// Decides what is worth a notification. Changes the Ledger recorded are real changes already, so each new one in a
-/// notable field is announced once. The Ledger going down is announced only after two polls in a row fail, and its
+/// notable field is announced once. The Ledger going down or stalling is announced only after two polls in a row fail, and its
 /// recovery only after a down was announced, so one slow answer doesn't raise anything.
 /// </summary>
 internal sealed class ChangeNotifier {
@@ -174,13 +178,17 @@ internal sealed class ChangeNotifier {
 
     public IReadOnlyList<(string Title, string Body)> Next(Overview overview, DateTimeOffset now) {
         var notes = new List<(string, string)>();
-        if (overview.Health is null) {
-            if (++_failures == 2 && !_downAnnounced) { _downAnnounced = true; notes.Add(("IX Ledger isn't answering", overview.HealthError ?? "No answer from the Ledger.")); }
+        // A stalled health check is a failed poll too: the service answers but can't do its work.
+        if (overview.Health is not { Status: "ok" }) {
+            var why = overview.Health is { } stalled ? "The Ledger is stalled (" + (stalled.Reason ?? "unknown") + ")." : overview.HealthError ?? "No answer from the Ledger.";
+            if (++_failures == 2 && !_downAnnounced) { _downAnnounced = true; notes.Add(("IX Ledger isn't working", why)); }
             return notes;
         }
         _failures = 0;
-        if (_downAnnounced) { _downAnnounced = false; notes.Add(("IX Ledger is answering again", "The Ledger service is back.")); }
-        var fresh = (overview.Auth?.Changes ?? []).Where(change => _seen.Add(Key(change))).ToArray();
+        if (_downAnnounced) { _downAnnounced = false; notes.Add(("IX Ledger is working again", "The Ledger service is back.")); }
+        // Without a history read there is nothing to compare; priming on nothing would announce all of history later.
+        if (overview.Auth is not { } auth) return notes;
+        var fresh = auth.Changes.Where(change => _seen.Add(Key(change))).ToArray();
         if (!_primed) { _primed = true; return notes; } // What was there at start is history, not news.
         var notable = fresh.Where(change => TrayView.NotifyFields.Contains(change.Field)).OrderBy(change => change.AtUtc).ToArray();
         foreach (var group in notable.GroupBy(change => (change.Machine, change.Provider))) {

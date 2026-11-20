@@ -51,6 +51,10 @@ public sealed class AuthStateTests : IDisposable {
         Assert.Equal(("healthy", "v1"), (machine.Reporter, machine.SourceVersion));
         Assert.True(Assert.Single(machine.SignIn).Required);
 
+        // A delayed report with an older reading neither restores the old scopes nor records a reversal.
+        await store.UpdateReporterHealthAsync(Health(later.AddMinutes(1), GitHub(Now, "repo, workflow")));
+        Assert.Equal(4, (await store.AuthStateAsync(later, expected, TimeSpan.FromMinutes(10), null, 50)).Changes.Length);
+
         // An unchanged reading adds nothing.
         await store.UpdateReporterHealthAsync(Health(later.AddMinutes(1), GitHub(later.AddMinutes(1), "repo"),
             codex with { CheckedAtUtc = later, Facts = new() { ["version"] = "0.70.0", ["versions"] = "0.64.0, 0.70.0" } }));
@@ -154,6 +158,10 @@ public sealed class AuthStateTests : IDisposable {
         Directory.CreateDirectory(_directory);
         File.WriteAllText(config, "model = \"x\"\ncli_auth_credentials_store = \"keyring\" # here\n[profiles.a]\ncli_auth_credentials_store = \"file\"\n");
         Assert.Equal("keyring", AuthStateCollector.CredentialStore(config));
+        File.WriteAllText(config, "cli_auth_credentials_store = 'keyring'\n");
+        Assert.Equal("keyring", AuthStateCollector.CredentialStore(config));
+        File.WriteAllText(config, "cli_auth_credentials_store = 'keyring\"\n");
+        Assert.Null(AuthStateCollector.CredentialStore(config));
         File.WriteAllText(config, "[profiles.a]\ncli_auth_credentials_store = \"file\"\n");
         Assert.Null(AuthStateCollector.CredentialStore(config));
         Assert.Equal(12, AuthStateCollector.Fingerprint(config)!.Length);

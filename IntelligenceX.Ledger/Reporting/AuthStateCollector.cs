@@ -196,13 +196,14 @@ internal sealed partial class AuthStateCollector {
             if (!File.Exists(configPath) || new FileInfo(configPath).Length > 1_048_576) return null;
             foreach (var line in File.ReadLines(configPath)) {
                 if (line.TrimStart().StartsWith('[')) break; // Only a top-level key counts.
-                if (StorePattern().Match(line) is { Success: true } match) return match.Groups[1].Value;
+                if (StorePattern().Match(line) is { Success: true } match) return match.Groups[2].Value;
             }
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         return null;
     }
 
-    [GeneratedRegex("""^\s*cli_auth_credentials_store\s*=\s*"([a-z]+)"\s*(?:#.*)?$""")]
+    // TOML basic ("...") and literal ('...') strings both work for the setting.
+    [GeneratedRegex("""^\s*cli_auth_credentials_store\s*=\s*(["'])([a-z]+)\1\s*(?:#.*)?$""")]
     private static partial Regex StorePattern();
 
     /// <summary>The first 12 hex digits of the file's SHA-256, so a rewrite shows without its contents leaving the machine.</summary>
@@ -277,7 +278,8 @@ internal sealed class AuthPaths {
         var codexHome = CodexHome = Variable("CODEX_HOME", EnvironmentVariableTarget.Process) ?? Path.Combine(home, ".codex");
         CodexConfig = Path.Combine(codexHome, "config.toml");
         CodexCredentials = Path.Combine(codexHome, "auth.json");
-        ClaudeCredentials = Path.Combine(home, ".claude", ".credentials.json");
+        // Claude Code keeps its settings and credentials in CLAUDE_CONFIG_DIR when that is set.
+        ClaudeCredentials = Path.Combine(Variable("CLAUDE_CONFIG_DIR", EnvironmentVariableTarget.Process) ?? Path.Combine(home, ".claude"), ".credentials.json");
     }
 
     public string CodexHome { get; }

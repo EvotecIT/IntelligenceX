@@ -32,6 +32,15 @@ public sealed class LedgerTrayTests {
         Assert.Equal([TrayView.Warn, TrayView.Bad, TrayView.Unknown], Assert.Single(view.Others).Providers.Select(p => p.Mark));
         Assert.True(view.Others[0].Providers[1].NeedsSignIn);
 
+        // Two versions are worth a look even when the sign-in state is unconfirmed.
+        var unconfirmed = Machine("win-pc", Fact("codex", "unknown", new() { ["versions"] = "0.130.0, 0.170.0" }));
+        view = TrayView.Build(Overview([unconfirmed]), "win-pc", Now);
+        Assert.Equal(TrayState.Degraded, view.State);
+        Assert.Contains("win-pc Codex: 2 versions installed", view.Problems);
+
+        var stalled = TrayView.Build(Overview([good]) with { Health = new("stalled", "write-gate-busy", Now.AddHours(-3)) }, "win-pc", Now);
+        Assert.Equal((TrayState.Down, "Ledger stalled (write-gate-busy)"), (stalled.State, stalled.Headline));
+
         var down = TrayView.Build(new(Now, null, "Ledger isn't answering", null, null, null, null), "win-pc", Now);
         Assert.Equal((TrayState.Down, "Ledger isn't answering"), (down.State, down.Headline));
     }
@@ -61,14 +70,29 @@ public sealed class LedgerTrayTests {
 
         var failed = new Overview(Now, null, "Ledger isn't answering", null, null, null, null);
         Assert.Empty(notifier.Next(failed, Now));
-        Assert.Equal("IX Ledger isn't answering", Assert.Single(notifier.Next(failed, Now)).Title);
+        Assert.Equal("IX Ledger isn't working", Assert.Single(notifier.Next(failed, Now)).Title);
         Assert.Empty(notifier.Next(failed, Now));
-        Assert.Equal("IX Ledger is answering again", Assert.Single(notifier.Next(Overview([], [scopes, old]), Now)).Title);
+        Assert.Equal("IX Ledger is working again", Assert.Single(notifier.Next(Overview([], [scopes, old]), Now)).Title);
+
+        // A stall counts as a failed poll, and without a history read nothing is primed or announced.
+        var stall = Overview([]) with { Health = new("stalled", "database-slow", Now) };
+        var later = new ChangeNotifier();
+        Assert.Empty(later.Next(stall, Now));
+        Assert.Equal("IX Ledger isn't working", Assert.Single(later.Next(stall, Now)).Title);
+        Assert.Single(later.Next(Overview([]) with { Auth = null }, Now)); // Working again; history not read yet.
+        Assert.Empty(later.Next(Overview([], [old]), Now)); // The first history read is the baseline.
 
         var single = new ChangeNotifier();
         single.Next(Overview([]), Now);
         Assert.Empty(single.Next(failed, Now));
         Assert.Empty(single.Next(Overview([]), Now)); // One slow answer raises nothing either way.
+    }
+
+    // The next login has to start the same tray, reading the same Ledger folder.
+    [Fact]
+    public void LoginAgentKeepsTheLedgerFolder() {
+        var plist = LoginItem.Plist("/apps/tray", ["--ledger-dir", "/data/a&b"]);
+        Assert.Contains("<string>/apps/tray</string><string>--ledger-dir</string><string>/data/a&amp;b</string>", plist);
     }
 
     [Fact]

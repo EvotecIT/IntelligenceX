@@ -30,6 +30,9 @@ public sealed partial class LedgerStore {
             var merged = Merge(fact, signIn.FirstOrDefault(s => s.Provider == fact.Provider));
             var prior = await db.ExecuteScalarAsync("SELECT json FROM auth_state WHERE machine=@machine AND provider=@provider",
                 new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = fact.Provider }, token) is string json ? Read<AuthFact>(json) : null;
+            // A delayed report with an older reading would restore an obsolete state and record a false reversal.
+            // The same reading sent again still counts, since the agent's sign-in state may have changed meanwhile.
+            if (prior is not null && fact.CheckedAtUtc < prior.CheckedAtUtc) continue;
             if (prior is not null)
                 foreach (var change in AuthDiff(machine, prior, merged, now))
                     await db.ExecuteNonQueryAsync("INSERT INTO auth_changes(machine,provider,at,field,before,after) VALUES(@machine,@provider,@at,@field,@before,@after)",

@@ -32,6 +32,7 @@ internal static partial class Program {
             }
         }
         var paths = new TrayPaths(directory, config);
+        LoginItem.Arguments = config is null ? ["--ledger-dir", paths.LedgerDirectory] : ["--ledger-dir", paths.LedgerDirectory, "--config", paths.ClientConfig];
         TrayLog.FilePath = paths.LogFile;
         if (command == "snapshot") return Snapshot(paths);
         if (command is "login-on" or "login-off") {

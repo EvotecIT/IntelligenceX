@@ -51,9 +51,18 @@ function Get-Tray {
     })
 }
 
+# The login entry is shared by every root, so it counts as this install's only when it starts this executable.
+function Test-OwnLogin {
+    if ($IsWindows) {
+        $value = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'IX Ledger tray' -ErrorAction SilentlyContinue)?.'IX Ledger tray'
+        return [bool]$value -and $value.Contains('"' + $Executable + '"', [StringComparison]::OrdinalIgnoreCase)
+    }
+    return (Test-Path -LiteralPath $Plist) -and (Get-Content -LiteralPath $Plist -Raw).Contains('<string>' + [Security.SecurityElement]::Escape($Executable) + '</string>')
+}
+
 function Stop-Tray {
-    if (-not $IsWindows -and (Test-Path -LiteralPath $Plist)) { & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null }
-    foreach ($process in Get-Tray) { $process.Kill(); $null = $process.WaitForExit(10000) }
+    if (-not $IsWindows -and (Test-OwnLogin)) { & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null }
+    foreach ($process in @(Get-Tray)) { $process.Kill(); $null = $process.WaitForExit(10000) }
 }
 
 # Verifies the tray's files against the kit's agent manifest, so only what the merged build produced is installed.
@@ -83,9 +92,9 @@ switch ($Action) {
         [pscustomobject]@{
             Installed = Test-Path -LiteralPath $Executable
             Version = (Test-Path -LiteralPath (Join-Path $Home_ 'install.json')) ? (Get-Content -LiteralPath (Join-Path $Home_ 'install.json') -Raw | ConvertFrom-Json).sourceCommit : $null
-            Running = (Get-Tray).Count -gt 0
+            Running = @(Get-Tray).Count -gt 0
             ReadSettings = Test-Path -LiteralPath (Join-Path $Root 'client.json')
-            StartAtLogin = $IsWindows ? $null -ne (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'IX Ledger tray' -ErrorAction SilentlyContinue) : (Test-Path -LiteralPath $Plist)
+            StartAtLogin = Test-OwnLogin
         }
     }
     'Install' {
@@ -101,9 +110,10 @@ switch ($Action) {
         Move-Item -LiteralPath $staging -Destination $App
         [ordered]@{ sourceCommit = $commit; installedAtUtc = [DateTimeOffset]::UtcNow.ToString('O') } | ConvertTo-Json |
             Set-Content -LiteralPath (Join-Path $Home_ 'install.json') -Encoding utf8NoBOM
-        & $Executable login on
+        # The tray records its Ledger folder in the login entry, so the next login starts the same tray.
+        & $Executable login on --ledger-dir $Root
         if ($LASTEXITCODE -ne 0) { throw 'The tray could not set itself to start at login.' }
-        if ($IsWindows) { Start-Process -FilePath $Executable -WorkingDirectory $App }
+        if ($IsWindows) { Start-Process -FilePath $Executable -ArgumentList @('--ledger-dir', ('"' + $Root + '"')) -WorkingDirectory $App }
         else {
             & /bin/launchctl bootstrap "gui/$Uid" $Plist
             if ($LASTEXITCODE -ne 0) { throw 'launchctl bootstrap failed.' }
@@ -113,7 +123,7 @@ switch ($Action) {
     'Remove' {
         if (-not $Apply) { "Would stop the tray, turn off start at login and remove $App. Add -Apply."; return }
         Stop-Tray
-        if (Test-Path -LiteralPath $Executable) { & $Executable login off }
+        if ((Test-Path -LiteralPath $Executable) -and (Test-OwnLogin)) { & $Executable login off --ledger-dir $Root }
         if (Test-Path -LiteralPath $App) { Remove-Item -LiteralPath $App -Recurse -Force }
         'Removed the tray. Its settings and log stay in ' + $Home_ + '.'
     }
