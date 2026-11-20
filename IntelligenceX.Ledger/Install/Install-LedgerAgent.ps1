@@ -34,7 +34,11 @@ param(
     [string]$Codex,
     [string]$Claude,
     [switch]$AllowUnmerged,
-    [switch]$Apply
+    [switch]$Apply,
+    # A version change waits up to this long for running helper turns to finish, since stopping the agent ends them.
+    [int]$WaitMinutes = 60,
+    # Switch versions without waiting for running helper turns; their asks are reconciled and answered as stopped.
+    [switch]$Now
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -231,7 +235,31 @@ function Restart-Reporter {
     }
 }
 
+# Helper turns the running agent has in progress: run records with a turn under way and not finished. Stopping the agent
+# ends them (a turn runs on the agent's own Codex server or Claude process), so a version change waits for them first.
+function Get-RunningTurn {
+    $state = (Read-Json $AgentConfig)?.stateDirectory
+    if (-not $state -or -not (Test-Path -LiteralPath (Join-Path $state 'runs'))) { return @() }
+    @(Get-ChildItem -LiteralPath (Join-Path $state 'runs') -Filter '*.json' -File |
+        Where-Object { $_.Name -notlike '*.tokens.json' } |
+        ForEach-Object { try { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { $null } } |
+        Where-Object { $_ -and $_.Phase -eq 'turn' -and $_.TurnId -and -not $_.ResultRef })
+}
+
+function Wait-RunningTurn {
+    if ($Now -or -not (Get-AgentProcess)) { return }
+    $deadline = [DateTimeOffset]::UtcNow.AddMinutes($WaitMinutes)
+    while (($running = Get-RunningTurn).Count -gt 0) {
+        if ([DateTimeOffset]::UtcNow -ge $deadline) {
+            throw "$($running.Count) helper turn(s) still running after $WaitMinutes minutes ($(@($running.RequestId) -join ', ')); nothing was changed. Run again later, or with -Now to stop them."
+        }
+        Write-Host "Waiting for $($running.Count) helper turn(s) to finish: $(@($running.RequestId) -join ', ')"
+        Start-Sleep -Seconds 30
+    }
+}
+
 function Switch-Version([string]$Version, [string]$Previous) {
+    Wait-RunningTurn
     $result = Invoke-AgentInstall $Version -Change
     $restart = @($result.steps | Where-Object action -eq 'restart-reporter').Count -gt 0
     $null = Stop-Agent

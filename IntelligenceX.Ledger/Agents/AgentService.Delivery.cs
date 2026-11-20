@@ -137,7 +137,7 @@ internal sealed partial class AgentService {
             catch (ClaudeLaunchException error) {
                 // The CLI didn't start, so nothing was sent: the delivery returns to pending and is retried after a pause.
                 Log("delivery-not-submitted", requestId + " claude " + error.Message);
-                Defer("deliver:" + requestId);
+                Backoff("deliver:" + requestId);
                 return ("not-submitted", "claude-cli-unavailable");
             }
             if (usage) await RecordUsageAsync(requestId, "delivery", "claude", sent.Model, sent.Tokens, sent.CostUsd, to.SessionId, stop).ConfigureAwait(false);
@@ -166,6 +166,7 @@ internal sealed partial class AgentService {
         var followed = false;
         try {
             var (delivery, server, watch) = await _codex.DeliverAsync(to.SessionId, text, stop).ConfigureAwait(false);
+            Succeeded("deliver:" + requestId);
             if (delivery.Route is "queue" or "queue-app" or "queue-held" or "queue-parked") {
                 if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
                 // A queued message the daemon resumed runs as the thread's next turn. One only parked in the queue (no
@@ -197,9 +198,9 @@ internal sealed partial class AgentService {
             return ("uncertain", "codex-thread-archived");
         } catch (Exception error) when (error is IOException or TimeoutException or System.ComponentModel.Win32Exception or
             InvalidOperationException or System.Net.WebSockets.WebSocketException) {
-            // Nothing reached the thread: the attempt returns to pending and is retried after a pause.
+            // Nothing reached the thread: the attempt returns to pending and is retried after a pause that grows each time.
             Log("delivery-not-submitted", requestId + " " + error.Message);
-            Defer("deliver:" + requestId);
+            Backoff("deliver:" + requestId);
             return ("not-submitted", "codex-thread-unreachable");
         } finally {
             if (!followed) _following.TryRemove(to.SessionId, out _);

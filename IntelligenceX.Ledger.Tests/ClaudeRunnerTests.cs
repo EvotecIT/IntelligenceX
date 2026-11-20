@@ -31,6 +31,15 @@ public sealed class ClaudeRunnerTests {
         Assert.Equal(new TurnTokens(15, 100, 20, 135), outcome.Tokens);
     }
 
+    // Protects the machine from a delivery that can never succeed: retries spread out to an hour instead of starting a
+    // Codex process every minute.
+    [Fact]
+    public void ARepeatedlyFailingDeliveryBacksOffToAnHour() {
+        Assert.Equal(TimeSpan.FromMinutes(1), AgentService.BackoffDelay(1));
+        Assert.Equal(TimeSpan.FromMinutes(8), AgentService.BackoffDelay(4));
+        Assert.Equal(TimeSpan.FromMinutes(60), AgentService.BackoffDelay(1348));
+    }
+
     // Protects the usage-limit wait: a limit must be recognised as one, so the helper waits instead of failing the ask.
     [Fact]
     public void AUsageLimitIsReportedAsOne() {

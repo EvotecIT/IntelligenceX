@@ -317,6 +317,19 @@ internal sealed partial class AgentService {
     private void Defer(string key) => _deferred[key] = DateTimeOffset.UtcNow.AddMinutes(1);
     private bool Deferred(string key) => _deferred.TryGetValue(key, out var until) && until > DateTimeOffset.UtcNow;
 
+    private readonly ConcurrentDictionary<string, int> _failures = new(StringComparer.Ordinal);
+
+    /// <summary>Pauses a delivery that keeps failing for longer each time (1, 2, 4 … up to 60 minutes), so a thread that
+    /// can't be reached doesn't start a Codex process every minute for hours.</summary>
+    private void Backoff(string key) {
+        var failures = _failures.AddOrUpdate(key, 1, (_, count) => count + 1);
+        _deferred[key] = DateTimeOffset.UtcNow.Add(BackoffDelay(failures));
+    }
+
+    internal static TimeSpan BackoffDelay(int failures) => TimeSpan.FromMinutes(Math.Min(60, Math.Pow(2, Math.Clamp(failures - 1, 0, 6))));
+
+    private void Succeeded(string key) => _failures.TryRemove(key, out _);
+
     internal sealed record PendingUsage(string RequestId, CoordinationUsage Usage);
 
     private string UsageFolder => Path.Combine(_settings.StateDirectory, "usage");
