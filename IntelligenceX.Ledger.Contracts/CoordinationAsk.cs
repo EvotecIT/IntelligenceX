@@ -13,7 +13,8 @@ public sealed record AskPolicy {
     public int MaximumQuestions { get; set; } = 8;
     /// <summary>How long a queued ask may wait for a machine before the requester is told.</summary>
     public double AdmissionMinutes { get; set; } = 15;
-    /// <summary>How long one helper turn may run before it is treated as stuck and interrupted.</summary>
+    /// <summary>How long one helper turn may show no activity before it is treated as stuck and interrupted. A turn that
+    /// keeps working (messages, commands, tool calls) has no overall limit.</summary>
     public double TurnMinutes { get; set; } = 60;
     /// <summary>How many times an interrupted or failed helper turn is resumed in the same session before the request fails.</summary>
     public int ResumeAttempts { get; set; } = 1;
