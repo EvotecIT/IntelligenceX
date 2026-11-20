@@ -140,9 +140,9 @@ internal static class LoginItem {
     internal static string DotnetRoot() => Environment.GetEnvironmentVariable("DOTNET_ROOT") is { Length: > 0 } root ? root
         : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "..", "..", ".."));
 
-    /// <summary>One quoted Windows command-line argument. A trailing backslash is doubled so it doesn't escape the
+    /// <summary>One quoted Windows command-line argument. Trailing backslashes are doubled so they don't escape the
     /// closing quote (D:\ would otherwise arrive as D:").</summary>
-    internal static string QuoteArgument(string value) => "\"" + (value.EndsWith('\\') ? value + "\\" : value) + "\"";
+    internal static string QuoteArgument(string value) => "\"" + value + new string('\\', value.Length - value.TrimEnd('\\').Length) + "\"";
 
     [SupportedOSPlatform("windows")]
     private static string? ReadRun() {

@@ -104,6 +104,19 @@ public sealed class AuthStateTests : IDisposable {
         Assert.Equal("signed-out", Assert.Single(Assert.Single((await store.AuthStateAsync(Now.AddMinutes(8), expected, TimeSpan.FromMinutes(10), null, 50)).Machines).Providers).State);
     }
 
+    // A sign-in fact stored under another provider's item id never reaches either provider's state.
+    [Fact]
+    public async Task ASignInFactUnderTheWrongItemIsIgnored() {
+        using var store = new LedgerStore(Path.Combine(_directory, "mismatch.sqlite"), new(new()));
+        await store.InitializeAsync();
+        var claude = SignIn(true, "signed-out", Now, 1) with { Provider = "claude", SignIn = new("claude", true, "signed-out", "claude auth login", Now, Now) };
+        await store.IngestAsync([claude], Now);
+        await store.UpdateReporterHealthAsync(Health(Now.AddMinutes(1), new AuthFact("claude", "unknown", Now.AddMinutes(1)), new AuthFact("codex", "unknown", Now.AddMinutes(1))), now: Now.AddMinutes(1));
+        var view = await store.AuthStateAsync(Now.AddMinutes(1), new() { ["win-pc"] = ["win-pc-watcher"] }, TimeSpan.FromMinutes(10), null, 50);
+        Assert.All(Assert.Single(view.Machines).Providers, provider => Assert.Equal("unknown", provider.State));
+        Assert.Empty(view.Machines[0].SignIn);
+    }
+
     [Theory]
     [InlineData("usage-limit", "signed-in")]
     [InlineData("expired", "signed-out")]

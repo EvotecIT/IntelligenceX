@@ -77,7 +77,7 @@ public sealed partial class LedgerStore {
         foreach (var provider in AgentProviders)
             if (await db.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
                     new Dictionary<string, object?> { ["id"] = machine + ":sign-in:" + provider }, token) is string json &&
-                Read<LedgerItem>(json).SignIn is { } fact)
+                Read<LedgerItem>(json).SignIn is { } fact && fact.Provider == provider)
                 found.Add(fact);
         return found.ToArray();
     }
