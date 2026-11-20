@@ -54,7 +54,6 @@ public sealed class AskTools(LedgerReadClient client) {
         var named = project is null ? null : RepositoryName(project);
         if (project is not null && named is null)
             throw Rejected("invalid-project", "Use the repository name, such as CanopyX, or owner/name.");
-        if (named is not null && branch is not null && commit is not null) return (named, branch, commit);
         var here = checkout();
         if (named is null || string.Equals(named, here.Project, StringComparison.OrdinalIgnoreCase)) {
             // The checkout's own spelling, since the service matches project names exactly.

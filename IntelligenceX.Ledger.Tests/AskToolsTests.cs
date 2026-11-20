@@ -33,6 +33,7 @@ public sealed class AskToolsTests {
     public void ThisCheckoutFillsWhatTheCallerLeftOut() {
         Assert.Equal(("OfficeIMO", "feature/x", Here), AskTools.Source(null, null, null, null, Checkout));
         Assert.Equal(("OfficeIMO", "main", Here), AskTools.Source("evotecit/officeimo", "main", null, null, Checkout));
+        Assert.Equal(("OfficeIMO", "main", new string('b', 40)), AskTools.Source("evotecit/officeimo", "main", new('b', 40), null, Checkout));
         Assert.Throws<McpException>(() => AskTools.Source(null, null, null, null, () => (null, null, null)));
     }
 }
