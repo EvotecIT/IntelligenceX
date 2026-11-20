@@ -113,7 +113,7 @@ scopes and token variables set (names only), every Codex and Claude binary with 
 configuration and credential files were last written. Token values and credential files are never read. The facts
 are read again every 15 minutes, or at once when a watched file or binary changes. The service keeps the latest facts
 per machine and provider and records every difference from the previous reading as a change, with the agent service's
-sign-in state folded in, for 90 days.
+sign-in state folded in, for 90 days. A change in the agent's sign-in state is recorded when it arrives.
 
 ```text
 ix ledger auth_state [machine] --config /absolute/path/client.json

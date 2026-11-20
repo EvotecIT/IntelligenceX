@@ -64,6 +64,27 @@ public sealed class AuthStateTests : IDisposable {
         Assert.Equal(4, (await store.AuthStateAsync(later, expected, TimeSpan.FromMinutes(10), null, 50)).Changes.Length);
     }
 
+    // A sign-out and a sign-in that both happen between two reporter readings still leave their trace.
+    [Fact]
+    public async Task AgentSignInChangesAreRecordedWhenTheyArrive() {
+        using var store = new LedgerStore(Path.Combine(_directory, "arrive.sqlite"), new(new()));
+        await store.InitializeAsync();
+        var codex = new AuthFact("codex", "unknown", Now);
+        await store.IngestAsync([SignIn(false, "signed-in", Now, 1)], Now);
+        await store.UpdateReporterHealthAsync(Health(Now, codex), now: Now);
+        await store.IngestAsync([SignIn(true, "signed-out", Now.AddMinutes(2), 2)], Now.AddMinutes(2));
+        await store.IngestAsync([SignIn(false, "signed-in", Now.AddMinutes(4), 3)], Now.AddMinutes(4));
+        var expected = new Dictionary<string, string[]> { ["win-pc"] = ["win-pc-watcher"] };
+        var view = await store.AuthStateAsync(Now.AddMinutes(5), expected, TimeSpan.FromMinutes(10), null, 50);
+        Assert.Equal([("agent-sign-in", "signed-out", "ready", Now.AddMinutes(4)), ("state", "signed-out", "signed-in", Now.AddMinutes(4)),
+                ("agent-sign-in", "ready", "signed-out", Now.AddMinutes(2)), ("state", "signed-in", "signed-out", Now.AddMinutes(2))],
+            view.Changes.Select(c => (c.Field, c.Before, c.After, c.AtUtc)).ToArray());
+        Assert.Equal("signed-in", Assert.Single(Assert.Single(view.Machines).Providers).State);
+        // The next reporter reading adds nothing new.
+        await store.UpdateReporterHealthAsync(Health(Now.AddMinutes(6), codex with { CheckedAtUtc = Now.AddMinutes(6) }), now: Now.AddMinutes(6));
+        Assert.Equal(4, (await store.AuthStateAsync(Now.AddMinutes(6), expected, TimeSpan.FromMinutes(10), null, 50)).Changes.Length);
+    }
+
     [Theory]
     [InlineData("usage-limit", "signed-in")]
     [InlineData("expired", "signed-out")]

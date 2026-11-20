@@ -365,6 +365,8 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                         new Dictionary<string, object?> { ["id"] = item.Id, ["json"] = Json(item) }, ct);
                     if (item.Kind == "session" && item.Session is { } session) await UpsertSessionStatusAsync(tx, item, session, ct);
                     if (item.Kind == "session") await UpsertRepositorySessionAsync(tx, item, ct);
+                    if (item.Kind == "sign-in" && item.SignIn is { } published && ReferenceEquals(published, observation.SignIn))
+                        await RecordSignInAsync(tx, item.MachineId, published, ct);
                 }
                 return events.Select(x => x.EventId).ToArray();
             }, token);

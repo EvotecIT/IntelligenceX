@@ -50,6 +50,24 @@ public sealed partial class LedgerStore {
             """, new Dictionary<string, object?> { ["cutoff"] = (now - AuthChangeRetention).ToString("O"), ["limit"] = AuthChangeLimit }, token);
     }
 
+    /// <summary>
+    /// Folds a newly published agent sign-in state into the machine's stored facts when it arrives, so each change is
+    /// recorded at the time the agent saw it, including a sign-out and sign-in that both happen between two reporter
+    /// readings. A machine whose reporter hasn't sent facts yet has nothing to fold into; its first reading does it.
+    /// </summary>
+    private static async Task RecordSignInAsync(SQLiteAsyncSession db, string machine, SignInFact signIn, CancellationToken token) {
+        if (await db.ExecuteScalarAsync("SELECT json FROM auth_state WHERE machine=@machine AND provider=@provider",
+                new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = signIn.Provider }, token) is not string json) return;
+        var prior = Read<AuthFact>(json);
+        var merged = Merge(prior, signIn);
+        foreach (var change in AuthDiff(machine, prior, merged, signIn.AtUtc))
+            await db.ExecuteNonQueryAsync("INSERT INTO auth_changes(machine,provider,at,field,before,after) VALUES(@machine,@provider,@at,@field,@before,@after)",
+                new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = change.Provider, ["at"] = change.AtUtc.ToString("O"),
+                    ["field"] = change.Field, ["before"] = change.Before, ["after"] = change.After }, token);
+        await db.ExecuteNonQueryAsync("UPDATE auth_state SET json=@json WHERE machine=@machine AND provider=@provider",
+            new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = signIn.Provider, ["json"] = Json(merged) }, token);
+    }
+
     private static async Task<SignInFact[]> SignInAsync(SQLiteAsyncSession db, string machine, CancellationToken token) {
         var found = new List<SignInFact>();
         foreach (var provider in AgentProviders)
