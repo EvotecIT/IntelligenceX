@@ -14,7 +14,8 @@
       "IntelligenceX.Ledger.Contracts\\IntelligenceX.Ledger.Contracts.csproj",
       "IntelligenceX.Ledger.Hook\\IntelligenceX.Ledger.Hook.csproj",
       "IntelligenceX.Ledger.Mcp\\IntelligenceX.Ledger.Mcp.csproj",
-      "IntelligenceX.Ledger.Tests\\IntelligenceX.Ledger.Tests.csproj"
+      "IntelligenceX.Ledger.Tests\\IntelligenceX.Ledger.Tests.csproj",
+      "IntelligenceX.Ledger.Tray\\IntelligenceX.Ledger.Tray.csproj"
     ]
   }
 }

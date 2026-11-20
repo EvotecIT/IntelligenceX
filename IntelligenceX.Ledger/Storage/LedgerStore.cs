@@ -88,6 +88,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
         await InitializeSessionLookupAsync(db, token);
         await InitializeLineageAsync(db, token);
         await InitializeGitHubUsageAsync(db, token);
+        await InitializeAuthAsync(db, token);
         if (Convert.ToInt32(await db.ExecuteScalarAsync("PRAGMA user_version", cancellationToken: token)) < ProjectionVersion)
             await RebuildProjectionsAsync(db, progress, token);
         _walAnchor ??= OpenAnchor(path);
@@ -364,6 +365,10 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                         new Dictionary<string, object?> { ["id"] = item.Id, ["json"] = Json(item) }, ct);
                     if (item.Kind == "session" && item.Session is { } session) await UpsertSessionStatusAsync(tx, item, session, ct);
                     if (item.Kind == "session") await UpsertRepositorySessionAsync(tx, item, ct);
+                    // Only the canonical item for that machine and provider feeds the sign-in history.
+                    if (item.Kind == "sign-in" && item.SignIn is { } published && ReferenceEquals(published, observation.SignIn) &&
+                        item.Id == item.MachineId + ":sign-in:" + published.Provider)
+                        await RecordSignInAsync(tx, item.MachineId, published, ct);
                 }
                 return events.Select(x => x.EventId).ToArray();
             }, token);

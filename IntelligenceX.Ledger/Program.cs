@@ -12,6 +12,12 @@ using IntelligenceX.Ledger.Storage;
 namespace IntelligenceX.Ledger;
 
 public static class Program {
+    /// <summary>The source commit this build came from, from the informational version the SDK stamps, or null.</summary>
+    internal static readonly string? BuildCommit = typeof(Program).Assembly
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion is { } version &&
+        version.IndexOf('+') is var plus and >= 0 ? version[(plus + 1)..] : null;
+
     public static async Task<int> Main(string[] args) {
         if (args.Length == 5 && args[0] == "backup" && args[1] == "--config" && args[3] == "--out") {
             var configuration = LedgerSettings.Load(args[2]);
@@ -40,6 +46,12 @@ public static class Program {
             return await Agents.AgentHost.RunProcessAsync(args[2]);
         }
         if (args.Length == 3 && args[0] == "agent-check" && args[1] == "--config") return await Agents.AgentHost.CheckAsync(Agents.AgentHost.Load(args[2]));
+        if (args.Length == 3 && args[0] == "auth-check" && args[1] == "--config") {
+            // What the reporter sends about GitHub, Codex and Claude sign-in on this machine, without sending it.
+            var facts = await new AuthStateCollector(AuthPaths.ForReporter(args[2])).CollectAsync(CancellationToken.None);
+            Console.WriteLine(JsonSerializer.Serialize(facts, new JsonSerializerOptions(LedgerJson.Options) { WriteIndented = true }));
+            return 0;
+        }
         if (args.Length > 0 && args[0] == "agent-install") return await Agents.AgentInstaller.RunAsync(args);
         if (args.Length > 0 && args[0] == "agent-enroll") return Agents.AgentEnrollment.Run(args);
         if (args.Length == 3 && args[0] == "inbox" && args[1] == "--config")
@@ -50,6 +62,7 @@ public static class Program {
         if (args.Length != 3 || args[1] != "--config" || args[0] is not ("serve" or "report" or "hook")) {
             Console.Error.WriteLine("Usage: IntelligenceX.Ledger serve|report|hook --config <local-json-file>\n" +
                 "       IntelligenceX.Ledger agent|agent-check|inbox --config <agent-json-file>\n" +
+                "       IntelligenceX.Ledger auth-check --config <reporter-json-file>\n" +
                 "       IntelligenceX.Ledger agent-install --reporter <reporter-json-file> --version <installed-version> [--apply]\n" +
                 "       IntelligenceX.Ledger agent-enroll --service <service-json-file> --machine <id> --out <folder> [--local] [--apply]\n" +
                 "       IntelligenceX.Ledger backup --config <local-json-file> --out <new-backup-path>\n" +
@@ -182,7 +195,7 @@ public static class Program {
             // The supervisor restarts the service after several failed probes, so the budget stays well under its timeout.
             var probe = await store.ProbeAsync(HealthBudget, ct);
             var body = new { status = probe.Healthy ? "ok" : "stalled", reason = probe.Reason, probe.GateWaitMs, probe.QueryMs,
-                startedAtUtc, priority };
+                startedAtUtc, priority, commit = BuildCommit };
             return probe.Healthy ? Results.Ok(body) : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
         app.MapGet(prefix + "/items", async (string? cursor, int? limit, string? verdict, string? machineId, string? provider, CancellationToken ct) => {

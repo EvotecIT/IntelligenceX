@@ -4,11 +4,12 @@ using IntelligenceX.Ledger.Contracts;
 namespace IntelligenceX.Ledger.Storage;
 
 public sealed partial class LedgerStore {
-    public async Task UpdateReporterHealthAsync(ReporterHealth health, CancellationToken token = default) {
+    public async Task UpdateReporterHealthAsync(ReporterHealth health, CancellationToken token = default, DateTimeOffset? now = null) {
         var policy = await ReadPolicyAsync(token);
         // GitHub tallies have their own table; the health row keeps only the reporter's own state.
         var usage = health.GitHubUsage ?? [];
-        health = health with { GitHubUsage = null };
+        var auth = health.Auth ?? [];
+        health = health with { GitHubUsage = null, Auth = null };
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
@@ -16,6 +17,7 @@ public sealed partial class LedgerStore {
                 await UpsertReporterHealthAsync(tx, health, preserveCoverage: false, ct);
                 await UpdateLoadAsync(tx, health, policy, ct);
                 if (usage.Length > 0) await RecordGitHubUsageAsync(tx, health.MachineId, usage, DateTimeOffset.UtcNow, ct);
+                if (auth.Length > 0) await RecordAuthAsync(tx, health.MachineId, auth, now ?? DateTimeOffset.UtcNow, ct);
                 foreach (var progress in health.Progress ?? []) {
                     var json = await tx.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
                         new Dictionary<string, object?> { ["id"] = progress.ItemId }, ct);
@@ -117,6 +119,10 @@ public sealed partial class LedgerStore {
                 await tx.ExecuteNonQueryAsync("""
                     DELETE FROM reviews WHERE transition IN (SELECT ordinal FROM transitions WHERE recorded<@cutoff ORDER BY ordinal LIMIT @limit)
                     """, expired, ct);
+                // Sign-in history ages out here too, so it shrinks even when no reporter sends sign-in facts any more.
+                await tx.ExecuteNonQueryAsync("""
+                    DELETE FROM auth_changes WHERE id IN (SELECT id FROM auth_changes WHERE at<@cutoff ORDER BY id LIMIT @limit)
+                    """, new Dictionary<string, object?> { ["cutoff"] = (now - AuthChangeRetention).ToString("O"), ["limit"] = bound }, ct);
                 return events + await tx.ExecuteNonQueryAsync("""
                     DELETE FROM transitions WHERE ordinal IN (SELECT ordinal FROM transitions WHERE recorded<@cutoff ORDER BY ordinal LIMIT @limit)
                     """, expired, ct);

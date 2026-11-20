@@ -46,22 +46,24 @@ public sealed partial class LedgerReadClient : IDisposable {
         GetAsync("api/coordination/v1/knowledge?project=" + Uri.EscapeDataString(project) + "&query=" +
             Uri.EscapeDataString(query), LedgerReadJson.Default.KnowledgeSearchView, token);
 
-    private async Task<T> GetAsync<T>(string route, JsonTypeInfo<T> type, CancellationToken token) {
+    private async Task<T> GetAsync<T>(string route, JsonTypeInfo<T> type, CancellationToken token, bool acceptUnavailable = false) {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(15));
-        try { return await ReadAsync(route, type, deadline.Token).ConfigureAwait(false); }
+        try { return await ReadAsync(route, type, deadline.Token, acceptUnavailable).ConfigureAwait(false); }
         catch (OperationCanceledException error) when (!token.IsCancellationRequested && deadline.IsCancellationRequested) {
             throw new TaskCanceledException("Ledger read request timed out.", error, deadline.Token);
         }
     }
 
-    private async Task<T> ReadAsync<T>(string route, JsonTypeInfo<T> type, CancellationToken token) {
+    private async Task<T> ReadAsync<T>(string route, JsonTypeInfo<T> type, CancellationToken token, bool acceptUnavailable = false) {
         using var response = await _client.GetAsync(route, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        return await ReadResponseAsync(response, type, token).ConfigureAwait(false);
+        return await ReadResponseAsync(response, type, token, acceptUnavailable).ConfigureAwait(false);
     }
 
-    private static async Task<T> ReadResponseAsync<T>(HttpResponseMessage response, JsonTypeInfo<T> type, CancellationToken token) {
-        response.EnsureSuccessStatusCode();
+    private static async Task<T> ReadResponseAsync<T>(HttpResponseMessage response, JsonTypeInfo<T> type, CancellationToken token,
+        bool acceptUnavailable = false) {
+        // A health probe answers 503 with its reason in the body.
+        if (!(acceptUnavailable && response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)) response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > MaximumResponseBytes) throw new InvalidDataException("Ledger response exceeds its bound.");
         await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var output = new MemoryStream();
