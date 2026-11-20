@@ -102,6 +102,13 @@ internal sealed partial class AuthStateCollector {
                     .Order(StringComparer.Ordinal));
             var state = Text(entry, "state");
             if (state is not (null or "success")) facts["check"] = state;
+            // An error with the token from "default" means gh found no token it could read, typically a locked or
+            // unreachable keychain for a background process. That says nothing about the sign-in itself, so it reads
+            // unknown; an error with a token that was read means GitHub rejected it.
+            if (state == "error" && Text(entry, "tokenSource") is null or "default") {
+                facts["check"] = "token-unreadable";
+                return "unknown";
+            }
             return state switch { "success" => "signed-in", "error" => "signed-out", _ => "unknown" };
         } catch (JsonException) {
             return "unknown";
