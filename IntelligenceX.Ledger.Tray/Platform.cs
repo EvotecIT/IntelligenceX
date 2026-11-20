@@ -139,6 +139,10 @@ internal static class LoginItem {
     internal static string DotnetRoot() => Environment.GetEnvironmentVariable("DOTNET_ROOT") is { Length: > 0 } root ? root
         : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "..", "..", ".."));
 
+    /// <summary>One quoted Windows command-line argument. A trailing backslash is doubled so it doesn't escape the
+    /// closing quote (D:\ would otherwise arrive as D:").</summary>
+    internal static string QuoteArgument(string value) => "\"" + (value.EndsWith('\\') ? value + "\\" : value) + "\"";
+
     [SupportedOSPlatform("windows")]
     private static string? ReadRun() {
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
@@ -150,7 +154,7 @@ internal static class LoginItem {
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         if (!enabled) key.DeleteValue(RunValue, throwOnMissingValue: false);
         else if (Environment.ProcessPath is { } executable)
-            key.SetValue(RunValue, string.Join(' ', new[] { executable }.Concat(Arguments).Select(part => "\"" + part + "\"")));
+            key.SetValue(RunValue, string.Join(' ', new[] { executable }.Concat(Arguments).Select(QuoteArgument)));
     }
 }
 

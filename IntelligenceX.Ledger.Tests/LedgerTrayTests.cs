@@ -93,6 +93,9 @@ public sealed class LedgerTrayTests {
     public void LoginAgentKeepsTheLedgerFolder() {
         var plist = LoginItem.Plist("/apps/tray", ["--ledger-dir", "/data/a&b"]);
         Assert.Contains("<string>/apps/tray</string><string>--ledger-dir</string><string>/data/a&amp;b</string>", plist);
+        // On Windows a trailing backslash would otherwise escape the closing quote of the Run value's argument.
+        Assert.Equal("\"D:\\\\\"", LoginItem.QuoteArgument("D:\\"));
+        Assert.Equal("\"C:\\Ledger data\"", LoginItem.QuoteArgument("C:\\Ledger data"));
     }
 
     [Fact]

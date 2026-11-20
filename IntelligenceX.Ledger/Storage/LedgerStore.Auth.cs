@@ -102,10 +102,12 @@ public sealed partial class LedgerStore {
             var states = await tx.QueryAsListAsync("SELECT machine,json FROM auth_state", r => (Machine: r.GetString(0), Fact: Read<AuthFact>(r.GetString(1))),
                 cancellationToken: ct);
             var recent = await tx.QueryAsListAsync("""
-                SELECT machine,provider,at,field,before,after FROM auth_changes WHERE @machine IS NULL OR machine=@machine ORDER BY id DESC LIMIT @limit
+                SELECT machine,provider,at,field,before,after FROM auth_changes WHERE (@machine IS NULL OR machine=@machine) AND at>=@cutoff ORDER BY id DESC LIMIT @limit
                 """, r => new AuthChange(r.GetString(0), r.GetString(1), DateTimeOffset.Parse(r.GetString(2)), r.GetString(3),
                     r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5)),
-                new Dictionary<string, object?> { ["machine"] = machine, ["limit"] = changeLimit }, cancellationToken: ct);
+                // Expired changes stay out even before the retention pass removes them.
+                new Dictionary<string, object?> { ["machine"] = machine, ["limit"] = changeLimit, ["cutoff"] = (now - AuthChangeRetention).ToString("O") },
+                cancellationToken: ct);
             var reporters = await tx.QueryAsListAsync("SELECT machine,json FROM reporter_health",
                 r => (Machine: r.GetString(0), Health: Read<ReporterHealth>(r.GetString(1))), cancellationToken: ct);
             var signIn = new Dictionary<string, SignInFact[]>(StringComparer.Ordinal);

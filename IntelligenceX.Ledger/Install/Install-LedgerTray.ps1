@@ -60,8 +60,14 @@ function Test-OwnLogin {
     return (Test-Path -LiteralPath $Plist) -and (Get-Content -LiteralPath $Plist -Raw).Contains('<string>' + [Security.SecurityElement]::Escape($Executable) + '</string>')
 }
 
+# The loaded job can still be another root's even after this install rewrote the shared plist.
+function Test-OwnLoadedJob {
+    $loaded = & /bin/launchctl print "gui/$Uid/$Label" 2>$null
+    return $LASTEXITCODE -eq 0 -and ($loaded -join "`n").Contains($Executable)
+}
+
 function Stop-Tray {
-    if (-not $IsWindows -and (Test-OwnLogin)) {
+    if (-not $IsWindows -and (Test-OwnLoadedJob)) {
         & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null
         # bootout returns before the job is gone; bootstrapping again too early fails.
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -123,7 +129,8 @@ switch ($Action) {
         # The tray records its Ledger folder in the login entry, so the next login starts the same tray.
         & $Executable login on --ledger-dir $Root
         if ($LASTEXITCODE -ne 0) { throw 'The tray could not set itself to start at login.' }
-        if ($IsWindows) { Start-Process -FilePath $Executable -ArgumentList @('--ledger-dir', ('"' + $Root + '"')) -WorkingDirectory $App }
+        # A trailing backslash is doubled so it doesn't escape the closing quote (D:\ would otherwise arrive as D:").
+        if ($IsWindows) { Start-Process -FilePath $Executable -ArgumentList @('--ledger-dir', ('"' + ($Root.EndsWith('\') ? $Root + '\' : $Root) + '"')) -WorkingDirectory $App }
         else {
             & /bin/launchctl bootstrap "gui/$Uid" $Plist
             if ($LASTEXITCODE -ne 0) { throw 'launchctl bootstrap failed.' }

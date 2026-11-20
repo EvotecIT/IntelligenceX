@@ -29,7 +29,7 @@ public sealed class AuthStateTests : IDisposable {
         await store.InitializeAsync();
         var codex = new AuthFact("codex", "unknown", Now) { Facts = new() { ["version"] = "0.70.0" } };
         await store.IngestAsync([SignIn(false, "signed-in", Now, 1)], Now);
-        await store.UpdateReporterHealthAsync(Health(Now, GitHub(Now, "repo, workflow"), codex));
+        await store.UpdateReporterHealthAsync(Health(Now, GitHub(Now, "repo, workflow"), codex), now: Now);
         var expected = new Dictionary<string, string[]> { ["win-pc"] = ["win-pc-watcher"], ["mac"] = ["mac-watcher"] };
         var first = await store.AuthStateAsync(Now, expected, TimeSpan.FromMinutes(10), null, 50);
         Assert.Empty(first.Changes);
@@ -39,7 +39,7 @@ public sealed class AuthStateTests : IDisposable {
         var later = Now.AddMinutes(5);
         await store.IngestAsync([SignIn(true, "signed-out", later, 2)], later);
         await store.UpdateReporterHealthAsync(Health(later, GitHub(later, "repo"),
-            codex with { CheckedAtUtc = later, Facts = new() { ["version"] = "0.70.0", ["versions"] = "0.64.0, 0.70.0" } }));
+            codex with { CheckedAtUtc = later, Facts = new() { ["version"] = "0.70.0", ["versions"] = "0.64.0, 0.70.0" } }), now: later);
         var view = await store.AuthStateAsync(later, expected, TimeSpan.FromMinutes(10), "win-pc", 50);
         var changes = view.Changes.Select(c => (c.Provider, c.Field, c.Before, c.After)).ToArray();
         Assert.Contains(("github", "scopes", "repo, workflow", "repo"), changes);
@@ -52,12 +52,15 @@ public sealed class AuthStateTests : IDisposable {
         Assert.True(Assert.Single(machine.SignIn).Required);
 
         // A delayed report with an older reading neither restores the old scopes nor records a reversal.
-        await store.UpdateReporterHealthAsync(Health(later.AddMinutes(1), GitHub(Now, "repo, workflow")));
+        await store.UpdateReporterHealthAsync(Health(later.AddMinutes(1), GitHub(Now, "repo, workflow")), now: later.AddMinutes(1));
         Assert.Equal(4, (await store.AuthStateAsync(later, expected, TimeSpan.FromMinutes(10), null, 50)).Changes.Length);
+
+        // Expired changes stay out of a read even before the retention pass removes them.
+        Assert.Empty((await store.AuthStateAsync(later + LedgerStore.AuthChangeRetention + TimeSpan.FromMinutes(1), expected, TimeSpan.FromMinutes(10), null, 50)).Changes);
 
         // An unchanged reading adds nothing.
         await store.UpdateReporterHealthAsync(Health(later.AddMinutes(1), GitHub(later.AddMinutes(1), "repo"),
-            codex with { CheckedAtUtc = later, Facts = new() { ["version"] = "0.70.0", ["versions"] = "0.64.0, 0.70.0" } }));
+            codex with { CheckedAtUtc = later, Facts = new() { ["version"] = "0.70.0", ["versions"] = "0.64.0, 0.70.0" } }), now: later.AddMinutes(1));
         Assert.Equal(4, (await store.AuthStateAsync(later, expected, TimeSpan.FromMinutes(10), null, 50)).Changes.Length);
     }
 
