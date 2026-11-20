@@ -183,7 +183,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
                         used.ToString("0", CultureInfo.InvariantCulture) + "%");
                 if (f.GetValueOrDefault("versions") is { } versions) {
                     // Only copies Przemek installed himself are worth a card; an app's own bundled copy updates with the app.
-                    if (Versions(where, provider, name, versions, f.GetValueOrDefault("binaries")) is { } extra) {
+                    if (Versions(where, provider, name, versions, f.GetValueOrDefault("binaries"), f.GetValueOrDefault("app-binary")) is { } extra) {
                         warning = versions.Split(',').Length + " versions installed";
                         found.Add(extra);
                     }
@@ -206,13 +206,13 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
     /// and updates itself (inside ChatGPT.app, the Codex app's managed service, WindowsApps) are left out, and with
     /// nothing else older there is nothing to do, so no issue.
     /// </summary>
-    internal static Issue? Versions(string machine, string provider, string name, string versions, string? binaries) {
+    internal static Issue? Versions(string machine, string provider, string name, string versions, string? binaries, string? appBinary = null) {
         var all = versions.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         var newest = all.OrderBy(v => v, Comparer<string>.Create(CompareVersions)).Last();
         // Only a copy whose version was read and is older than the newest is offered for removal; "?" means the probe failed.
         var older = (binaries ?? "").Split("; ", StringSplitOptions.RemoveEmptyEntries)
             .Select(row => (Path: row[..Math.Max(0, row.LastIndexOf(' '))], Version: row[(row.LastIndexOf(' ') + 1)..]))
-            .Where(row => row.Path.Length > 0 && row.Version != "?" && CompareVersions(row.Version, newest) < 0 && !AppManaged(row.Path))
+            .Where(row => row.Path.Length > 0 && row.Version != "?" && CompareVersions(row.Version, newest) < 0 && !AppManaged(row.Path) && !string.Equals(row.Path, appBinary, StringComparison.OrdinalIgnoreCase))
             .Select(row => row.Path + " (" + row.Version + ")").ToArray();
         var title = machine + " has " + all.Length + " " + name + " versions: " + string.Join(" and ", all);
         const string meaning = "Which one runs depends on PATH and on which app starts it, so a session can pick up the older copy, with its own sign-in and behaviour.";
@@ -302,7 +302,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         "env-override" => "Token variables", "agent-sign-in" => "Agent sign-in", "version" => "Version", "versions" => "Versions",
         "binary" => "Binary", "binaries" => "Binaries", "credential-store" => "Credential store", "credentials" => "Credentials",
         "credentials-written" => "Credentials written", "config-written" => "config.toml written", "config-fingerprint" => "config.toml hash",
-        "hosts-written" => "gh hosts.yml written", "git-protocol" => "Git protocol", "check" => "Last check", "state" => "State", _ => key
+        "hosts-written" => "gh hosts.yml written", "git-protocol" => "Git protocol", "check" => "Last check", "app-binary" => "App's own CLI", "state" => "State", _ => key
     };
 
     private static string Reason(string reason) => reason switch {

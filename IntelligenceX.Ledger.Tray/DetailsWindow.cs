@@ -43,6 +43,8 @@ internal sealed class DetailsWindow : Window {
     private readonly Action<string, string?> _signIn;
     private TrayView? _view;
     private DateTimeOffset _at;
+    /// <summary>Which machine's facts are open, kept across refreshes until it is closed or the machine goes away.</summary>
+    private readonly DetailsState _state = new();
 
     public DetailsWindow(Action<string, string?> signIn) {
         _signIn = signIn;
@@ -69,9 +71,14 @@ internal sealed class DetailsWindow : Window {
         Styles.Clear();
         Styles.Add(DetailsView.ButtonStyles(palette));
         var offset = _scroll.Offset;
-        _scroll.Content = DetailsView.Build(view, at, palette, _signIn, OperatingSystem.IsMacOS() ? 28 : 0);
+        _scroll.Content = DetailsView.Build(view, at, palette, _signIn, OperatingSystem.IsMacOS() ? 28 : 0, _state);
         _scroll.Offset = offset;
     }
+}
+
+/// <summary>What the reader opened on the page, kept while the page is rebuilt on each refresh.</summary>
+internal sealed class DetailsState {
+    public string? OpenMachine { get; set; }
 }
 
 /// <summary>Builds the details content from plain borders and text, so it looks the same in the window and when it is
@@ -79,7 +86,7 @@ internal sealed class DetailsWindow : Window {
 internal static class DetailsView {
     public const double Width = 780;
 
-    public static Control Build(TrayView view, DateTimeOffset at, Palette p, Action<string, string?>? signIn = null, double top = 0) {
+    public static Control Build(TrayView view, DateTimeOffset at, Palette p, Action<string, string?>? signIn = null, double top = 0, DetailsState? state = null) {
         var page = new StackPanel { Spacing = 22, Margin = new Thickness(28, 24 + top, 28, 24) };
         page.Children.Add(Hero(view, at, p));
         if (view.Issues.Length > 0) {
@@ -90,12 +97,14 @@ internal static class DetailsView {
             var grid = new UniformGrid { Columns = Math.Min(3, machines.Length), ColumnSpacing = 12, RowSpacing = 12 };
             // One machine's facts at a time, under the cards; its Details button opens and closes it from the keyboard too.
             var facts = new ContentControl { IsVisible = false };
-            string? open = null;
-            void Toggle(MachineView machine) {
-                open = open == machine.Machine ? null : machine.Machine;
-                facts.Content = open is null ? null : Facts(machine, p);
-                facts.IsVisible = open is not null;
+            state ??= new DetailsState();
+            void Open(MachineView? machine) {
+                state.OpenMachine = machine?.Machine;
+                facts.Content = machine is null ? null : Facts(machine, p);
+                facts.IsVisible = machine is not null;
             }
+            void Toggle(MachineView machine) => Open(state.OpenMachine == machine.Machine ? null : machine);
+            Open(machines.FirstOrDefault(machine => machine.Machine == state.OpenMachine));
             foreach (var machine in machines) grid.Children.Add(MachineCard(machine, machine == view.ThisMachine, p, signIn is null ? null : () => Toggle(machine)));
             page.Children.Add(Section(p, "Machines", signIn is null ? [grid] : [grid, facts]));
         }

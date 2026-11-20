@@ -143,6 +143,8 @@ internal sealed partial class AuthStateCollector {
         facts["credentials"] = hasFile ? "file" : "none";
         AddWritten(facts, "credentials-written", _paths.CodexCredentials);
         var found = await BinariesAsync("codex", facts, token).ConfigureAwait(false);
+        // The Codex app's own CLI, named so a reader never treats it as a stray copy, wherever the app is installed.
+        if (_paths.InstallFolders && Agents.CodexCli.DesktopApp() is { } desktop && File.Exists(desktop)) facts["app-binary"] = desktop;
         // A missing auth.json means signed out only when Codex keeps its sign-in in that file.
         var state = !found ? "not-installed" : !hasFile && store is null or "file" ? "signed-out" : "unknown";
         return new("codex", state, now) { Facts = facts };
@@ -271,6 +273,8 @@ internal sealed class AuthPaths {
     private readonly Dictionary<string, string[]> _configured;
     private readonly string _home;
     private readonly bool _installFolders;
+    /// <summary>Whether install folders and app copies are looked at; tests turn this off.</summary>
+    public bool InstallFolders => _installFolders;
 
     public AuthPaths(string home, Func<string, EnvironmentVariableTarget, string?>? variable = null, Dictionary<string, string[]>? configured = null,
         bool installFolders = true) {

@@ -72,6 +72,9 @@ public sealed class LedgerTrayTests {
         Assert.Equal("/a (0.170.0-alpha.9)", TrayView.Versions("x", "codex", "Codex", "0.170.0-alpha.10, 0.170.0-alpha.9",
             "/a 0.170.0-alpha.9; /b 0.170.0-alpha.10")!.Command);
         Assert.Equal("/a (0.164.0)", TrayView.Versions("x", "codex", "Codex", "0.164.0, 0.170.0", "/a 0.164.0; /b 0.170.0; /c ?")!.Command);
+        // The Codex app's own CLI is never offered, wherever its package is installed.
+        Assert.Null(TrayView.Versions("x", "codex", "Codex", "0.169.0, 0.170.0", @"E:\Apps\Codex\codex.exe 0.169.0; C:\npm\codex.cmd 0.170.0",
+            appBinary: @"E:\Apps\Codex\codex.exe"));
         // A prerelease of the same number is the older one.
         Assert.Contains("(0.2.0-beta)", TrayView.Versions("x", "codex", "Codex", "0.2.0-beta, 0.2.0", "/a 0.2.0-beta; /b 0.2.0")!.Command);
     }

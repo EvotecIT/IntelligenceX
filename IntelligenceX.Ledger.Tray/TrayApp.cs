@@ -63,7 +63,12 @@ internal sealed class TrayApp : Application {
         if (RenderTo is { } folder) {
             await RefreshAsync();
             // Drawn offscreen: no window opens on the desktop for a screenshot.
-            await Dispatcher.UIThread.InvokeAsync(() => { Snapshots.Save(folder, _view!, _overview?.At ?? DateTimeOffset.UtcNow); Quit(); });
+            await Dispatcher.UIThread.InvokeAsync(() => {
+                // A failed write is logged; the run ends either way, so no invisible process keeps the lock.
+                try { Snapshots.Save(folder, _view!, _overview?.At ?? DateTimeOffset.UtcNow); }
+                catch (Exception error) { TrayLog.Write("Render failed: " + error); }
+                finally { Quit(); }
+            });
             return;
         }
         do { await RefreshAsync(); }
