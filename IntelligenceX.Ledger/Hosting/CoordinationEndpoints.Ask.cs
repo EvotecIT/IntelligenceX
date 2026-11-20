@@ -7,7 +7,7 @@ internal static partial class CoordinationEndpoints {
     private static void MapAsk(WebApplication app, CoordinationStore store) {
         // Archived requests keep their ids: a retry gets the archived work back, a different ask with the id is rejected.
         app.MapPost(Prefix + "/ask", async (CoordinationAsk ask, HttpContext http, CancellationToken ct) =>
-            Results.Ok(await store.ExecuteAsync(ask?.Id, (engine, _, archived) => engine.Ask(ask!, Caller(http), archived), DateTimeOffset.UtcNow, ct)));
+            Results.Ok(await store.AskAsync(ask, Caller(http), DateTimeOffset.UtcNow, ct)));
         app.MapGet(Prefix + "/questions", async (long? afterOrder, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((engine, _) => engine.QuestionsToDeliver(Caller(http), Math.Max(0, afterOrder ?? 0)),
                 DateTimeOffset.UtcNow, ct)));

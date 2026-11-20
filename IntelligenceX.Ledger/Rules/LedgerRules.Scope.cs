@@ -105,7 +105,8 @@ public sealed partial class LedgerRules {
             "delivery-uncertain" => "delivery-uncertain",
             "wake-held" or "queue-behind-stall" => "delivery-backpressure",
             "unknown" => "observation-gap",
-            _ when match.Verdict == "waiting" || match.ReasonCode is "wait-review" or "wait-overdue" or "usage-limit" => "waiting-resource",
+            _ when match.Verdict == "waiting" || match.ReasonCode is "wait-review" or "wait-overdue" ||
+                match is { Verdict: "needs-you", ReasonCode: "usage-limit" } => "waiting-resource",
             _ => null
         };
         return type is null ? null : new(type, match.EpisodeId, match.Scope,
@@ -118,6 +119,7 @@ public sealed partial class LedgerRules {
         var hold = Hold(item, match);
         if (hold?.Type == "observation-gap") return Result("unknown", "observation-gap", MissingFacts(item));
         if (hold is not null) return Result("suppressed", hold.Type);
+        if (match.ReasonCode == "usage-limit") return Result("suppressed", "usage-limit");
         if (item.Session?.TurnOpen == true) return Result("suppressed", "turn-open");
         if (item.Scope is null) return Result("unknown", "observation-gap", ["task-scope"]);
         if (item.Control is null) return Result("unknown", "observation-gap", ["native-controls"]);

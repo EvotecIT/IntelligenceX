@@ -4,10 +4,11 @@ namespace IntelligenceX.Ledger.Hosting;
 
 internal static class ProjectContextEndpoints {
     internal static void Map(WebApplication app, ProjectContextService context, LedgerRuntime runtime) {
-        app.MapGet("/api/ledger/v1/work", async (string? verdict, int? limit, CancellationToken token) => {
+        app.MapGet("/api/ledger/v1/work", async (string? verdict, int? limit, string? include, CancellationToken token) => {
             if (verdict is not (null or "working" or "waiting" or "needs-you" or "stuck" or "done"))
                 return Results.BadRequest(new { error = "invalid-verdict" });
-            return Results.Ok(await runtime.WorkAsync(context, DateTimeOffset.UtcNow, token, verdict, Math.Clamp(limit ?? 200, 1, 200)));
+            return Results.Ok(await runtime.WorkAsync(context, DateTimeOffset.UtcNow, token, verdict,
+                Math.Clamp(limit ?? 200, 1, 200), includeOpen: include == "open"));
         });
         app.MapGet("/api/coordination/v1/projects", async (CancellationToken token) =>
             Results.Ok(await context.ProjectsAsync(token)));

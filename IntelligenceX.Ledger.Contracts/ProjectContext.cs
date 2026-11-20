@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace IntelligenceX.Ledger.Contracts;
 
 /// <summary>Directory observation and coverage remain visible even when no project can be returned.</summary>
@@ -26,11 +28,30 @@ public sealed record KnowledgeSearchView(DateTimeOffset AsOfUtc, string ProjectI
     KnowledgeHit[] Hits, string[] Coverage, bool Truncated);
 
 /// <summary>A current-work row adds local display metadata without changing the underlying verdict.</summary>
-public sealed record LedgerWorkRow(string Label, string? ProjectId, LedgerItemView Item);
+public sealed record LedgerWorkRow(string Label, string? ProjectId, LedgerItemView Item) {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WorkHelperView? Helper { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WorkStartedByView? StartedBy { get; init; }
+    /// <summary>True for a recent open session added by the optional roster.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Open { get; init; }
+}
+
+/// <summary>The request that started a helper and the session that asked for it.</summary>
+public sealed record WorkHelperView(string RequestId, string State, string RequesterProvider, string RequesterSessionId,
+    string? RequesterItemId, string RequesterLabel);
+
+/// <summary>The native session that started a child thread or desktop side session.</summary>
+public sealed record WorkStartedByView(string Provider, string SessionId, string? ItemId, string Label, string Via);
 
 /// <summary>A bounded current-work projection, separate from the all-history status counts.</summary>
 public sealed record LedgerWorkView(DateTimeOffset AsOfUtc, int RulesVersion, MachineRow[] Machines,
-    Dictionary<string, int> Counts, LedgerWorkRow[] Items, string[] Coverage, bool Truncated);
+    Dictionary<string, int> Counts, LedgerWorkRow[] Items, string[] Coverage, bool Truncated) {
+    /// <summary>Full count of open sessions within the lookback, when requested.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? OpenCount { get; init; }
+}
 
 /// <summary>Qualified session availability is separate from unobserved application responsiveness.</summary>
 public sealed record WorkerAvailabilityView(string State, bool? Archived, DateTimeOffset? ArchiveObservedAtUtc,

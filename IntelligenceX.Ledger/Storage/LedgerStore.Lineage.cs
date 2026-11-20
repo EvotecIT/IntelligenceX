@@ -93,6 +93,15 @@ public sealed partial class LedgerStore {
 
     private const string LinkColumns = "SELECT child_provider,child_native,parent_provider,parent_native,via,observed,request FROM session_lineage ";
 
+    internal async Task<SessionLink[]> NativeParentsAsync((string Provider, string Native)[] children, CancellationToken token) {
+        if (children.Length == 0) return [];
+        await using var db = await _database.OpenSessionAsync(path, token);
+        return (await StoredLinksAsync(db, children, false, token))
+            .Where(link => link.Via is "codex-parent-thread" or "claude-parent-session" or "desktop-side-session")
+            .Select(link => new SessionLink(link.ParentProvider, link.ParentNative, link.ChildProvider, link.ChildNative, link.Via, link.AtUtc))
+            .ToArray();
+    }
+
     /// <summary>Stored links whose child (or parent, with <paramref name="byParent"/>) is one of the keys, by indexed lookups.</summary>
     private static async Task<List<LinkRow>> StoredLinksAsync(SQLiteAsyncSession db, IEnumerable<(string Provider, string Native)> keys, bool byParent,
         CancellationToken token) {

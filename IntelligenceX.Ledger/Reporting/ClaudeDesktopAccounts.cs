@@ -154,7 +154,7 @@ internal sealed class ClaudeDesktopAccounts(string? sessionsRoot = null, string?
             return json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("oauthAccount", out var account) && account.ValueKind == JsonValueKind.Object
                 && account.TryGetProperty("accountUuid", out var id) && id.ValueKind == JsonValueKind.String && Guid.TryParse(id.GetString(), out _)
                 ? id.GetString() : null;
-        } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) {
+        } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException or InvalidOperationException) {
             return null;
         }
     }

@@ -280,9 +280,13 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
                             observation.Session.TurnEndedAtUtc >= item.Session.TurnStartedAtUtc &&
                             observation.Session.TurnEndedAtUtc > item.Session.LastActivityAtUtc) &&
                         (item.SessionEvidence is null || observation.ObservedAtUtc >= item.SessionEvidence.ObservedAtUtc)) {
-                        ObserveSessionConditions(item, observation.Session, received);
-                        decisionChanged |= Json(item.Session) != Json(observation.Session);
-                        item = item with { Session = observation.Session with { AppOwned = item.Session?.AppOwned }, SessionEvidence = evidence };
+                        var observed = ObserveSessionConditions(item, observation.Session, received) with { AppOwned = item.Session?.AppOwned };
+                        if (observed.StartedBySessionId is null && observed.SourceSessionId is { } native &&
+                            item.Session is { StartedBySessionId: not null } previous && previous.SourceSessionId == native)
+                            observed = observed with { StartedBySessionId = previous.StartedBySessionId,
+                                StartedByProvider = previous.StartedByProvider, StartedVia = previous.StartedVia };
+                        decisionChanged |= Json(item.Session) != Json(observed);
+                        item = item with { Session = observed, SessionEvidence = evidence };
                         if (observation.Session.RepositoryBranchKey is { } branchKey && !item.RepositoryBranchKeys.Contains(branchKey))
                             item = item with { RepositoryBranchKeys = item.RepositoryBranchKeys.Append(branchKey).ToArray() };
                     }

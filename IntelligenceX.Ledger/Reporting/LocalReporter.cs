@@ -159,7 +159,7 @@ public static class LocalReporter {
                 };
                 // Claude sessions follow the account that ran them, so a switch of account can be seen and taken over.
                 if (fact.AccountId is null && session.Provider == "claude" && claudeAccounts.For(session.Id,
-                    session.SourceRootId is { } root && claudeCliRoots.Contains(root)) is { } account)
+                    !fact.UsageLimit && session.SourceRootId is { } root && claudeCliRoots.Contains(root)) is { } account)
                     fact = fact with { AccountId = "claude:" + account };
                 if (fact.Archived is null && session.Provider == "claude" && claudeAccounts.Archived(session.Id) is { } archived)
                     fact = fact with { Archived = archived, ArchiveObservedAtUtc = DateTimeOffset.UtcNow };

@@ -1,4 +1,9 @@
+using System.Text.Json.Serialization;
+
 namespace IntelligenceX.Ledger.Contracts;
+
+/// <summary>A limit recorded by a session and its effective status as of the verdict's evaluation.</summary>
+public sealed record UsageLimitView(DateTimeOffset RecordedAtUtc, DateTimeOffset? ResetsAtUtc, bool InForce);
 
 /// <summary>Flat verdict contract consumed by read-only CLI, tray and tile clients.</summary>
 public sealed record LedgerItemView(string Id, string Kind, string MachineId, string Provider,
@@ -25,6 +30,8 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
     public WorkerAvailabilityView? Availability { get; init; }
     /// <summary>Direct provider metadata from the watcher. Nullable facts retain their unknown state.</summary>
     public SessionFact? Session { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UsageLimitView? UsageLimit { get; init; }
     /// <summary>Evidence for this session observation, independent of claim, control and delivery observations.</summary>
     public EvidenceRef? SessionEvidence { get; init; }
     public static LedgerItemView From(LedgerItem item) {
@@ -32,6 +39,7 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
         var declaration = LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(d => LedgerScope.Applies(d.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
             (d.Fact.CandidateRef is null || item.CandidateRef is null || d.Fact.CandidateRef == item.CandidateRef))).MaxBy(d => d.Fact.RecordedAtUtc)?.Fact;
         var delivery = item.Deliveries.Values.Where(d => d.Scope is null || LedgerScope.SameTask(d.Scope, item.Scope)).MaxBy(d => d.LastStageOrderAtUtc);
+        var limited = verdict.UsageLimit?.InForce ?? item.Session?.UsageLimit == true;
         return new(item.Id, item.Kind, item.MachineId, item.Provider, verdict.Value, verdict.ReasonCode,
             verdict.SinceUtc, verdict.SinceBasis, verdict.EvaluatedAtUtc, verdict.RulesVersion, verdict.AlsoMatched,
             verdict.LastKnown, verdict.Matches.FirstOrDefault(m => m.EpisodeId == verdict.EpisodeId)?.Wait ?? item.Work?.Wait ?? item.ImplicitReviewWait, item.Evidence(),
@@ -43,10 +51,10 @@ public sealed record LedgerItemView(string Id, string Kind, string MachineId, st
                 ResultRef = verdict.Hold?.ResultRef ?? declaration?.ResultRef ?? delivery?.ResultRef,
                 ParentItemId = item.ParentItemId, TurnId = item.Session?.TurnId, Safety = item.Safety, SignIn = item.SignIn, CandidateRef = item.CandidateRef,
                 Supersession = item.Supersession,
-                Session = item.Session, SessionEvidence = item.SessionEvidence,
+                Session = item.Session, SessionEvidence = item.SessionEvidence, UsageLimit = verdict.UsageLimit,
                 Availability = new(verdict.LastKnown || item.Session is null ? "unknown" : item.Session?.Archived == true ? "archived" :
-                    item.Session?.UsageLimit == true ? "usage-limited" : "observed",
-                    item.Session?.Archived, item.Session?.ArchiveObservedAtUtc, item.Session?.UsageLimit == true,
+                    limited ? "usage-limited" : "observed",
+                    item.Session?.Archived, item.Session?.ArchiveObservedAtUtc, limited,
                     "unknown", item.Session?.Archived is null ? ["archive-state-unobserved", "application-responsiveness-unobserved"] :
                         ["application-responsiveness-unobserved"])
             };

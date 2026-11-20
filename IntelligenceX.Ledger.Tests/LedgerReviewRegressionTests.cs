@@ -84,7 +84,7 @@ public sealed class LedgerReviewRegressionTests : IDisposable {
     [InlineData("question", true, false)]
     [InlineData("question", true, true)]
     [InlineData("active", true, false)]
-    [InlineData("usage-limit", false, false)]
+    [InlineData("usage-limit", true, false)]
     public async Task SessionConditionClocksFollowNewEpisodesAndSurviveSameEpisodeRefresh(string reason, bool newTurn, bool reuseInput) {
         using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
         await store.InitializeAsync();

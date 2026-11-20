@@ -27,7 +27,7 @@ public static class AccountLimits {
     internal static string LocalMachine =>
         Environment.GetEnvironmentVariable("EVOTEC_MACHINE") is { Length: > 0 } named ? named : Environment.MachineName.ToLowerInvariant();
 
-    private static async Task<AccountLimit?> CodexAsync(CancellationToken token) {
+    internal static async Task<AccountLimit?> CodexAsync(CancellationToken token) {
         await Gate.WaitAsync(token).ConfigureAwait(false);
         try {
             if (_codex is { } cached && DateTimeOffset.UtcNow - cached.At < CacheFor) return cached.Value;
@@ -106,19 +106,22 @@ public static class AccountLimits {
         var short_ = windows.Skip(1).FirstOrDefault();
         var credits = Child(limits, "credits");
         var resets = Child(result, "rateLimitResetCredits");
-        var reached = Text(limits, "rateLimitReachedType") is not null || Bool(limits, "spendControlReached") == true || Bool(result, "ordinaryUsageAllowed") == false;
+        var explicitLimit = Bool(limits, "limitReached");
+        var reached = explicitLimit == true || Text(limits, "rateLimitReachedType") is not null ||
+            Bool(limits, "spendControlReached") == true || Bool(result, "ordinaryUsageAllowed") == false;
         return new AccountLimit("codex", "codex-app-server", observed) {
+            AccountId = Identity("codex", Text(result, "accountId")),
             Plan = Text(limits, "planType"),
             UsedPercent = Number(main, "usedPercent"),
             WindowMinutes = (int?)Number(main, "windowDurationMins"),
-            ResetsAtUtc = Number(main, "resetsAt") is { } at ? DateTimeOffset.FromUnixTimeSeconds((long)at) : null,
+            ResetsAtUtc = Reset(main, "resetsAt"),
             ShortUsedPercent = Number(short_, "usedPercent"),
-            ShortResetsAtUtc = Number(short_, "resetsAt") is { } shortAt ? DateTimeOffset.FromUnixTimeSeconds((long)shortAt) : null,
+            ShortResetsAtUtc = Reset(short_, "resetsAt"),
             HasCredits = Bool(credits, "hasCredits"),
             CreditBalance = Text(credits, "balance"),
             FreeResets = (int?)Number(resets, "availableCount"),
             // Not reached only when Codex says ordinary usage is allowed; otherwise unknown stays unknown.
-            LimitReached = reached ? true : Bool(result, "ordinaryUsageAllowed") == true ? false : null,
+            LimitReached = reached ? true : Bool(result, "ordinaryUsageAllowed") == true ? false : explicitLimit,
         };
     }
 
@@ -148,11 +151,12 @@ public static class AccountLimits {
             var week = Child(limits, "seven_day");
             var five = Child(limits, "five_hour");
             return new AccountLimit("claude", "claude-status-line", at) {
+                AccountId = Identity("claude", Text(root, "accountId")),
                 UsedPercent = Number(week, "used_percentage"),
                 WindowMinutes = week.ValueKind == JsonValueKind.Object ? 10080 : null,
-                ResetsAtUtc = Number(week, "resets_at") is { } r ? DateTimeOffset.FromUnixTimeSeconds((long)r) : null,
+                ResetsAtUtc = Reset(week, "resets_at"),
                 ShortUsedPercent = Number(five, "used_percentage"),
-                ShortResetsAtUtc = Number(five, "resets_at") is { } s ? DateTimeOffset.FromUnixTimeSeconds((long)s) : null,
+                ShortResetsAtUtc = Reset(five, "resets_at"),
                 Note = now - at > TimeSpan.FromDays(1) ? "Last seen by a status line " + (int)(now - at).TotalHours + " h ago." : null,
             };
         } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) {
@@ -165,6 +169,13 @@ public static class AccountLimits {
 
     private static double? Number(JsonElement parent, string name) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
+
+    private static DateTimeOffset? Reset(JsonElement parent, string name) =>
+        Number(parent, name) is { } seconds && seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds() &&
+        seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds() ? DateTimeOffset.FromUnixTimeSeconds((long)seconds) : null;
+
+    private static string? Identity(string provider, string? id) =>
+        string.IsNullOrWhiteSpace(id) ? null : provider + ":" + id;
 
     private static string? Text(JsonElement parent, string name) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

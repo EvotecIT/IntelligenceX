@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 using IntelligenceX.Ledger.Contracts;
 using ModelContextProtocol.Server;
 
@@ -87,13 +88,16 @@ public sealed class LedgerTools(LedgerReadClient client) {
         client.SearchAsync(project, query, cancellationToken);
 
     [McpServerTool(Name = "work_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Read current work counts, machine coverage and up to eight compact rows. Optionally filter verdict: working, waiting, needs-you, stuck, done. Use work_item for evidence.")]
-    public async Task<WorkSummary> WorkStatus(string? verdict = null, CancellationToken cancellationToken = default) {
-        var view = await client.WorkAsync(cancellationToken, verdict, 8);
+    [Description("Read current work counts, machine coverage and up to eight compact rows. Set includeOpen to add up to eight recent open sessions. Optionally filter verdict: working, waiting, needs-you, stuck, done. Use work_item for evidence.")]
+    public async Task<WorkSummary> WorkStatus(string? verdict = null, CancellationToken cancellationToken = default, bool includeOpen = false) {
+        var view = await client.WorkAsync(cancellationToken, verdict, 8, includeOpen);
         return new(view.AsOfUtc, view.Counts, view.Machines.Select(machine => new MachineSummary(machine.Id, machine.State)).ToArray(),
             view.Items.Select(row => new WorkSummaryRow(row.Item.Id, row.Label, row.Item.Provider, row.Item.MachineId,
-                row.Item.Verdict, row.Item.ReasonCode, row.Item.SinceUtc, row.Item.NextActor, row.Item.LastKnown, row.Item.Session?.Origin ?? "unknown")).ToArray(),
-            view.Coverage, view.Truncated);
+                row.Item.Verdict, row.Item.ReasonCode, row.Item.SinceUtc, row.Item.NextActor, row.Item.LastKnown, row.Item.Session?.Origin ?? "unknown") {
+                    Open = row.Open, UsageLimit = row.Item.UsageLimit, Helper = row.Helper, StartedBy = row.StartedBy,
+                    Session = row.Item.Session is { } session ? new(session.LastActivityAtUtc) : null
+                }).ToArray(),
+            view.Coverage, view.Truncated) { OpenCount = view.OpenCount };
     }
 
     [McpServerTool(Name = "project_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -114,9 +118,26 @@ public sealed class LedgerTools(LedgerReadClient client) {
 
 /// <summary>Compact tool output; verdicts and counts are copied from the service.</summary>
 public sealed record WorkSummary(DateTimeOffset AsOfUtc, Dictionary<string, int> Counts, MachineSummary[] Machines,
-    WorkSummaryRow[] Items, string[] Coverage, bool Truncated);
+    WorkSummaryRow[] Items, string[] Coverage, bool Truncated) {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? OpenCount { get; init; }
+}
 /// <summary>Machine coverage copied without repeating per-item evidence.</summary>
 public sealed record MachineSummary(string Id, string State);
 /// <summary>Compact item identity and service verdict for optional evidence drill-down.</summary>
 public sealed record WorkSummaryRow(string Id, string Label, string Provider, string MachineId, string Verdict,
-    string ReasonCode, DateTimeOffset SinceUtc, string? NextActor, bool LastKnown, string Origin = "unknown");
+    string ReasonCode, DateTimeOffset SinceUtc, string? NextActor, bool LastKnown, string Origin = "unknown") {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Open { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UsageLimitView? UsageLimit { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WorkHelperView? Helper { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WorkStartedByView? StartedBy { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WorkSessionSummary? Session { get; init; }
+}
+
+/// <summary>Session activity without expanding the compact row into an evidence record.</summary>
+public sealed record WorkSessionSummary(DateTimeOffset? LastActivityAtUtc);

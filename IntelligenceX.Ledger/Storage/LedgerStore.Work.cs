@@ -10,7 +10,7 @@ public sealed partial class LedgerStore {
         else item.ConditionFirstObservedAtUtc.Remove(condition);
     }
 
-    private static void ObserveSessionConditions(LedgerItem item, SessionFact session, DateTimeOffset received) {
+    private static SessionFact ObserveSessionConditions(LedgerItem item, SessionFact session, DateTimeOffset received) {
         var previous = item.Session;
         var newTurn = previous is not null &&
             (previous.TurnId is not null && session.TurnId is not null && previous.TurnId != session.TurnId ||
@@ -21,8 +21,10 @@ public sealed partial class LedgerStore {
             item.ConditionFirstObservedAtUtc.Remove("question");
             item.ConditionFirstObservedAtUtc.Remove("input-unconfirmed");
         }
-        if (previous?.AccountId is not null && session.AccountId is not null && previous.AccountId != session.AccountId)
-            item.ConditionFirstObservedAtUtc.Remove("usage-limit");
+        // A new active account does not change the account that stopped this turn. A source that
+        // no longer knows the account removes its qualification until a new stop is recorded.
+        if (!newTurn && previous?.UsageLimit == true && session.UsageLimit && session.AccountId is not null)
+            session = session with { AccountId = previous.AccountId };
         ObserveCondition(item, "question", session.Question, received);
         ObserveCondition(item, "input-unconfirmed", session.InputUnconfirmed, received);
         ObserveCondition(item, "usage-limit", session.UsageLimit, received);
@@ -32,6 +34,7 @@ public sealed partial class LedgerStore {
             ObserveCondition(item, "active", session.TurnOpen == true, received);
             ObserveCondition(item, "quiet", session.TurnOpen == true, received);
         }
+        return session;
     }
 
     private static LedgerItem MergeWork(LedgerItem item, WorkFact fact, EvidenceRef evidence) {

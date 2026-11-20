@@ -5,6 +5,10 @@ namespace IntelligenceX.Ledger.Rules;
 /// <summary>Rules version 3. Scope and native controls precede verdict priority. Clock advancement is not progress.</summary>
 public sealed partial class LedgerRules(RuleSettings settings) {
     public const int Version = 3;
+    private readonly Func<LedgerItem, AccountLimit?>? _accountLimit;
+
+    internal LedgerRules(RuleSettings settings, Func<LedgerItem, AccountLimit?> accountLimit) : this(settings) =>
+        _accountLimit = accountLimit;
     internal WaitFact ReviewWait(string condition, DateTimeOffset recorded, TaskScope? scope = null) =>
         new("review", condition, recorded, ReviewAfterUtc: recorded + settings.ReviewWait, Inferred: true, Scope: scope);
     internal TimeSpan EvidenceMaxAge => settings.EvidenceMaxAge;
@@ -28,6 +32,11 @@ public sealed partial class LedgerRules(RuleSettings settings) {
 
     public Verdict Evaluate(LedgerItem item, DateTimeOffset now, bool reporterSilent = false) {
         item = ApplyScope(item);
+        var usageLimit = UsageLimit(item, now);
+        return EvaluateScoped(item, now, reporterSilent, usageLimit) with { UsageLimit = usageLimit };
+    }
+
+    private Verdict EvaluateScoped(LedgerItem item, DateTimeOffset now, bool reporterSilent, UsageLimitView? usageLimit) {
         var matches = new List<RuleMatch>();
         var session = item.Session;
         var work = item.Work;
@@ -65,7 +74,9 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         // Needs you, in published rules order.
         Add(session?.Question == true && session.InputId is not null && session.QuestionBlocking,
             "needs-you", "question", session?.QuestionAtUtc, identity: session?.InputId, evidence: item.SessionEvidence);
-        Add(session?.UsageLimit == true, "needs-you", "usage-limit", session?.TurnEndedAtUtc);
+        if (usageLimit is not null)
+            Add(true, usageLimit.InForce ? "needs-you" : "stuck", "usage-limit", usageLimit.RecordedAtUtc,
+                session?.TurnEndedAtUtc is null ? "first-observation" : "source-event");
         var queued = work?.QueuedInputs ?? 0;
         var heldGoal = work?.GoalHeld == true && (queued > 0 || work.ActiveClaim == true || item.Deliveries.Values.Any(IsPending));
         Add(heldGoal && LedgerScope.SameTask(goalScope, item.Scope), "needs-you", "goal-held", work?.GoalHeldAtUtc);
@@ -155,7 +166,11 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         matches = matches.OrderBy(m => m.Verdict switch { "needs-you" => 0, "stuck" => 1, "waiting" => 2, "working" => 3, _ => 4 }).ToList();
         var selected = matches[0];
         var previous = item.Current;
-        if (reporterSilent && previous is not null) return LastKnown(previous, now);
+        // Reporter silence freezes native facts, but does not extend a known account limit.
+        if (reporterSilent && previous is not null &&
+            !(previous.ReasonCode == "usage-limit" && usageLimit is not null &&
+                (previous.Value == "needs-you") != usageLimit.InForce))
+            return LastKnown(previous, now);
         // Done remains sticky until explicit new work appears.
         if (previous?.Value == "done" && previous.RulesVersion == Version &&
             session?.InputUnconfirmed != true &&
@@ -211,6 +226,7 @@ public sealed record RuleSettings {
     public TimeSpan AdmissionGrace { get; init; } = TimeSpan.FromMinutes(10);
     public TimeSpan InterruptionGrace { get; init; } = TimeSpan.FromMinutes(10);
     public TimeSpan NoProgressAfter { get; init; } = TimeSpan.FromMinutes(30);
+    public TimeSpan UsageLimitWindow { get; init; } = TimeSpan.FromHours(5);
     public TimeSpan ReporterTimeout { get; init; } = TimeSpan.FromMinutes(10);
     public TimeSpan ReviewWait { get; init; } = TimeSpan.FromHours(24);
     public TimeSpan EvidenceMaxAge { get; init; } = TimeSpan.FromMinutes(10);

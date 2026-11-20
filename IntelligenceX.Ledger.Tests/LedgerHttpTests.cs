@@ -8,6 +8,7 @@ using System.Text.Json;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Ledger.Context;
 using IntelligenceX.Ledger.Hosting;
+using IntelligenceX.Ledger.Mcp;
 using IntelligenceX.Ledger.Reporting;
 using Xunit;
 
@@ -229,10 +230,56 @@ public sealed class LedgerHttpTests {
             var invalidSource = await reader.MachineStatusAsync("synthetic-machine", timeout.Token);
             Assert.Equal("healthy", invalidSource.Reporter);
             Assert.Equal("invalid-source-data", invalidSource.Probe.Reason);
+
+            await VerifyOpenWorkAsync(client, ingress, reader, repositoryEvent, macEvent, timeout.Token);
         } finally {
             if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
             await Task.WhenAll(output, error);
             await LedgerTestPaths.DeleteServedDirectoryAsync(directory);
         }
+    }
+
+    private static async Task VerifyOpenWorkAsync(HttpClient client, HttpClient ingress, LedgerReadClient reader,
+        LedgerEvent pc, LedgerEvent mac, CancellationToken token) {
+        var now = DateTimeOffset.UtcNow;
+        LedgerEvent Ended(LedgerEvent source, string id, int ageDays, bool archived = false, bool limited = false) =>
+            source with { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), ItemId = id, ObservedAtUtc = now,
+                Session = new() { SourceSessionId = Guid.NewGuid(), TurnOpen = false, Outcome = limited ? "failed" : "completed",
+                    Archived = archived, ArchiveObservedAtUtc = now, UsageLimit = limited,
+                    TurnEndedAtUtc = now.AddDays(-ageDays), LastActivityAtUtc = now.AddDays(-ageDays) } };
+        LedgerEvent NoFollowUp(LedgerEvent source) => source with { EventId = Guid.NewGuid(), Sequence = source.Sequence + 1,
+            Session = null, Work = new() { ActiveClaim = false, PullRequestsKnown = true, ClaimsAtUtc = now, PullRequestsAtUtc = now } };
+        var newest = Ended(mac, "open-newer", 1);
+        var older = Ended(pc, "open-older", 6);
+        var outsideWindow = Ended(pc, "open-too-old", 8);
+        var archivedSession = Ended(mac, "completed-archived", 0, archived: true);
+        var stopped = Ended(pc, "stopped-at-limit", 3, limited: true);
+        using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/events",
+            new[] { newest, older, outsideWindow, archivedSession, stopped, NoFollowUp(newest), NoFollowUp(older) }, LedgerJson.Options, token))
+            Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+
+        using var defaultView = await client.GetFromJsonAsync<JsonDocument>("work", token);
+        Assert.False(defaultView!.RootElement.TryGetProperty("openCount", out _));
+        var current = await reader.WorkAsync(token);
+        Assert.DoesNotContain(current.Items, row => row.Item.Id == newest.ItemId || row.Item.Id == older.ItemId);
+        var limit = Assert.Single(current.Items, row => row.Item.Id == stopped.ItemId).Item;
+        Assert.Equal(("stuck", "usage-limit", new UsageLimitView(stopped.Session!.TurnEndedAtUtc!.Value, null, false)),
+            (limit.Verdict, limit.ReasonCode, limit.UsageLimit));
+        Assert.False(limit.Availability!.UsageLimited);
+
+        var combined = await reader.WorkAsync(token, verdict: null, limit: 200, includeOpen: true);
+        Assert.Equal(current.Counts, combined.Counts);
+        Assert.Equal(2, combined.OpenCount);
+        Assert.Equal(new[] { newest.ItemId, older.ItemId }, combined.Items.Where(row => row.Open).Select(row => row.Item.Id));
+        var bounded = await reader.WorkAsync(token, verdict: "done", limit: 1, includeOpen: true);
+        Assert.Equal(2, bounded.OpenCount);
+        Assert.True(bounded.Truncated);
+        var idle = Assert.Single(bounded.Items, row => row.Open);
+        Assert.Equal((newest.ItemId, "done", "idle", newest.Session!.LastActivityAtUtc),
+            (idle.Item.Id, idle.Item.Verdict, idle.Item.ReasonCode, idle.Item.Session!.LastActivityAtUtc));
+
+        var mcp = await new LedgerTools(reader).WorkStatus("done", token, includeOpen: true);
+        Assert.Equal(2, mcp.OpenCount);
+        Assert.Equal(newest.Session.LastActivityAtUtc, mcp.Items.First(row => row.Open).Session!.LastActivityAtUtc);
     }
 }
