@@ -75,6 +75,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Ledger.Mcp", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Ledger.Hook", "IntelligenceX.Ledger.Hook\IntelligenceX.Ledger.Hook.csproj", "{E5093CAA-5759-47E1-8BBE-582264A7EE2C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Ledger.Tray", "IntelligenceX.Ledger.Tray\IntelligenceX.Ledger.Tray.csproj", "{4FD1D22B-D87D-4340-8D51-8698E113AC3B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -493,6 +495,18 @@ Global
 		{E5093CAA-5759-47E1-8BBE-582264A7EE2C}.Release|x64.Build.0 = Release|Any CPU
 		{E5093CAA-5759-47E1-8BBE-582264A7EE2C}.Release|x86.ActiveCfg = Release|Any CPU
 		{E5093CAA-5759-47E1-8BBE-582264A7EE2C}.Release|x86.Build.0 = Release|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Debug|x64.Build.0 = Debug|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Debug|x86.Build.0 = Debug|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Release|x64.ActiveCfg = Release|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Release|x64.Build.0 = Release|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Release|x86.ActiveCfg = Release|Any CPU
+		{4FD1D22B-D87D-4340-8D51-8698E113AC3B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

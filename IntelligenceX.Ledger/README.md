@@ -116,6 +116,24 @@ ix ledger overlap example/project --branch feature/cell-formatting --files src/C
 
 MCP exposes `repo_activity(repo)` and `overlap(repo, branch?, files?, text?)` with the read token. Both accept `details` and `recent24h`. HTTP uses `GET /repo-activity?repo=...` and `GET /overlap?repo=...&branch=...&files=...&text=...`, with `details=true` and `recent24h=true` for the optional views. Overlap evaluates all selected evidence before formatting and returns `none`, `possible` or `conflict` with grouped matches. Text comparison uses words from the supplied text and observed titles. Every response starts with a one-line summary and preserves missing-source coverage.
 
+## Sign-in state and its history
+
+Each reporter also sends GitHub, Codex and Claude sign-in facts with its health: the gh account, token source,
+scopes and token variables set (names only), every Codex and Claude binary with its version, and when the
+configuration and credential files were last written. Token values and credential files are never read. The facts
+are read again every 15 minutes, or at once when a watched file or binary changes. The service keeps the latest facts
+per machine and provider and records every difference from the previous reading as a change, with the agent service's
+sign-in state folded in, for 90 days. A change in the agent's sign-in state is recorded when it arrives.
+
+```text
+ix ledger auth_state [machine] --config /absolute/path/client.json
+IntelligenceX.Ledger auth-check --config /absolute/path/reporter.json
+```
+
+MCP exposes `auth_state(machine?, changes?)` and HTTP `GET /api/ledger/v1/auth-state?machine=...&changes=...` with the read token.
+`auth-check` prints what this machine's reporter would send. `GET /api/ledger/v1/health` also names the commit the service was built
+from. The tray app reads these; see `InternalDocs/ledger-tray.md`.
+
 ## Session trees, takeover and trail
 
 The Ledger records which session started which, across Claude and Codex and across machines:

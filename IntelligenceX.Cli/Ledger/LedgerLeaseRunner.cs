@@ -15,6 +15,8 @@ internal static class LedgerLeaseRunner {
                 ["who", var key, "--prefix"] => JsonSerializer.Serialize(await client.WhoAsync(key, true), LedgerReadJson.Default.LeaseQuery),
                 ["machine_status", var id] => JsonSerializer.Serialize(await client.MachineStatusAsync(id), LedgerReadJson.Default.MachineStatus),
                 ["budget_status"] => JsonSerializer.Serialize(await client.BudgetStatusAsync(), LedgerReadJson.Default.BudgetStatus),
+                ["auth_state"] => JsonSerializer.Serialize(await client.AuthStateAsync(), LedgerReadJson.Default.AuthStateView),
+                ["auth_state", var machine] => JsonSerializer.Serialize(await client.AuthStateAsync(machine), LedgerReadJson.Default.AuthStateView),
                 ["github_budget"] => JsonSerializer.Serialize(await client.GitHubBudgetAsync(), LedgerReadJson.Default.GitHubBudgetView),
                 ["session_status", var id] => JsonSerializer.Serialize(await client.SessionStatusAsync(id), LedgerReadJson.Default.SessionStatus),
                 ["pr_ready", var repo, var number] when int.TryParse(number, out var pr) && pr > 0 =>

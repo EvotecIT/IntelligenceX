@@ -48,7 +48,8 @@ public sealed partial class LedgerRules(RuleSettings settings) {
         }
         if (item.Kind == "sign-in" && item.SignIn is { } signIn) {
             if (reporterSilent && item.Current is not null) return LastKnown(item.Current, now);
-            var state = Match(item, signIn.Required ? "needs-you" : "done", signIn.Required ? "sign-in-required" : "signed-in",
+            var state = Match(item, signIn.Required ? "needs-you" : "done",
+                signIn.Required ? "sign-in-required" : signIn.Reason == "unknown" ? "sign-in-unknown" : "signed-in",
                 signIn.SinceUtc, "source-event", "sign-in:" + signIn.Provider + ":" + signIn.SinceUtc.ToUnixTimeSeconds(), item.SignInEvidence);
             return new(state.Verdict, state.ReasonCode, state.SinceUtc, state.SinceBasis, now, Version, [], false) {
                 EpisodeId = state.EpisodeId, Matches = [state]

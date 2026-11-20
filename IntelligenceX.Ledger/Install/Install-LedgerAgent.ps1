@@ -34,7 +34,11 @@ param(
     [string]$Codex,
     [string]$Claude,
     [switch]$AllowUnmerged,
-    [switch]$Apply
+    [switch]$Apply,
+    # A version change waits up to this long for running helper turns to finish, since stopping the agent ends them.
+    [int]$WaitMinutes = 60,
+    # Switch versions without waiting for running helper turns; their asks are reconciled and answered as stopped.
+    [switch]$Now
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -191,6 +195,11 @@ function Start-Agent([string]$Version) {
         Start-ScheduledTask -TaskName $TaskName
     } else {
         $escape = { param($v) [Security.SecurityElement]::Escape($v) }
+        # A LaunchAgent starts with only the system PATH, so helpers would miss Homebrew tools (gh, claude, node) and the
+        # user's own. The agent and the helpers it starts get the usual user locations, then this shell's PATH.
+        $path = @((Split-Path $Dotnet), (Join-Path $HOME '.local/bin'), (Join-Path $HOME '.dotnet/tools'), '/opt/homebrew/bin', '/opt/homebrew/sbin',
+            '/usr/local/bin') + ($env:PATH -split ':') + @('/usr/bin', '/bin', '/usr/sbin', '/sbin') |
+            Where-Object { $_ } | Select-Object -Unique
         $null = New-Item -ItemType Directory -Force -Path (Split-Path $Plist)
         Set-Content -LiteralPath $Plist -Encoding utf8NoBOM -Value @"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -198,7 +207,7 @@ function Start-Agent([string]$Version) {
 <plist version="1.0"><dict>
 <key>Label</key><string>$Label</string>
 <key>ProgramArguments</key><array><string>$(& $escape $Dotnet)</string><string>$(& $escape $assembly)</string><string>agent</string><string>--config</string><string>$(& $escape $AgentConfig)</string></array>
-<key>EnvironmentVariables</key><dict><key>DOTNET_ROOT</key><string>$(& $escape (Split-Path $Dotnet))</string><key>HOME</key><string>$(& $escape $HOME)</string></dict>
+<key>EnvironmentVariables</key><dict><key>DOTNET_ROOT</key><string>$(& $escape (Split-Path $Dotnet))</string><key>HOME</key><string>$(& $escape $HOME)</string><key>PATH</key><string>$(& $escape ($path -join ':'))</string></dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>30</integer><key>ProcessType</key><string>Background</string>
 <key>StandardOutPath</key><string>$(& $escape $Log)</string><key>StandardErrorPath</key><string>$(& $escape $Log)</string>
 </dict></plist>
@@ -206,9 +215,10 @@ function Start-Agent([string]$Version) {
         & /bin/launchctl bootstrap "gui/$Uid" $Plist
         if ($LASTEXITCODE -ne 0) { throw 'launchctl bootstrap failed.' }
     }
-    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(60)
+    # A busy machine can take about a minute to bring the agent up, so it gets three.
+    $deadline = [DateTimeOffset]::UtcNow.AddMinutes(3)
     while (-not (Get-AgentProcess) -and [DateTimeOffset]::UtcNow -lt $deadline) { Start-Sleep -Seconds 2 }
-    if (-not (Get-AgentProcess)) { throw "The agent service did not start within a minute; see $Log." }
+    if (-not (Get-AgentProcess)) { throw "The agent service did not start within three minutes; see $Log." }
 }
 
 # Older builds ran the agent inside the reporter. Restart it once its agent section is gone, before the new process starts.
@@ -231,7 +241,31 @@ function Restart-Reporter {
     }
 }
 
+# Helper turns the running agent has in progress: run records with a turn under way and not finished. Stopping the agent
+# ends them (a turn runs on the agent's own Codex server or Claude process), so a version change waits for them first.
+function Get-RunningTurn {
+    $state = (Read-Json $AgentConfig)?.stateDirectory
+    if (-not $state -or -not (Test-Path -LiteralPath (Join-Path $state 'runs'))) { return @() }
+    @(Get-ChildItem -LiteralPath (Join-Path $state 'runs') -Filter '*.json' -File |
+        Where-Object { $_.Name -notlike '*.tokens.json' } |
+        ForEach-Object { try { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { $null } } |
+        Where-Object { $_ -and $_.Phase -eq 'turn' -and $_.TurnId -and -not $_.ResultRef })
+}
+
+function Wait-RunningTurn {
+    if ($Now -or -not (Get-AgentProcess)) { return }
+    $deadline = [DateTimeOffset]::UtcNow.AddMinutes($WaitMinutes)
+    while (($running = @(Get-RunningTurn)).Count -gt 0) {
+        if ([DateTimeOffset]::UtcNow -ge $deadline) {
+            throw "$($running.Count) helper turn(s) still running after $WaitMinutes minutes ($(@($running.RequestId) -join ', ')); nothing was changed. Run again later, or with -Now to stop them."
+        }
+        Write-Host "Waiting for $($running.Count) helper turn(s) to finish: $(@($running.RequestId) -join ', ')"
+        Start-Sleep -Seconds 30
+    }
+}
+
 function Switch-Version([string]$Version, [string]$Previous) {
+    Wait-RunningTurn
     $result = Invoke-AgentInstall $Version -Change
     $restart = @($result.steps | Where-Object action -eq 'restart-reporter').Count -gt 0
     $null = Stop-Agent

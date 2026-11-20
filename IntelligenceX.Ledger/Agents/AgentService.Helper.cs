@@ -76,6 +76,13 @@ internal sealed partial class AgentService {
     private string? Model(CoordinationWork work) => work.Request.Helper?.Model ?? _policy.CodexModel;
     private string? Effort(CoordinationWork work) => work.Request.Helper?.Effort ?? _policy.CodexEffort;
 
+    /// <summary>Branch and commit as the helper should read them. An ask about another repository may leave either
+    /// open (<c>HEAD</c>, all-zero commit): then the helper uses the default branch, or the latest of the branch.</summary>
+    internal static string Where(WorkCheckpoint checkpoint) {
+        var branch = checkpoint.Branch == "HEAD" ? "its default branch" : "branch " + checkpoint.Branch;
+        return checkpoint.Commit.All(c => c == '0') ? branch + ", latest commit" : branch + ", commit " + checkpoint.Commit;
+    }
+
     internal static string HelperPrompt(CoordinationWork work, string workspace) {
         var r = work.Request;
         var from = r.ReturnTo is { } back ? back.Provider + " session " + back.SessionId + " on " + back.MachineId : "another session";
@@ -85,8 +92,7 @@ internal sealed partial class AgentService {
                 "This run has its own working directory, separate from the earlier one.").AppendLine();
         prompt.Append("You are a helper for ").Append(from).AppendLine(", working through the IntelligenceX Ledger.")
             .AppendLine().AppendLine("Task:").AppendLine(r.TaskBrief ?? "(no task text)").AppendLine()
-            .Append("The requester is working on ").Append(r.Checkpoint.Project).Append(" (branch ").Append(r.Checkpoint.Branch)
-            .Append(", commit ").Append(r.Checkpoint.Commit).AppendLine(").")
+            .Append("The work is in the ").Append(r.Checkpoint.Project).Append(" repository (").Append(Where(r.Checkpoint)).AppendLine(").")
             .Append("Your working directory ").Append(workspace).AppendLine(" holds only the Ledger's marker file. To work on the code, " +
                 "clone the repository into a subfolder of it and check out that branch or commit. Anything you leave there is kept for " +
                 "review, so remove clones and scratch you don't need.");
@@ -116,7 +122,7 @@ internal sealed partial class AgentService {
     /// gate always did (approve, no critical or high finding, no check whose final attempt failed). When the whole would pass
     /// the Ledger's 8 KB, superseded check attempts and then the lowest-severity findings are dropped and truncated is set.
     /// Null when the answer has no review.</summary>
-    internal static string? ReviewResult(string? finalText, string threadId) {
+    internal static string? ReviewResult(string? finalText, string threadId, string source = "Codex thread") {
         if (string.IsNullOrWhiteSpace(finalText)) return null;
         JsonObject review;
         try {
@@ -151,7 +157,7 @@ internal sealed partial class AgentService {
         };
         bool Fits() => Encoding.UTF8.GetByteCount(result.ToJsonString()) <= MaximumResultBytes;
         if (Fits()) return result.ToJsonString();
-        result["truncated"] = "The full review is in Codex thread " + threadId + ".";
+        result["truncated"] = "The full review is in " + source + " " + threadId + ".";
         var kept = (JsonArray)result["validation"]!;
         // Superseded attempts go first, then long text is shortened, then the least severe findings are dropped.
         while (!Fits() && kept.FirstOrDefault(c => c?["final"] is JsonValue v && v.TryGetValue<bool>(out var f) && !f) is { } superseded)
@@ -166,7 +172,7 @@ internal sealed partial class AgentService {
         var order = new[] { "low", "medium", "high", "critical" };
         var list = (JsonArray)result["findings"]!;
         while (!Fits() && list.Count > 0) list.Remove(list.OrderBy(f => Array.IndexOf(order, Str(f?["severity"]) ?? "low")).First());
-        return Fits() ? result.ToJsonString() : CompactReview(result, threadId);
+        return Fits() ? result.ToJsonString() : CompactReview(result, threadId, source);
     }
 
     private static void Clip(JsonObject node, string name, int length) {
@@ -175,7 +181,7 @@ internal sealed partial class AgentService {
 
     /// <summary>The smallest review result: the decision, the failed checks and a shortened summary, still valid JSON and
     /// within the byte limit as serialized (escaped non-ASCII text takes up to six bytes a character).</summary>
-    private static string CompactReview(JsonObject result, string threadId) {
+    private static string CompactReview(JsonObject result, string threadId, string source = "Codex thread") {
         var summary = Str(result["summary"]) ?? "";
         var failed = ((JsonArray)result["failedChecks"]!).Select(Str).OfType<string>().ToArray();
         for (int length = 1000, checks = 10; ; length /= 2, checks /= 2) {
@@ -186,7 +192,7 @@ internal sealed partial class AgentService {
                 ["summary"] = Shorten(summary, length),
                 ["findings"] = new JsonArray(),
                 ["validation"] = new JsonArray(),
-                ["truncated"] = "The full review is in Codex thread " + threadId + "."
+                ["truncated"] = "The full review is in " + source + " " + threadId + "."
             }.ToJsonString();
             if (Encoding.UTF8.GetByteCount(json) <= MaximumResultBytes || length == 0 && checks == 0) return json;
         }
@@ -196,13 +202,13 @@ internal sealed partial class AgentService {
 
     /// <summary>A review that ended without a verdict (a question it couldn't ask, or a failure) still answers in the review
     /// shape, as a non-passing result whose summary says what happened.</summary>
-    internal static string ReviewWithoutVerdict(string text, string threadId) => CompactReview(new JsonObject {
+    internal static string ReviewWithoutVerdict(string text, string threadId, string source = "Codex thread") => CompactReview(new JsonObject {
         ["pass"] = false, ["verdict"] = "needs-attention", ["failedChecks"] = new JsonArray(), ["summary"] = text
-    }, threadId);
+    }, threadId, source);
 
     /// <summary>Result content for a helper's own text: bounded, and in the review shape for a review ask.</summary>
-    private static string TextResult(CoordinationWork work, string text, string threadId) =>
-        IsReview(work) ? ReviewWithoutVerdict(text, threadId) : Bound(text, threadId);
+    private static string TextResult(CoordinationWork work, string text, string threadId, string source = "Codex thread") =>
+        IsReview(work) ? ReviewWithoutVerdict(text, threadId, source) : Bound(text, threadId, source);
 
     private static string? Str(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
@@ -227,9 +233,9 @@ internal sealed partial class AgentService {
     }
 
     /// <summary>Bounds result content to the Ledger's 8 KB, pointing at the helper thread for the rest.</summary>
-    internal static string Bound(string text, string threadId) {
+    internal static string Bound(string text, string threadId, string source = "Codex thread") {
         if (Encoding.UTF8.GetByteCount(text) <= MaximumResultBytes) return text;
-        var note = "\n\n[Truncated. The full answer is in Codex thread " + threadId + ".]";
+        var note = "\n\n[Truncated. The full answer is in " + source + " " + threadId + ".]";
         var budget = MaximumResultBytes - Encoding.UTF8.GetByteCount(note);
         var builder = new StringBuilder();
         foreach (var rune in text.EnumerateRunes()) {
@@ -242,8 +248,8 @@ internal sealed partial class AgentService {
     private static string RunKey(string requestId, long generation) => "run:" + requestId + ":" + generation;
 
     /// <summary>The temporary worker a helper thread is enrolled as.</summary>
-    private CoordinationWorker HelperWorker(CoordinationWork work, string threadId) => new("codex-" + threadId, _machineId, "codex", true,
-        null, DateTimeOffset.UtcNow, threadId, WorkspaceId(work), work.Request.Checkpoint, _bootId, TemporaryWorker: true);
+    private CoordinationWorker HelperWorker(CoordinationWork work, string threadId) => new(work.Provider + "-" + threadId, _machineId,
+        work.Provider!, true, null, DateTimeOffset.UtcNow, threadId, WorkspaceId(work), work.Request.Checkpoint, _bootId, TemporaryWorker: true);
 
     private static string WorkspaceId(CoordinationWork work) => "ledger-workspace-" + LocalFiles.Hash(work.Request.Id, work.Generation)[..40];
 
@@ -267,8 +273,12 @@ internal sealed partial class AgentService {
             Directory.CreateDirectory(record.Workspace);
             var marker = Path.Combine(record.Workspace, ".ix-ledger-workspace.json");
             if (!File.Exists(marker)) LocalFiles.WriteAtomic(marker, JsonSerializer.Serialize(new { requestId = id, generation = work.Generation, grantId = grant }));
-            var receipt = new ExecutionReceipt(grant, work.Generation, _bootId, "codex-" + LocalFiles.Hash(id, work.Generation, grant)[..40]);
-            if (record.ThreadId is null) {
+            var claude = work.Provider == "claude";
+            var receipt = new ExecutionReceipt(grant, work.Generation, _bootId, work.Provider + "-" + LocalFiles.Hash(id, work.Generation, grant)[..40]);
+            if (record.ThreadId is null && claude) {
+                // A Claude session is created by its first turn, under an id chosen here and saved first.
+                record = (record with { ThreadId = Guid.NewGuid().ToString() }).Save(_settings.StateDirectory);
+            } else if (record.ThreadId is null) {
                 var task = work.Request.TaskBrief ?? id;
                 var title = "Ledger " + id + ": " + (task.Length > 60 ? task[..60] : task).ReplaceLineEndings(" ");
                 var thread = work.Request.Helper?.ForkSessionId is { } source
@@ -281,7 +291,7 @@ internal sealed partial class AgentService {
             if (!record.Bound) {
                 var worker = HelperWorker(work, threadId);
                 await _ledger.WorkerAsync(worker, stop).ConfigureAwait(false);
-                await _ledger.BindSessionAsync(new CoordinationSessionBinding(id, work.Generation, grant, worker.Id, _machineId, "codex", threadId,
+                await _ledger.BindSessionAsync(new CoordinationSessionBinding(id, work.Generation, grant, worker.Id, _machineId, work.Provider!, threadId,
                     WorkspaceId(work), work.Request.Checkpoint), stop).ConfigureAwait(false);
                 record = (record with { Bound = true }).Save(_settings.StateDirectory);
             }
@@ -292,7 +302,9 @@ internal sealed partial class AgentService {
             using var renewal = CancellationTokenSource.CreateLinkedTokenSource(stop);
             var renewing = RenewAsync(id, receipt, run, renewal.Token);
             try {
-                if (record.ResultRef is null) record = await ConverseAsync(work, record, receipt, stop).ConfigureAwait(false);
+                if (record.ResultRef is null) record = claude
+                    ? await ConverseClaudeAsync(work, record, receipt, stop).ConfigureAwait(false)
+                    : await ConverseAsync(work, record, receipt, stop).ConfigureAwait(false);
                 if (record.Phase == "done") return;
                 await _ledger.ReceiptAsync(id, "terminal", receipt with {
                     ResultRef = record.ResultRef, Succeeded = record.Phase == "succeeded", ExclusionVerified = true
@@ -510,17 +522,24 @@ internal sealed partial class AgentService {
                 "). Ask again if it is still needed.";
         } else {
             var threadId = binding?.SessionId ?? record!.ThreadId!;
-            var last = await _codex.CloseAsync(threadId, stop).ConfigureAwait(false);
+            // A Claude turn is a process. This service's own run was stopped above; one left by an earlier run of the service
+            // is found by its recorded id and start time and stopped before execution is declared excluded.
+            if (work.Provider == "claude" && record is { ProcessId: { } leftover, ProcessStartedUtc: { } started } &&
+                !ClaudeRunner.StopLeftover(leftover, started))
+                throw new InvalidOperationException("Claude process " + leftover + " did not stop; reconciliation waits for it.");
+            var last = work.Provider == "claude" ? null : await _codex.CloseAsync(threadId, stop).ConfigureAwait(false);
             disposition = "execution-excluded";
             if (binding is null) {
                 // Stopped between the thread's creation and its binding: enroll its worker again so the binding can be recovered.
                 var worker = HelperWorker(work, threadId);
                 await _ledger.WorkerAsync(worker, stop).ConfigureAwait(false);
                 binding = new CoordinationSessionBinding(work.Request.Id, work.Generation, work.GrantId!, worker.Id, _machineId,
-                    "codex", threadId, WorkspaceId(work), work.Request.Checkpoint);
+                    work.Provider!, threadId, WorkspaceId(work), work.Request.Checkpoint);
             }
+            var source = work.Provider == "claude" ? ClaudeSource : "Codex thread";
             content = record?.PendingResult ?? Bound("The helper on " + _machineId + " was stopped before it finished (" + (work.Reason ?? "reconcile") +
-                "). Codex thread " + threadId + " has its work so far." + (string.IsNullOrWhiteSpace(last) ? "" : "\n\nIts last message:\n" + last), threadId);
+                "). " + source + " " + threadId + " has its work so far." + (string.IsNullOrWhiteSpace(last) ? "" : "\n\nIts last message:\n" + last),
+                threadId, source);
         }
         record = record?.With(r => r with { PendingResult = content }).Save(_settings.StateDirectory);
         var artifact = await _ledger.PublishResultAsync(work.Request.Id, new CoordinationArtifactCommand(work.Generation, work.GrantId!,

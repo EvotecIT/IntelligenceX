@@ -199,6 +199,16 @@ public sealed class LedgerHttpTests {
                 GitHubUsage = [probeHealth.GitHubUsage[0] with { Component = "not a name" }] }, LedgerJson.Options, timeout.Token))
                 Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
             using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/reporters/health", probeHealth, LedgerJson.Options, timeout.Token)) Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var auth = new AuthFact("github", "signed-in", probeAt) { Facts = new() { ["account"] = "synthetic", ["scopes"] = "repo, workflow" } };
+            using (var rejected = await ingress.PostAsJsonAsync("api/ledger/v1/reporters/health", probeHealth with { Auth = [auth with { State = "maybe" }] },
+                LedgerJson.Options, timeout.Token)) Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+            using (var accepted = await ingress.PostAsJsonAsync("api/ledger/v1/reporters/health", probeHealth with { Auth = [auth] }, LedgerJson.Options, timeout.Token))
+                Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+            var authState = await reader.AuthStateAsync("synthetic-machine", token: timeout.Token);
+            Assert.Equal("repo, workflow", Assert.Single(Assert.Single(authState.Machines).Providers).Facts!["scopes"]);
+            var serviceHealth = await reader.HealthAsync(timeout.Token);
+            Assert.Equal("ok", serviceHealth.Status);
+            Assert.NotNull(serviceHealth.StartedAtUtc);
             var githubBudget = await reader.GitHubBudgetAsync(timeout.Token);
             Assert.Equal(("synthetic-machine", "ledger-reporter", 12), (githubBudget.Spenders[0].Machine, githubBudget.Spenders[0].Component, githubBudget.Spenders[0].ChargedLastHour));
             Assert.Equal(88, githubBudget.Windows.Single(w => w.ObservedBy == "synthetic-machine/ledger-reporter").Unattributed);

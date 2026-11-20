@@ -115,7 +115,7 @@ internal sealed class ClaudeSender(string executable, string workingDirectory) {
     }
 
     /// <summary>Why the CLI couldn't run: the API status when it gives one, otherwise its error text.</summary>
-    private static string? Failure(JsonElement result) {
+    internal static string? Failure(JsonElement result) {
         if (result.TryGetProperty("api_error_status", out var status) && status.TryGetInt32(out var code))
             return code is 401 or 403 ? "signed-out" : code == 429 ? "usage-limit" : null;
         var text = result.TryGetProperty("result", out var message) ? message.GetString() ?? "" : "";

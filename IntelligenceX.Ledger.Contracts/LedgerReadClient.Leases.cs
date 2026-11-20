@@ -18,6 +18,13 @@ public sealed partial class LedgerReadClient {
     /// <summary>Reads who is spending the GitHub REST budget: per component and machine, and per rate-limit window.</summary>
     public Task<GitHubBudgetView> GitHubBudgetAsync(CancellationToken token = default) =>
         GetAsync("api/ledger/v1/github-budget", LedgerReadJson.Default.GitHubBudgetView, token);
+    /// <summary>Reads every machine's GitHub, Codex and Claude sign-in facts and the latest changes to them.</summary>
+    public Task<AuthStateView> AuthStateAsync(string? machine = null, int changes = 50, CancellationToken token = default) =>
+        GetAsync("api/ledger/v1/auth-state?changes=" + changes + (machine is null ? "" : "&machine=" + Uri.EscapeDataString(machine)),
+            LedgerReadJson.Default.AuthStateView, token);
+    /// <summary>Reads whether the service answers and can reach its database, and when it started.</summary>
+    public Task<LedgerHealth> HealthAsync(CancellationToken token = default) =>
+        GetAsync("api/ledger/v1/health", LedgerReadJson.Default.LedgerHealth, token, acceptUnavailable: true);
     public Task<SessionStatus> SessionStatusAsync(string id, CancellationToken token = default) =>
         GetAsync("api/ledger/v1/session-status?id=" + Uri.EscapeDataString(id), LedgerReadJson.Default.SessionStatus, token);
     public Task<PullRequestReadiness> PullRequestReadinessAsync(string repo, int pr, CancellationToken token = default) =>

@@ -51,13 +51,31 @@ internal sealed class CodexAppServer : IAsyncDisposable {
     /// server is the normal route there.</summary>
     public static async Task<CodexAppServer> OpenAsync(string codex, string? controlSocket, CancellationToken token) {
         var socketPath = controlSocket ?? DefaultControlSocket();
-        if (File.Exists(socketPath)) {
+        if (TryLive(socketPath, out var socketStamp)) {
             try { return await OpenAsync(codex, socketPath, live: true, token).ConfigureAwait(false); }
             catch (Exception error) when (error is IOException or TimeoutException or WebSocketException or OperationCanceledException &&
-                !token.IsCancellationRequested) { }
+                !token.IsCancellationRequested) {
+                MarkDead(socketPath, socketStamp);
+            }
         }
         return await OpenAsync(codex, socketPath, live: false, token).ConfigureAwait(false);
     }
+
+    /// <summary>Control sockets that didn't answer, with the socket file's write time then. A daemon that died leaves
+    /// its socket file behind; trying it costs every connection the handshake and initialize timeouts first, so it is
+    /// skipped until the file changes (a daemon that starts again recreates it).</summary>
+    private static readonly ConcurrentDictionary<string, DateTime> DeadSockets = new(StringComparer.Ordinal);
+
+    internal static bool TryLive(string socketPath, out DateTime stamp) {
+        stamp = default;
+        if (!File.Exists(socketPath)) return false;
+        stamp = File.GetLastWriteTimeUtc(socketPath);
+        if (DeadSockets.TryGetValue(socketPath, out var dead) && dead == stamp) return false;
+        DeadSockets.TryRemove(socketPath, out _);
+        return true;
+    }
+
+    internal static void MarkDead(string socketPath, DateTime stamp) => DeadSockets[socketPath] = stamp;
 
     private static async Task<CodexAppServer> OpenAsync(string codex, string socketPath, bool live, CancellationToken token) {
         var start = new ProcessStartInfo(codex) {

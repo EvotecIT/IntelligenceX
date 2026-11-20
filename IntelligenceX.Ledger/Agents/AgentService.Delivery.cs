@@ -137,10 +137,11 @@ internal sealed partial class AgentService {
             catch (ClaudeLaunchException error) {
                 // The CLI didn't start, so nothing was sent: the delivery returns to pending and is retried after a pause.
                 Log("delivery-not-submitted", requestId + " claude " + error.Message);
-                Defer("deliver:" + requestId);
+                Backoff("deliver:" + requestId);
                 return ("not-submitted", "claude-cli-unavailable");
             }
             if (usage) await RecordUsageAsync(requestId, "delivery", "claude", sent.Model, sent.Tokens, sent.CostUsd, to.SessionId, stop).ConfigureAwait(false);
+            if (sent.Stage == "submitted") Succeeded("deliver:" + requestId);
             if (sent.Failure is { } failure) Observe("claude", false, failure);
             else if (sent.Stage == "submitted") Observe("claude", true, "sent");
             if (sent.Stage == "not-submitted") {
@@ -166,6 +167,7 @@ internal sealed partial class AgentService {
         var followed = false;
         try {
             var (delivery, server, watch) = await _codex.DeliverAsync(to.SessionId, text, stop).ConfigureAwait(false);
+            Succeeded("deliver:" + requestId);
             if (delivery.Route is "queue" or "queue-app" or "queue-held" or "queue-parked") {
                 if (usage) await RecordUsageAsync(requestId, "wake", "codex", delivery.Model, TurnTokens.None, null, to.SessionId, stop).ConfigureAwait(false);
                 // A queued message the daemon resumed runs as the thread's next turn. One only parked in the queue (no
@@ -197,9 +199,9 @@ internal sealed partial class AgentService {
             return ("uncertain", "codex-thread-archived");
         } catch (Exception error) when (error is IOException or TimeoutException or System.ComponentModel.Win32Exception or
             InvalidOperationException or System.Net.WebSockets.WebSocketException) {
-            // Nothing reached the thread: the attempt returns to pending and is retried after a pause.
+            // Nothing reached the thread: the attempt returns to pending and is retried after a pause that grows each time.
             Log("delivery-not-submitted", requestId + " " + error.Message);
-            Defer("deliver:" + requestId);
+            Backoff("deliver:" + requestId);
             return ("not-submitted", "codex-thread-unreachable");
         } finally {
             if (!followed) _following.TryRemove(to.SessionId, out _);
@@ -257,17 +259,24 @@ internal sealed partial class AgentService {
             run.With(r => r with { Retired = true }).Save(_settings.StateDirectory);
             return;
         }
+        // A Claude helper's turns are processes of its run; once the run has ended none is left, and its session is a file
+        // Claude keeps for `claude --resume`, with nothing to archive.
+        var claude = b.Provider == "claude";
         if (!job.Evidence.ContainsKey("processes-released")) {
-            if (!await _codex.IdleAsync(b.SessionId, stop).ConfigureAwait(false)) return;
-            await Step("processes-released", "codex-idle-" + key).ConfigureAwait(false);
+            var busy = claude
+                ? _active.ContainsKey(RunKey(b.RequestId, b.Generation)) ||
+                  run is { ProcessId: { } pid, ProcessStartedUtc: { } started } && !ClaudeRunner.StopLeftover(pid, started)
+                : !await _codex.IdleAsync(b.SessionId, stop).ConfigureAwait(false);
+            if (busy) return;
+            await Step("processes-released", (claude ? "claude-ended-" : "codex-idle-") + key).ConfigureAwait(false);
         }
         if (!job.Evidence.ContainsKey("descendants-resolved")) {
             try { await Step("descendants-resolved", "descendants-" + key).ConfigureAwait(false); }
             catch (CoordinationCommandRejectedException error) when (error.ErrorCode == "retirement-descendants-unresolved") { return; }
         }
         if (!job.Evidence.ContainsKey("archived")) {
-            await _codex.ArchiveAsync(b.SessionId, stop).ConfigureAwait(false);
-            await Step("archived", "codex-archived-" + key).ConfigureAwait(false);
+            if (!claude) await _codex.ArchiveAsync(b.SessionId, stop).ConfigureAwait(false);
+            await Step("archived", (claude ? "claude-session-kept-" : "codex-archived-") + key).ConfigureAwait(false);
         }
         const string review = "workspace-content-review";
         var marker = Path.Combine(workspace, ".ix-ledger-workspace.json");

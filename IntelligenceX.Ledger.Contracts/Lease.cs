@@ -116,6 +116,8 @@ public sealed record ReporterHealth(string MachineId, string ReporterId, string 
     ReporterProgress[]? Progress = null, ProbeAvailability? Probe = null) {
     /// <summary>GitHub REST use of the reporter and of the local components that left a tally for it to forward.</summary>
     public GitHubUsageReport[]? GitHubUsage { get; init; }
+    /// <summary>Sign-in and permission facts for GitHub, Codex and Claude on the reporter's machine.</summary>
+    public AuthFact[]? Auth { get; init; }
 }
 
 /// <summary>Collection cadence comes from the same revisioned policy used by the service.</summary>
