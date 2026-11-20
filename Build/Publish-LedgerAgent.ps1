@@ -8,9 +8,11 @@ The kit has the layout the Ledger service and reporter installers expect, plus w
 - win-x64: service/ and manifest.json for Update-LedgerRuntime.ps1.
 - osx-arm64: app/ and manifest.json (with the runtime) for Install-MacLedgerReporter.ps1.
 - tools/mcp: the MCP server with the ask tools.
+- tools/tray: the tray (Windows) and menu bar (macOS) app, installed with Install-LedgerTray.ps1.
 - tools/hook: the Claude inbox hook as a Native AOT executable. Native AOT builds only for the operating system it
   runs on, so build each platform's kit on that platform; -NoHook leaves it out.
-- agent-manifest.json and Install-LedgerAgent.ps1, which installs the agent service from this kit.
+- agent-manifest.json and Install-LedgerAgent.ps1, which installs the agent service from this kit, and
+  Install-LedgerTray.ps1, which installs the tray from it.
 
 The manifest names the exact source commit, so the working tree must be clean.
 Live Ledgers run merged master only, so the commit has to be on origin/master. -Unmerged builds a kit from any
@@ -57,6 +59,7 @@ function Publish([string]$Project, [string]$Destination, [string[]]$Extra = @())
 
 Publish 'IntelligenceX.Ledger/IntelligenceX.Ledger.csproj' $app @('--self-contained', 'false')
 Publish 'IntelligenceX.Ledger.Mcp/IntelligenceX.Ledger.Mcp.csproj' (Join-Path $Output 'tools/mcp') @('--self-contained', 'false')
+Publish 'IntelligenceX.Ledger.Tray/IntelligenceX.Ledger.Tray.csproj' (Join-Path $Output 'tools/tray') @('--self-contained', 'false')
 if (-not $NoHook) {
     # The native linker on Windows is found through vswhere, which the Visual Studio installer doesn't put on PATH.
     if ($IsWindows -and -not (Get-Command vswhere -ErrorAction SilentlyContinue)) {
@@ -96,4 +99,5 @@ $agentFiles = foreach ($folder in $appFolder, 'tools') {
 [ordered]@{ sourceCommit = $commit; merged = -not $Unmerged; runtime = $Runtime; appFolder = $appFolder; files = @($agentFiles) } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Output 'agent-manifest.json') -Encoding utf8NoBOM
 Copy-Item -LiteralPath (Join-Path $repository 'IntelligenceX.Ledger/Install/Install-LedgerAgent.ps1') -Destination $Output
+Copy-Item -LiteralPath (Join-Path $repository 'IntelligenceX.Ledger/Install/Install-LedgerTray.ps1') -Destination $Output
 [pscustomobject]@{ Kit = $Output; Runtime = $Runtime; SourceCommit = $commit; Files = $files.Count; Hook = -not $NoHook }
