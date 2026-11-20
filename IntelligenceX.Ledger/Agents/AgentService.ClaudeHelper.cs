@@ -122,8 +122,14 @@ internal sealed partial class AgentService {
             prompt = mayExist ? ResumePrompt : HelperPrompt(work, record.Workspace);
         }
         record = (record with { TurnId = "claude-" + session }).Save(_settings.StateDirectory);
-        async Task Launched(int processId, DateTimeOffset startedUtc) {
+        // Kept here as well, so a session that has to be created after all still gets the requester's answer.
+        var answer = record.AnswerPrompt;
+        Task Launched(int processId, DateTimeOffset startedUtc) {
             record = (record with { ProcessId = processId, ProcessStartedUtc = startedUtc }).Save(_settings.StateDirectory);
+            return Task.CompletedTask;
+        }
+        // Claude has opened the session with the prompt: the turn has started and any answer has reached the session.
+        async Task Accepted() {
             if (!record.Started) {
                 await PersistAsync(() => _ledger.ReceiptAsync(id, "started", receipt, stop), stop).ConfigureAwait(false);
                 record = (record with { Started = true }).Save(_settings.StateDirectory);
@@ -136,20 +142,21 @@ internal sealed partial class AgentService {
             }
         }
         var outcome = await _claudeHelper.RunTurnAsync(session, mayExist, record.Workspace, prompt, OutputSchema(work), null, limit,
-            Launched, stop).ConfigureAwait(false);
+            Launched, Accepted, stop).ConfigureAwait(false);
         if (outcome is { Status: "rejected", Error: ClaudeRunner.NoSession }) {
             // No earlier launch got as far as creating the session: start it now, with the task (and any answer given).
             outcome = await _claudeHelper.RunTurnAsync(session, false, record.Workspace,
-                record.AnswerPrompt is { } answer ? HelperPrompt(work, record.Workspace) + "\n\n" + answer : HelperPrompt(work, record.Workspace),
-                OutputSchema(work), null, limit, Launched, stop).ConfigureAwait(false);
+                answer is not null ? HelperPrompt(work, record.Workspace) + "\n\n" + answer : HelperPrompt(work, record.Workspace),
+                OutputSchema(work), null, limit, Launched, Accepted, stop).ConfigureAwait(false);
         }
-        if (outcome.Status == "rejected" && record.AnswerAttempt is { } unsent) {
-            // Claude never started, so the answer didn't reach the session: it goes back to pending.
+        if (record.AnswerAttempt is { } unsent) {
+            // Claude never opened the session with the answer, so it didn't arrive: it goes back to pending, and the turn
+            // counts as not started.
             await _ledger.QuestionDeliveryAsync(id, record.QuestionNumber!.Value, new("answer", unsent, "not-submitted", "claude-not-started"),
                 CancellationToken.None).ConfigureAwait(false);
             record = (record with { AnswerAttempt = null, AnswerPrompt = null }).Save(_settings.StateDirectory);
+            if (outcome.Status != "rejected") outcome = outcome with { Status = "rejected", Error = outcome.Error ?? "Claude did not open the session." };
         }
-        return (record with { LastTurn = outcome, TurnId = null, ProcessId = null, ProcessStartedUtc = null,
-            Phase = record.Phase == "question" && outcome.Status != "rejected" ? "turn" : record.Phase }).Save(_settings.StateDirectory);
+        return (record with { LastTurn = outcome, TurnId = null, ProcessId = null, ProcessStartedUtc = null }).Save(_settings.StateDirectory);
     }
 }

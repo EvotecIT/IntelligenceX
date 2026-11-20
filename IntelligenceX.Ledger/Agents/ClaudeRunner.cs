@@ -9,7 +9,7 @@ namespace IntelligenceX.Ledger.Agents;
 /// A turn is one process; its stream-json transcript gives the final answer, the model and the tokens.</summary>
 internal sealed class ClaudeRunner {
     /// <summary>The CLI's permission modes (Claude Code 2.1).</summary>
-    internal static readonly string[] PermissionModes = ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"];
+    internal static readonly string[] PermissionModes = ["acceptEdits", "auto", "bypassPermissions", "default", "manual", "dontAsk", "plan"];
 
     /// <summary>Error of a resumed turn whose session doesn't exist, so the caller starts it with the task instead.</summary>
     internal const string NoSession = "claude-session-missing";
@@ -24,10 +24,11 @@ internal sealed class ClaudeRunner {
     }
 
     /// <summary>Starts or continues <paramref name="sessionId"/> in <paramref name="workspace"/> with one prompt and waits
-    /// for the answer, up to <paramref name="limit"/>. <paramref name="launched"/> gets the process id and start time once
-    /// the process has the prompt. The process never outlives this call: any way out stops it and waits for its exit.</summary>
+    /// for the answer, up to <paramref name="limit"/>. <paramref name="launched"/> gets the process id and start time as soon
+    /// as it runs; <paramref name="accepted"/> runs once Claude has opened the session with the prompt (its init line), which
+    /// a resume of a missing session never reaches. The process never outlives this call: any way out stops it and waits.</summary>
     public async Task<TurnOutcome> RunTurnAsync(string sessionId, bool resume, string workspace, string prompt, JsonObject schema,
-        string? model, TimeSpan limit, Func<int, DateTimeOffset, Task> launched, CancellationToken token) {
+        string? model, TimeSpan limit, Func<int, DateTimeOffset, Task> launched, Func<Task> accepted, CancellationToken token) {
         var start = new ProcessStartInfo(_executable) {
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
             UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = workspace
@@ -42,10 +43,11 @@ internal sealed class ClaudeRunner {
         using var running = process;
         try {
             using var end = token.Register(() => AgentService.Stop(process));
+            await launched(process.Id, process.StartTime.ToUniversalTime()).ConfigureAwait(false);
             await process.StandardInput.WriteAsync(prompt.AsMemory(), token).ConfigureAwait(false);
             process.StandardInput.Close();
-            await launched(process.Id, process.StartTime.ToUniversalTime()).ConfigureAwait(false);
             var errors = process.StandardError.ReadToEndAsync(token);
+            var opened = false;
             // Only the last assistant message (for the model name) and the result line are needed; a long turn isn't kept whole.
             string? assistant = null, result = null;
             string[] Kept() => new[] { assistant, result }.OfType<string>().ToArray();
@@ -53,6 +55,10 @@ internal sealed class ClaudeRunner {
             deadline.CancelAfter(limit);
             try {
                 while (await process.StandardOutput.ReadLineAsync(deadline.Token).ConfigureAwait(false) is { } line) {
+                    if (!opened && line.Contains("\"type\":\"system\"", StringComparison.Ordinal) && line.Contains("\"subtype\":\"init\"", StringComparison.Ordinal)) {
+                        opened = true;
+                        await accepted().ConfigureAwait(false);
+                    }
                     if (line.Contains("\"type\":\"result\"", StringComparison.Ordinal)) result = line;
                     else if (line.Contains("\"type\":\"assistant\"", StringComparison.Ordinal)) assistant = line;
                 }
@@ -64,8 +70,11 @@ internal sealed class ClaudeRunner {
             }
             var outcome = Parse(Kept(), turnId, model);
             if (outcome.Status == "failed") {
-                var stderr = errors.IsCompletedSuccessfully ? errors.Result.Trim() : "";
-                if (resume && (stderr + " " + outcome.FinalText).Contains("No conversation found", StringComparison.OrdinalIgnoreCase))
+                // The process has exited; its error output is read to the end, bounded in case a child still holds the pipe.
+                var stderr = "";
+                try { stderr = (await errors.WaitAsync(TimeSpan.FromSeconds(5), token).ConfigureAwait(false)).Trim(); }
+                catch (TimeoutException) { }
+                if (resume && !opened && (stderr + " " + outcome.FinalText).Contains("No conversation found", StringComparison.OrdinalIgnoreCase))
                     return outcome with { Status = "rejected", Error = NoSession };
                 if (outcome.Error is null)
                     outcome = outcome with { Error = stderr.Length == 0 ? "claude exited with code " + process.ExitCode : stderr.Length > 300 ? stderr[..300] : stderr };
@@ -135,7 +144,9 @@ internal sealed class ClaudeRunner {
             var failed = root.TryGetProperty("is_error", out var isError) && isError.ValueKind == JsonValueKind.True;
             status = failed ? "failed" : "completed";
             if (!failed) continue;
-            var code = root.TryGetProperty("api_error_status", out var statusCode) && statusCode.TryGetInt32(out var value) ? value : 0;
+            // The status may be absent or null; only a number is read.
+            var code = root.TryGetProperty("api_error_status", out var statusCode) && statusCode.ValueKind == JsonValueKind.Number &&
+                statusCode.TryGetInt32(out var value) ? value : 0;
             error = code == 429 ? CodexRunner.UsageLimitPrefix + "Claude usage limit"
                 : code is 401 or 403 ? "Claude signed-out" : final ?? "Claude reported an error";
         }
