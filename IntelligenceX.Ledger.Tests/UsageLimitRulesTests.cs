@@ -140,9 +140,11 @@ public sealed class UsageLimitRulesTests {
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AStoppedAccountsKnownResetSurvivesPartialUpdatesAccountSwitchAndServiceRestart(bool weekly) {
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task AStoppedAccountsKnownResetSurvivesPartialUpdatesAccountSwitchAndServiceRestart(bool weekly, bool percentageOnly) {
         var directory = LedgerTestPaths.NewDirectory("limit-restart");
         Directory.CreateDirectory(directory);
         try {
@@ -162,7 +164,7 @@ public sealed class UsageLimitRulesTests {
                 limits.ObserveClaude(snapshot, accountObserved);
 
                 var switched = Recorded.AddMinutes(5);
-                File.WriteAllText(snapshot, Status("synthetic", switched.AddMinutes(-1), includeExhausted: false));
+                File.WriteAllText(snapshot, Status("synthetic", switched.AddMinutes(-1), includeExhausted: false, percentageOnly));
                 limits.ObserveClaude(snapshot, switched.AddMinutes(-1));
                 await store.IngestAsync([report with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = switched,
                     Session = session with { AccountId = "claude:other" } }], switched);
@@ -181,14 +183,53 @@ public sealed class UsageLimitRulesTests {
             Assert.Equal(("stuck", "usage-limit", new UsageLimitView(Recorded, reset, false)),
                 (expired.Current!.Value, expired.Current.ReasonCode, expired.Current.UsageLimit));
 
-            string Status(string account, DateTimeOffset observed, bool includeExhausted) {
+            string Status(string account, DateTimeOffset observed, bool includeExhausted, bool percentageOnly = false) {
                 var windows = new Dictionary<string, object> {
                     [weekly ? "five_hour" : "seven_day"] = new { used_percentage = 25 }
                 };
                 if (includeExhausted)
                     windows[weekly ? "seven_day" : "five_hour"] = new { used_percentage = 100, resets_at = reset.ToUnixTimeSeconds() };
+                else if (percentageOnly) windows[weekly ? "seven_day" : "five_hour"] = new { used_percentage = 100 };
                 return JsonSerializer.Serialize(new { observedAtUtc = observed, accountId = account, rate_limits = windows });
             }
+        } finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void ANewAccountLimitDoesNotReopenAnEarlierClearedStop() {
+        var directory = LedgerTestPaths.NewDirectory("limit-cleared");
+        Directory.CreateDirectory(directory);
+        try {
+            var item = Limited(ended: true) with { MachineId = AccountLimits.LocalMachine };
+            var snapshot = Path.Combine(directory, "status-line.json");
+            var limits = new WorkAccountLimits(directory);
+            var clearedAt = Recorded.AddMinutes(10);
+            File.WriteAllText(snapshot, Status(clearedAt, 20, Recorded.AddHours(4)));
+            limits.ObserveClaude(snapshot, clearedAt);
+
+            var limitedAgain = Recorded.AddHours(1);
+            var nextReset = Recorded.AddHours(4);
+            File.WriteAllText(snapshot, Status(limitedAgain, 100, nextReset));
+            limits.ObserveClaude(snapshot, limitedAgain);
+
+            var restarted = new WorkAccountLimits(directory);
+            var rules = new LedgerRules(new(), restarted.ForItem);
+            var oldStop = rules.Evaluate(item, limitedAgain);
+            Assert.Equal(("stuck", new UsageLimitView(Recorded, null, false)), (oldStop.Value, oldStop.UsageLimit));
+            var newStopAt = limitedAgain.AddMinutes(-1);
+            var newStop = rules.Evaluate(item with { Session = item.Session! with {
+                TurnId = "another-turn", TurnEndedAtUtc = newStopAt
+            } }, limitedAgain);
+            Assert.Equal(("needs-you", new UsageLimitView(newStopAt, nextReset, true)), (newStop.Value, newStop.UsageLimit));
+
+            static string Status(DateTimeOffset observed, int shortUsed, DateTimeOffset reset) => JsonSerializer.Serialize(new {
+                observedAtUtc = observed,
+                accountId = "synthetic",
+                rate_limits = new {
+                    five_hour = new { used_percentage = shortUsed, resets_at = reset.ToUnixTimeSeconds() },
+                    seven_day = new { used_percentage = 25 }
+                }
+            });
         } finally { Directory.Delete(directory, recursive: true); }
     }
 

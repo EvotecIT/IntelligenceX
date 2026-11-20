@@ -21,7 +21,8 @@ public sealed partial class LedgerRules {
         if (account is null || account.Machine != item.MachineId || account.Provider != item.Provider ||
             account.AccountId is null || !string.Equals(account.AccountId, session.AccountId, StringComparison.OrdinalIgnoreCase) ||
             account.ObservedAtUtc <= recorded || account.ObservedAtUtc > now) return fallback;
-        if (account.LimitReached == false)
+        var available = account.AvailableAtUtc ?? AccountAvailableAt(account);
+        if (available > recorded && available <= now)
             return fallback with { InForce = false };
 
         // A reset from a later window cannot extend the older stop. An exceeded window without a reset
@@ -35,16 +36,27 @@ public sealed partial class LedgerRules {
             var reported = windows.Where(window => window.Reset.HasValue).ToArray();
             if (reported is [{ Used: null }]) reached = reported;
         }
-        if (reached.Length == 0)
-            return account.Provider == "claude" && windows.Length == 2 && windows.All(window => window.Used is < 100)
-                ? fallback with { InForce = false }
-                : fallback;
+        if (reached.Length == 0) return fallback;
         var reset = reached.Where(window => window.Reset > recorded &&
                 (window.Minutes is not > 0 || window.Reset!.Value - recorded <= TimeSpan.FromMinutes(window.Minutes.Value)))
             .Select(window => window.Reset).Max();
+        // A decision before the fallback expired was based on qualified evidence. A fallback timeout can still be
+        // refined by the first matching reset report, but a confirmed clearance cannot re-raise the old alert.
+        if (cleared && prior!.EvaluatedAtUtc - recorded < settings.UsageLimitWindow && reset > now)
+            return fallback;
         return reset is { } at && (!reached.Any(window => window.Reset is null) || at - recorded >= settings.UsageLimitWindow)
             ? new(recorded, at, now < at)
             : fallback;
+    }
+
+    /// <summary>The latest time both windows were available, or when the provider explicitly allowed usage.</summary>
+    internal static DateTimeOffset? AccountAvailableAt(AccountLimit account) {
+        if (account.LimitReached == false) return account.ObservedAtUtc;
+        if (account.Provider != "claude" || account.LimitReached == true ||
+            account.UsedPercent is not < 100 || account.ShortUsedPercent is not < 100) return null;
+        var main = account.WindowObservedAtUtc ?? account.ObservedAtUtc;
+        var shortWindow = account.ShortWindowObservedAtUtc ?? account.ObservedAtUtc;
+        return main == shortWindow ? main : null;
     }
 
     private static RuleMatch MatchUsageLimit(LedgerItem item, UsageLimitView limit) =>

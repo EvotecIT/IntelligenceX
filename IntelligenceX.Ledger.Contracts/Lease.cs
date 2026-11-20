@@ -82,6 +82,7 @@ public sealed record AccountLimit(string Provider, string Source, DateTimeOffset
     public string? AccountId { get; init; }
     [JsonIgnore] public DateTimeOffset? WindowObservedAtUtc { get; init; }
     [JsonIgnore] public DateTimeOffset? ShortWindowObservedAtUtc { get; init; }
+    [JsonIgnore] public DateTimeOffset? AvailableAtUtc { get; init; }
     public string? Machine { get; init; }
     public string? Plan { get; init; }
     public double? UsedPercent { get; init; }

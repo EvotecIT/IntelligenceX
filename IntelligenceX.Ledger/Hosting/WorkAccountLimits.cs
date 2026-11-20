@@ -3,6 +3,7 @@ using System.Text.Json;
 using IntelligenceX.Ledger.Agents;
 using IntelligenceX.Ledger.Contracts;
 using IntelligenceX.Ledger.Reporting;
+using IntelligenceX.Ledger.Rules;
 
 namespace IntelligenceX.Ledger.Hosting;
 
@@ -14,7 +15,7 @@ internal sealed class WorkAccountLimits {
     private DateTimeOffset _lastCodexProbe;
 
     private sealed record StoredObservation(string AccountId, AccountLimit Limit,
-        DateTimeOffset? WindowObservedAtUtc, DateTimeOffset? ShortWindowObservedAtUtc);
+        DateTimeOffset? WindowObservedAtUtc, DateTimeOffset? ShortWindowObservedAtUtc, DateTimeOffset? AvailableAtUtc);
 
     internal WorkAccountLimits(string dataDirectory) {
         _cache = Path.Combine(dataDirectory, "account-limit-observations.json");
@@ -24,7 +25,8 @@ internal sealed class WorkAccountLimits {
             foreach (var row in rows ?? []) {
                 if (row is null || string.IsNullOrEmpty(row.AccountId) || row.Limit?.Machine != _machine) continue;
                 _observed[row.AccountId] = row.Limit with { AccountId = row.AccountId,
-                    WindowObservedAtUtc = row.WindowObservedAtUtc, ShortWindowObservedAtUtc = row.ShortWindowObservedAtUtc };
+                    WindowObservedAtUtc = row.WindowObservedAtUtc, ShortWindowObservedAtUtc = row.ShortWindowObservedAtUtc,
+                    AvailableAtUtc = row.AvailableAtUtc };
             }
         } catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) { }
     }
@@ -62,22 +64,28 @@ internal sealed class WorkAccountLimits {
     private void Remember(AccountLimit limit) {
         if (limit.AccountId is not { } identity || _observed.TryGetValue(identity, out var prior) && prior.ObservedAtUtc >= limit.ObservedAtUtc)
             return;
-        // An omitted window remains usable with its own clock. It cannot qualify a more recent stop.
-        if (prior is not null && limit.UsedPercent is null && limit.ResetsAtUtc is null)
+        // A retained reset keeps its original clock, so it cannot be attached to a more recent stop.
+        if (prior is not null && RetainWindow(limit.UsedPercent, limit.ResetsAtUtc, prior.UsedPercent, prior.ResetsAtUtc))
             limit = limit with { UsedPercent = prior.UsedPercent, WindowMinutes = prior.WindowMinutes, ResetsAtUtc = prior.ResetsAtUtc,
                 WindowObservedAtUtc = prior.WindowObservedAtUtc ?? prior.ObservedAtUtc };
-        if (prior is not null && limit.ShortUsedPercent is null && limit.ShortResetsAtUtc is null)
+        if (prior is not null && RetainWindow(limit.ShortUsedPercent, limit.ShortResetsAtUtc, prior.ShortUsedPercent, prior.ShortResetsAtUtc))
             limit = limit with { ShortUsedPercent = prior.ShortUsedPercent, ShortResetsAtUtc = prior.ShortResetsAtUtc,
                 ShortWindowObservedAtUtc = prior.ShortWindowObservedAtUtc ?? prior.ObservedAtUtc };
-        _observed[identity] = limit with { Machine = _machine };
+        var available = LedgerRules.AccountAvailableAt(limit);
+        if (prior?.AvailableAtUtc is { } earlier && !(available > earlier)) available = earlier;
+        _observed[identity] = limit with { Machine = _machine, AvailableAtUtc = available };
         Save();
     }
+
+    private static bool RetainWindow(double? used, DateTimeOffset? reset, double? priorUsed, DateTimeOffset? priorReset) =>
+        reset is null && (used is null || used >= 100 && priorUsed >= 100 && priorReset is not null);
 
     private void Save() {
         try {
             // This data is local to the host. Account identity is excluded from the budget response.
             LocalFiles.WriteAtomic(_cache, JsonSerializer.Serialize(_observed.Select(pair =>
-                new StoredObservation(pair.Key, pair.Value, pair.Value.WindowObservedAtUtc, pair.Value.ShortWindowObservedAtUtc))));
+                new StoredObservation(pair.Key, pair.Value, pair.Value.WindowObservedAtUtc, pair.Value.ShortWindowObservedAtUtc,
+                    pair.Value.AvailableAtUtc))));
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
