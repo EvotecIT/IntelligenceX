@@ -31,6 +31,9 @@ public sealed class LedgerTrayTests {
         Assert.Contains("mac GitHub: GH_TOKEN overrides the stored sign-in", view.Problems);
         Assert.Equal([TrayView.Warn, TrayView.Bad, TrayView.Unknown], Assert.Single(view.Others).Providers.Select(p => p.Mark));
         Assert.True(view.Others[0].Providers[1].NeedsSignIn);
+        // The menu line keeps the state and the warning; the rest stays in the submenu.
+        Assert.Equal("signed in · GH_TOKEN overrides the stored sign-in", view.Others[0].Providers[0].MenuSummary);
+        Assert.Equal("signed in · someone", view.ThisMachine!.Providers[0].MenuSummary);
 
         // Two versions are worth a look even when the sign-in state is unconfirmed.
         var unconfirmed = Machine("win-pc", Fact("codex", "unknown", new() { ["versions"] = "0.130.0, 0.170.0" }));
