@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -65,6 +66,8 @@ internal sealed class DetailsWindow : Window {
         _at = at;
         var palette = Palette.For(ActualThemeVariant);
         Background = palette.Brush(palette.Canvas);
+        Styles.Clear();
+        Styles.Add(DetailsView.ButtonStyles(palette));
         var offset = _scroll.Offset;
         _scroll.Content = DetailsView.Build(view, at, palette, _signIn, OperatingSystem.IsMacOS() ? 28 : 0);
         _scroll.Offset = offset;
@@ -85,8 +88,16 @@ internal static class DetailsView {
         var machines = new[] { view.ThisMachine }.OfType<MachineView>().Concat(view.Others).ToArray();
         if (machines.Length > 0) {
             var grid = new UniformGrid { Columns = Math.Min(3, machines.Length), ColumnSpacing = 12, RowSpacing = 12 };
-            foreach (var machine in machines) grid.Children.Add(MachineCard(machine, machine == view.ThisMachine, p));
-            page.Children.Add(Section(p, "Machines", [grid]));
+            // One machine's facts at a time, under the cards; its Details button opens and closes it from the keyboard too.
+            var facts = new ContentControl { IsVisible = false };
+            string? open = null;
+            void Toggle(MachineView machine) {
+                open = open == machine.Machine ? null : machine.Machine;
+                facts.Content = open is null ? null : Facts(machine, p);
+                facts.IsVisible = open is not null;
+            }
+            foreach (var machine in machines) grid.Children.Add(MachineCard(machine, machine == view.ThisMachine, p, signIn is null ? null : () => Toggle(machine)));
+            page.Children.Add(Section(p, "Machines", signIn is null ? [grid] : [grid, facts]));
         }
         page.Children.Add(Section(p, "Recent changes", [Timeline(view, p)]));
         page.Children.Add(new TextBlock {
@@ -104,7 +115,7 @@ internal static class DetailsView {
         };
         var machines = (view.ThisMachine is null ? 0 : 1) + view.Others.Length;
         var sub = view.State switch {
-            TrayState.Healthy => "Every machine is reporting, and GitHub, Codex and Claude are signed in where they're installed.",
+            TrayState.Healthy => "Every machine is reporting and no sign-in problem is known. A grey dot is one the Ledger can't confirm.",
             TrayState.Down => "The Ledger isn't working, so nothing here is current.",
             TrayState.Starting => "Reading the Ledger…",
             _ => machines + (machines == 1 ? " machine" : " machines") + " watched. The cards below say what each one means and what to do."
@@ -155,12 +166,9 @@ internal static class DetailsView {
         var here = view.ThisMachine?.Machine == issue.Machine && issue.Provider is { } provider && issue.Severity == "bad" && issue.Command is not null;
         if (here && signIn is not null) {
             var binary = view.ThisMachine!.Providers.FirstOrDefault(line => line.Provider == issue.Provider)?.Details.FirstOrDefault(d => d.Label == "Binary").Value;
-            var button = new Border {
-                Background = p.Brush(p.Accent), CornerRadius = new CornerRadius(9), Padding = new Thickness(16, 7), VerticalAlignment = VerticalAlignment.Top,
-                Cursor = new Cursor(StandardCursorType.Hand),
-                Child = new TextBlock { Text = "Sign in…", FontSize = 14, FontWeight = FontWeight.SemiBold, Foreground = p.Brush(p.OnAccent) }
-            };
-            button.PointerReleased += (_, _) => signIn(issue.Provider!, binary);
+            var button = ActionButton(p, "Sign in…", primary: true);
+            button.VerticalAlignment = VerticalAlignment.Top;
+            button.Click += (_, _) => signIn(issue.Provider!, binary);
             Grid.SetColumn(button, 2);
             action.Children.Add(button);
         }
@@ -172,7 +180,7 @@ internal static class DetailsView {
         return Card(p, row, new Thickness(14, 14, 18, 14));
     }
 
-    private static Control MachineCard(MachineView machine, bool local, Palette p) {
+    private static Control MachineCard(MachineView machine, bool local, Palette p, Action? details) {
         var panel = new StackPanel { Spacing = 10 };
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
         var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -206,7 +214,67 @@ internal static class DetailsView {
             panel.Children.Add(row);
         }
         if (machine.Note is { } note) panel.Children.Add(new TextBlock { Text = note, FontSize = 12, Foreground = p.Brush(p.Muted), TextWrapping = TextWrapping.Wrap });
+        if (details is not null && machine.Providers.Any(provider => provider.Details.Length > 0)) {
+            var button = ActionButton(p, "Details", primary: false);
+            button.HorizontalAlignment = HorizontalAlignment.Left;
+            button.Click += (_, _) => details();
+            panel.Children.Add(button);
+        }
         return Card(p, panel);
+    }
+
+    /// <summary>Every fact behind one machine's providers, selectable, for reading or copying a path.</summary>
+    private static Control Facts(MachineView machine, Palette p) {
+        var panel = new StackPanel { Spacing = 14 };
+        panel.Children.Add(new TextBlock { Text = machine.Machine, FontSize = 16, FontWeight = FontWeight.SemiBold, Foreground = p.Brush(p.Text) });
+        foreach (var provider in machine.Providers.Where(provider => provider.Details.Length > 0)) {
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 16, RowSpacing = 3 };
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            var title = new TextBlock { Text = provider.Name + " · " + provider.Summary, FontSize = 14, FontWeight = FontWeight.SemiBold, Foreground = p.Brush(p.Text),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
+            Grid.SetColumnSpan(title, 2);
+            grid.Children.Add(title);
+            for (var index = 0; index < provider.Details.Length; index++) {
+                grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                var label = new TextBlock { Text = provider.Details[index].Label, FontSize = 13, Foreground = p.Brush(p.Muted) };
+                var value = new SelectableTextBlock { Text = provider.Details[index].Value, FontSize = 13, Foreground = p.Brush(p.Text), TextWrapping = TextWrapping.Wrap };
+                Grid.SetRow(label, index + 1);
+                Grid.SetRow(value, index + 1);
+                Grid.SetColumn(value, 1);
+                grid.Children.Add(label);
+                grid.Children.Add(value);
+            }
+            panel.Children.Add(grid);
+        }
+        return Card(p, panel);
+    }
+
+    /// <summary>A flat rounded button in Marquee's look: the accent for the main action, a quiet outline otherwise.
+    /// Its hover and pressed colours come from <see cref="ButtonStyles"/>.</summary>
+    private static Button ActionButton(Palette p, string text, bool primary) {
+        var button = new Button {
+            Content = text, FontSize = primary ? 14 : 13, FontWeight = FontWeight.SemiBold, CornerRadius = new CornerRadius(9),
+            Padding = primary ? new Thickness(16, 7) : new Thickness(12, 4), Cursor = new Cursor(StandardCursorType.Hand),
+            Background = primary ? p.Brush(p.Accent) : Brushes.Transparent, Foreground = p.Brush(primary ? p.OnAccent : p.Secondary),
+            BorderBrush = p.Brush(primary ? p.Accent : p.Hairline), BorderThickness = new Thickness(primary ? 0 : 1)
+        };
+        button.Classes.Add(primary ? "ledger-primary" : "ledger-quiet");
+        return button;
+    }
+
+    /// <summary>Keeps the buttons' own colours on hover and press instead of the theme's grey.</summary>
+    public static Styles ButtonStyles(Palette p) {
+        Style Look(string name, string state, IBrush background, IBrush foreground) =>
+            new(x => x.OfType<Button>().Class(name).Class(state).Template().OfType<ContentPresenter>()) {
+                Setters = { new Setter(ContentPresenter.BackgroundProperty, background), new Setter(ContentPresenter.ForegroundProperty, foreground) }
+            };
+        var hover = p.Brush(p.Accent, 0.85);
+        return [
+            Look("ledger-primary", ":pointerover", hover, p.Brush(p.OnAccent)),
+            Look("ledger-primary", ":pressed", hover, p.Brush(p.OnAccent)),
+            Look("ledger-quiet", ":pointerover", p.Brush(p.Raised), p.Brush(p.Text)),
+            Look("ledger-quiet", ":pressed", p.Brush(p.Raised), p.Brush(p.Text)),
+        ];
     }
 
     private static Control Timeline(TrayView view, Palette p) {

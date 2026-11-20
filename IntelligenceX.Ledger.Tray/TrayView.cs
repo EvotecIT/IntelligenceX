@@ -12,7 +12,8 @@ internal sealed record ProviderLine(string Provider, string Name, string Mark, s
     string? Warning = null) {
     /// <summary>A word or two for the machine card: signed in, signed out, 2 versions, can't tell.</summary>
     public string Short { get; init; } = "";
-    public Issue? Issue { get; init; }
+    /// <summary>Everything that needs doing about this provider; a sign-out and an overriding token are separate actions.</summary>
+    public Issue[] Issues { get; init; } = [];
 
     /// <summary>The state and the one thing most worth seeing (the warning, or else the next fact), short enough for a
     /// menu line that sits near a screen edge. The full summary and facts stay in the submenu and details window.</summary>
@@ -85,7 +86,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
                 issues.Add(new("bad", view.Machine, null, view.Reporter == "not-enrolled" ? view.Machine + " has never reported" : view.Machine + " isn't reporting",
                     "The Ledger hasn't heard from its reporter, so that machine's sessions and sign-ins may be out of date.",
                     "Check the Ledger reporter on " + view.Machine + "; it usually comes back after a restart or sign-in."));
-            issues.AddRange(view.Providers.Select(p => p.Issue).OfType<Issue>());
+            issues.AddRange(view.Providers.SelectMany(p => p.Issues));
         }
         if (overview.GitHub?.Windows.FirstOrDefault(w => w.Resource == "core") is { } core && core.Limit > 0 && core.Remaining < core.Limit / 10)
             issues.Add(new("warn", "", "github", "GitHub REST budget is low: " + core.Remaining.ToString("N0", CultureInfo.InvariantCulture) + " left",
@@ -140,7 +141,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
             var unknown = !signIn.Required && signIn.Reason == "unknown";
             return new(provider, name, signIn.Required ? Bad : unknown ? Unknown : Ok,
                 signIn.Required ? Reason(signIn.Reason) : unknown ? "unknown" : "signed in", [("Agent", Reason(signIn.Reason))], signIn.Required) {
-                Short = signIn.Required ? Reason(signIn.Reason) : unknown ? "can't tell" : "signed in", Issue = signIn.Required ? SignedOut() : null
+                Short = signIn.Required ? Reason(signIn.Reason) : unknown ? "can't tell" : "signed in", Issues = signIn.Required ? [SignedOut()] : []
             };
         }
         var f = fact.Facts ?? [];
@@ -150,7 +151,8 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         parts.Add(fact.State switch { "signed-in" => "signed in", "signed-out" => "signed out", "not-installed" => "not installed", _ => "unknown" });
         if (f.GetValueOrDefault("agent-sign-in") is { } agent && agent is not ("ready" or "signed-out")) parts[0] += " (" + Reason(agent) + ")";
         string? warning = null;
-        var issue = fact.State == "signed-out" ? SignedOut() : null;
+        var found = new List<Issue>();
+        if (fact.State == "signed-out") found.Add(SignedOut());
         switch (provider) {
             case "github":
                 if (f.GetValueOrDefault("account") is { } login) parts.Add(login);
@@ -159,15 +161,15 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
                 if (overview.GitHub?.Windows.FirstOrDefault(w => w.Resource == "core") is { } core && core.Limit > 0)
                     parts.Add("REST " + core.Remaining.ToString("N0", CultureInfo.InvariantCulture) + " left");
                 if (f.GetValueOrDefault("check") == "token-unreadable")
-                    issue ??= new("warn", where, provider, where + " can't read GitHub's sign-in",
+                    found.Add(new("warn", where, provider, where + " can't read GitHub's sign-in",
                         "The background reporter couldn't read gh's token, usually because the keychain is locked. gh in your own terminal is probably fine.",
-                        "Unlock " + where + ", or run gh auth status there to confirm.", "gh auth status");
+                        "Unlock " + where + ", or run gh auth status there to confirm.", "gh auth status"));
                 if (f.GetValueOrDefault("env-override") is { Length: > 0 } env) {
                     var variable = env.Split(' ')[0];
                     warning = variable + " overrides the stored sign-in";
-                    issue ??= new("warn", where, provider, variable + " overrides gh on " + where,
+                    found.Add(new("warn", where, provider, variable + " overrides gh on " + where,
                         "gh uses the token in " + env + " instead of your stored sign-in, so its account and scopes may not be the ones you expect.",
-                        "Remove " + variable + " from that environment unless you set it on purpose.");
+                        "Remove " + variable + " from that environment unless you set it on purpose."));
                 }
                 break;
             case "codex":
@@ -183,7 +185,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
                     // Only copies Przemek installed himself are worth a card; an app's own bundled copy updates with the app.
                     if (Versions(where, provider, name, versions, f.GetValueOrDefault("binaries")) is { } extra) {
                         warning = versions.Split(',').Length + " versions installed";
-                        issue ??= extra;
+                        found.Add(extra);
                     }
                 }
                 break;
@@ -196,7 +198,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         var details = f.Where(pair => pair.Key != "config-written").OrderBy(pair => Order(pair.Key))
             .Select(pair => (Label(pair.Key), pair.Key is "binaries" or "env-override" ? pair.Value.Replace("; ", Environment.NewLine) : pair.Value)).ToList();
         details.Add(("Checked", Ago(now - fact.CheckedAtUtc)));
-        return new(provider, name, mark, string.Join(" · ", parts), details.ToArray(), fact.State == "signed-out", warning) { Short = label, Issue = issue };
+        return new(provider, name, mark, string.Join(" · ", parts), details.ToArray(), fact.State == "signed-out", warning) { Short = label, Issues = found.ToArray() };
     }
 
     /// <summary>
@@ -207,9 +209,11 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
     internal static Issue? Versions(string machine, string provider, string name, string versions, string? binaries) {
         var all = versions.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         var newest = all.OrderBy(v => v, Comparer<string>.Create(CompareVersions)).Last();
+        // Only a copy whose version was read and is older than the newest is offered for removal; "?" means the probe failed.
         var older = (binaries ?? "").Split("; ", StringSplitOptions.RemoveEmptyEntries)
             .Select(row => (Path: row[..Math.Max(0, row.LastIndexOf(' '))], Version: row[(row.LastIndexOf(' ') + 1)..]))
-            .Where(row => row.Path.Length > 0 && row.Version != newest && !AppManaged(row.Path)).Select(row => row.Path + " (" + row.Version + ")").ToArray();
+            .Where(row => row.Path.Length > 0 && row.Version != "?" && CompareVersions(row.Version, newest) < 0 && !AppManaged(row.Path))
+            .Select(row => row.Path + " (" + row.Version + ")").ToArray();
         var title = machine + " has " + all.Length + " " + name + " versions: " + string.Join(" and ", all);
         const string meaning = "Which one runs depends on PATH and on which app starts it, so a session can pick up the older copy, with its own sign-in and behaviour.";
         // Without the list of binaries there's no telling which copy is which.
@@ -224,13 +228,27 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
         path.Contains(".app/Contents/", StringComparison.Ordinal) || path.Contains("app-server-daemon", StringComparison.OrdinalIgnoreCase) ||
         path.Contains("WindowsApps", StringComparison.OrdinalIgnoreCase);
 
-    private static int CompareVersions(string left, string right) {
-        static (Version Number, bool Release) Parse(string text) =>
-            (Version.TryParse(text.Split('-', '+')[0], out var number) ? number : new Version(0, 0), !text.Contains('-'));
-        var (a, aRelease) = Parse(left);
-        var (b, bRelease) = Parse(right);
+    /// <summary>Semantic-version order: numbers first, a release above its prereleases, and prerelease identifiers
+    /// compared one by one, numbers numerically (alpha.10 after alpha.9). Build metadata after + is ignored.</summary>
+    internal static int CompareVersions(string left, string right) {
+        static (Version Number, string[] Pre) Parse(string text) {
+            var core = text.Split('+')[0];
+            var dash = core.IndexOf('-');
+            var number = dash < 0 ? core : core[..dash];
+            return (Version.TryParse(number, out var parsed) ? parsed : new Version(0, 0), dash < 0 ? [] : core[(dash + 1)..].Split('.'));
+        }
+        var (a, aPre) = Parse(left);
+        var (b, bPre) = Parse(right);
         var compared = a.CompareTo(b);
-        return compared != 0 ? compared : aRelease.CompareTo(bRelease);
+        if (compared != 0) return compared;
+        if (aPre.Length == 0 || bPre.Length == 0) return bPre.Length.CompareTo(aPre.Length); // A release outranks a prerelease.
+        for (var index = 0; index < Math.Min(aPre.Length, bPre.Length); index++) {
+            var aNumber = int.TryParse(aPre[index], out var x);
+            var bNumber = int.TryParse(bPre[index], out var y);
+            var step = aNumber && bNumber ? x.CompareTo(y) : aNumber ? -1 : bNumber ? 1 : string.CompareOrdinal(aPre[index], bPre[index]);
+            if (step != 0) return step;
+        }
+        return aPre.Length.CompareTo(bPre.Length);
     }
 
     /// <summary>One change worded for the timeline, or null for a detail the history keeps but the timeline doesn't

@@ -32,6 +32,9 @@ public sealed class LedgerTrayTests {
         Assert.Equal(("bad", "Codex is signed out on mac", "codex login"), (signedOut.Severity, signedOut.Title, signedOut.Command));
         Assert.Contains("GH_TOKEN overrides gh on mac", view.Problems);
         Assert.Equal("bad", view.Issues[0].Severity); // Broken things come before things worth a look.
+        // A sign-out and an overriding token are two separate things to do, and both count.
+        var both = Machine("mac", Fact("github", "signed-out", new() { ["env-override"] = "GH_TOKEN (user)" }));
+        Assert.Equal(["GitHub is signed out on mac", "GH_TOKEN overrides gh on mac"], TrayView.Build(Overview([both]), "win-pc", Now).Problems);
         Assert.Equal([TrayView.Warn, TrayView.Bad, TrayView.Unknown], Assert.Single(view.Others).Providers.Select(p => p.Mark));
         Assert.True(view.Others[0].Providers[1].NeedsSignIn);
         // The menu line keeps the state and the warning; the rest stays in the submenu.
@@ -62,6 +65,13 @@ public sealed class LedgerTrayTests {
         Assert.Equal(@"C:\Local\OpenAI\Codex\bin\codex.exe (0.130.0-alpha.5)", issue.Command);
         Assert.Null(TrayView.Versions("mac", "codex", "Codex", "0.171.0, 0.171.0-alpha.13",
             "/Users/me/.local/bin/codex 0.171.0; /Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex 0.171.0-alpha.13"));
+        // Prereleases order like semantic versions; a copy whose version couldn't be read is never offered.
+        Assert.True(TrayView.CompareVersions("0.170.0-alpha.10", "0.170.0-alpha.9") > 0);
+        Assert.True(TrayView.CompareVersions("0.170.0", "0.170.0-alpha.10") > 0);
+        Assert.True(TrayView.CompareVersions("0.170.0-alpha", "0.170.0-alpha.1") < 0);
+        Assert.Equal("/a (0.170.0-alpha.9)", TrayView.Versions("x", "codex", "Codex", "0.170.0-alpha.10, 0.170.0-alpha.9",
+            "/a 0.170.0-alpha.9; /b 0.170.0-alpha.10")!.Command);
+        Assert.Equal("/a (0.164.0)", TrayView.Versions("x", "codex", "Codex", "0.164.0, 0.170.0", "/a 0.164.0; /b 0.170.0; /c ?")!.Command);
         // A prerelease of the same number is the older one.
         Assert.Contains("(0.2.0-beta)", TrayView.Versions("x", "codex", "Codex", "0.2.0-beta, 0.2.0", "/a 0.2.0-beta; /b 0.2.0")!.Command);
     }

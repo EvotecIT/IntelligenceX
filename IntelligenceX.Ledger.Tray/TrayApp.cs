@@ -53,7 +53,7 @@ internal sealed class TrayApp : Application {
         }
         Render(new TrayView(TrayState.Starting, "Reading the Ledger…", [], null, [], [], []));
         _ = PollAsync();
-        if (OpenDetails) ShowDetails();
+        if (OpenDetails && RenderTo is null) ShowDetails();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) desktop.ShutdownRequested += (_, _) => _life.Cancel();
         base.OnFrameworkInitializationCompleted();
     }
