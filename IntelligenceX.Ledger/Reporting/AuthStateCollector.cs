@@ -39,6 +39,7 @@ internal sealed partial class AuthStateCollector {
     /// <summary>The latest facts, read again when they are due or a watched file changed.</summary>
     public async Task<AuthFact[]> CollectAsync(CancellationToken token) {
         var now = _clock();
+        _paths.RefreshAppCopies();
         var stamps = Stamps();
         if (_stamps == stamps && now - _checkedAt < FullInterval) return _last;
         _stamps = stamps;
@@ -143,6 +144,9 @@ internal sealed partial class AuthStateCollector {
         facts["credentials"] = hasFile ? "file" : "none";
         AddWritten(facts, "credentials-written", _paths.CodexCredentials);
         var found = await BinariesAsync("codex", facts, token).ConfigureAwait(false);
+        // The Codex app's own copies, from the same snapshot the binaries came from, so a reader never treats one as a
+        // stray install, wherever the app is installed or however many packages are registered.
+        if (_paths.AppCopies("codex") is { Length: > 0 } copies) facts["app-binary"] = string.Join("; ", copies);
         // A missing auth.json means signed out only when Codex keeps its sign-in in that file.
         var state = !found ? "not-installed" : !hasFile && store is null or "file" ? "signed-out" : "unknown";
         return new("codex", state, now) { Facts = facts };
@@ -271,6 +275,13 @@ internal sealed class AuthPaths {
     private readonly Dictionary<string, string[]> _configured;
     private readonly string _home;
     private readonly bool _installFolders;
+    private string[] _codexAppCopies = [];
+
+    /// <summary>Reads which CLI copies the Codex desktop app owns, once per collection; candidates and the facts both use
+    /// this snapshot, so an app update in the middle of a read can't make them disagree.</summary>
+    public void RefreshAppCopies() => _codexAppCopies = _installFolders ? Agents.CodexCli.DesktopAppCopies() : [];
+
+    public string[] AppCopies(string tool) => tool == "codex" ? _codexAppCopies : [];
 
     public AuthPaths(string home, Func<string, EnvironmentVariableTarget, string?>? variable = null, Dictionary<string, string[]>? configured = null,
         bool installFolders = true) {
@@ -304,6 +315,8 @@ internal sealed class AuthPaths {
     /// <summary>The paths a tool may be at, in order: the agent service's own setting, then PATH, then the usual install
     /// folders. A LaunchAgent's PATH is short, so the install folders matter on a Mac.</summary>
     public IEnumerable<string> Candidates(string tool) {
+        // The Codex app's own CLI comes first: it is the one the agent service runs.
+        foreach (var path in AppCopies(tool)) yield return path;
         foreach (var path in _configured.GetValueOrDefault(tool) ?? []) yield return path;
         if (tool == "codex" && Variable("CODEX_BIN", EnvironmentVariableTarget.Process) is { } bin) yield return bin;
         var names = OperatingSystem.IsWindows() ? new[] { tool + ".exe", tool + ".cmd" } : [tool];

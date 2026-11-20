@@ -16,22 +16,30 @@ internal static class CodexCli {
 
     /// <summary>The Codex desktop app's own CLI: on Windows <c>app\resources\codex.exe</c> in the newest registered
     /// OpenAI.Codex package, on macOS the CLI inside ChatGPT.app. Null when the app isn't installed.</summary>
-    public static string? DesktopApp() {
-        if (OperatingSystem.IsMacOS()) return File.Exists(MacAppCli) ? MacAppCli : null;
-        if (!OperatingSystem.IsWindows()) return null;
+    public static string? DesktopApp() => OperatingSystem.IsWindows() ? WindowsCli(WindowsPackageRoots()) : DesktopAppCopies().FirstOrDefault();
+
+    /// <summary>Every copy of the CLI that the desktop app owns, newest first: one per registered package on Windows,
+    /// the one inside ChatGPT.app on macOS. They update with the app, so none of them is a stray install.</summary>
+    public static string[] DesktopAppCopies() {
+        if (OperatingSystem.IsMacOS()) return File.Exists(MacAppCli) ? [MacAppCli] : [];
+        if (!OperatingSystem.IsWindows()) return [];
+        return WindowsPackageRoots().OrderByDescending(package => package.Version)
+            .Select(package => Path.Combine(package.Root, "app", "resources", "codex.exe")).Where(File.Exists).ToArray();
+    }
+
+    private static List<(Version Version, string Root)> WindowsPackageRoots() {
+        var roots = new List<(Version Version, string Root)>();
+        if (!OperatingSystem.IsWindows()) return roots;
         try {
             using var packages = Registry.CurrentUser.OpenSubKey(WindowsPackages);
-            if (packages is null) return null;
-            var roots = new List<(Version Version, string Root)>();
+            if (packages is null) return roots;
             foreach (var name in packages.GetSubKeyNames()) {
                 if (!name.StartsWith(WindowsPackagePrefix, StringComparison.OrdinalIgnoreCase)) continue;
                 using var package = packages.OpenSubKey(name);
                 if (package?.GetValue("PackageRootFolder") is string root && PackageVersion(name) is { } version) roots.Add((version, root));
             }
-            return WindowsCli(roots);
-        } catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) {
-            return null;
-        }
+        } catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) { }
+        return roots;
     }
 
     /// <summary>The newest package whose CLI exists.</summary>

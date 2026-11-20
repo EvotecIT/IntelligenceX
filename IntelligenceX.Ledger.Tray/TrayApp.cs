@@ -45,12 +45,15 @@ internal sealed class TrayApp : Application {
         _machine = Paths.MachineId();
         _poller = new LedgerPoller(Paths.ClientConfig, Paths.LedgerDirectory);
         _menu = new NativeMenu();
-        _tray = new TrayIcon { ToolTipText = "IX Ledger · reading…", Menu = _menu, IsVisible = true };
-        _tray.Clicked += (_, _) => ShowDetails();
-        TrayIcon.SetIcons(this, [_tray]);
+        // A screenshot run draws offscreen and shows nothing, not even the icon.
+        if (RenderTo is null) {
+            _tray = new TrayIcon { ToolTipText = "IX Ledger · reading…", Menu = _menu, IsVisible = true };
+            _tray.Clicked += (_, _) => ShowDetails();
+            TrayIcon.SetIcons(this, [_tray]);
+        }
         Render(new TrayView(TrayState.Starting, "Reading the Ledger…", [], null, [], [], []));
         _ = PollAsync();
-        if (OpenDetails) ShowDetails();
+        if (OpenDetails && RenderTo is null) ShowDetails();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) desktop.ShutdownRequested += (_, _) => _life.Cancel();
         base.OnFrameworkInitializationCompleted();
     }
@@ -59,14 +62,13 @@ internal sealed class TrayApp : Application {
         using var timer = new PeriodicTimer(PollInterval);
         if (RenderTo is { } folder) {
             await RefreshAsync();
+            // Drawn offscreen: no window opens on the desktop for a screenshot.
             await Dispatcher.UIThread.InvokeAsync(() => {
-                ShowDetails();
-                // The whole page, scrolled-out parts included.
-                _details!.SizeToContent = SizeToContent.Height;
-                _details.MaxHeight = 4000;
+                // A failed write is logged; the run ends either way, so no invisible process keeps the lock.
+                try { Snapshots.Save(folder, _view!, _overview?.At ?? DateTimeOffset.UtcNow); }
+                catch (Exception error) { TrayLog.Write("Render failed: " + error); }
+                finally { Quit(); }
             });
-            await Task.Delay(1500);
-            await Dispatcher.UIThread.InvokeAsync(() => { Snapshots.Save(folder, _details!, _view!, TrayArt.DarkBar(this)); Quit(); });
             return;
         }
         do { await RefreshAsync(); }
@@ -172,7 +174,7 @@ internal sealed class TrayApp : Application {
 
     private void ShowDetails() {
         if (_details is null) {
-            _details = new DetailsWindow();
+            _details = new DetailsWindow((provider, binary) => Shell.SignIn(provider, binary, Paths.Directory));
             _details.Closed += (_, _) => _details = null;
         }
         if (_view is { } view) _details.Show(view, _overview?.At ?? DateTimeOffset.UtcNow);

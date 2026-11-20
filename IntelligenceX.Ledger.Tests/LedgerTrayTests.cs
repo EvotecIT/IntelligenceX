@@ -20,15 +20,26 @@ public sealed class LedgerTrayTests {
             Fact("codex", "signed-in"), Fact("claude", "signed-in"));
         var view = TrayView.Build(Overview([good]), "win-pc", Now);
         Assert.Equal(TrayState.Healthy, view.State);
-        Assert.Contains("build 71b01fd", view.LedgerLines[0]);
+        Assert.Equal("Ledger up 3 h · build 71b01fd", view.Footer);
         Assert.Equal("someone · 2 scopes", string.Join(" · ", view.ThisMachine!.Providers[0].Summary.Split(" · ").Skip(1)));
 
         // Signed out anywhere, or a token variable overriding gh's stored sign-in, needs a look.
         var mac = Machine("mac", Fact("github", "signed-in", new() { ["env-override"] = "GH_TOKEN (user)" }), Fact("codex", "signed-out"), Fact("claude", "unknown"));
         view = TrayView.Build(Overview([good, mac]), "win-pc", Now);
         Assert.Equal(TrayState.Degraded, view.State);
-        Assert.Contains("mac Codex signed out", view.Problems);
-        Assert.Contains("mac GitHub: GH_TOKEN overrides the stored sign-in", view.Problems);
+        Assert.Equal("2 things need you", view.Headline);
+        var signedOut = view.Issues.Single(issue => issue.Provider == "codex");
+        Assert.Equal(("bad", "Codex is signed out on mac", "codex login"), (signedOut.Severity, signedOut.Title, signedOut.Command));
+        Assert.Contains("GH_TOKEN overrides gh on mac", view.Problems);
+        Assert.Equal("bad", view.Issues[0].Severity); // Broken things come before things worth a look.
+        // A usage limit from the agent is no sign-out: no card and no sign-in command.
+        var limited = new AuthMachine("studio", "healthy", Now, "v1", [], [new("claude", true, "usage-limit", "claude auth login", Now, Now)]);
+        var limitedView = TrayView.Build(Overview([limited]), "win-pc", Now);
+        Assert.Empty(limitedView.Issues);
+        Assert.Equal("at usage limit", limitedView.Others[0].Providers.Single(p => p.Provider == "claude").Short);
+        // A sign-out and an overriding token are two separate things to do, and both count.
+        var both = Machine("mac", Fact("github", "signed-out", new() { ["env-override"] = "GH_TOKEN (user)" }));
+        Assert.Equal(["GitHub is signed out on mac", "GH_TOKEN overrides gh on mac"], TrayView.Build(Overview([both]), "win-pc", Now).Problems);
         Assert.Equal([TrayView.Warn, TrayView.Bad, TrayView.Unknown], Assert.Single(view.Others).Providers.Select(p => p.Mark));
         Assert.True(view.Others[0].Providers[1].NeedsSignIn);
         // The menu line keeps the state and the warning; the rest stays in the submenu.
@@ -39,13 +50,53 @@ public sealed class LedgerTrayTests {
         var unconfirmed = Machine("win-pc", Fact("codex", "unknown", new() { ["versions"] = "0.130.0, 0.170.0" }));
         view = TrayView.Build(Overview([unconfirmed]), "win-pc", Now);
         Assert.Equal(TrayState.Degraded, view.State);
-        Assert.Contains("win-pc Codex: 2 versions installed", view.Problems);
+        Assert.Contains("win-pc has 2 Codex versions: 0.130.0 and 0.170.0", view.Problems);
+        Assert.Equal("2 versions", view.ThisMachine!.Providers.Single(p => p.Provider == "codex").Short);
 
         var stalled = TrayView.Build(Overview([good]) with { Health = new("stalled", "write-gate-busy", Now.AddHours(-3)) }, "win-pc", Now);
-        Assert.Equal((TrayState.Down, "Ledger stalled (write-gate-busy)"), (stalled.State, stalled.Headline));
+        Assert.Equal((TrayState.Down, "The Ledger is stalled"), (stalled.State, stalled.Headline));
+        Assert.Contains("write-gate-busy", stalled.Issues[0].Title);
 
         var down = TrayView.Build(new(Now, null, "Ledger isn't answering", null, null, null, null), "win-pc", Now);
-        Assert.Equal((TrayState.Down, "Ledger isn't answering"), (down.State, down.Headline));
+        Assert.Equal((TrayState.Down, "The Ledger isn't answering"), (down.State, down.Headline));
+        Assert.Equal("All good", TrayView.Build(Overview([good]), "win-pc", Now).Headline);
+    }
+
+    // The card for two versions names the copy to remove, and never offers to remove the one an app ships itself.
+    [Fact]
+    public void OlderCopiesToRemoveLeaveAppBundledOnesAlone() {
+        var issue = TrayView.Versions("win-pc", "codex", "Codex", "0.130.0-alpha.5, 0.170.0",
+            @"C:\npm\codex.cmd 0.170.0; C:\Local\OpenAI\Codex\bin\codex.exe 0.130.0-alpha.5")!;
+        Assert.Equal(@"C:\Local\OpenAI\Codex\bin\codex.exe (0.130.0-alpha.5)", issue.Command);
+        Assert.Null(TrayView.Versions("mac", "codex", "Codex", "0.171.0, 0.171.0-alpha.13",
+            "/Users/me/.local/bin/codex 0.171.0; /Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex 0.171.0-alpha.13"));
+        // Prereleases order like semantic versions; a copy whose version couldn't be read is never offered.
+        Assert.True(TrayView.CompareVersions("0.170.0-alpha.10", "0.170.0-alpha.9") > 0);
+        Assert.True(TrayView.CompareVersions("0.170.0", "0.170.0-alpha.10") > 0);
+        Assert.True(TrayView.CompareVersions("0.170.0-alpha", "0.170.0-alpha.1") < 0);
+        Assert.Equal("/a (0.170.0-alpha.9)", TrayView.Versions("x", "codex", "Codex", "0.170.0-alpha.10, 0.170.0-alpha.9",
+            "/a 0.170.0-alpha.9; /b 0.170.0-alpha.10")!.Command);
+        Assert.Equal("/a (0.164.0)", TrayView.Versions("x", "codex", "Codex", "0.164.0, 0.170.0", "/a 0.164.0; /b 0.170.0; /c ?")!.Command);
+        // The Codex app's own CLI is never offered, wherever its package is installed.
+        Assert.Null(TrayView.Versions("x", "codex", "Codex", "0.169.0, 0.170.0", @"E:\Apps\Codex\codex.exe 0.169.0; C:\npm\codex.cmd 0.170.0",
+            appBinary: @"E:\Apps\Codex\codex.exe"));
+        // Every registered package's copy is the app's, not just the newest one.
+        Assert.Null(TrayView.Versions("x", "codex", "Codex", "0.168.0, 0.169.0", @"E:\Old\codex.exe 0.168.0; E:\New\codex.exe 0.169.0",
+            appBinary: @"E:\New\codex.exe; E:\Old\codex.exe"));
+        // A prerelease of the same number is the older one.
+        Assert.Contains("(0.2.0-beta)", TrayView.Versions("x", "codex", "Codex", "0.2.0-beta, 0.2.0", "/a 0.2.0-beta; /b 0.2.0")!.Command);
+    }
+
+    [Fact]
+    public void TheTimelineReadsAsWhatHappened() {
+        string? Text(string field, string? before, string? after, string provider = "github") =>
+            TrayView.Describe(new("mac", provider, Now.AddMinutes(-3), field, before, after), Now)?.Text;
+        Assert.Equal("GitHub signed out", Text("state", "signed-in", "signed-out"));
+        Assert.Equal("GitHub signed in again", Text("state", "signed-out", "signed-in"));
+        Assert.Equal("GitHub lost gist and gained project", Text("scopes", "gist, repo", "project, repo"));
+        Assert.Equal("Codex config.toml rewritten", Text("config-fingerprint", "a", "b", "codex"));
+        Assert.Null(Text("config-written", "a", "b", "codex"));
+        Assert.Null(Text("agent-sign-in", "ready", "signed-out", "codex"));
     }
 
     [Fact]
@@ -68,7 +119,7 @@ public sealed class LedgerTrayTests {
         var notes = notifier.Next(Overview([], [scopes, written, old]), Now);
         var note = Assert.Single(notes);
         Assert.Equal("GitHub changed on win-pc", note.Title);
-        Assert.Contains("scopes: repo, workflow → repo", note.Body);
+        Assert.Contains("GitHub lost workflow", note.Body);
         Assert.Empty(notifier.Next(Overview([], [scopes, written, old]), Now));
 
         var failed = new Overview(Now, null, "Ledger isn't answering", null, null, null, null);
