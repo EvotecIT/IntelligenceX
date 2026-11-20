@@ -274,12 +274,13 @@ internal sealed class AuthPaths {
             (appData is not null ? Path.Combine(appData, "GitHub CLI")
                 : Path.Combine(Variable("XDG_CONFIG_HOME", EnvironmentVariableTarget.Process) ?? Path.Combine(home, ".config"), "gh"));
         GitHubHosts = Path.Combine(ghDirectory, "hosts.yml");
-        var codexHome = Variable("CODEX_HOME", EnvironmentVariableTarget.Process) ?? Path.Combine(home, ".codex");
+        var codexHome = CodexHome = Variable("CODEX_HOME", EnvironmentVariableTarget.Process) ?? Path.Combine(home, ".codex");
         CodexConfig = Path.Combine(codexHome, "config.toml");
         CodexCredentials = Path.Combine(codexHome, "auth.json");
         ClaudeCredentials = Path.Combine(home, ".claude", ".credentials.json");
     }
 
+    public string CodexHome { get; }
     public string GitHubHosts { get; }
     public string CodexConfig { get; }
     public string CodexCredentials { get; }
@@ -302,7 +303,11 @@ internal sealed class AuthPaths {
     }
 
     private IEnumerable<string> KnownLocations(string tool) {
+        // The Codex app's background service keeps its own managed CLI; "current" points at the release it runs.
+        if (tool == "codex") yield return Path.Combine(CodexHome, "packages", "app-server-daemon", "current", "bin", OperatingSystem.IsWindows() ? "codex.exe" : "codex");
         if (OperatingSystem.IsWindows()) {
+            if (tool == "codex" && Variable("LOCALAPPDATA", EnvironmentVariableTarget.Process) is { } local)
+                yield return Path.Combine(local, "OpenAI", "Codex", "bin", "codex.exe");
             var appData = Variable("APPDATA", EnvironmentVariableTarget.Process) ?? Path.Combine(_home, "AppData", "Roaming");
             if (tool == "gh") yield return Path.Combine(Variable("ProgramFiles", EnvironmentVariableTarget.Process) ?? @"C:\Program Files", "GitHub CLI", "gh.exe");
             else {
