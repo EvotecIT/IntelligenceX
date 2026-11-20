@@ -4,6 +4,11 @@ using static IntelligenceX.Ledger.Coordination.CoordinationValidation;
 namespace IntelligenceX.Ledger.Coordination;
 
 public sealed partial class CoordinationEngine {
+    /// <summary>How far a host's clock may run behind the Ledger's. A new helper's worker must be observed after its
+    /// request was admitted; the worker's time comes from the host, so a Mac a fraction of a second behind the Ledger
+    /// host was refused when its helper enrolled at once (Claude helpers have no thread to create first).</summary>
+    internal static readonly TimeSpan HostClockTolerance = TimeSpan.FromSeconds(30);
+
     /// <summary>Compares project, branch and commit identity across request and host checkpoints.
     /// Recovery references and pull-request annotations can differ for the same source candidate.</summary>
     internal static bool SameCandidate(WorkCheckpoint a, WorkCheckpoint b) =>
@@ -103,7 +108,7 @@ public sealed partial class CoordinationEngine {
         var goal = state.Goals[work.Request.GoalId];
         Require(work.State == "admitted" && now <= work.RenewByUtc && Available(worker) &&
             binding.WorkerId != work.Request.ReturnTo?.WorkerId &&
-            (!creating || work.Stages?.TryGetValue("admitted", out var admittedAt) == true && worker.ObservedAtUtc >= admittedAt) &&
+            (!creating || work.Stages?.TryGetValue("admitted", out var admittedAt) == true && worker.ObservedAtUtc >= admittedAt - HostClockTolerance) &&
             state.Hosts[binding.MachineId].BootId == work.BootId &&
             !goal.Stopped && !goal.Paused && Authorized(work, goal) && RequesterReady(work) &&
             !state.Work.Values.Any(other => other.Request.Id != binding.RequestId && Occupied.Contains(other.State) &&
