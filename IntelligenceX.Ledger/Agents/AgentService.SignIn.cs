@@ -59,6 +59,9 @@ internal sealed partial class AgentService {
     private readonly object _signInGate = new();
     private DateTimeOffset _signInCheckedAt = DateTimeOffset.MinValue;
     private int _claudeHeld;
+    /// <summary>Consecutive signed-out status checks per provider; one alone is not enough to ask for sign-in.</summary>
+    private readonly Dictionary<string, int> _signedOutChecks = new(StringComparer.Ordinal);
+    private const int SignedOutConfirmations = 2;
 
     /// <summary>The one-step sign-in for a provider, as its user would type it.</summary>
     internal static string SignInCommand(string provider) => provider == "claude" ? "claude auth login" : "codex login";
@@ -78,31 +81,53 @@ internal sealed partial class AgentService {
         }
     }
 
-    /// <summary>Checks sign-in for Claude and Codex every five minutes, or every minute while one needs it.</summary>
+    /// <summary>Checks sign-in for Claude and Codex every five minutes, or every minute while one needs it or a
+    /// signed-out result waits to be confirmed.</summary>
     private async Task CheckSignInAsync(CancellationToken stop) {
         bool waiting;
-        lock (_signInGate) waiting = _signIn.Values.Any(state => !state.Ready);
+        lock (_signInGate) waiting = _signIn.Values.Any(state => !state.Ready) || _signedOutChecks.Values.Any(count => count > 0);
         if (DateTimeOffset.UtcNow - _signInCheckedAt < TimeSpan.FromMinutes(waiting ? 1 : 5)) return;
         _signInCheckedAt = DateTimeOffset.UtcNow;
-        if (await ClaudeStatusAsync(stop).ConfigureAwait(false) is { } claude) Observe("claude", claude.Ready, claude.Reason);
-        if (await CodexStatusAsync(stop).ConfigureAwait(false) is { } codex) Observe("codex", codex.Ready, codex.Reason);
+        if (await ClaudeStatusAsync(stop).ConfigureAwait(false) is { } claude) ObserveCheck("claude", claude);
+        if (await CodexStatusAsync(stop).ConfigureAwait(false) is { } codex) ObserveCheck("codex", codex);
     }
 
-    /// <summary>Records a provider's state and publishes it when it changes; a newly required sign-in prompts the user.</summary>
+    /// <summary>Applies a status check. A check that timed out or failed is "unknown" and never changes whether the
+    /// provider is usable. A signed-out answer counts only when the next check agrees, so one slow or failed check on a
+    /// busy machine neither publishes a sign-in item nor prompts; until then the state reads "unknown".</summary>
+    internal void ObserveCheck(string provider, string result) {
+        lock (_signInGate) {
+            var signedOut = result is "signed-out" or "expired";
+            var count = signedOut ? _signedOutChecks[provider] = _signedOutChecks.GetValueOrDefault(provider) + 1 : 0;
+            if (!signedOut) _signedOutChecks.Remove(provider);
+            if (signedOut && count < SignedOutConfirmations || result == "unknown") {
+                // A provider already known to need sign-in keeps that state until a check shows otherwise.
+                if (_signIn.GetValueOrDefault(provider) is { Ready: false }) return;
+                result = "unknown";
+            }
+        }
+        if (result == "signed-in") Observe(provider, true, "status");
+        else if (result == "unknown") Observe(provider, true, "unknown");
+        else Observe(provider, false, result);
+    }
+
+    /// <summary>Records a provider's state and publishes it when it changes; a newly required sign-in prompts the user.
+    /// "unknown" keeps the provider usable and never prompts.</summary>
     private void Observe(string provider, bool ready, string reason) {
         ProviderSignIn? changed = null;
         lock (_signInGate) {
             var prior = _signIn.GetValueOrDefault(provider);
             // A status check can't see a usage limit, so it doesn't clear one; a successful send does.
-            if (prior is { Ready: false, Reason: "usage-limit" } && ready && reason == "status") return;
-            if (prior is null || prior.Ready != ready || !ready && prior.Reason != reason) {
-                _signIn[provider] = changed = new(provider, ready, ready ? "signed-in" : reason, DateTimeOffset.UtcNow);
+            if (prior is { Ready: false, Reason: "usage-limit" } && ready && reason is "status" or "unknown") return;
+            var shown = !ready ? reason : reason == "unknown" ? "unknown" : "signed-in";
+            if (prior is null || prior.Ready != ready || prior.Reason != shown) {
+                _signIn[provider] = changed = new(provider, ready, shown, DateTimeOffset.UtcNow);
                 // Inside the lock, so the publisher sees states in the order they changed.
                 Publish(changed);
             }
         }
         if (changed is null) return;
-        Log(ready ? "sign-in-ok" : "sign-in-required", provider + " " + changed.Reason);
+        Log(!ready ? "sign-in-required" : changed.Reason == "unknown" ? "sign-in-unknown" : "sign-in-ok", provider + " " + changed.Reason);
         if (!ready && OperatingSystem.IsMacOS()) Start("prompt:" + provider, () => PromptSignInAsync(provider, _life));
     }
 
@@ -122,28 +147,40 @@ internal sealed partial class AgentService {
     }
 
     /// <summary>`claude auth status --json`. Null when the Claude CLI isn't installed here.</summary>
-    private async Task<(bool Ready, string Reason)?> ClaudeStatusAsync(CancellationToken stop) {
-        var (code, output) = await RunAsync(_settings.ClaudeExecutable, ["auth", "status", "--json"], stop).ConfigureAwait(false);
-        if (code is null) return null;
+    private async Task<string?> ClaudeStatusAsync(CancellationToken stop) {
+        var run = await RunAsync(_settings.ClaudeExecutable, ["auth", "status", "--json"], stop).ConfigureAwait(false);
+        return run.Missing ? null : ClaudeStatus(run.Code, run.Output, DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>"signed-in", "signed-out", "expired", or "unknown" when the check timed out or its answer can't be read.</summary>
+    internal static string ClaudeStatus(int? code, string output, DateTimeOffset now) {
+        if (code is null) return "unknown";
         try {
             using var json = JsonDocument.Parse(output);
             var root = json.RootElement;
-            if (!root.TryGetProperty("loggedIn", out var loggedIn) || loggedIn.ValueKind != JsonValueKind.True) return (false, "signed-out");
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("loggedIn", out var loggedIn) ||
+                loggedIn.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                return code == 0 ? "signed-in" : "unknown";
+            if (loggedIn.ValueKind == JsonValueKind.False) return "signed-out";
             if (root.TryGetProperty("loginExpiresAt", out var expires) && expires.ValueKind == JsonValueKind.String &&
-                DateTimeOffset.TryParse(expires.GetString(), out var at) && at <= DateTimeOffset.UtcNow) return (false, "expired");
-            return (true, "status");
+                DateTimeOffset.TryParse(expires.GetString(), out var at) && at <= now) return "expired";
+            return "signed-in";
         } catch (JsonException) {
-            return code == 0 ? (true, "status") : (false, "signed-out");
+            return code == 0 ? "signed-in" : "unknown";
         }
     }
 
-    /// <summary>`codex login status`: exit code 0 means signed in. Null when Codex isn't installed here.</summary>
-    private async Task<(bool Ready, string Reason)?> CodexStatusAsync(CancellationToken stop) {
-        var (code, _) = await RunAsync(_settings.CodexExecutable, ["login", "status"], stop).ConfigureAwait(false);
-        return code is null ? null : code == 0 ? (true, "status") : (false, "signed-out");
+    /// <summary>`codex login status`. Null when Codex isn't installed here.</summary>
+    private async Task<string?> CodexStatusAsync(CancellationToken stop) {
+        var run = await RunAsync(CodexCli.Resolve(_settings.CodexExecutable), ["login", "status"], stop).ConfigureAwait(false);
+        return run.Missing ? null : CodexStatus(run.Code);
     }
 
-    private static async Task<(int? Code, string Output)> RunAsync(string executable, string[] arguments, CancellationToken stop) {
+    /// <summary>Exit code 0 is signed in and any other finished exit signed out; a check that didn't finish is "unknown".</summary>
+    internal static string CodexStatus(int? code) => code switch { null => "unknown", 0 => "signed-in", _ => "signed-out" };
+
+    /// <summary>Runs a CLI for at most 30 seconds. Code is null when it didn't finish in time; Missing when it isn't installed.</summary>
+    private static async Task<(int? Code, string Output, bool Missing)> RunAsync(string executable, string[] arguments, CancellationToken stop) {
         try {
             var start = new ProcessStartInfo(executable) {
                 RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
@@ -151,7 +188,7 @@ internal sealed partial class AgentService {
             };
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
             using var process = Process.Start(start);
-            if (process is null) return (null, "");
+            if (process is null) return (null, "", true);
             process.StandardInput.Close();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
             deadline.CancelAfter(TimeSpan.FromSeconds(30));
@@ -160,11 +197,11 @@ internal sealed partial class AgentService {
             var output = await process.StandardOutput.ReadToEndAsync(deadline.Token).ConfigureAwait(false);
             await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
             _ = await error.ConfigureAwait(false);
-            return (process.ExitCode, output);
+            return (process.ExitCode, output, false);
         } catch (System.ComponentModel.Win32Exception) {
-            return (null, "");
+            return (null, "", true);
         } catch (OperationCanceledException) when (!stop.IsCancellationRequested) {
-            return (1, "");
+            return (null, "", false);
         }
     }
 
@@ -173,7 +210,7 @@ internal sealed partial class AgentService {
     /// the dialog is the one-tap route. It gives up after an hour and isn't shown again until the state changes.</summary>
     private async Task PromptSignInAsync(string provider, CancellationToken stop) {
         var name = provider == "claude" ? "Claude" : "Codex";
-        var executable = provider == "claude" ? _settings.ClaudeExecutable : _settings.CodexExecutable;
+        var executable = provider == "claude" ? _settings.ClaudeExecutable : CodexCli.Resolve(_settings.CodexExecutable);
         var script = Path.Combine(_settings.StateDirectory, "sign-in-" + provider + ".command");
         var login = provider == "claude" ? "auth login" : "login";
         LocalFiles.WriteAtomic(script, "#!/bin/zsh -l\n'" + executable.Replace("'", "'\\''") + "' " + login + "\n");

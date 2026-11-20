@@ -50,7 +50,8 @@ internal static class EventAdmission {
             safety.PolicyId != "urgent-safety" || safety.PolicyVersion != 1 || !Id(safety.EvidenceRef) || !Time(safety.AtUtc) ||
             safety.ManualAction is not (null or "press-stop" or "press-app-button"))) return false;
         if (e.SignIn is { } signIn && (signIn.Provider != e.Provider || !Id(signIn.Provider) ||
-            signIn.Reason is not ("signed-in" or "signed-out" or "expired" or "usage-limit") || signIn.Required == (signIn.Reason == "signed-in") ||
+            signIn.Reason is not ("signed-in" or "unknown" or "signed-out" or "expired" or "usage-limit") ||
+            signIn.Required == (signIn.Reason is "signed-in" or "unknown") ||
             signIn.Command is not { Length: > 0 and <= 200 } || signIn.Command.Any(char.IsControl) || signIn.Held is < 0 or > 100000 ||
             !Time(signIn.SinceUtc) || !Time(signIn.AtUtc) || signIn.SinceUtc > signIn.AtUtc)) return false;
         if (e.Delivery is { } d && (!DeclarationValidation.ValidScope(d.Scope) || !Id(d.DeliveryId) ||

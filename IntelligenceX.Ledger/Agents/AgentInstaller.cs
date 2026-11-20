@@ -143,9 +143,11 @@ internal static class AgentInstaller {
         return agent;
     }
 
-    /// <summary>Finds a CLI on PATH or in the usual per-user, Homebrew and ChatGPT app folders. The stored path is
+    /// <summary>Finds a CLI: Codex in the desktop app first (see <see cref="CodexCli"/>), otherwise on PATH or in the
+    /// usual per-user, Homebrew and ChatGPT app folders. The stored path is
     /// absolute because a LaunchAgent starts with a minimal PATH.</summary>
     internal static string? Find(string name) {
+        if (name == "codex" && CodexCli.DesktopApp() is { } app) return app;
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var names = OperatingSystem.IsWindows() ? new[] { name + ".exe" } : [name];
         var folders = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
