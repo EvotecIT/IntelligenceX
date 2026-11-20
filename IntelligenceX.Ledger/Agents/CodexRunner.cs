@@ -217,15 +217,17 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         var interrupted = new HashSet<string>(StringComparer.Ordinal);
         while (true) {
             JsonElement read;
-            try { read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, CallTimeout, token).ConfigureAwait(false); }
-            catch (CodexRpcException) { return; }
+            if (Remaining(deadline, CallTimeout) <= TimeSpan.Zero) return;
+            try { read = await server.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = true }, Remaining(deadline, CallTimeout), token).ConfigureAwait(false); }
+            catch (Exception error) when (error is CodexRpcException or TimeoutException) { return; }
             var active = read.GetProperty("thread").TryGetProperty("turns", out var turns) && turns.ValueKind == JsonValueKind.Array
                 ? turns.EnumerateArray().Where(turn => Status(turn) == "inProgress").Select(turn => turn.GetProperty("id").GetString()!).ToArray() : [];
             if (active.Length == 0 || DateTimeOffset.UtcNow > deadline) return;
             foreach (var turnId in active.Where(interrupted.Add)) {
                 try {
-                    await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = threadId, ["turnId"] = turnId }, CallTimeout, token).ConfigureAwait(false);
-                } catch (CodexRpcException) { }
+                    if (Remaining(deadline, CallTimeout) > TimeSpan.Zero)
+                        await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = threadId, ["turnId"] = turnId }, Remaining(deadline, CallTimeout), token).ConfigureAwait(false);
+                } catch (Exception error) when (error is CodexRpcException or TimeoutException) { }
             }
             await Task.Delay(Remaining(deadline, TimeSpan.FromSeconds(5)), token).ConfigureAwait(false);
         }
@@ -235,13 +237,18 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     /// <paramref name="deadline"/> the settling used. Any other refusal, or one past the deadline, is thrown.</summary>
     private static async Task<JsonElement> StartTurnAsync(CodexAppServer server, string threadId, JsonObject parameters,
         DateTimeOffset deadline, CancellationToken token) {
+        var first = true;
         while (true) {
-            try { return await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false); }
+            // The first attempt gets the normal call timeout; a retry may only use the time left before the deadline.
+            var timeout = first ? CallTimeout : Remaining(deadline, CallTimeout);
+            first = false;
+            try { return await server.CallAsync("turn/start", parameters, timeout, token).ConfigureAwait(false); }
             catch (CodexRpcException error) when (ActiveTurnRefusal(error) && DateTimeOffset.UtcNow < deadline) {
                 AgentService.Log("helper-turn-waiting", threadId + " " + error.Message);
                 await SettleActiveTurnsAsync(server, threadId, deadline, token).ConfigureAwait(false);
                 var pause = Remaining(deadline, TimeSpan.FromSeconds(15));
-                if (pause <= TimeSpan.Zero) throw;
+                // Another attempt only when time is left after the pause for it to run.
+                if (pause <= TimeSpan.Zero || Remaining(deadline, CallTimeout) <= pause) throw;
                 await Task.Delay(pause, token).ConfigureAwait(false);
             }
         }
@@ -552,6 +559,9 @@ internal sealed class TurnWatch(string threadId, TurnTokens? tokens = null, Acti
         TurnTokens? now = null;
         lock (_gate) {
             TurnId = turnId;
+            // The quiet-time limit counts from when the turn is followed, not from when the watch was made (a watch can
+            // wait through a long answer to a question before its turn starts).
+            LastActivityUtc = DateTimeOffset.UtcNow;
             if (_early.Remove(turnId, out var early)) now = _tokens = _tokens.Add(early);
             if (_earlyText.Remove(turnId, out var text)) LastMessage = text;
             _earlyDone.Remove(turnId, out var done);
