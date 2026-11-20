@@ -100,7 +100,7 @@ public sealed class LedgerTrayTests {
         // A removed sign-in file is said once, by "credentials", not also as "rewritten".
         Assert.Null(Text("credentials-written", "2026-11-20T08:17:04Z", null, "codex"));
         Assert.Equal("Codex sign-in file removed", Text("credentials", "file", "none", "codex"));
-        Assert.Equal("gh sign-in file (hosts.yml) removed", Text("hosts-written", "2026-10-21T15:52:55Z", null));
+        Assert.Null(Text("hosts-written", "2026-10-21T15:52:55Z", null));
     }
 
     [Fact]
