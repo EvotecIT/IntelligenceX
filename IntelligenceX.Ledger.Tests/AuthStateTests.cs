@@ -68,6 +68,8 @@ public sealed class AuthStateTests : IDisposable {
     public void AgentReasonsMapToAState(string reason, string state) {
         var merged = LedgerStore.Merge(new("claude", "unknown", Now), new("claude", true, reason, "claude auth login", Now, Now));
         Assert.Equal((state, reason), (merged.State, merged.Facts!["agent-sign-in"]));
+        // Credentials the reporter sees gone outweigh an older "ready" from the agent.
+        Assert.Equal("signed-out", LedgerStore.Merge(new("codex", "signed-out", Now), new("codex", false, "signed-in", "codex login", Now.AddHours(-2), Now.AddHours(-2))).State);
         var inconclusive = LedgerStore.Merge(new("codex", "signed-in", Now), new("codex", false, "unknown", "codex login", Now, Now));
         Assert.Equal(("unknown", "unknown"), (inconclusive.State, inconclusive.Facts!["agent-sign-in"]));
         Assert.Equal("not-installed", LedgerStore.Merge(new("claude", "not-installed", Now), new("claude", false, "signed-in", "x", Now, Now)).State);

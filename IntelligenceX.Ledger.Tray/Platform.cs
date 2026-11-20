@@ -195,7 +195,8 @@ internal static class Shell {
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { TrayLog.Write("Sign-in not started: " + error.Message); }
     }
 
-    private static string Quote(string path) => path.Contains(' ') ? "\"" + path + "\"" : path;
+    // Always quoted: cmd treats characters such as & in an unquoted path as command separators.
+    private static string Quote(string path) => "\"" + path + "\"";
 
     /// <summary>A system notification: Notification Center on a Mac, a toast on Windows.</summary>
     public static void Notify(string title, string body) {

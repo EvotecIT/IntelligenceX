@@ -72,7 +72,10 @@ public sealed partial class LedgerStore {
             "usage-limit" => "signed-in", // Signed in, but out of usage; the agent-sign-in fact says so.
             _ => "unknown"
         };
-        return fact with { State = fact.State == "not-installed" ? fact.State : state, Facts = facts };
+        // The agent publishes only when its state changes, so its item can be older than the reporter's reading. When
+        // the reporter sees the credentials gone (signed-out), an earlier "ready" can't stand.
+        if (fact.State is "not-installed" or "signed-out") state = fact.State;
+        return fact with { State = state, Facts = facts };
     }
 
     /// <summary>What changed between two readings of one provider: its state and every fact added, removed or changed.</summary>

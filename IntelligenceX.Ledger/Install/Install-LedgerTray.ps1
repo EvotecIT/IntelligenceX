@@ -61,7 +61,17 @@ function Test-OwnLogin {
 }
 
 function Stop-Tray {
-    if (-not $IsWindows -and (Test-OwnLogin)) { & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null }
+    if (-not $IsWindows -and (Test-OwnLogin)) {
+        & /bin/launchctl bootout "gui/$Uid/$Label" 2>$null
+        # bootout returns before the job is gone; bootstrapping again too early fails.
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            & /bin/launchctl print "gui/$Uid/$Label" *> $null
+            $loaded = $LASTEXITCODE -eq 0
+            if ($loaded) { Start-Sleep -Milliseconds 250 }
+        } while ($loaded -and [DateTime]::UtcNow -lt $deadline)
+        if ($loaded) { throw "launchctl could not unload $Label; nothing was changed." }
+    }
     foreach ($process in @(Get-Tray)) { $process.Kill(); $null = $process.WaitForExit(10000) }
 }
 

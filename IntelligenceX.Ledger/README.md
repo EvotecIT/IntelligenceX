@@ -120,8 +120,8 @@ ix ledger auth_state [machine] --config /absolute/path/client.json
 IntelligenceX.Ledger auth-check --config /absolute/path/reporter.json
 ```
 
-MCP exposes `auth_state(machine?, changes?)` and HTTP `GET /auth-state?machine=...&changes=...` with the read token.
-`auth-check` prints what this machine's reporter would send. `GET /health` also names the commit the service was built
+MCP exposes `auth_state(machine?, changes?)` and HTTP `GET /api/ledger/v1/auth-state?machine=...&changes=...` with the read token.
+`auth-check` prints what this machine's reporter would send. `GET /api/ledger/v1/health` also names the commit the service was built
 from. The tray app reads these; see `InternalDocs/ledger-tray.md`.
 
 ## Session trees, takeover and trail

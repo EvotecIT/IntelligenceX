@@ -181,7 +181,8 @@ internal sealed partial class AuthStateCollector {
         if (_versions.TryGetValue(path, out var cached) && cached.Stamp == stamp) return cached.Version;
         var (code, output) = await _run(path, ["--version"], token).ConfigureAwait(false);
         var version = code == 0 ? ParseVersion(output) : null;
-        _versions[path] = (stamp, version);
+        // Only a version that was read is kept; a probe that timed out or failed is tried again on the next read.
+        if (version is not null) _versions[path] = (stamp, version);
         return version;
     }
 

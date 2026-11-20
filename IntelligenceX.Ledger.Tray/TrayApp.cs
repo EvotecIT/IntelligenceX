@@ -99,7 +99,10 @@ internal sealed class TrayApp : Application {
             _tray.Icon = TrayArt.Draw(view.State, dark);
         }
         _tray.ToolTipText = view.Tooltip.Length <= 120 ? view.Tooltip : view.Tooltip[..119] + "…";
-        var shape = view.Text() + "|" + _settings.Notify + "|" + LoginItem.IsEnabled;
+        // The provider submenus show details (such as when each was checked) that the text summary leaves out.
+        var details = string.Join("|", new[] { view.ThisMachine }.OfType<MachineView>().Concat(view.Others)
+            .SelectMany(machine => machine.Providers).SelectMany(provider => provider.Details).Select(detail => detail.Label + "=" + detail.Value));
+        var shape = view.Text() + "|" + details + "|" + _settings.Notify + "|" + LoginItem.IsEnabled;
         if (shape != _built) { _built = shape; Build(_menu, view); }
         if (_details is { IsVisible: true } && _overview is { } overview) _details.Show(view, overview.At);
     }

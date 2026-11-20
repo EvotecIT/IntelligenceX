@@ -119,6 +119,10 @@ public sealed partial class LedgerStore {
                 await tx.ExecuteNonQueryAsync("""
                     DELETE FROM reviews WHERE transition IN (SELECT ordinal FROM transitions WHERE recorded<@cutoff ORDER BY ordinal LIMIT @limit)
                     """, expired, ct);
+                // Sign-in history ages out here too, so it shrinks even when no reporter sends sign-in facts any more.
+                await tx.ExecuteNonQueryAsync("""
+                    DELETE FROM auth_changes WHERE id IN (SELECT id FROM auth_changes WHERE at<@cutoff ORDER BY id LIMIT @limit)
+                    """, new Dictionary<string, object?> { ["cutoff"] = (now - AuthChangeRetention).ToString("O"), ["limit"] = bound }, ct);
                 return events + await tx.ExecuteNonQueryAsync("""
                     DELETE FROM transitions WHERE ordinal IN (SELECT ordinal FROM transitions WHERE recorded<@cutoff ORDER BY ordinal LIMIT @limit)
                     """, expired, ct);
