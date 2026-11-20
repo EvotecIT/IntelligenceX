@@ -22,7 +22,12 @@ public enum GitHubCredentialSource {
     /// <summary>
     /// The token came from an existing local GitHub CLI login.
     /// </summary>
-    GitHubCli = 2
+    GitHubCli = 2,
+
+    /// <summary>
+    /// The token is a GitHub App installation token, which has a rate limit of its own.
+    /// </summary>
+    GitHubApp = 3
 }
 
 /// <summary>
@@ -51,6 +56,26 @@ public sealed class GitHubCredentialResolution {
     /// Gets whether a usable GitHub token was found.
     /// </summary>
     public bool HasToken => !string.IsNullOrWhiteSpace(Token);
+
+#if NET8_0_OR_GREATER
+    /// <summary>
+    /// Gets the GitHub App token source when signed in as an App. Its tokens expire after an hour, so long-running
+    /// clients send requests through <see cref="WrapHandler"/> rather than keeping <see cref="Token"/>.
+    /// </summary>
+    public GitHubAppTokenSource? App { get; init; }
+
+    /// <summary>The user token a request falls back to when the App can't renew its token.</summary>
+    public string? AppFallbackToken { get; init; }
+
+    /// <summary>
+    /// Puts App signing in front of <paramref name="inner"/> when signed in as an App; otherwise returns it unchanged.
+    /// </summary>
+    public System.Net.Http.HttpMessageHandler WrapHandler(System.Net.Http.HttpMessageHandler inner) =>
+        App is null ? inner : new GitHubAppAuthHandler(App, inner, AppFallbackToken);
+#else
+    /// <summary>Returns <paramref name="inner"/>; App sign-in needs .NET 8 or newer.</summary>
+    public System.Net.Http.HttpMessageHandler WrapHandler(System.Net.Http.HttpMessageHandler inner) => inner;
+#endif
 
     private static string? NormalizeOptional(string? value) {
         var trimmed = value?.Trim();
@@ -96,6 +121,46 @@ public static class GitHubCredentialResolver {
         return new GitHubCredentialResolution(token: null, GitHubCredentialSource.None);
     }
 
+#if NET8_0_OR_GREATER
+    /// <summary>
+    /// Credentials for reading repositories (pull requests, checks, reviews, projects), which a GitHub App installation
+    /// can do with a rate limit of its own. A configured App that signs in is used, with the user token as its fallback;
+    /// otherwise this is the user token. Callers that need a person (<c>/user</c>, notifications, "my" repositories)
+    /// keep <see cref="ResolveAsync"/>.
+    /// </summary>
+    public static async Task<GitHubCredentialResolution> ResolveRepositoryAccessAsync(CancellationToken cancellationToken = default) {
+        var user = await ResolveAsync(cancellationToken).ConfigureAwait(false);
+        if (ResolveApp() is not { } app) return user;
+        try {
+            var appToken = await app.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            return new GitHubCredentialResolution(user.Token ?? appToken, user.HasToken ? user.Source : GitHubCredentialSource.GitHubApp) {
+                App = app, AppFallbackToken = user.Token
+            };
+        } catch (Exception error) when (GitHubAppTokenSource.IsSignInFailure(error, cancellationToken)) {
+            // An App that can't sign in now leaves the user token in charge, so a bad App setup never stops GitHub reads.
+            // With a user token to fall back to, the App stays attached and long-running clients try it again later.
+            return user.HasToken ? new GitHubCredentialResolution(user.Token, user.Source) { App = app, AppFallbackToken = user.Token } : user;
+        }
+    }
+
+    private static GitHubAppTokenSource? _app;
+    private static string? _appKey;
+
+    /// <summary>One token source per App settings, so every client shares one cached installation token.</summary>
+    private static GitHubAppTokenSource? ResolveApp() {
+        var settings = GitHubAppSettings.Load();
+        if (settings is null) return null;
+        var key = settings.AppId + "/" + settings.InstallationId + "/" + settings.PrivateKeyPath + "/" + settings.ApiBaseUrl;
+        lock (CacheGate) {
+            if (_app is null || _appKey != key) {
+                _app = new GitHubAppTokenSource(settings);
+                _appKey = key;
+            }
+            return _app;
+        }
+    }
+
+#endif
     private static async Task<string?> ResolveFromGitHubCliAsync(CancellationToken cancellationToken) {
         var now = DateTimeOffset.UtcNow;
         lock (CacheGate) {

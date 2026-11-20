@@ -106,16 +106,26 @@ public static class LocalReporter {
         // components left in the drop folder.
         var githubUsage = new GitHubUsageMeter();
         var githubUsageFolder = GitHubUsageDropFolder.DefaultPath();
+        // Agent work starts from the signed-in person (/user and their searches), so it keeps the user token. Pull
+        // request proofs and project claims only read repositories and projects, which a GitHub App can do on its own
+        // budget when one is configured.
+        var repositoryAccess = settings.ProjectClaims is not null
+            ? await GitHubCredentialResolver.ResolveRepositoryAccessAsync(stop.Token) : credentials;
         using var github = credentials?.HasToken == true
             ? new GitHubDashboardService(credentials.Token!, new GitHubUsageHandler(githubUsage, "ledger-reporter", new HttpClientHandler())) : null;
-        using var projectClient = new HttpClient(new GitHubUsageHandler(githubUsage, "ledger-reporter", new HttpClientHandler()), disposeHandler: true) {
+        using var repositoryGitHub = repositoryAccess?.App is null ? null
+            : new GitHubDashboardService(repositoryAccess.Token!, new GitHubUsageHandler(githubUsage, "ledger-reporter", repositoryAccess.WrapHandler(new HttpClientHandler())));
+        using var projectClient = new HttpClient(new GitHubUsageHandler(githubUsage, "ledger-reporter",
+            repositoryAccess?.WrapHandler(new HttpClientHandler()) ?? new HttpClientHandler()), disposeHandler: true) {
             Timeout = TimeSpan.FromSeconds(20)
         };
         projectClient.DefaultRequestHeaders.UserAgent.ParseAdd("IntelligenceX-Ledger/1");
-        if (credentials?.HasToken == true) projectClient.DefaultRequestHeaders.Authorization = new("Bearer", credentials.Token);
-        var claimReader = settings.ProjectClaims is not null && credentials?.HasToken == true
+        if (repositoryAccess?.HasToken == true) projectClient.DefaultRequestHeaders.Authorization = new("Bearer", repositoryAccess.Token);
+        // Claims and proofs need only repository access, so an App alone is enough for them.
+        var claimReader = settings.ProjectClaims is not null && repositoryAccess?.HasToken == true
             ? new ProjectClaimReader(projectClient, settings.ProjectClaims) : null;
-        var prCatalog = github is null || settings.ProjectClaims is null ? null : new PullRequestCatalog(settings.SpoolDirectory, github);
+        var prCatalog = (repositoryGitHub ?? github) is not { } proofReader || settings.ProjectClaims is null ? null
+            : new PullRequestCatalog(settings.SpoolDirectory, proofReader);
         ClaimSnapshot? claimSnapshot = null;
         AgentSourceDiagnostic[] metadataDiagnostics = [];
         var archives = new SessionArchiveCache();

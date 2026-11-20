@@ -89,6 +89,16 @@ Each minute holds the running total for that process, so rewriting the file is s
 
 `github_budget` (MCP, CLI, `GET /github-budget`) lists charged requests per component and machine for the last hour and the last five minutes, and each live rate-limit window with its limit, used, remaining and reset. A window's `unattributed` count is what it used that no reporting component accounts for: ad-hoc `gh`, scripts and other tools on the same identity. A second `core` window means a second identity or token is in use.
 
+### Sign in to GitHub as an App
+
+By default the service and reporters use your GitHub token (`INTELLIGENCEX_GITHUB_TOKEN`, `GITHUB_TOKEN`, `GH_TOKEN` or the GitHub CLI login), so they share your 5,000 requests an hour with everything else you run. A GitHub App installation has a budget of its own. To use one, install the App on the account or organisation with read access to the repositories, pull requests, checks and projects the Ledger reads, then save `github-app.json` in `%LOCALAPPDATA%\IntelligenceX` (or point `INTELLIGENCEX_GITHUB_APP` at it):
+
+```json
+{ "appId": 123456, "installationId": 7890123, "privateKeyPath": "C:\\Users\\me\\keys\\ledger-app.pem" }
+```
+
+Keep the file and the key out of Git. The App reads repositories, so it is used where the Ledger only reads them: the reporter's pull request proofs and project claims, and the service's pull request readiness. Work that starts from you stays on your token, because an installation token has no person behind it: the reporter's agent work (`/user` and searches for your pull requests and reviews) and the work catalog (your repositories). The service and reporters pick the file up when they start, mint an installation token from the key, and renew it before it expires. If the App can't sign in, at start or later (wrong key, revoked installation, a timeout), requests go out with your token and the App is tried again five minutes later. Without a user token, the App alone still covers the proofs, claims and readiness. Requests signed as the App are counted under their own component, such as `ledger-reporter-app`. Add `"enabled": false`, or remove the file, and restart them to switch back. `github_budget` then shows the App's requests in a `core` window of their own.
+
 Each reporter can read an optional local Marquee Probe on loopback port 47820. `probeEndpoint` overrides that loopback origin. Probe wire version 1 supplies CPU load, memory pressure, swap, free space and runner activity through the existing reporter health row. Machine queries use this cached observation and report an unavailable source when Probe is absent, unpaired or stale. The consumed wire records reference their pinned upstream source.
 
 The reporter requests pairing and retains its private reader state beside its configuration in `probe-reader/reader-state.json`. Approve the request in Probe or with `marquee-probe allow`. Denied, expired or revoked pairing remains unavailable until the owner stops the reporter, removes that private state file and restarts it for a new pairing request.

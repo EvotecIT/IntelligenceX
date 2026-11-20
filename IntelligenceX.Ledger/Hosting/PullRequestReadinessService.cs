@@ -24,10 +24,12 @@ internal sealed class PullRequestReadinessService(LedgerStore store, GitHubUsage
             try {
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(12));
-                var credentials = await GitHubCredentialResolver.ResolveAsync(deadline.Token);
+                // Readiness only reads the repository, which a configured GitHub App can do on its own budget.
+                var credentials = await GitHubCredentialResolver.ResolveRepositoryAccessAsync(deadline.Token);
                 if (!credentials.HasToken) throw new InvalidOperationException("GitHub credentials unavailable.");
-                using var github = usage is null ? new GitHubDashboardService(credentials.Token!)
-                    : new GitHubDashboardService(credentials.Token!, new GitHubUsageHandler(usage, "ledger-readiness", new HttpClientHandler()));
+                var network = credentials.WrapHandler(new HttpClientHandler());
+                using var github = new GitHubDashboardService(credentials.Token!,
+                    usage is null ? network : new GitHubUsageHandler(usage, "ledger-readiness", network));
                 var report = await github.FetchPullRequestReadinessAsync(repo, pr, deadline.Token);
                 var rechecked = report.HeadSha == report.ObservedHeadSha && !report.Reasons.Contains("head-changed-during-read");
                 var checkouts = await store.PullRequestCheckoutsAsync(repo, pr, report.HeadSha, report.HeadBranch, deadline.Token);
