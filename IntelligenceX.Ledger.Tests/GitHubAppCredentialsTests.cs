@@ -98,6 +98,19 @@ public sealed class GitHubAppCredentialsTests : IDisposable {
         await Assert.ThrowsAsync<HttpRequestException>(() => source.GetTokenAsync());
     }
 
+    // Protects the cached token from a malformed renewal: a non-text expiry is read as an hour, never as a failure that
+    // leaves a half-updated token behind.
+    [Fact]
+    public async Task ARenewalWithANumericExpiryStillGivesAWholeToken() {
+        var now = new DateTimeOffset(2026, 11, 19, 9, 0, 0, TimeSpan.Zero);
+        var stub = new TokenStub(now) { Answer = HttpStatusCode.Created, Body = "{\"token\":\"fresh\",\"expires_at\":0}" };
+        using var source = new GitHubAppTokenSource(Settings(), new HttpClient(stub), () => now);
+        Assert.Equal("fresh", await source.GetTokenAsync());
+        now = now.AddMinutes(30);
+        Assert.Equal("fresh", await source.GetTokenAsync());
+        Assert.Single(stub.Requests);
+    }
+
     // Protects the switch: no file or "enabled": false keeps the user token; a complete file selects the App.
     [Fact]
     public void SettingsSelectTheAppOnlyWhenCompleteAndEnabled() {

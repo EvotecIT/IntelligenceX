@@ -119,7 +119,8 @@ public sealed class GitHubAppTokenSource : IDisposable {
                 return await RequestTokenAsync(now, cancellationToken).ConfigureAwait(false);
             } catch (Exception error) when (IsSignInFailure(error, cancellationToken)) {
                 _failedUntil = now + RetryAfter;
-                if (_token is not null && now < _expires) return _token;
+                // The exchange took time: the cached token is only good if it still hasn't expired now.
+                if (_token is not null && _clock() < _expires) return _token;
                 throw;
             }
         } finally {
@@ -141,10 +142,11 @@ public sealed class GitHubAppTokenSource : IDisposable {
         if (body.RootElement.ValueKind != JsonValueKind.Object || !body.RootElement.TryGetProperty("token", out var issued) ||
             issued.ValueKind != JsonValueKind.String || issued.GetString() is not { Length: > 0 } value)
             throw new HttpRequestException("GitHub App token response had no token.");
-        _token = value;
-        _expires = body.RootElement.TryGetProperty("expires_at", out var expires) && expires.TryGetDateTimeOffset(out var at)
-            ? at : now.AddHours(1);
-        return _token;
+        // Both are parsed before either is kept, so a malformed answer never replaces a good cached token.
+        var expiry = body.RootElement.TryGetProperty("expires_at", out var expires) && expires.ValueKind == JsonValueKind.String &&
+            expires.TryGetDateTimeOffset(out var at) ? at : now.AddHours(1);
+        (_token, _expires) = (value, expiry);
+        return value;
     }
 
     /// <summary>
