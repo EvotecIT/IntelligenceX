@@ -122,7 +122,7 @@ internal sealed partial class AgentService {
     /// gate always did (approve, no critical or high finding, no check whose final attempt failed). When the whole would pass
     /// the Ledger's 8 KB, superseded check attempts and then the lowest-severity findings are dropped and truncated is set.
     /// Null when the answer has no review.</summary>
-    internal static string? ReviewResult(string? finalText, string threadId) {
+    internal static string? ReviewResult(string? finalText, string threadId, string source = "Codex thread") {
         if (string.IsNullOrWhiteSpace(finalText)) return null;
         JsonObject review;
         try {
@@ -157,7 +157,7 @@ internal sealed partial class AgentService {
         };
         bool Fits() => Encoding.UTF8.GetByteCount(result.ToJsonString()) <= MaximumResultBytes;
         if (Fits()) return result.ToJsonString();
-        result["truncated"] = "The full review is in Codex thread " + threadId + ".";
+        result["truncated"] = "The full review is in " + source + " " + threadId + ".";
         var kept = (JsonArray)result["validation"]!;
         // Superseded attempts go first, then long text is shortened, then the least severe findings are dropped.
         while (!Fits() && kept.FirstOrDefault(c => c?["final"] is JsonValue v && v.TryGetValue<bool>(out var f) && !f) is { } superseded)
@@ -172,7 +172,7 @@ internal sealed partial class AgentService {
         var order = new[] { "low", "medium", "high", "critical" };
         var list = (JsonArray)result["findings"]!;
         while (!Fits() && list.Count > 0) list.Remove(list.OrderBy(f => Array.IndexOf(order, Str(f?["severity"]) ?? "low")).First());
-        return Fits() ? result.ToJsonString() : CompactReview(result, threadId);
+        return Fits() ? result.ToJsonString() : CompactReview(result, threadId, source);
     }
 
     private static void Clip(JsonObject node, string name, int length) {
@@ -181,7 +181,7 @@ internal sealed partial class AgentService {
 
     /// <summary>The smallest review result: the decision, the failed checks and a shortened summary, still valid JSON and
     /// within the byte limit as serialized (escaped non-ASCII text takes up to six bytes a character).</summary>
-    private static string CompactReview(JsonObject result, string threadId) {
+    private static string CompactReview(JsonObject result, string threadId, string source = "Codex thread") {
         var summary = Str(result["summary"]) ?? "";
         var failed = ((JsonArray)result["failedChecks"]!).Select(Str).OfType<string>().ToArray();
         for (int length = 1000, checks = 10; ; length /= 2, checks /= 2) {
@@ -192,7 +192,7 @@ internal sealed partial class AgentService {
                 ["summary"] = Shorten(summary, length),
                 ["findings"] = new JsonArray(),
                 ["validation"] = new JsonArray(),
-                ["truncated"] = "The full review is in Codex thread " + threadId + "."
+                ["truncated"] = "The full review is in " + source + " " + threadId + "."
             }.ToJsonString();
             if (Encoding.UTF8.GetByteCount(json) <= MaximumResultBytes || length == 0 && checks == 0) return json;
         }
@@ -202,13 +202,13 @@ internal sealed partial class AgentService {
 
     /// <summary>A review that ended without a verdict (a question it couldn't ask, or a failure) still answers in the review
     /// shape, as a non-passing result whose summary says what happened.</summary>
-    internal static string ReviewWithoutVerdict(string text, string threadId) => CompactReview(new JsonObject {
+    internal static string ReviewWithoutVerdict(string text, string threadId, string source = "Codex thread") => CompactReview(new JsonObject {
         ["pass"] = false, ["verdict"] = "needs-attention", ["failedChecks"] = new JsonArray(), ["summary"] = text
-    }, threadId);
+    }, threadId, source);
 
     /// <summary>Result content for a helper's own text: bounded, and in the review shape for a review ask.</summary>
     private static string TextResult(CoordinationWork work, string text, string threadId, string source = "Codex thread") =>
-        IsReview(work) ? ReviewWithoutVerdict(text, threadId) : Bound(text, threadId, source);
+        IsReview(work) ? ReviewWithoutVerdict(text, threadId, source) : Bound(text, threadId, source);
 
     private static string? Str(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
@@ -522,7 +522,11 @@ internal sealed partial class AgentService {
                 "). Ask again if it is still needed.";
         } else {
             var threadId = binding?.SessionId ?? record!.ThreadId!;
-            // A Claude turn is a process this service runs, already stopped with its run; there is nothing else to close.
+            // A Claude turn is a process. This service's own run was stopped above; one left by an earlier run of the service
+            // is found by its recorded id and start time and stopped before execution is declared excluded.
+            if (work.Provider == "claude" && record is { ProcessId: { } leftover, ProcessStartedUtc: { } started } &&
+                !ClaudeRunner.StopLeftover(leftover, started))
+                throw new InvalidOperationException("Claude process " + leftover + " did not stop; reconciliation waits for it.");
             var last = work.Provider == "claude" ? null : await _codex.CloseAsync(threadId, stop).ConfigureAwait(false);
             disposition = "execution-excluded";
             if (binding is null) {

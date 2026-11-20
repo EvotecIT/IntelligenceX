@@ -47,5 +47,31 @@ public sealed class ClaudeRunnerTests {
         Assert.Equal("failed", outcome.Status);
         Assert.True(outcome.UsageLimited);
         Assert.Equal("failed", ClaudeRunner.Parse([], "t", null).Status);
+        // Other errors that mention a limit are failures to resume or report, not a wait that never ends.
+        Assert.False(ClaudeRunner.Parse(["""{"type":"result","is_error":true,"result":"Prompt is too long: context limit"}"""], "t", null).UsageLimited);
+    }
+
+    // Protects restart recovery: a finished turn's saved outcome and the running process's identity come back from disk,
+    // so a restarted service handles the outcome without another model turn and can stop a process left behind.
+    [Fact]
+    public void ATurnOutcomeAndItsProcessSurviveARestart() {
+        var folder = Directory.CreateTempSubdirectory("ix-claude-run-").FullName;
+        try {
+            var started = DateTimeOffset.UtcNow;
+            new RunRecord { RequestId = "ask-1", Generation = 1, GrantId = "g", Workspace = folder, ProcessId = 42, ProcessStartedUtc = started,
+                LastTurn = new TurnOutcome("claude-s", "completed", "{\"outcome\":\"result\",\"text\":\"done\"}", new(1, 2, 3, 6), "claude-opus-5-5", null)
+            }.Save(folder);
+            var loaded = RunRecord.Load(folder, "ask-1", 1)!;
+            Assert.Equal(42, loaded.ProcessId);
+            Assert.Equal(started, loaded.ProcessStartedUtc);
+            Assert.Equal("completed", loaded.LastTurn!.Status);
+            Assert.Equal(new TurnTokens(1, 2, 3, 6), loaded.LastTurn.Tokens);
+        } finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
+    public void AnUnknownPermissionModeIsRefusedWhenTheAgentStarts() {
+        Assert.Throws<InvalidDataException>(() => new ClaudeRunner("claude", "bypasspermissions"));
+        _ = new ClaudeRunner("claude", "acceptEdits");
     }
 }

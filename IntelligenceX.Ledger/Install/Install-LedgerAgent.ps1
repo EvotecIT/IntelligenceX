@@ -249,7 +249,7 @@ function Get-RunningTurn {
 function Wait-RunningTurn {
     if ($Now -or -not (Get-AgentProcess)) { return }
     $deadline = [DateTimeOffset]::UtcNow.AddMinutes($WaitMinutes)
-    while (($running = Get-RunningTurn).Count -gt 0) {
+    while (($running = @(Get-RunningTurn)).Count -gt 0) {
         if ([DateTimeOffset]::UtcNow -ge $deadline) {
             throw "$($running.Count) helper turn(s) still running after $WaitMinutes minutes ($(@($running.RequestId) -join ', ')); nothing was changed. Run again later, or with -Now to stop them."
         }

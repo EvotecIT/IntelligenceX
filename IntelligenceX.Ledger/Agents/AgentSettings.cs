@@ -129,6 +129,11 @@ internal sealed record RunRecord {
     /// <summary>Result content chosen before it is published, so a retry or reconciliation publishes the same content.</summary>
     public string? PendingResult { get; init; }
     public bool PendingSucceeded { get; init; }
+    /// <summary>A Claude helper's running process (id and start time), so a restarted service can stop one left behind.</summary>
+    public int? ProcessId { get; init; }
+    public DateTimeOffset? ProcessStartedUtc { get; init; }
+    /// <summary>A Claude turn's outcome, saved as soon as the turn ends so a restart handles it without running the turn again.</summary>
+    public TurnOutcome? LastTurn { get; init; }
     /// <summary>Set once the helper's retirement is verified; until then the record is what proves this service owns its
     /// thread and workspace, so it is kept however long the workspace waits for review.</summary>
     public bool Retired { get; init; }

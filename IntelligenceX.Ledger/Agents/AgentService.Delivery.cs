@@ -141,6 +141,7 @@ internal sealed partial class AgentService {
                 return ("not-submitted", "claude-cli-unavailable");
             }
             if (usage) await RecordUsageAsync(requestId, "delivery", "claude", sent.Model, sent.Tokens, sent.CostUsd, to.SessionId, stop).ConfigureAwait(false);
+            if (sent.Stage == "submitted") Succeeded("deliver:" + requestId);
             if (sent.Failure is { } failure) Observe("claude", false, failure);
             else if (sent.Stage == "submitted") Observe("claude", true, "sent");
             if (sent.Stage == "not-submitted") {
@@ -262,7 +263,11 @@ internal sealed partial class AgentService {
         // Claude keeps for `claude --resume`, with nothing to archive.
         var claude = b.Provider == "claude";
         if (!job.Evidence.ContainsKey("processes-released")) {
-            if (claude ? _active.ContainsKey(RunKey(b.RequestId, b.Generation)) : !await _codex.IdleAsync(b.SessionId, stop).ConfigureAwait(false)) return;
+            var busy = claude
+                ? _active.ContainsKey(RunKey(b.RequestId, b.Generation)) ||
+                  run is { ProcessId: { } pid, ProcessStartedUtc: { } started } && !ClaudeRunner.StopLeftover(pid, started)
+                : !await _codex.IdleAsync(b.SessionId, stop).ConfigureAwait(false);
+            if (busy) return;
             await Step("processes-released", (claude ? "claude-ended-" : "codex-idle-") + key).ConfigureAwait(false);
         }
         if (!job.Evidence.ContainsKey("descendants-resolved")) {

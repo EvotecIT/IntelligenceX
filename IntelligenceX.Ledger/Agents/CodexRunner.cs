@@ -58,11 +58,17 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
         try {
             forked = await server.CallAsync("thread/fork", parameters, CallTimeout, token).ConfigureAwait(false);
         } catch (CodexRpcException error) when (error.Message.Contains("is archived", StringComparison.OrdinalIgnoreCase)) {
-            await server.CallAsync("thread/unarchive", new JsonObject { ["threadId"] = sourceThreadId }, CallTimeout, token).ConfigureAwait(false);
+            // The unarchive is inside the protected region: even a timed-out unarchive may have happened, so the source is
+            // archived again either way. A failed re-archive is logged and never discards a fork that succeeded.
             try {
+                await server.CallAsync("thread/unarchive", new JsonObject { ["threadId"] = sourceThreadId }, CallTimeout, token).ConfigureAwait(false);
                 forked = await server.CallAsync("thread/fork", parameters, CallTimeout, token).ConfigureAwait(false);
             } finally {
-                await server.CallAsync("thread/archive", new JsonObject { ["threadId"] = sourceThreadId }, CallTimeout, CancellationToken.None).ConfigureAwait(false);
+                try {
+                    await server.CallAsync("thread/archive", new JsonObject { ["threadId"] = sourceThreadId }, CallTimeout, CancellationToken.None).ConfigureAwait(false);
+                } catch (Exception archive) when (archive is CodexRpcException or IOException or TimeoutException or InvalidOperationException) {
+                    AgentService.Log("fork-source-not-rearchived", sourceThreadId + " " + archive.Message);
+                }
             }
         }
         var id = forked.GetProperty("thread").GetProperty("id").GetString() ?? throw new InvalidDataException("thread/fork returned no id.");

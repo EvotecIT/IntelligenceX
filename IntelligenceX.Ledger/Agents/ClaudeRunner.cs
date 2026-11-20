@@ -7,16 +7,32 @@ namespace IntelligenceX.Ledger.Agents;
 /// <summary>Runs helper turns with Claude Code in print mode. One helper is one Claude session: the first turn creates it
 /// under a known id and later turns (an answer, a resume) continue it, so the conversation and its context carry over.
 /// A turn is one process; its stream-json transcript gives the final answer, the model and the tokens.</summary>
-internal sealed class ClaudeRunner(string executable, string permissionMode) {
+internal sealed class ClaudeRunner {
+    /// <summary>The CLI's permission modes (Claude Code 2.1).</summary>
+    internal static readonly string[] PermissionModes = ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"];
+
+    /// <summary>Error of a resumed turn whose session doesn't exist, so the caller starts it with the task instead.</summary>
+    internal const string NoSession = "claude-session-missing";
+
+    private readonly string _executable;
+    private readonly string _permissionMode;
+
+    public ClaudeRunner(string executable, string permissionMode) {
+        if (!PermissionModes.Contains(permissionMode, StringComparer.Ordinal))
+            throw new InvalidDataException("ClaudeHelperPermissionMode '" + permissionMode + "' isn't one of " + string.Join(", ", PermissionModes) + ".");
+        (_executable, _permissionMode) = (executable, permissionMode);
+    }
+
     /// <summary>Starts or continues <paramref name="sessionId"/> in <paramref name="workspace"/> with one prompt and waits
-    /// for the answer, up to <paramref name="limit"/>. <paramref name="launched"/> runs once the process has the prompt.</summary>
+    /// for the answer, up to <paramref name="limit"/>. <paramref name="launched"/> gets the process id and start time once
+    /// the process has the prompt. The process never outlives this call: any way out stops it and waits for its exit.</summary>
     public async Task<TurnOutcome> RunTurnAsync(string sessionId, bool resume, string workspace, string prompt, JsonObject schema,
-        string? model, TimeSpan limit, Func<Task> launched, CancellationToken token) {
-        var start = new ProcessStartInfo(executable) {
+        string? model, TimeSpan limit, Func<int, DateTimeOffset, Task> launched, CancellationToken token) {
+        var start = new ProcessStartInfo(_executable) {
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
             UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = workspace
         };
-        foreach (var argument in Arguments(sessionId, resume, schema, model, permissionMode)) start.ArgumentList.Add(argument);
+        foreach (var argument in Arguments(sessionId, resume, schema, model, _permissionMode)) start.ArgumentList.Add(argument);
         var turnId = "claude-" + sessionId;
         Process process;
         try { process = Process.Start(start) ?? throw new InvalidOperationException("claude did not start."); }
@@ -24,34 +40,60 @@ internal sealed class ClaudeRunner(string executable, string permissionMode) {
             return new(turnId, "rejected", null, TurnTokens.None, model ?? "claude", error.Message);
         }
         using var running = process;
-        using var end = token.Register(() => AgentService.Stop(process));
-        await process.StandardInput.WriteAsync(prompt.AsMemory(), token).ConfigureAwait(false);
-        process.StandardInput.Close();
-        await launched().ConfigureAwait(false);
-        var errors = process.StandardError.ReadToEndAsync(token);
-        // Only the last assistant message (for the model name) and the result line are needed; a long turn isn't kept whole.
-        string? assistant = null, result = null;
-        string[] Kept() => new[] { assistant, result }.OfType<string>().ToArray();
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(limit);
         try {
-            while (await process.StandardOutput.ReadLineAsync(deadline.Token).ConfigureAwait(false) is { } line) {
-                if (line.Contains("\"type\":\"result\"", StringComparison.Ordinal)) result = line;
-                else if (line.Contains("\"type\":\"assistant\"", StringComparison.Ordinal)) assistant = line;
+            using var end = token.Register(() => AgentService.Stop(process));
+            await process.StandardInput.WriteAsync(prompt.AsMemory(), token).ConfigureAwait(false);
+            process.StandardInput.Close();
+            await launched(process.Id, process.StartTime.ToUniversalTime()).ConfigureAwait(false);
+            var errors = process.StandardError.ReadToEndAsync(token);
+            // Only the last assistant message (for the model name) and the result line are needed; a long turn isn't kept whole.
+            string? assistant = null, result = null;
+            string[] Kept() => new[] { assistant, result }.OfType<string>().ToArray();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(limit);
+            try {
+                while (await process.StandardOutput.ReadLineAsync(deadline.Token).ConfigureAwait(false) is { } line) {
+                    if (line.Contains("\"type\":\"result\"", StringComparison.Ordinal)) result = line;
+                    else if (line.Contains("\"type\":\"assistant\"", StringComparison.Ordinal)) assistant = line;
+                }
+                await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (!token.IsCancellationRequested) {
+                return Parse(Kept(), turnId, model) with {
+                    Status = "timed-out", Error = "The turn passed its " + limit.TotalMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-minute limit."
+                };
             }
-            await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
-        } catch (OperationCanceledException) when (!token.IsCancellationRequested) {
+            var outcome = Parse(Kept(), turnId, model);
+            if (outcome.Status == "failed") {
+                var stderr = errors.IsCompletedSuccessfully ? errors.Result.Trim() : "";
+                if (resume && (stderr + " " + outcome.FinalText).Contains("No conversation found", StringComparison.OrdinalIgnoreCase))
+                    return outcome with { Status = "rejected", Error = NoSession };
+                if (outcome.Error is null)
+                    outcome = outcome with { Error = stderr.Length == 0 ? "claude exited with code " + process.ExitCode : stderr.Length > 300 ? stderr[..300] : stderr };
+            }
+            return outcome;
+        } finally {
+            StopAndWait(process);
+        }
+    }
+
+    /// <summary>Stops the process if it is still running and waits briefly for it to exit.</summary>
+    private static void StopAndWait(Process process) {
+        try {
+            if (process.HasExited) return;
             AgentService.Stop(process);
-            return Parse(Kept(), turnId, model) with {
-                Status = "timed-out", Error = "The turn passed its " + limit.TotalMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-minute limit."
-            };
-        }
-        var outcome = Parse(Kept(), turnId, model);
-        if (outcome.Status == "failed" && outcome.Error is null) {
-            var stderr = errors.IsCompletedSuccessfully ? errors.Result.Trim() : "";
-            outcome = outcome with { Error = stderr.Length == 0 ? "claude exited with code " + process.ExitCode : stderr.Length > 300 ? stderr[..300] : stderr };
-        }
-        return outcome;
+            process.WaitForExit(10_000);
+        } catch (InvalidOperationException) { }
+    }
+
+    /// <summary>Stops a helper's Claude process left by an earlier run of this service, identified by its id and start
+    /// time so a reused id isn't touched. True when no such process is running any more.</summary>
+    internal static bool StopLeftover(int processId, DateTimeOffset startedUtc) {
+        try {
+            using var process = Process.GetProcessById(processId);
+            if (Math.Abs((process.StartTime.ToUniversalTime() - startedUtc.UtcDateTime).TotalSeconds) > 2) return true;
+            AgentService.Stop(process);
+            return process.WaitForExit(10_000);
+        } catch (ArgumentException) { return true; } catch (InvalidOperationException) { return true; }
     }
 
     internal static IEnumerable<string> Arguments(string sessionId, bool resume, JsonObject schema, string? model, string permissionMode) {
@@ -68,8 +110,8 @@ internal sealed class ClaudeRunner(string executable, string permissionMode) {
         if (model is not null) { yield return "--model"; yield return model; }
     }
 
-    /// <summary>The turn's outcome from its transcript: the result line's structured answer (or text), its usage and
-    /// whether the CLI failed for sign-in or a usage limit.</summary>
+    /// <summary>The turn's outcome from its transcript: the result line's structured answer (or text) and its usage. Only
+    /// an HTTP 429 from the API counts as a usage limit; other errors are failures the helper resumes or reports.</summary>
     internal static TurnOutcome Parse(IEnumerable<string> lines, string turnId, string? requestedModel) {
         var model = requestedModel ?? "claude";
         string? final = null, error = null;
@@ -92,8 +134,10 @@ internal sealed class ClaudeRunner(string executable, string permissionMode) {
                 ? structured.GetRawText() : root.TryGetProperty("result", out var text) ? text.GetString() : null;
             var failed = root.TryGetProperty("is_error", out var isError) && isError.ValueKind == JsonValueKind.True;
             status = failed ? "failed" : "completed";
-            if (failed) error = ClaudeSender.Failure(root) is "usage-limit" ? CodexRunner.UsageLimitPrefix + " Claude usage limit"
-                : ClaudeSender.Failure(root) is { } reason ? "Claude " + reason : final;
+            if (!failed) continue;
+            var code = root.TryGetProperty("api_error_status", out var statusCode) && statusCode.TryGetInt32(out var value) ? value : 0;
+            error = code == 429 ? CodexRunner.UsageLimitPrefix + "Claude usage limit"
+                : code is 401 or 403 ? "Claude signed-out" : final ?? "Claude reported an error";
         }
         return new(turnId, status, final, tokens, model, error);
     }
