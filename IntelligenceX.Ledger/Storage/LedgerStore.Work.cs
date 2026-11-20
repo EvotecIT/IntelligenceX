@@ -5,7 +5,7 @@ namespace IntelligenceX.Ledger.Storage;
 
 public sealed partial class LedgerStore {
     private static readonly string[] SessionConditions = ["question", "input-unconfirmed", "usage-limit", "complete", "idle", "active", "quiet",
-        LedgerRules.UsageLimitClearedCondition, LedgerRules.UsageLimitResetCondition];
+        LedgerRules.UsageLimitClearedCondition, LedgerRules.UsageLimitClearedAtCondition, LedgerRules.UsageLimitResetCondition];
 
     private static void ObserveCondition(LedgerItem item, string condition, bool present, DateTimeOffset received) {
         if (present) item.ConditionFirstObservedAtUtc.TryAdd(condition, received);
@@ -17,6 +17,8 @@ public sealed partial class LedgerStore {
         var newTurn = previous is not null &&
             (previous.TurnId is not null && session.TurnId is not null && previous.TurnId != session.TurnId ||
              previous.TurnStartedAtUtc.HasValue && session.TurnStartedAtUtc > previous.TurnStartedAtUtc);
+        var newStop = previous is { UsageLimit: true, TurnEndedAtUtc: { } stopped } && session.UsageLimit &&
+            session.TurnEndedAtUtc > stopped;
         if (newTurn) {
             foreach (var condition in SessionConditions) item.ConditionFirstObservedAtUtc.Remove(condition);
         } else if (previous?.InputId is not null && session.InputId is not null && previous.InputId != session.InputId) {
@@ -24,15 +26,17 @@ public sealed partial class LedgerStore {
             item.ConditionFirstObservedAtUtc.Remove("input-unconfirmed");
         }
         // Later observations, including a switched CLI profile, cannot reassign an existing stop.
-        if (!newTurn && previous?.UsageLimit == true && session.UsageLimit)
+        if (!newTurn && !newStop && previous?.UsageLimit == true && session.UsageLimit)
             session = session with { AccountId = previous.AccountId };
         ObserveCondition(item, "question", session.Question, received);
         ObserveCondition(item, "input-unconfirmed", session.InputUnconfirmed, received);
-        ObserveCondition(item, "usage-limit", session.UsageLimit, received);
-        if (!session.UsageLimit) {
+        if (newStop) item.ConditionFirstObservedAtUtc.Remove("usage-limit");
+        if (newStop || !session.UsageLimit) {
             item.ConditionFirstObservedAtUtc.Remove(LedgerRules.UsageLimitClearedCondition);
+            item.ConditionFirstObservedAtUtc.Remove(LedgerRules.UsageLimitClearedAtCondition);
             item.ConditionFirstObservedAtUtc.Remove(LedgerRules.UsageLimitResetCondition);
         }
+        ObserveCondition(item, "usage-limit", session.UsageLimit, received);
         ObserveCondition(item, "complete", session.Outcome == "completed", received);
         ObserveCondition(item, "idle", session.Outcome == "completed", received);
         if (session.TurnOpen.HasValue) {
@@ -45,10 +49,11 @@ public sealed partial class LedgerStore {
     private static LedgerItem RememberLimitClearance(LedgerItem item, Verdict verdict, DateTimeOffset now) {
         if (!verdict.UsageLimitCleared || verdict.UsageLimit is not { } limit ||
             item.ConditionFirstObservedAtUtc.TryGetValue(LedgerRules.UsageLimitClearedCondition, out var prior) &&
-            prior >= limit.RecordedAtUtc) return item;
+            prior == limit.RecordedAtUtc) return item;
         // Copy the condition clocks so the full evaluation's snapshot comparison can see the change.
         var conditions = new Dictionary<string, DateTimeOffset>(item.ConditionFirstObservedAtUtc, StringComparer.Ordinal) {
-            [LedgerRules.UsageLimitClearedCondition] = now
+            [LedgerRules.UsageLimitClearedCondition] = limit.RecordedAtUtc,
+            [LedgerRules.UsageLimitClearedAtCondition] = now
         };
         if (limit.ResetsAtUtc is { } reset) conditions[LedgerRules.UsageLimitResetCondition] = reset;
         else conditions.Remove(LedgerRules.UsageLimitResetCondition);

@@ -253,6 +253,8 @@ public sealed class UsageLimitRulesTests {
 
             var cleared = Assert.Single(await store.EvaluateAllAsync(reset));
             Assert.Equal(new UsageLimitView(Recorded, reset, false), cleared.Current!.UsageLimit);
+            var earlier = Assert.Single(await store.EvaluateAllAsync(reset.AddMinutes(-1)));
+            Assert.Equal(new UsageLimitView(Recorded, reset, true), earlier.Current!.UsageLimit);
 
             limit = limit with {
                 ObservedAtUtc = Recorded.AddHours(3), ShortUsedPercent = 50, ShortResetsAtUtc = null,
@@ -262,6 +264,38 @@ public sealed class UsageLimitRulesTests {
                 var pass = Assert.Single(await store.EvaluateAllAsync(now));
                 Assert.Equal(("stuck", new UsageLimitView(Recorded, reset, false)), (pass.Current!.Value, pass.Current.UsageLimit));
             }
+        } finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task ASecondFailureOnTheSameTurnDoesNotInheritAnEarlierStopsClearance() {
+        var directory = LedgerTestPaths.NewDirectory("limit-repeat");
+        try {
+            var session = Limited(ended: true).Session! with { AccountId = "codex:original" };
+            var report = new LedgerEvent { EventId = Guid.NewGuid(), Epoch = Guid.NewGuid(), Sequence = 1,
+                MachineId = "synthetic-machine", ReporterId = "synthetic-reporter", ItemId = "limited", Provider = "codex",
+                Source = "watcher", ObservedAtUtc = Recorded, Session = session };
+            var limit = new AccountLimit("codex", "synthetic-account", Recorded.AddMinutes(1)) {
+                Machine = report.MachineId, AccountId = session.AccountId,
+                UsedPercent = 100, WindowMinutes = 300, ResetsAtUtc = Recorded.AddHours(2)
+            };
+            using var store = new LedgerStore(Path.Combine(directory, "ledger.sqlite"), new(new(), _ => limit));
+            await store.InitializeAsync();
+            await store.IngestAsync([report], Recorded);
+            var polled = Recorded.AddHours(4);
+            Assert.False(Assert.Single(await store.EvaluateAllAsync(polled)).Current!.UsageLimit!.InForce);
+
+            // A later failure already happened when the first stop's reset was evaluated.
+            var stoppedAgain = Recorded.AddHours(3);
+            var observed = polled.AddMinutes(1);
+            var resetAgain = Recorded.AddHours(6);
+            limit = limit with { ObservedAtUtc = observed, AccountId = "codex:other", ResetsAtUtc = resetAgain };
+            await store.IngestAsync([report with { EventId = Guid.NewGuid(), Sequence = 2, ObservedAtUtc = observed,
+                Session = session with { TurnEndedAtUtc = stoppedAgain, LastActivityAtUtc = stoppedAgain, AccountId = limit.AccountId }
+            }], observed);
+            var second = Assert.Single(await store.EvaluateAllAsync(observed));
+            Assert.Equal(("codex:other", "needs-you", new UsageLimitView(stoppedAgain, resetAgain, true)),
+                (second.Session!.AccountId, second.Current!.Value, second.Current.UsageLimit));
         } finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
     }
 

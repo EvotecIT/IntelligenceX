@@ -4,17 +4,18 @@ namespace IntelligenceX.Ledger.Rules;
 
 public sealed partial class LedgerRules {
     internal const string UsageLimitClearedCondition = "usage-limit-cleared";
+    internal const string UsageLimitClearedAtCondition = "usage-limit-clearance-observed";
     internal const string UsageLimitResetCondition = "usage-limit-confirmed-reset";
 
     private (UsageLimitView? Limit, bool ConfirmedClear) UsageLimit(LedgerItem item, DateTimeOffset now) {
         if (item.Session is not { UsageLimit: true } session) return (null, false);
         var recorded = session.TurnEndedAtUtc ??
             item.ConditionFirstObservedAtUtc.GetValueOrDefault("usage-limit", session.LastActivityAtUtc ?? item.FirstObservedAtUtc);
-        if (item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitClearedCondition, out var confirmed) &&
-            confirmed >= recorded && confirmed <= now) {
+        if (item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitClearedCondition, out var clearedStop) &&
+            clearedStop == recorded && item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitClearedAtCondition, out var clearedAt)) {
             var knownReset = item.ConditionFirstObservedAtUtc.TryGetValue(UsageLimitResetCondition, out var resetAt)
                 ? resetAt : (DateTimeOffset?)null;
-            return (new(recorded, knownReset, false), true);
+            if ((knownReset ?? clearedAt) <= now) return (new(recorded, knownReset, false), true);
         }
         // The prior matches retain independent limit evidence when another hold supplies the primary verdict.
         var prior = item.Current;
