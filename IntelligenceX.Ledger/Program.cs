@@ -12,6 +12,12 @@ using IntelligenceX.Ledger.Storage;
 namespace IntelligenceX.Ledger;
 
 public static class Program {
+    /// <summary>The source commit this build came from, from the informational version the SDK stamps, or null.</summary>
+    internal static readonly string? BuildCommit = typeof(Program).Assembly
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion is { } version &&
+        version.IndexOf('+') is var plus and >= 0 ? version[(plus + 1)..] : null;
+
     public static async Task<int> Main(string[] args) {
         if (args.Length == 5 && args[0] == "backup" && args[1] == "--config" && args[3] == "--out") {
             var configuration = LedgerSettings.Load(args[2]);
@@ -182,7 +188,7 @@ public static class Program {
             // The supervisor restarts the service after several failed probes, so the budget stays well under its timeout.
             var probe = await store.ProbeAsync(HealthBudget, ct);
             var body = new { status = probe.Healthy ? "ok" : "stalled", reason = probe.Reason, probe.GateWaitMs, probe.QueryMs,
-                startedAtUtc, priority };
+                startedAtUtc, priority, commit = BuildCommit };
             return probe.Healthy ? Results.Ok(body) : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
         });
         app.MapGet(prefix + "/items", async (string? cursor, int? limit, string? verdict, string? machineId, string? provider, CancellationToken ct) => {

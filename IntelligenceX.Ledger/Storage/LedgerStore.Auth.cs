@@ -1,0 +1,119 @@
+using DBAClientX;
+using IntelligenceX.Ledger.Contracts;
+
+namespace IntelligenceX.Ledger.Storage;
+
+public sealed partial class LedgerStore {
+    /// <summary>How long changes are kept, and the most kept at once, so a flapping check can't grow the table.</summary>
+    internal static readonly TimeSpan AuthChangeRetention = TimeSpan.FromDays(90);
+    internal const int AuthChangeLimit = 5000;
+    private static readonly string[] AgentProviders = ["codex", "claude"];
+
+    private static async Task InitializeAuthAsync(SQLiteAsyncSession db, CancellationToken token) =>
+        await db.ExecuteNonQueryAsync("""
+            CREATE TABLE IF NOT EXISTS auth_state(machine TEXT NOT NULL,provider TEXT NOT NULL,checked TEXT NOT NULL,json TEXT NOT NULL,
+              PRIMARY KEY(machine,provider));
+            CREATE TABLE IF NOT EXISTS auth_changes(id INTEGER PRIMARY KEY AUTOINCREMENT,machine TEXT NOT NULL,provider TEXT NOT NULL,
+              at TEXT NOT NULL,field TEXT NOT NULL,before TEXT NULL,after TEXT NULL);
+            CREATE INDEX IF NOT EXISTS auth_changes_machine ON auth_changes(machine,id);
+            """, cancellationToken: token);
+
+    /// <summary>
+    /// Stores a machine's latest facts and records each difference from the previous ones as a change. Codex and Claude
+    /// take their state from the agent service's sign-in item on that machine when there is one, since the agent runs
+    /// the real sign-in check; the reporter only knows whether credentials and binaries are there. The first facts from
+    /// a machine are its baseline and record no change.
+    /// </summary>
+    private static async Task RecordAuthAsync(SQLiteAsyncSession db, string machine, AuthFact[] facts, DateTimeOffset now, CancellationToken token) {
+        var signIn = await SignInAsync(db, machine, token);
+        foreach (var fact in facts) {
+            var merged = Merge(fact, signIn.FirstOrDefault(s => s.Provider == fact.Provider));
+            var prior = await db.ExecuteScalarAsync("SELECT json FROM auth_state WHERE machine=@machine AND provider=@provider",
+                new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = fact.Provider }, token) is string json ? Read<AuthFact>(json) : null;
+            if (prior is not null)
+                foreach (var change in AuthDiff(machine, prior, merged, now))
+                    await db.ExecuteNonQueryAsync("INSERT INTO auth_changes(machine,provider,at,field,before,after) VALUES(@machine,@provider,@at,@field,@before,@after)",
+                        new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = change.Provider, ["at"] = change.AtUtc.ToString("O"),
+                            ["field"] = change.Field, ["before"] = change.Before, ["after"] = change.After }, token);
+            await db.ExecuteNonQueryAsync("""
+                INSERT INTO auth_state(machine,provider,checked,json) VALUES(@machine,@provider,@checked,@json)
+                ON CONFLICT(machine,provider) DO UPDATE SET checked=excluded.checked,json=excluded.json
+                """, new Dictionary<string, object?> { ["machine"] = machine, ["provider"] = fact.Provider,
+                    ["checked"] = merged.CheckedAtUtc.ToString("O"), ["json"] = Json(merged) }, token);
+        }
+        await db.ExecuteNonQueryAsync("""
+            DELETE FROM auth_changes WHERE at<@cutoff;
+            DELETE FROM auth_changes WHERE id<=(SELECT id FROM auth_changes ORDER BY id DESC LIMIT 1 OFFSET @limit);
+            """, new Dictionary<string, object?> { ["cutoff"] = (now - AuthChangeRetention).ToString("O"), ["limit"] = AuthChangeLimit }, token);
+    }
+
+    private static async Task<SignInFact[]> SignInAsync(SQLiteAsyncSession db, string machine, CancellationToken token) {
+        var found = new List<SignInFact>();
+        foreach (var provider in AgentProviders)
+            if (await db.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
+                    new Dictionary<string, object?> { ["id"] = machine + ":sign-in:" + provider }, token) is string json &&
+                Read<LedgerItem>(json).SignIn is { } fact)
+                found.Add(fact);
+        return found.ToArray();
+    }
+
+    /// <summary>The reporter's facts with the agent service's sign-in state folded in.</summary>
+    internal static AuthFact Merge(AuthFact fact, SignInFact? signIn) {
+        if (signIn is null) return fact;
+        var facts = new Dictionary<string, string>(fact.Facts ?? [], StringComparer.Ordinal) { ["agent-sign-in"] = signIn.Required ? signIn.Reason : "ready" };
+        var state = signIn.Required ? signIn.Reason switch {
+            "signed-out" or "expired" => "signed-out",
+            "usage-limit" => "signed-in", // Signed in, but out of usage; the agent-sign-in fact says so.
+            _ => "unknown"
+        } : "signed-in";
+        return fact with { State = fact.State == "not-installed" ? fact.State : state, Facts = facts };
+    }
+
+    /// <summary>What changed between two readings of one provider: its state and every fact added, removed or changed.</summary>
+    internal static AuthChange[] AuthDiff(string machine, AuthFact before, AuthFact after, DateTimeOffset now) {
+        var changes = new List<AuthChange>();
+        if (before.State != after.State) changes.Add(new(machine, after.Provider, now, "state", before.State, after.State));
+        var old = before.Facts ?? [];
+        var current = after.Facts ?? [];
+        foreach (var key in old.Keys.Union(current.Keys).Order(StringComparer.Ordinal)) {
+            var was = old.GetValueOrDefault(key);
+            var next = current.GetValueOrDefault(key);
+            if (!string.Equals(was, next, StringComparison.Ordinal)) changes.Add(new(machine, after.Provider, now, key, was, next));
+        }
+        return changes.ToArray();
+    }
+
+    /// <summary>Every enrolled machine's latest facts, the agent service's sign-in states and the latest changes.</summary>
+    public async Task<AuthStateView> AuthStateAsync(DateTimeOffset now, Dictionary<string, string[]> expected, TimeSpan reporterTimeout,
+        string? machine, int changeLimit, CancellationToken token = default) {
+        var heartbeats = await HeartbeatsAsync(token);
+        await using var db = await _database.OpenSessionAsync(path, token);
+        var machines = expected.Where(pair => machine is null || pair.Key == machine).OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray();
+        var (rows, changes, health) = await db.RunInTransactionAsync(SQLiteTransactionMode.Deferred, async (tx, ct) => {
+            var states = await tx.QueryAsListAsync("SELECT machine,json FROM auth_state", r => (Machine: r.GetString(0), Fact: Read<AuthFact>(r.GetString(1))),
+                cancellationToken: ct);
+            var recent = await tx.QueryAsListAsync("""
+                SELECT machine,provider,at,field,before,after FROM auth_changes WHERE @machine IS NULL OR machine=@machine ORDER BY id DESC LIMIT @limit
+                """, r => new AuthChange(r.GetString(0), r.GetString(1), DateTimeOffset.Parse(r.GetString(2)), r.GetString(3),
+                    r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5)),
+                new Dictionary<string, object?> { ["machine"] = machine, ["limit"] = changeLimit }, cancellationToken: ct);
+            var reporters = await tx.QueryAsListAsync("SELECT machine,json FROM reporter_health",
+                r => (Machine: r.GetString(0), Health: Read<ReporterHealth>(r.GetString(1))), cancellationToken: ct);
+            var signIn = new Dictionary<string, SignInFact[]>(StringComparer.Ordinal);
+            foreach (var pair in machines) signIn[pair.Key] = await SignInAsync(tx, pair.Key, ct);
+            return ((states, signIn), recent, reporters);
+        }, token);
+        var coverage = new List<string>();
+        var result = machines.Select(pair => {
+            var times = pair.Value.Select(r => heartbeats.TryGetValue(r, out var at) ? (DateTimeOffset?)at : null).ToArray();
+            var reporter = times.All(t => t is null) ? "not-enrolled" : times.Any(t => t is null || now - t > reporterTimeout) ? "reporter-silent" : "healthy";
+            var facts = rows.states.Where(row => row.Machine == pair.Key).Select(row => row.Fact).OrderBy(f => f.Provider, StringComparer.Ordinal).ToArray();
+            if (facts.Length == 0) coverage.Add("no-auth-facts:" + pair.Key);
+            var version = health.Where(h => h.Machine == pair.Key).Select(h => h.Health).OrderByDescending(h => h.ObservedAtUtc)
+                .Select(h => h.SourceVersion).FirstOrDefault();
+            return new AuthMachine(pair.Key, reporter, times.Where(t => t is not null).DefaultIfEmpty().Max(), version, facts, rows.signIn[pair.Key]);
+        }).ToArray();
+        if (changes.Count == changeLimit) coverage.Add("changes-limited:" + changeLimit);
+        return new(now, result, changes.ToArray(), coverage.ToArray());
+    }
+}

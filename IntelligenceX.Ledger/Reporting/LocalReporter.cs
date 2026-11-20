@@ -178,12 +178,18 @@ public static class LocalReporter {
             }
         }
         var usageTurn = 0;
+        var authCollector = new AuthStateCollector(AuthPaths.ForReporter(file));
         async Task UploadLoop() {
             using var heartbeatTimer = new PeriodicTimer(TimeSpan.FromSeconds(60));
             do {
                 var machineFacts = await probe.ReadAsync(stop.Token);
                 var usage = GitHubUsageValidation.Fit(githubUsage.Snapshot(), GitHubUsageDropFolder.Read(githubUsageFolder, DateTimeOffset.UtcNow, usageTurn), usageTurn++);
-                var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts, usage);
+                AuthFact[]? auth = null;
+                try { auth = await authCollector.CollectAsync(stop.Token); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException) {
+                    Console.Error.WriteLine("ledger-auth-unread:" + error.GetType().Name);
+                }
+                var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts, usage, auth);
                 if (receipt is { Ok: true, PolicyRevision: > 0, Session: not null }) Volatile.Write(ref lifecyclePolicy, receipt.Session);
             } while (await heartbeatTimer.WaitForNextTickAsync(stop.Token));
         }
@@ -379,14 +385,16 @@ public static class LocalReporter {
                 pair.Value.Select(url => ItemId("pr", "github", url)).ToArray(), !claims.IncompletePullRequestItems.Contains(pair.Key), claims.CapturedAtUtc)));
     }
     internal static async Task<ReporterHealthReceipt?> DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent healthObservation,
-        CancellationToken token, ReporterChangeTracker? changes = null, ProbeAvailability? probe = null, GitHubUsageReport[]? githubUsage = null) {
+        CancellationToken token, ReporterChangeTracker? changes = null, ProbeAvailability? probe = null, GitHubUsageReport[]? githubUsage = null,
+        AuthFact[]? auth = null) {
         var progress = changes?.Progress.Where(p => p.LastActivityAtUtc <= healthObservation.ObservedAtUtc).ToArray() ?? [];
         var coverage = (healthObservation.Coverage ?? []).Distinct(StringComparer.Ordinal).ToList();
         if (progress.Length > 128) coverage.Insert(0, "progress-truncated");
         if (coverage.Count > 32) coverage = [.. coverage.Take(31), "coverage-truncated"];
         var health = new ReporterHealth(healthObservation.MachineId, healthObservation.ReporterId,
             healthObservation.SourceVersion, healthObservation.ObservedAtUtc, coverage.ToArray(), progress.Take(128).ToArray(), probe) {
-            GitHubUsage = githubUsage is { Length: > 0 } ? githubUsage : null
+            GitHubUsage = githubUsage is { Length: > 0 } ? githubUsage : null,
+            Auth = auth is { Length: > 0 } ? auth : null
         };
         await FlushAsync(client, spool, token, changes);
         try {

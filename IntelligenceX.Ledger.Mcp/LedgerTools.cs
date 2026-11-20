@@ -44,6 +44,11 @@ public sealed class LedgerTools(LedgerReadClient client) {
     [Description("Read who is spending the GitHub REST budget: charged requests (304s are free) per component and machine over the last hour and the last 5 minutes, and each rate-limit window's limit, used, remaining and reset. Unattributed is what a window used that no reporting component accounts for: ad-hoc gh, scripts and other tools on the same identity. A second core window means a second identity or token.")]
     public Task<GitHubBudgetView> GitHubBudget(CancellationToken cancellationToken = default) => client.GitHubBudgetAsync(cancellationToken);
 
+    [McpServerTool(Name = "auth_state", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Read GitHub, Codex and Claude sign-in facts per machine and the latest changes to them, newest first: state (signed-in, signed-out, unknown, not-installed), gh account, token source, scopes and token environment variables, Codex and Claude binaries and versions, config and credential file write times, and the agent service's sign-in state. Use it to trace a sudden sign-out or lost permission. Token values are never included.")]
+    public Task<AuthStateView> AuthState(string? machine = null, int changes = 30, CancellationToken cancellationToken = default) =>
+        client.AuthStateAsync(machine, Math.Clamp(changes, 0, 200), cancellationToken);
+
     [McpServerTool(Name = "policy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Read the current revisioned policy for session lifecycle, resource reservations, load and routing preferences.")]
     public Task<CoordinationPolicy> Policy(CancellationToken cancellationToken = default) => client.ReadPolicyAsync(cancellationToken);
