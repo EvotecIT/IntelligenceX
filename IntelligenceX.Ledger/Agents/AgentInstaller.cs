@@ -80,7 +80,8 @@ internal static class AgentInstaller {
         if (!JsonNode.DeepEquals(existing, agent))
             steps.Add(new("write-agent-config", options.AgentConfig, () => { LocalFiles.WriteAtomic(options.AgentConfig, agent.ToJsonString(Indented)); return Task.CompletedTask; }));
         var mcp = McpCommand(options.Version, sessionsClient);
-        var codex = agent["codexExecutable"]?.GetValue<string>();
+        // MCP registration uses the CLI the agent runs: the desktop app's when it is installed, otherwise the configured one.
+        var codex = agent["codexExecutable"]?.GetValue<string>() is { } configured ? CodexCli.Resolve(configured) : null;
         var claude = agent["claudeExecutable"]?.GetValue<string>();
         if (codex is not null && !Registered(codex, mcp))
             steps.Add(new("register-mcp-codex", string.Join(' ', mcp), async () => {

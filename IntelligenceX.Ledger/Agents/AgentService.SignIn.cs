@@ -94,8 +94,10 @@ internal sealed partial class AgentService {
 
     /// <summary>Applies a status check. A check that timed out or failed is "unknown" and never changes whether the
     /// provider is usable. A signed-out answer counts only when the next check agrees, so one slow or failed check on a
-    /// busy machine neither publishes a sign-in item nor prompts; until then the state reads "unknown".</summary>
+    /// busy machine neither publishes a sign-in item nor prompts; until then the state reads "unknown". The decision and
+    /// the state change share one lock, so a send failure recorded meanwhile is never overwritten.</summary>
     internal void ObserveCheck(string provider, string result) {
+        ProviderSignIn? changed;
         lock (_signInGate) {
             var signedOut = result is "signed-out" or "expired";
             var count = signedOut ? _signedOutChecks[provider] = _signedOutChecks.GetValueOrDefault(provider) + 1 : 0;
@@ -105,31 +107,50 @@ internal sealed partial class AgentService {
                 if (_signIn.GetValueOrDefault(provider) is { Ready: false }) return;
                 result = "unknown";
             }
+            changed = result switch {
+                "signed-in" => Apply(provider, true, "status"),
+                "unknown" => Apply(provider, true, "unknown"),
+                _ => Apply(provider, false, result)
+            };
         }
-        if (result == "signed-in") Observe(provider, true, "status");
-        else if (result == "unknown") Observe(provider, true, "unknown");
-        else Observe(provider, false, result);
+        Changed(changed);
     }
 
     /// <summary>Records a provider's state and publishes it when it changes; a newly required sign-in prompts the user.
     /// "unknown" keeps the provider usable and never prompts.</summary>
-    private void Observe(string provider, bool ready, string reason) {
-        ProviderSignIn? changed = null;
-        lock (_signInGate) {
-            var prior = _signIn.GetValueOrDefault(provider);
-            // A status check can't see a usage limit, so it doesn't clear one; a successful send does.
-            if (prior is { Ready: false, Reason: "usage-limit" } && ready && reason is "status" or "unknown") return;
-            var shown = !ready ? reason : reason == "unknown" ? "unknown" : "signed-in";
-            if (prior is null || prior.Ready != ready || prior.Reason != shown) {
-                _signIn[provider] = changed = new(provider, ready, shown, DateTimeOffset.UtcNow);
-                // Inside the lock, so the publisher sees states in the order they changed.
-                Publish(changed);
-            }
-        }
-        if (changed is null) return;
-        Log(!ready ? "sign-in-required" : changed.Reason == "unknown" ? "sign-in-unknown" : "sign-in-ok", provider + " " + changed.Reason);
-        if (!ready && OperatingSystem.IsMacOS()) Start("prompt:" + provider, () => PromptSignInAsync(provider, _life));
+    internal void Observe(string provider, bool ready, string reason) {
+        ProviderSignIn? changed;
+        lock (_signInGate) changed = Apply(provider, ready, reason);
+        Changed(changed);
     }
+
+    /// <summary>The state change itself; callers hold <see cref="_signInGate"/>.</summary>
+    private ProviderSignIn? Apply(string provider, bool ready, string reason) {
+        var prior = _signIn.GetValueOrDefault(provider);
+        // A send or turn that worked is proof of sign-in, so earlier signed-out checks no longer count towards a prompt.
+        if (ready && reason is not ("status" or "unknown")) _signedOutChecks.Remove(provider);
+        // A status check can't see a usage limit, so it doesn't clear one; a successful send does.
+        if (prior is { Ready: false, Reason: "usage-limit" } && ready && reason is "status" or "unknown") return null;
+        var shown = !ready ? reason : reason == "unknown" ? "unknown" : "signed-in";
+        if (prior is not null && prior.Ready == ready && prior.Reason == shown) return null;
+        var changed = _signIn[provider] = new(provider, ready, shown, DateTimeOffset.UtcNow);
+        // Inside the lock, so the publisher sees states in the order they changed.
+        Publish(changed);
+        return changed;
+    }
+
+    private void Changed(ProviderSignIn? changed) {
+        if (changed is null) return;
+        Log(!changed.Ready ? "sign-in-required" : changed.Reason == "unknown" ? "sign-in-unknown" : "sign-in-ok",
+            changed.Provider + " " + changed.Reason);
+        if (!changed.Ready && OperatingSystem.IsMacOS()) {
+            var prompt = SignInPrompt ?? PromptSignInAsync;
+            Start("prompt:" + changed.Provider, () => prompt(changed.Provider, _life));
+        }
+    }
+
+    /// <summary>Replaces the macOS sign-in notification and dialog; tests pass a no-op so no real dialog opens.</summary>
+    internal Func<string, CancellationToken, Task>? SignInPrompt { get; init; }
 
     private void Publish(ProviderSignIn state) {
         try {

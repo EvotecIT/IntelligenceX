@@ -18,7 +18,7 @@ public sealed class SignInCheckTests : IDisposable {
             StateDirectory = Path.Combine(_directory, "state"), WorkspaceRoot = Path.Combine(_directory, "work"), Capabilities = ["windows-powershell"]
         };
         var ledger = new LedgerReadClient(new LedgerClientSettings { Endpoint = "http://127.0.0.1:9/", ReadToken = new string('r', 32) });
-        return new AgentService(settings, "win-pc", ledger, _published.Add);
+        return new AgentService(settings, "win-pc", ledger, _published.Add) { SignInPrompt = (_, _) => Task.CompletedTask };
     }
 
     [Theory]
@@ -58,6 +58,24 @@ public sealed class SignInCheckTests : IDisposable {
         service.ObserveCheck("claude", "signed-in");
         service.ObserveCheck("claude", "expired");
         Assert.DoesNotContain(_published, fact => fact.Required);
+    }
+
+    [Fact]
+    public void ASuccessfulTurnRestartsTheConfirmationCount() {
+        var service = Service();
+        service.ObserveCheck("codex", "signed-out");
+        service.Observe("codex", true, "turn");
+        service.ObserveCheck("codex", "signed-out");
+        Assert.DoesNotContain(_published, fact => fact.Required);
+    }
+
+    [Fact]
+    public void AnUnknownCheckDoesNotClearASignInFailureFromASend() {
+        var service = Service();
+        service.Observe("claude", false, "expired");
+        service.ObserveCheck("claude", "unknown");
+        service.ObserveCheck("claude", "signed-out");
+        Assert.Equal(("expired", true), (_published[^1].Reason, _published[^1].Required));
     }
 
     [Fact]
