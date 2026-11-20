@@ -45,6 +45,16 @@ if (-not $IsWindows -and -not $env:DOTNET_ROOT) {
         Where-Object { Test-Path -LiteralPath (Join-Path $_ 'dotnet') } | Select-Object -First 1
 }
 
+# The Ledger folder as one quoted argument; a trailing backslash is doubled so it doesn't escape the closing quote.
+$RootArgument = '"' + ($Root.EndsWith('\') ? $Root + '\' : $Root) + '"'
+
+# Runs the tray for one command and returns its exit code. On Windows the tray is a GUI app, so calling it directly
+# neither waits nor sets $LASTEXITCODE; Start-Process -Wait does both on every platform.
+function Invoke-Tray([string[]]$Arguments) {
+    $process = Start-Process -FilePath $Executable -ArgumentList ($Arguments + @('--ledger-dir', $RootArgument)) -Wait -PassThru -NoNewWindow
+    return $process.ExitCode
+}
+
 function Get-Tray {
     @(Get-Process -Name 'IntelligenceX.Ledger.Tray' -ErrorAction SilentlyContinue | Where-Object {
         $_.Path -and [IO.Path]::GetFullPath($_.Path).StartsWith($App + [IO.Path]::DirectorySeparatorChar, [StringComparison]::Ordinal)
@@ -138,10 +148,9 @@ switch ($Action) {
         [ordered]@{ sourceCommit = $commit; installedAtUtc = [DateTimeOffset]::UtcNow.ToString('O') } | ConvertTo-Json |
             Set-Content -LiteralPath (Join-Path $Home_ 'install.json') -Encoding utf8NoBOM
         # The tray records its Ledger folder in the login entry, so the next login starts the same tray.
-        & $Executable login on --ledger-dir $Root
-        if ($LASTEXITCODE -ne 0) { throw 'The tray could not set itself to start at login.' }
+        if ((Invoke-Tray @('login', 'on')) -ne 0) { throw 'The tray could not set itself to start at login.' }
         # A trailing backslash is doubled so it doesn't escape the closing quote (D:\ would otherwise arrive as D:").
-        if ($IsWindows) { Start-Process -FilePath $Executable -ArgumentList @('--ledger-dir', ('"' + ($Root.EndsWith('\') ? $Root + '\' : $Root) + '"')) -WorkingDirectory $App }
+        if ($IsWindows) { Start-Process -FilePath $Executable -ArgumentList @('--ledger-dir', $RootArgument) -WorkingDirectory $App }
         else {
             & /bin/launchctl bootstrap "gui/$Uid" $Plist
             if ($LASTEXITCODE -ne 0) { throw 'launchctl bootstrap failed.' }
@@ -152,9 +161,8 @@ switch ($Action) {
         if (-not $Apply) { "Would stop the tray, turn off start at login and remove $App. Add -Apply."; return }
         Stop-Tray
         if ((Test-Path -LiteralPath $Executable) -and (Test-OwnLogin)) {
-            & $Executable login off --ledger-dir $Root
             # Keep the app while its login entry remains, so the entry never points at a missing program.
-            if ($LASTEXITCODE -ne 0) { throw 'The tray could not turn off start at login; the app was left in place.' }
+            if ((Invoke-Tray @('login', 'off')) -ne 0) { throw 'The tray could not turn off start at login; the app was left in place.' }
         }
         if (Test-Path -LiteralPath $App) { Remove-Item -LiteralPath $App -Recurse -Force }
         'Removed the tray. Its settings and log stay in ' + $Home_ + '.'
