@@ -60,12 +60,15 @@ public sealed partial class LedgerStore {
     /// <summary>The reporter's facts with the agent service's sign-in state folded in.</summary>
     internal static AuthFact Merge(AuthFact fact, SignInFact? signIn) {
         if (signIn is null) return fact;
-        var facts = new Dictionary<string, string>(fact.Facts ?? [], StringComparer.Ordinal) { ["agent-sign-in"] = signIn.Required ? signIn.Reason : "ready" };
-        var state = signIn.Required ? signIn.Reason switch {
+        // A check that timed out or failed reads "unknown" without requiring a sign-in.
+        var agent = signIn.Reason == "unknown" ? "unknown" : signIn.Required ? signIn.Reason : "ready";
+        var facts = new Dictionary<string, string>(fact.Facts ?? [], StringComparer.Ordinal) { ["agent-sign-in"] = agent };
+        var state = agent switch {
+            "ready" => "signed-in",
             "signed-out" or "expired" => "signed-out",
             "usage-limit" => "signed-in", // Signed in, but out of usage; the agent-sign-in fact says so.
             _ => "unknown"
-        } : "signed-in";
+        };
         return fact with { State = fact.State == "not-installed" ? fact.State : state, Facts = facts };
     }
 
