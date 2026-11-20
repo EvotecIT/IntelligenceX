@@ -93,6 +93,8 @@ internal static class DetailsView {
             page.Children.Add(Section(p, "Needs you", view.Issues.Select(issue => IssueCard(issue, view, p, signIn)).ToArray()));
         }
         var machines = new[] { view.ThisMachine }.OfType<MachineView>().Concat(view.Others).ToArray();
+        // With no machines there is nothing open; a machine that comes back later starts closed.
+        if (machines.Length == 0 && state is not null) state.OpenMachine = null;
         if (machines.Length > 0) {
             var grid = new UniformGrid { Columns = Math.Min(3, machines.Length), ColumnSpacing = 12, RowSpacing = 12 };
             // One machine's facts at a time, under the cards; its Details button opens and closes it from the keyboard too.
