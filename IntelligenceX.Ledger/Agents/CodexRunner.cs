@@ -122,9 +122,10 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                 // A turn left running (one that passed its limit, or was copied into a fork while still active) makes Codex
                 // refuse a new turn with a different output schema. It is stopped first, and a refusal for that reason waits
                 // for it to settle and tries again, instead of failing the helper.
-                await SettleActiveTurnsAsync(server, threadId, token).ConfigureAwait(false);
+                var settleBy = DateTimeOffset.UtcNow + SettleTimeout;
+                await SettleActiveTurnsAsync(server, threadId, settleBy, token).ConfigureAwait(false);
                 JsonElement response;
-                try { response = await StartTurnAsync(server, threadId, parameters, token).ConfigureAwait(false); }
+                try { response = await StartTurnAsync(server, threadId, parameters, settleBy, token).ConfigureAwait(false); }
                 catch (CodexRpcException error) {
                     // The app server refused the turn (for example a model or effort it doesn't offer), so nothing started.
                     // The caller sends the same input again a bounded number of times, then publishes a failure result.
@@ -209,10 +210,10 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     /// <summary>True for Codex's refusal to start a turn because another one is still active on the thread.</summary>
     internal static bool ActiveTurnRefusal(CodexRpcException error) => error.Message.Contains("ActiveTurn", StringComparison.Ordinal);
 
-    /// <summary>Interrupts every turn still in progress on the thread and waits, up to <see cref="SettleTimeout"/>, until
-    /// none is. A turn that won't stop is left for turn/start to report.</summary>
-    private static async Task SettleActiveTurnsAsync(CodexAppServer server, string threadId, CancellationToken token) {
-        var deadline = DateTimeOffset.UtcNow + SettleTimeout;
+    /// <summary>Interrupts every turn still in progress on the thread and waits, until <paramref name="deadline"/> (shared
+    /// with the start retries, so the whole wait stays within <see cref="SettleTimeout"/>), until none is. A turn that
+    /// won't stop is left for turn/start to report.</summary>
+    private static async Task SettleActiveTurnsAsync(CodexAppServer server, string threadId, DateTimeOffset deadline, CancellationToken token) {
         var interrupted = new HashSet<string>(StringComparer.Ordinal);
         while (true) {
             JsonElement read;
@@ -226,22 +227,30 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
                     await server.CallAsync("turn/interrupt", new JsonObject { ["threadId"] = threadId, ["turnId"] = turnId }, CallTimeout, token).ConfigureAwait(false);
                 } catch (CodexRpcException) { }
             }
-            await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
+            await Task.Delay(Remaining(deadline, TimeSpan.FromSeconds(5)), token).ConfigureAwait(false);
         }
     }
 
-    /// <summary>turn/start, retried every 15 seconds for up to <see cref="SettleTimeout"/> while Codex still has another
-    /// turn active on the thread. Any other refusal is thrown at once.</summary>
-    private static async Task<JsonElement> StartTurnAsync(CodexAppServer server, string threadId, JsonObject parameters, CancellationToken token) {
-        var deadline = DateTimeOffset.UtcNow + SettleTimeout;
+    /// <summary>turn/start, retried while Codex still has another turn active on the thread, until the same
+    /// <paramref name="deadline"/> the settling used. Any other refusal, or one past the deadline, is thrown.</summary>
+    private static async Task<JsonElement> StartTurnAsync(CodexAppServer server, string threadId, JsonObject parameters,
+        DateTimeOffset deadline, CancellationToken token) {
         while (true) {
             try { return await server.CallAsync("turn/start", parameters, CallTimeout, token).ConfigureAwait(false); }
             catch (CodexRpcException error) when (ActiveTurnRefusal(error) && DateTimeOffset.UtcNow < deadline) {
                 AgentService.Log("helper-turn-waiting", threadId + " " + error.Message);
-                await SettleActiveTurnsAsync(server, threadId, token).ConfigureAwait(false);
-                await Task.Delay(TimeSpan.FromSeconds(15), token).ConfigureAwait(false);
+                await SettleActiveTurnsAsync(server, threadId, deadline, token).ConfigureAwait(false);
+                var pause = Remaining(deadline, TimeSpan.FromSeconds(15));
+                if (pause <= TimeSpan.Zero) throw;
+                await Task.Delay(pause, token).ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>The smaller of <paramref name="pause"/> and the time left until <paramref name="deadline"/>, never negative.</summary>
+    internal static TimeSpan Remaining(DateTimeOffset deadline, TimeSpan pause) {
+        var left = deadline - DateTimeOffset.UtcNow;
+        return left <= TimeSpan.Zero ? TimeSpan.Zero : left < pause ? left : pause;
     }
 
     private static async Task<bool> StoppedAsync(CodexAppServer server, string threadId, string turnId, CancellationToken token) {

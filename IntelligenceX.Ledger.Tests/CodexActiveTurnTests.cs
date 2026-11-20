@@ -11,4 +11,12 @@ public sealed class CodexActiveTurnTests {
         Assert.True(CodexRunner.ActiveTurnRefusal(new CodexRpcException("failed to submit turn input: ActiveTurnOutputSchemaMismatch", -32600)));
         Assert.False(CodexRunner.ActiveTurnRefusal(new CodexRpcException("model not available", -32600)));
     }
+
+    // Protects the wait's bound: settling and retrying share one deadline, so a pause never runs past it.
+    [Fact]
+    public void APauseNeverRunsPastTheSharedDeadline() {
+        Assert.Equal(TimeSpan.FromSeconds(15), CodexRunner.Remaining(DateTimeOffset.UtcNow.AddMinutes(5), TimeSpan.FromSeconds(15)));
+        Assert.True(CodexRunner.Remaining(DateTimeOffset.UtcNow.AddSeconds(3), TimeSpan.FromSeconds(15)) <= TimeSpan.FromSeconds(3));
+        Assert.Equal(TimeSpan.Zero, CodexRunner.Remaining(DateTimeOffset.UtcNow.AddSeconds(-1), TimeSpan.FromSeconds(15)));
+    }
 }
