@@ -78,10 +78,15 @@ public static class CoordinationValidation {
     }
 
     /// <summary>Validates portable source identity and recovery references before enrollment or admission.</summary>
-    public static void Checkpoint(WorkCheckpoint? c) =>
-        Require(c is not null && Id(c.Project) && c.Branch is { Length: > 0 and <= 200 } && !c.Branch.Any(char.IsControl) &&
-            c.Commit is { Length: 40 or 64 } && c.Commit.All(Uri.IsHexDigit) && Id(c.CheckpointRef) && Id(c.NextActionRef) &&
-            (c.PredecessorRequest is null || Id(c.PredecessorRequest)) &&
-            (c.PullRequest is null || Uri.TryCreate(c.PullRequest, UriKind.Absolute, out var pr) && pr.Scheme == "https" && pr.UserInfo.Length == 0),
-            "invalid-checkpoint");
+    /// <remarks>Each check names its field, so a caller can tell which value to correct.</remarks>
+    public static void Checkpoint(WorkCheckpoint? c) {
+        Require(c is not null, "invalid-checkpoint");
+        Require(Id(c.Project), "invalid-checkpoint-project");
+        Require(c.Branch is { Length: > 0 and <= 200 } && !c.Branch.Any(char.IsControl), "invalid-checkpoint-branch");
+        Require(c.Commit is { Length: 40 or 64 } && c.Commit.All(Uri.IsHexDigit), "invalid-checkpoint-commit");
+        Require(Id(c.CheckpointRef) && Id(c.NextActionRef) && (c.PredecessorRequest is null || Id(c.PredecessorRequest)),
+            "invalid-checkpoint-reference");
+        Require(c.PullRequest is null || Uri.TryCreate(c.PullRequest, UriKind.Absolute, out var pr) && pr.Scheme == "https" &&
+            pr.UserInfo.Length == 0, "invalid-checkpoint-pull-request");
+    }
 }
