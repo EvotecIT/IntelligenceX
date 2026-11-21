@@ -303,14 +303,23 @@ function Switch-Version([string]$Version, [string]$Previous) {
     Start-Agent $Version
     Write-Receipt (Split-Path $Version -Leaf) $Previous
     Update-OperatorClient $Version
-    # Keep only the current and previous versions.
-    Get-ChildItem -LiteralPath $Versions -Directory | Where-Object { $_.Name -notin @((Split-Path $Version -Leaf), $Previous) } |
-        ForEach-Object {
-            # Inside catch, $_ is the error record, so keep the folder in its own variable.
-            $folder = $_.FullName
-            try { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction Stop }
-            catch { Write-Warning "Kept ${folder}: $($_.Exception.Message)" }
+    Remove-OldVersions @((Split-Path $Version -Leaf), $Previous)
+}
+
+# Keeps the named versions and removes the rest. A folder that a running process was started from
+# (an MCP server of a session that is still open) is left whole for a later install to remove.
+function Remove-OldVersions([string[]]$Keep) {
+    $running = @(Get-Process -ErrorAction SilentlyContinue | ForEach-Object { try { $_.Path } catch { $null } } | Where-Object { $_ })
+    foreach ($folder in Get-ChildItem -LiteralPath $Versions -Directory | Where-Object { $_.Name -notin $Keep }) {
+        $prefix = $folder.FullName.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+        $users = @($running | Where-Object { $_.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }).Count
+        if ($users -gt 0) {
+            Write-Host "Kept $($folder.Name): $users running process(es) still use it; a later install removes it."
+            continue
         }
+        Remove-Item -LiteralPath $folder.FullName -Recurse -Force -ErrorAction SilentlyContinue -ErrorVariable removeErrors
+        if ($removeErrors) { Write-Host "Kept $($folder.Name): $($removeErrors[0].Exception.Message)" }
+    }
 }
 
 $installed = Read-Json $Receipt

@@ -163,6 +163,45 @@ public sealed class AgentSetupTests : IDisposable {
         }
     }
 
+    [Fact]
+    public async Task OldVersionsGoExceptOnesARunningProcessWasStartedFrom() {
+        var script = FindScript();
+        var pwsh = await FindPowerShellAsync();
+        var tool = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "PING.EXE") : new[] { "/bin/sleep", "/usr/bin/sleep" }.FirstOrDefault(File.Exists);
+        if (script is null || pwsh is null || tool is null || !File.Exists(tool)) return;
+        var versions = Path.Combine(_root, "agent-service", "versions");
+        string Folder(string name) { var path = Path.Combine(versions, name, "tools", "mcp"); Directory.CreateDirectory(path); return path; }
+        foreach (var name in new[] { "current", "previous", "unused" }) File.WriteAllText(Path.Combine(Folder(name), "a.dll"), "x");
+        // Stands in for the MCP server of a session that is still open, started from an older version.
+        var copy = Path.Combine(Folder("in-use"), Path.GetFileName(tool));
+        File.Copy(tool, copy);
+        var started = new List<System.Diagnostics.Process>();
+        try {
+            var info = new System.Diagnostics.ProcessStartInfo(copy) { RedirectStandardOutput = true };
+            foreach (var argument in OperatingSystem.IsWindows() ? ["-n", "120", "127.0.0.1"] : new[] { "120" }) info.ArgumentList.Add(argument);
+            started.Add(System.Diagnostics.Process.Start(info)!);
+            // Loads only the function from the script, so nothing else in it runs.
+            var command = $$"""
+                $ast = [System.Management.Automation.Language.Parser]::ParseFile('{{script.Replace("'", "''")}}', [ref]$null, [ref]$null)
+                $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $args[0].Name -eq 'Remove-OldVersions' }, $true) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+                $Versions = '{{versions.Replace("'", "''")}}'
+                Remove-OldVersions @('current', 'previous')
+                """;
+            var (exit, output, errors) = await RunAsync(pwsh, started, "-NoProfile", "-NonInteractive", "-Command", command);
+            Assert.True(exit == 0, errors);
+            Assert.Equal("", errors.Trim());
+            Assert.Contains("Kept in-use: 1 running process(es)", output);
+            Assert.Equal(["current", "in-use", "previous"], Directory.GetDirectories(versions).Select(path => Path.GetFileName(path)!).Order().ToArray());
+            Assert.True(File.Exists(copy));
+        } finally {
+            foreach (var process in started) {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                process.WaitForExit();
+                process.Dispose();
+            }
+        }
+    }
+
     private static System.Diagnostics.Process Sleeper(string pwsh, List<System.Diagnostics.Process> started) {
         var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pwsh) {
             ArgumentList = { "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep 120" } })!;
