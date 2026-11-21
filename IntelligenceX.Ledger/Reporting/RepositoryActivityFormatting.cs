@@ -22,7 +22,8 @@ internal static class RepositoryActivityFormatting {
         var checkouts = result.Checkouts?.ToList();
         var omitted = 0;
         while (checkouts is { Count: > 0 } &&
-               JsonSerializer.SerializeToUtf8Bytes(result with { Checkouts = checkouts.ToArray() }, LedgerReadJson.Default.RepositoryActivity).Length > 3000) {
+               JsonSerializer.SerializeToUtf8Bytes(result with { Checkouts = checkouts.ToArray(), CheckoutsOmitted = omitted == 0 ? null : omitted },
+                   LedgerReadJson.Default.RepositoryActivity).Length > 3000) {
             var index = checkouts.FindLastIndex(row => IsClean(row.Checkout) && !row.Checkout.Primary);
             if (index < 0) index = checkouts.FindLastIndex(row => IsClean(row.Checkout));
             if (index < 0) index = checkouts.Count - 1;

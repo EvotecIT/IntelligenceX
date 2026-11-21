@@ -102,14 +102,15 @@ public sealed class CheckoutCensusTests : IDisposable {
         // A second reporter on the same machine scanning another folder adds to the first one's rows.
         await store.UpdateReporterHealthAsync(new ReporterHealth("mac", "reporter-second", "synthetic", Now, []) {
             Checkouts = new(Now, ["/elsewhere"], [row with { Path = "/elsewhere/repository", Primary = false, State = "partial" }]) }, now: Now);
-        // A later scan that could not read everything reports only the other repository; this one must stay.
-        await store.UpdateReporterHealthAsync(Health("mac", Now.AddMinutes(15), new(Now.AddMinutes(15), ["/repos"], [other], Truncated: true)), now: Now);
+        // A later scan that could not read everything reports only another clone of the same repository; the unread one must stay.
+        await store.UpdateReporterHealthAsync(Health("mac", Now.AddMinutes(15), new(Now.AddMinutes(15), ["/repos"],
+            [row with { Path = "/repos/clone" }], Truncated: true)), now: Now);
 
         var activity = await store.RepositoryActivityAsync(Repo, Now.AddMinutes(15), details: true);
 
         var checkouts = Assert.IsType<RepositoryCheckout[]>(activity.Checkouts);
-        Assert.Equal(["/repos/repository", "/elsewhere/repository"], checkouts.Select(c => c.Checkout.Path));
-        Assert.Equal(Now, checkouts[0].ObservedAtUtc);
+        Assert.Equal(["/repos/clone", "/repos/repository", "/elsewhere/repository"], checkouts.Select(c => c.Checkout.Path));
+        Assert.Equal(Now, checkouts[1].ObservedAtUtc);
         var scan = Assert.Single(activity.CheckoutScans!);
         Assert.True(scan.Truncated);
         Assert.Contains("Not fully read: mac repository (partial).", activity.Summary);

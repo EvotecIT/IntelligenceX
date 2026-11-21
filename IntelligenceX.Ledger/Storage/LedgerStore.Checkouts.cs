@@ -36,8 +36,8 @@ public sealed partial class LedgerStore {
 
     /// <summary>
     /// Applies a newer scan from one reporter; an older scan arriving late is ignored. A complete scan replaces that
-    /// reporter's rows. An incomplete one replaces only the repositories it read, so rows it could not reach stay, with
-    /// their own older scan time, instead of looking gone.
+    /// reporter's rows. An incomplete one only updates the checkouts it read, so any it could not reach stay, with
+    /// their own older scan time, instead of looking gone. The next complete scan removes checkouts that no longer exist.
     /// </summary>
     private static async Task RecordCheckoutsAsync(SQLiteAsyncSession db, string machine, string reporter, CheckoutCensus census, CancellationToken token) {
         var args = new Dictionary<string, object?> { ["reporter"] = reporter, ["machine"] = machine, ["observed"] = census.ObservedAtUtc.ToString("O") };
@@ -50,9 +50,6 @@ public sealed partial class LedgerStore {
         var rows = census.Checkouts.DistinctBy(checkout => checkout.Path, StringComparer.Ordinal)
             .Select(checkout => (Checkout: checkout, Repo: RepositoryOverlapEvaluator.NormalizeRepo(checkout.Repo))).ToArray();
         if (!census.Truncated) await db.ExecuteNonQueryAsync("DELETE FROM checkouts WHERE reporter=@reporter", args, token);
-        else foreach (var repo in rows.Select(row => row.Repo).Distinct(StringComparer.Ordinal))
-            await db.ExecuteNonQueryAsync("DELETE FROM checkouts WHERE reporter=@reporter AND repo=@repo",
-                new Dictionary<string, object?>(args) { ["repo"] = repo }, token);
         foreach (var (checkout, repo) in rows)
             await db.ExecuteNonQueryAsync("""
                 INSERT INTO checkouts(reporter,path,machine,repo,json) VALUES(@reporter,@path,@machine,@repo,@json)

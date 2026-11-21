@@ -85,7 +85,8 @@ internal static partial class CheckoutScanner {
         if (url is null) return ([], false);
         if (RepoFromRemote(url.Trim()) is not { } repo) return ([], true);
         var list = await GitAsync(main, ["worktree", "list", "--porcelain"], token);
-        if (list is null) return ([new(repo, main, "git-unavailable", true)], true);
+        // Without the worktree list the scan cannot say which worktrees exist, so it is incomplete.
+        if (list is null) return ([new(repo, main, "git-unavailable", true)], false);
         var log = await GitAsync(main, ["log", "--branches", "--not", "--remotes", "--simplify-by-decoration",
             "--decorate-refs=refs/heads/", "--format=%D", "-n", "200"], token);
         var stash = await GitAsync(main, ["stash", "list", "--format=%gd"], token);
