@@ -167,19 +167,18 @@ public sealed class AgentSetupTests : IDisposable {
     public async Task OldVersionsGoExceptOnesARunningProcessWasStartedFrom() {
         var script = FindScript();
         var pwsh = await FindPowerShellAsync();
-        var tool = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "PING.EXE") : new[] { "/bin/sleep", "/usr/bin/sleep" }.FirstOrDefault(File.Exists);
-        if (script is null || pwsh is null || tool is null || !File.Exists(tool)) return;
+        if (script is null || pwsh is null) return;
         var versions = Path.Combine(_root, "agent-service", "versions");
         string Folder(string name) { var path = Path.Combine(versions, name, "tools", "mcp"); Directory.CreateDirectory(path); return path; }
         foreach (var name in new[] { "current", "previous", "unused" }) File.WriteAllText(Path.Combine(Folder(name), "a.dll"), "x");
-        // Stands in for the MCP server of a session that is still open, started from an older version.
-        var copy = Path.Combine(Folder("in-use"), Path.GetFileName(tool));
-        File.Copy(tool, copy);
+        // Stands in for the MCP server of a session that is still open. Like dotnet hosting the MCP dll on macOS,
+        // the process runs from a host outside the folder and names a file inside it.
+        var hosted = Path.Combine(Folder("in-use"), "server.ps1");
+        File.WriteAllText(hosted, "Start-Sleep 120");
         var started = new List<System.Diagnostics.Process>();
         try {
-            var info = new System.Diagnostics.ProcessStartInfo(copy) { RedirectStandardOutput = true };
-            foreach (var argument in OperatingSystem.IsWindows() ? ["-n", "120", "127.0.0.1"] : new[] { "120" }) info.ArgumentList.Add(argument);
-            started.Add(System.Diagnostics.Process.Start(info)!);
+            started.Add(System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pwsh) {
+                ArgumentList = { "-NoProfile", "-NonInteractive", "-File", hosted } })!);
             // Loads only the function from the script, so nothing else in it runs.
             var command = $$"""
                 $ast = [System.Management.Automation.Language.Parser]::ParseFile('{{script.Replace("'", "''")}}', [ref]$null, [ref]$null)
@@ -192,7 +191,7 @@ public sealed class AgentSetupTests : IDisposable {
             Assert.Equal("", errors.Trim());
             Assert.Contains("Kept in-use: 1 running process(es)", output);
             Assert.Equal(["current", "in-use", "previous"], Directory.GetDirectories(versions).Select(path => Path.GetFileName(path)!).Order().ToArray());
-            Assert.True(File.Exists(copy));
+            Assert.True(File.Exists(hosted));
         } finally {
             foreach (var process in started) {
                 try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
