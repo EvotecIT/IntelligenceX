@@ -34,10 +34,11 @@ internal static partial class CoordinationEndpoints {
         CoordinationStore store) {
         var configured = config.Principals.FirstOrDefault(p => LedgerRuntime.TokenEquals(bearer, p.Token));
         // Projects the operator added live join a configured principal's own list, so a new repository needs no restart.
-        // Enrolled requesters keep exactly the sources they enrolled.
+        // Enrolled requesters keep exactly the sources they enrolled. The list is read from committed state, without the
+        // writer gate, so polling and heartbeats add no writer contention.
         var principal = configured is null
             ? await store.ExecuteAsync((engine, _) => engine.AuthenticateRequester(bearer), DateTimeOffset.UtcNow, context.RequestAborted)
-            : WithAddedProjects(configured, await store.ExecuteAsync((_, state) => state.Policy.Projects, DateTimeOffset.UtcNow, context.RequestAborted));
+            : WithAddedProjects(configured, await store.ReadAsync(state => state.Policy.Projects, context.RequestAborted));
         if (principal is null) return false;
         context.Items[typeof(CoordinationPrincipal)] = principal;
         return true;
