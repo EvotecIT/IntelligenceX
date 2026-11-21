@@ -18,7 +18,7 @@ public sealed partial class LedgerReadClient {
         if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             await ThrowCommandRejectionAsync(response, deadline.Token).ConfigureAwait(false);
         var image = await ReadResponseAsync(response, LedgerReadJson.Default.CoordinationImage, deadline.Token).ConfigureAwait(false);
-        if (image.Id != Convert.ToHexStringLower(SHA256.HashData(bytes))) throw new InvalidDataException("The Ledger returned a different image id.");
+        if (image.Id != Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()) throw new InvalidDataException("The Ledger returned a different image id.");
         return image;
     }
 
@@ -42,11 +42,11 @@ public sealed partial class LedgerReadClient {
             buffer.Write(chunk, 0, read);
         }
         var bytes = buffer.ToArray();
-        if (Convert.ToHexStringLower(SHA256.HashData(bytes)) != id) throw new InvalidDataException("The image does not match its id.");
+        if (Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant() != id) throw new InvalidDataException("The image does not match its id.");
         var mediaType = CoordinationImage.Sniff(bytes) ?? throw new InvalidDataException("The Ledger returned something that is not an image.");
         Directory.CreateDirectory(directory);
         var file = Path.Combine(directory, prefix + id + CoordinationImage.Extension(mediaType));
-        if (!File.Exists(file) || Convert.ToHexStringLower(SHA256.HashData(await File.ReadAllBytesAsync(file, deadline.Token).ConfigureAwait(false))) != id)
+        if (!File.Exists(file) || Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(file, deadline.Token).ConfigureAwait(false))).ToLowerInvariant() != id)
             await File.WriteAllBytesAsync(file, bytes, deadline.Token).ConfigureAwait(false);
         return file;
     }
