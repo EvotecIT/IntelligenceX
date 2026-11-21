@@ -78,9 +78,9 @@ internal sealed class ReporterWorkspaceCache {
             status is null ? null : status.Length != 0, published is null ? null : string.IsNullOrWhiteSpace(published), head);
     }
 
-    private static async Task<string?> GitAsync(string directory, string[] arguments, CancellationToken token) {
+    internal static async Task<string?> GitAsync(string directory, string[] arguments, CancellationToken token, TimeSpan? timeout = null) {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(3));
+        deadline.CancelAfter(timeout ?? TimeSpan.FromSeconds(3));
         using var process = new Process { StartInfo = new("git") { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true } };
         process.StartInfo.Environment["GIT_OPTIONAL_LOCKS"] = "0";

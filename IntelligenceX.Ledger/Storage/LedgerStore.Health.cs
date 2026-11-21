@@ -9,7 +9,8 @@ public sealed partial class LedgerStore {
         // GitHub tallies have their own table; the health row keeps only the reporter's own state.
         var usage = health.GitHubUsage ?? [];
         var auth = health.Auth ?? [];
-        health = health with { GitHubUsage = null, Auth = null };
+        var checkouts = health.Checkouts;
+        health = health with { GitHubUsage = null, Auth = null, Checkouts = null };
         await _gate.WaitAsync(token);
         try {
             await using var db = await _database.OpenSessionAsync(path, token);
@@ -18,6 +19,7 @@ public sealed partial class LedgerStore {
                 await UpdateLoadAsync(tx, health, policy, ct);
                 if (usage.Length > 0) await RecordGitHubUsageAsync(tx, health.MachineId, usage, DateTimeOffset.UtcNow, ct);
                 if (auth.Length > 0) await RecordAuthAsync(tx, health.MachineId, auth, now ?? DateTimeOffset.UtcNow, ct);
+                if (checkouts is not null) await RecordCheckoutsAsync(tx, health.MachineId, health.ReporterId, checkouts, ct);
                 foreach (var progress in health.Progress ?? []) {
                     var json = await tx.ExecuteScalarAsync("SELECT json FROM items WHERE id=@id",
                         new Dictionary<string, object?> { ["id"] = progress.ItemId }, ct);

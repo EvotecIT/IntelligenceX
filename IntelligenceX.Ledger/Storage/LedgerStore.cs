@@ -84,6 +84,7 @@ public sealed partial class LedgerStore(string path, LedgerRules rules,
               PRIMARY KEY(item,id));
             """, cancellationToken: token);
         await InitializeRepositoryActivityAsync(db, token);
+        await InitializeCheckoutsAsync(db, token);
         await InitializeReservationsAsync(db, token);
         await InitializeSessionLookupAsync(db, token);
         await InitializeLineageAsync(db, token);

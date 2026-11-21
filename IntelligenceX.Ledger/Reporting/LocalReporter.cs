@@ -24,6 +24,8 @@ public sealed record ReporterSettings {
     public bool GitHub { get; init; }
     public ProjectClaimsSettings? ProjectClaims { get; init; }
     public string? ProbeEndpoint { get; init; }
+    /// <summary>Folders whose child repositories the checkout scan covers, besides those found from agent sessions.</summary>
+    public string[] RepositoryRoots { get; init; } = [];
 }
 
 /// <summary>Read-only watcher backstop with local durable delivery, usable on Windows, macOS and Linux.</summary>
@@ -188,6 +190,8 @@ public static class LocalReporter {
             changes.Checkpoint();
             }
         }
+        CheckoutCensus? pendingCensus = null;
+        var censusAttempts = 0;
         var usageTurn = 0;
         var authCollector = new AuthStateCollector(AuthPaths.ForReporter(file));
         async Task UploadLoop() {
@@ -200,7 +204,15 @@ public static class LocalReporter {
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException) {
                     Console.Error.WriteLine("ledger-auth-unread:" + error.GetType().Name);
                 }
-                var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts, usage, auth);
+                var census = Interlocked.Exchange(ref pendingCensus, null);
+                var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts, usage, auth, census);
+                // An undelivered scan waits for the next report unless a newer scan has replaced it. It gets two more tries:
+                // if the service keeps refusing it, the scan must not hold back every later health report.
+                if (census is not null) {
+                    if (receipt is not null) censusAttempts = 0;
+                    else if (++censusAttempts <= 2) Interlocked.CompareExchange(ref pendingCensus, census, null);
+                    else censusAttempts = 0;
+                }
                 if (receipt is { Ok: true, PolicyRevision: > 0, Session: not null }) Volatile.Write(ref lifecyclePolicy, receipt.Session);
             } while (await heartbeatTimer.WaitForNextTickAsync(stop.Token));
         }
@@ -209,6 +221,21 @@ public static class LocalReporter {
         try {
         await watcher.StartAsync(stop.Token);
         watcher.SnapshotChanged += (_, change) => Capture(change.Snapshot);
+        async Task CensusLoop() {
+            using var censusTimer = new PeriodicTimer(CheckoutScanner.Interval);
+            do {
+                try {
+                    var directories = watcher.CurrentSnapshot.Sessions.Select(session => session.WorkingDirectory).OfType<string>();
+                    var roots = await CheckoutScanner.RootsAsync(settings.RepositoryRoots, directories, stop.Token);
+                    if (roots.Length > 0) Volatile.Write(ref pendingCensus, await CheckoutScanner.ScanAsync(roots, DateTimeOffset.UtcNow, stop.Token));
+                } catch (Exception error) when (!stop.IsCancellationRequested &&
+                    error is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException) {
+                    Console.Error.WriteLine("ledger-checkouts-unread:" + error.GetType().Name);
+                }
+            } while (await censusTimer.WaitForNextTickAsync(stop.Token));
+        }
+        _ = CensusLoop().ContinueWith(task => Console.Error.WriteLine("ledger-checkouts-stopped:" + task.Exception?.GetBaseException().GetType().Name),
+            TaskContinuationOptions.OnlyOnFaulted);
         Console.WriteLine(JsonSerializer.Serialize(new { phase = "watching", sessions = watcher.CurrentSnapshot.Sessions.Count,
             sourceDiagnostics = watcher.CurrentSnapshot.Diagnostics.Select(x => x.Code).Distinct().ToArray() }));
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
@@ -397,7 +424,7 @@ public static class LocalReporter {
     }
     internal static async Task<ReporterHealthReceipt?> DeliverAsync(HttpClient client, ReporterSpool spool, LedgerEvent healthObservation,
         CancellationToken token, ReporterChangeTracker? changes = null, ProbeAvailability? probe = null, GitHubUsageReport[]? githubUsage = null,
-        AuthFact[]? auth = null) {
+        AuthFact[]? auth = null, CheckoutCensus? checkouts = null) {
         var progress = changes?.Progress.Where(p => p.LastActivityAtUtc <= healthObservation.ObservedAtUtc).ToArray() ?? [];
         var coverage = (healthObservation.Coverage ?? []).Distinct(StringComparer.Ordinal).ToList();
         if (progress.Length > 128) coverage.Insert(0, "progress-truncated");
@@ -405,7 +432,8 @@ public static class LocalReporter {
         var health = new ReporterHealth(healthObservation.MachineId, healthObservation.ReporterId,
             healthObservation.SourceVersion, healthObservation.ObservedAtUtc, coverage.ToArray(), progress.Take(128).ToArray(), probe) {
             GitHubUsage = githubUsage is { Length: > 0 } ? githubUsage : null,
-            Auth = auth is { Length: > 0 } ? auth : null
+            Auth = auth is { Length: > 0 } ? auth : null,
+            Checkouts = checkouts
         };
         await FlushAsync(client, spool, token, changes);
         try {

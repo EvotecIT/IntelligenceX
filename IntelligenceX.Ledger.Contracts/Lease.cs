@@ -124,6 +124,8 @@ public sealed record ReporterHealth(string MachineId, string ReporterId, string 
     public GitHubUsageReport[]? GitHubUsage { get; init; }
     /// <summary>Sign-in and permission facts for GitHub, Codex and Claude on the reporter's machine.</summary>
     public AuthFact[]? Auth { get; init; }
+    /// <summary>The machine's latest checkout scan. Sent only after a new scan, so most health reports leave it out.</summary>
+    public CheckoutCensus? Checkouts { get; init; }
 }
 
 /// <summary>Collection cadence comes from the same revisioned policy used by the service.</summary>

@@ -86,7 +86,8 @@ internal static class LeaseEndpoints {
                 value.Coverage is null || value.Coverage.Length > 32 || value.Coverage.Any(c => !LedgerStore.LeaseKey(c)) ||
                 value.Progress?.Length > 128 || value.Progress?.Any(p => p is null || !LedgerStore.LeaseKey(p.ItemId) || !LedgerStore.LeaseKey(p.TurnId) ||
                     p.LastActivityAtUtc.Offset != TimeSpan.Zero || p.LastActivityAtUtc > value.ObservedAtUtc) == true ||
-                !GitHubUsageValidation.Valid(value.GitHubUsage, now) || !AuthStateValidation.Valid(value.Auth, now))
+                !GitHubUsageValidation.Valid(value.GitHubUsage, now) || !AuthStateValidation.Valid(value.Auth, now) ||
+                !LedgerStore.ValidCheckoutCensus(value.Checkouts, now))
                 return Results.BadRequest(new { error = "invalid-health" });
             if (!ValidProbe(value.Probe, now)) value = value with { Probe = new("unavailable", "invalid-source-data") { ObservedAtUtc = now } };
             await store.UpdateReporterHealthAsync(value, ct);
