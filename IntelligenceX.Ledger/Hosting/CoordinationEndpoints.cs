@@ -27,7 +27,7 @@ internal static partial class CoordinationEndpoints {
     }
 
     internal static CoordinationPrincipal Caller(HttpContext context) => (CoordinationPrincipal)context.Items[typeof(CoordinationPrincipal)]!;
-    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements", "/ask", "/questions", "/usage", "/lease-approvals", "/wakes" }
+    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements", "/ask", "/questions", "/usage", "/lease-approvals", "/wakes", "/images" }
         .Any(suffix => path.StartsWithSegments(Prefix + suffix));
 
     internal static async Task<bool> AuthenticateAsync(HttpContext context, string bearer, CoordinationConfiguration config,
@@ -52,7 +52,9 @@ internal static partial class CoordinationEndpoints {
         MapArtifacts(app, store, artifacts);
         MapRecovery(app, store, artifacts);
         MapLifecycle(app, store, bound);
-        MapAsk(app, store);
+        var images = new CoordinationImageStore(Path.Combine(dataDirectory, "coordination-images"));
+        MapImages(app, images);
+        MapAsk(app, store, artifacts, images);
         MapWakes(app, store);
         app.MapGet(Prefix + "/workers/{provider}/{sessionId}", async (string provider, string sessionId,
             HttpContext http, CancellationToken ct) => Results.Ok(await store.ExecuteAsync((e, _) =>

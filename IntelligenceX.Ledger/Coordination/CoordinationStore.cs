@@ -53,11 +53,12 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         DateTimeOffset now, CancellationToken token = default) =>
         ExecuteAsync(requestId, command, now, token, null);
 
-    internal Task<CoordinationWork> AskAsync(CoordinationAsk ask, CoordinationPrincipal caller, DateTimeOffset now, CancellationToken token) {
+    internal Task<CoordinationWork> AskAsync(CoordinationAsk ask, CoordinationPrincipal caller, DateTimeOffset now, CancellationToken token,
+        string? previousResult = null) {
         var title = ask?.DisplayTitle?.Trim();
         CoordinationValidation.Require(ask?.DisplayTitle is null || title is { Length: > 0 and <= 120 } &&
             !title.Any(char.IsControl), "invalid-display-title");
-        return ExecuteAsync(ask?.Id, (engine, _, archived) => engine.Ask(ask!, caller, archived), now, token, title);
+        return ExecuteAsync(ask?.Id, (engine, _, archived) => engine.Ask(ask!, caller, archived, previousResult), now, token, title);
     }
 
     private async Task<T> ExecuteAsync<T>(string? requestId, Func<CoordinationEngine, CoordinationState, CoordinationArchiveEntry?, T> command,

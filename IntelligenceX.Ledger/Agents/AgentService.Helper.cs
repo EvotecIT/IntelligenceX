@@ -71,8 +71,52 @@ internal sealed partial class AgentService {
         ["additionalProperties"] = false
     };
 
+    /// <summary>The final answer of a visual review: a design verdict, the surfaces and platforms checked, and findings
+    /// that can point at an image by its file name.</summary>
+    internal static readonly JsonObject VisualReviewOutputSchema = new() {
+        ["type"] = "object",
+        ["properties"] = new JsonObject {
+            ["outcome"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("result", "question") },
+            ["text"] = new JsonObject { ["type"] = "string" },
+            ["review"] = new JsonObject {
+                ["type"] = "object",
+                ["properties"] = new JsonObject {
+                    ["verdict"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("approve", "changes", "blocked") },
+                    ["summary"] = new JsonObject { ["type"] = "string" },
+                    ["instanceReviewed"] = new JsonObject { ["type"] = "boolean" },
+                    ["checked"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
+                    ["findings"] = new JsonObject {
+                        ["type"] = "array",
+                        ["items"] = new JsonObject {
+                            ["type"] = "object",
+                            ["properties"] = new JsonObject {
+                                ["severity"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("high", "medium", "low") },
+                                ["area"] = new JsonObject { ["type"] = "string" },
+                                ["issue"] = new JsonObject { ["type"] = "string" },
+                                ["suggestion"] = new JsonObject { ["type"] = "string" },
+                                ["image"] = new JsonObject { ["type"] = "string" }
+                            },
+                            ["required"] = new JsonArray("severity", "area", "issue", "suggestion", "image"),
+                            ["additionalProperties"] = false
+                        }
+                    }
+                },
+                ["required"] = new JsonArray("verdict", "summary", "instanceReviewed", "checked", "findings"),
+                ["additionalProperties"] = false
+            }
+        },
+        ["required"] = new JsonArray("outcome", "text", "review"),
+        ["additionalProperties"] = false
+    };
+
     private static bool IsReview(CoordinationWork work) => work.Request.Helper?.Output == "review";
-    private static JsonObject OutputSchema(CoordinationWork work) => IsReview(work) ? ReviewOutputSchema : HelperOutputSchema;
+    private static bool IsVisualReview(CoordinationWork work) => work.Request.Helper?.Output == "visual-review";
+    private static JsonObject OutputSchema(CoordinationWork work) =>
+        IsReview(work) ? ReviewOutputSchema : IsVisualReview(work) ? VisualReviewOutputSchema : HelperOutputSchema;
+
+    /// <summary>Where the asker's images (and those of the earlier round) are put for the helper, and where the helper puts
+    /// images it wants to return, relative to its working directory.</summary>
+    internal const string ImagesIn = ".ledger/in", ImagesOut = ".ledger/out";
     private string? Model(CoordinationWork work) => work.Request.Helper?.Model ?? _policy.CodexModel;
     private string? Effort(CoordinationWork work) => work.Request.Helper?.Effort ?? _policy.CodexEffort;
 
@@ -87,7 +131,7 @@ internal sealed partial class AgentService {
         var r = work.Request;
         var from = r.ReturnTo is { } back ? back.Provider + " session " + back.SessionId + " on " + back.MachineId : "another session";
         var prompt = new StringBuilder();
-        if (r.Helper?.ContinuesRequestId is { } earlier)
+        if (r.Helper is { ContinuesRequestId: { } earlier, ForkSessionId: not null })
             prompt.Append("This continues your earlier work on ask ").Append(earlier).AppendLine(", which is the conversation above. " +
                 "This run has its own working directory, separate from the earlier one.").AppendLine();
         prompt.Append("You are a helper for ").Append(from).AppendLine(", working through the IntelligenceX Ledger.")
@@ -100,7 +144,43 @@ internal sealed partial class AgentService {
             prompt.Append("Review exactly commit ").Append(r.Checkpoint.Commit).AppendLine(": check it out by that SHA (not the branch, " +
                 "which may have moved) and confirm HEAD is that commit before you start. If it can't be fetched or HEAD differs, give " +
                 "review.verdict \"needs-attention\" with a finding that says so, and don't review anything else.");
-        if (!IsReview(work)) prompt.AppendLine("Push anything worth keeping before you finish.");
+        if (!IsReview(work) && !IsVisualReview(work)) prompt.AppendLine("Push anything worth keeping before you finish.");
+        var inbound = Path.Combine(workspace, ImagesIn);
+        if (Directory.Exists(inbound) && Directory.GetFiles(inbound) is { Length: > 0 } pictures) {
+            prompt.AppendLine().AppendLine("Images sent with this task are in " + inbound + ". Look at each of them before you start:");
+            foreach (var picture in pictures.Order(StringComparer.Ordinal)) prompt.Append("- ").AppendLine(picture);
+        }
+        // An image that could not be fetched is named, so the helper never judges as if it had seen it.
+        var present = Directory.Exists(inbound) ? Directory.GetFiles(inbound).Select(Path.GetFileName).OfType<string>().ToArray() : [];
+        var missing = (r.Helper?.Images ?? []).Concat(CoordinationImage.References(r.Helper?.PreviousResult)).Distinct(StringComparer.Ordinal)
+            .Where(id => !present.Any(name => name.Contains(id, StringComparison.Ordinal))).ToArray();
+        if (missing.Length > 0)
+            prompt.AppendLine().AppendLine("These images were sent but could not be fetched, so you have not seen them: " +
+                string.Join(", ", missing.Select(id => CoordinationImage.ReferencePrefix + id)) + ". Say so in your answer" +
+                (IsVisualReview(work) ? "; if you can't judge the design without them, give review.verdict \"blocked\"." : "."));
+        if (r.Helper?.PreviousResult is { } previous)
+            prompt.AppendLine().Append("This follows ask ").Append(r.Helper.ContinuesRequestId).AppendLine(". Its result was:")
+                .AppendLine(previous).AppendLine("Images that result names (ledger-image:<id>) are in " + inbound + " under the same id.");
+        prompt.AppendLine().AppendLine("To return images (screenshots you took, marked-up frames), save them as PNG, JPEG, WebP or GIF in " +
+            Path.Combine(workspace, ImagesOut) + ", at most " + CoordinationImage.MaximumPerMessage + " files of up to 8 MB. They are " +
+            "sent with your result; mention them by file name.");
+        if (IsVisualReview(work))
+            prompt.AppendLine().AppendLine("This is a visual review: judge the design and user experience, not the code.")
+                .AppendLine("Look at every image sent. Where the task says how to reach the running product (a URL, a command to start " +
+                    "it, an installed app), use it on this machine and capture your own screenshots of what you check into the output " +
+                    "folder; set review.instanceReviewed to true only if you actually used the running product. Judge layout, spacing, " +
+                    "alignment, typography, colour and contrast, light and dark themes, legibility at the target sizes, states (empty, " +
+                    "loading, error, hover, focus), consistency with the rest of the product, and anything that looks broken or unfinished.")
+                .AppendLine("Do not modify, commit, push or delete anything in the repository.")
+                .AppendLine("review.verdict is \"approve\" when it is ready to ship as it is, \"changes\" with concrete findings when it " +
+                    "is not, and \"blocked\" when you could not judge it (images missing, product unreachable); say why in review.summary. " +
+                    "review.checked lists the surfaces, states, themes and platforms you looked at. Each finding names the area, what is " +
+                    "wrong, a specific suggestion, and in image the file name it shows (empty when none). text is a short summary for " +
+                    "the requester. For a question, fill review with \"blocked\" and empty lists; it is ignored.");
+        if (IsVisualReview(work) && r.Helper?.PullRequest is { } pullRequest)
+            prompt.AppendLine("Your summary, findings and output images are posted on pull request " + pullRequest + " as an ordinary " +
+                "review comment. Write them as plain review notes about the product: no mention of agents, AI, the Ledger, yourself or this " +
+                "working directory, and nothing private (paths, tokens, customer data).");
         if (IsReview(work))
             prompt.AppendLine().AppendLine("This is a review. Review the changes on that branch at that commit against the base the task names " +
                     "(the repository's default branch if it names none). Use the repository's own conventions and AGENTS.md. Be adversarial: look " +
@@ -206,9 +286,64 @@ internal sealed partial class AgentService {
         ["pass"] = false, ["verdict"] = "needs-attention", ["failedChecks"] = new JsonArray(), ["summary"] = text
     }, threadId, source);
 
-    /// <summary>Result content for a helper's own text: bounded, and in the review shape for a review ask.</summary>
+    /// <summary>Result content for a helper's own text: bounded, and in the review shape for a review or visual review ask.</summary>
     private static string TextResult(CoordinationWork work, string text, string threadId, string source = "Codex thread") =>
-        IsReview(work) ? ReviewWithoutVerdict(text, threadId, source) : Bound(text, threadId, source);
+        IsReview(work) ? ReviewWithoutVerdict(text, threadId, source)
+        : IsVisualReview(work) ? VisualReviewWithoutVerdict(text, threadId, source) : Bound(text, threadId, source);
+
+    /// <summary>The structured result of a review or visual review answer, or null when the answer has none.</summary>
+    private static string? StructuredResult(CoordinationWork work, string? finalText, string threadId, string source = "Codex thread") =>
+        IsReview(work) ? ReviewResult(finalText, threadId, source) : IsVisualReview(work) ? VisualReviewResult(finalText, threadId, source) : null;
+
+    /// <summary>Turns a visual review answer into the published result: the verdict as JSON, with pass true only for
+    /// approve. When it would pass the Ledger's 8 KB, the lowest-severity findings go first and truncated is set. Null when
+    /// the answer has no review.</summary>
+    internal static string? VisualReviewResult(string? finalText, string threadId, string source = "Claude session") {
+        if (string.IsNullOrWhiteSpace(finalText)) return null;
+        JsonObject review;
+        try {
+            if (JsonNode.Parse(finalText) is not JsonObject root || root["review"] is not JsonObject found) return null;
+            review = (JsonObject)found.DeepClone();
+        } catch (JsonException) { return null; }
+        var verdict = Str(review["verdict"]);
+        if (verdict is not ("approve" or "changes" or "blocked")) return null;
+        var findings = review["findings"] as JsonArray ?? new JsonArray();
+        var ordered = findings.OfType<JsonObject>().OrderBy(f => Str(f["severity"]) switch { "high" => 0, "medium" => 1, _ => 2 })
+            .Select(f => (JsonNode)f.DeepClone()).ToList();
+        var result = new JsonObject {
+            ["pass"] = verdict == "approve", ["verdict"] = verdict, ["summary"] = Str(review["summary"]) ?? "",
+            ["instanceReviewed"] = review["instanceReviewed"] is JsonValue reviewed && reviewed.TryGetValue<bool>(out var used) && used,
+            ["checked"] = review["checked"]?.DeepClone() ?? new JsonArray(),
+            ["findings"] = new JsonArray(ordered.ToArray())
+        };
+        while (Encoding.UTF8.GetByteCount(result.ToJsonString()) > MaximumResultBytes - ImageReserve && ordered.Count > 0) {
+            ordered.RemoveAt(ordered.Count - 1);
+            result["findings"] = new JsonArray(ordered.Select(f => f.DeepClone()).ToArray());
+            result["truncated"] = "Some findings were left out. The full review is in " + source + " " + threadId + ".";
+        }
+        if (Encoding.UTF8.GetByteCount(result.ToJsonString()) > MaximumResultBytes - ImageReserve) {
+            result["summary"] = Shorten(Str(result["summary"]) ?? "", 1000);
+            result["checked"] = new JsonArray();
+        }
+        return result.ToJsonString();
+    }
+
+    /// <summary>A visual review that ended without a verdict still answers in its shape, as blocked, saying what happened.</summary>
+    internal static string VisualReviewWithoutVerdict(string text, string threadId, string source = "Claude session") {
+        // Bounded by its serialized bytes: escaped non-ASCII text takes up to six bytes a character.
+        for (var budget = 4000; ; budget /= 2) {
+            var summary = TrimToBytes(text, budget);
+            var json = new JsonObject {
+                ["pass"] = false, ["verdict"] = "blocked", ["summary"] = summary, ["instanceReviewed"] = false,
+                ["checked"] = new JsonArray(), ["findings"] = new JsonArray(),
+                ["truncated"] = summary.Length < text.Length ? "The full answer is in " + source + " " + threadId + "." : null
+            }.ToJsonString();
+            if (Encoding.UTF8.GetByteCount(json) <= MaximumResultBytes - ImageReserve || budget < 16) return json;
+        }
+    }
+
+    /// <summary>Bytes kept free in a structured result for the references to returned images.</summary>
+    private const int ImageReserve = 1024;
 
     private static string? Str(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
@@ -302,6 +437,8 @@ internal sealed partial class AgentService {
             using var renewal = CancellationTokenSource.CreateLinkedTokenSource(stop);
             var renewing = RenewAsync(id, receipt, run, renewal.Token);
             try {
+                // Images arrive while the grant is being renewed, so a slow download cannot let it lapse.
+                if (record.ResultRef is null) await FetchImagesAsync(work, record.Workspace, stop).ConfigureAwait(false);
                 if (record.ResultRef is null) record = claude
                     ? await ConverseClaudeAsync(work, record, receipt, stop).ConfigureAwait(false)
                     : await ConverseAsync(work, record, receipt, stop).ConfigureAwait(false);
@@ -433,10 +570,10 @@ internal sealed partial class AgentService {
                 }
             }
             // A review is judged by its structured verdict, which the schema allows next to an empty text.
-            if (outcome.Status == "completed" && kind == "result" && IsReview(work) && ReviewResult(outcome.FinalText, threadId) is { } review)
+            if (outcome.Status == "completed" && kind == "result" && StructuredResult(work, outcome.FinalText, threadId) is { } review)
                 return await PublishAsync(work, record, review, succeeded: true, stop).ConfigureAwait(false);
             if (outcome.Status == "completed" && kind == "result" && !string.IsNullOrWhiteSpace(text))
-                return await PublishAsync(work, record, IsReview(work) ? TextResult(work, text, threadId) : Bound(text, threadId),
+                return await PublishAsync(work, record, TextResult(work, text, threadId),
                     succeeded: true, stop).ConfigureAwait(false);
             if (record.Resumes < _policy.ResumeAttempts) {
                 record = (record with { Resumes = record.Resumes + 1, TurnId = null, Phase = "turn" }).Save(_settings.StateDirectory);
@@ -468,10 +605,211 @@ internal sealed partial class AgentService {
     /// <summary>Publishes the result content, recording it first: the service binds each assignment to one immutable
     /// content, so a retry or reconciliation must publish exactly the same text.</summary>
     private async Task<RunRecord> PublishAsync(CoordinationWork work, RunRecord record, string content, bool succeeded, CancellationToken stop) {
+        // Images are attached once, before the content is recorded; a retry publishes the recorded content as it is.
+        if (record.PendingResult is null) {
+            content = await AttachImagesAsync(work, record, content, stop).ConfigureAwait(false);
+            (record, content) = await PostToPullRequestAsync(work, record, content, stop).ConfigureAwait(false);
+        }
         record = (record with { PendingResult = content, PendingSucceeded = succeeded }).Save(_settings.StateDirectory);
         var artifact = await _ledger.PublishResultAsync(work.Request.Id, new CoordinationArtifactCommand(work.Generation, record.GrantId,
             _bootId, content), stop).ConfigureAwait(false);
         return (record with { ResultRef = artifact.ResultRef, Phase = succeeded ? "succeeded" : "failed" }).Save(_settings.StateDirectory);
+    }
+
+    /// <summary>Puts the asker's images, and those the earlier round's result names, in the helper's working directory. An
+    /// image the Ledger no longer has is logged and skipped rather than failing the ask; the prompt lists what arrived.</summary>
+    private async Task FetchImagesAsync(CoordinationWork work, string workspace, CancellationToken stop) {
+        var ids = (work.Request.Helper?.Images ?? []).Concat(CoordinationImage.References(work.Request.Helper?.PreviousResult))
+            .Distinct(StringComparer.Ordinal).ToArray();
+        var folder = Path.Combine(workspace, ImagesIn);
+        foreach (var (image, index) in ids.Select((image, index) => (image, index))) {
+            try {
+                await _ledger.DownloadImageAsync(image, folder, stop,
+                    (index + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture) + "-").ConfigureAwait(false);
+            } catch (Exception error) when (error is FileNotFoundException or HttpRequestException or InvalidDataException or IOException ||
+                error is OperationCanceledException && !stop.IsCancellationRequested) {
+                Log("helper-image-unavailable", work.Request.Id + " " + image + " " + error.GetType().Name);
+            }
+        }
+    }
+
+    /// <summary>Uploads the images the helper left in its output folder and names them in the result. A file that is not
+    /// an image, too large or refused is left out and logged.</summary>
+    private async Task<string> AttachImagesAsync(CoordinationWork work, RunRecord record, string content, CancellationToken stop) {
+        var references = new List<string>();
+        foreach (var file in OutputImages(Path.Combine(record.Workspace, ImagesOut))) {
+            try {
+                var bytes = await File.ReadAllBytesAsync(file, stop).ConfigureAwait(false);
+                var image = await _ledger.UploadImageAsync(bytes, stop).ConfigureAwait(false);
+                references.Add(CoordinationImage.ReferencePrefix + image.Id + " (" + Shorten(Path.GetFileName(file), 60) + ")");
+            } catch (Exception error) when (error is IOException or HttpRequestException or InvalidDataException or
+                CoordinationCommandRejectedException or TaskCanceledException && !stop.IsCancellationRequested) {
+                Log("helper-image-not-sent", work.Request.Id + " " + Path.GetFileName(file) + " " + error.GetType().Name);
+            }
+        }
+        // A visual review that posts to a pull request keeps room for the outcome of that post.
+        return WithImages(content, references, IsVisualReview(work) && work.Request.Helper?.PullRequest is not null ? 512 : 0);
+    }
+
+    /// <summary>
+    /// Posts a visual review on the pull request its ask names, with the helper's output images attached, and adds the
+    /// comment's address to the result. The attempt is recorded before gh runs: a restart that finds it unfinished does not
+    /// post again, since the first attempt may have gone through. A failed post is noted in the result instead.
+    /// </summary>
+    private async Task<(RunRecord Record, string Content)> PostToPullRequestAsync(CoordinationWork work, RunRecord record, string content,
+        CancellationToken stop) {
+        if (!IsVisualReview(work) || work.Request.Helper?.PullRequest is not { } pullRequest) return (record, content);
+        if (record.PullRequestComment == "posting") {
+            Log("helper-pr-comment-uncertain", work.Request.Id + " " + pullRequest);
+            return (record, WithNote(content, "pullRequestComment", "uncertain: an earlier attempt to post on " + pullRequest + " may have gone through"));
+        }
+        if (record.PullRequestComment is { } posted) return (record, WithNote(content, "pullRequestComment", posted));
+        var hash = pullRequest.LastIndexOf('#');
+        var (repo, number) = (pullRequest[..hash], pullRequest[(hash + 1)..]);
+        var folder = Path.Combine(record.Workspace, ImagesOut);
+        var images = OutputImages(folder);
+        var bodyFile = Path.Combine(record.Workspace, ".ledger", "pull-request-comment.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(bodyFile)!);
+        await File.WriteAllTextAsync(bodyFile, PullRequestComment(content, images.Select(Path.GetFileName).OfType<string>().ToArray()), stop)
+            .ConfigureAwait(false);
+        record = (record with { PullRequestComment = "posting" }).Save(_settings.StateDirectory);
+        var arguments = new List<string> { "pr", "comment", number, "--repo", repo, "--body-file", bodyFile };
+        foreach (var image in images) { arguments.Add("--attach"); arguments.Add(Path.GetFileName(image)); }
+        var (exit, output) = await GhAsync(arguments, Directory.Exists(folder) ? folder : record.Workspace, stop).ConfigureAwait(false);
+        var url = output.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault(line => line.StartsWith("https://github.com/", StringComparison.Ordinal));
+        if (exit == 0 && url is not null) {
+            record = (record with { PullRequestComment = url }).Save(_settings.StateDirectory);
+            Log("helper-pr-comment", work.Request.Id + " " + url);
+            return (record, WithNote(content, "pullRequestComment", url));
+        }
+        if (exit == 0 || exit == -1 && output.StartsWith("gh timed out", StringComparison.Ordinal)) {
+            // gh that succeeded without printing the address, or timed out, may have posted, so the attempt stays recorded
+            // and is never repeated.
+            Log("helper-pr-comment-uncertain", work.Request.Id + " " + pullRequest);
+            return (record, WithNote(content, "pullRequestComment", "uncertain: posting on " + pullRequest + (exit == 0 ? " returned no address" : " timed out") +
+                "; check the pull request"));
+        }
+        // gh said it failed, so nothing was posted that a retry could duplicate.
+        record = (record with { PullRequestComment = null }).Save(_settings.StateDirectory);
+        Log("helper-pr-comment-failed", work.Request.Id + " " + exit + " " + Shorten(output.ReplaceLineEndings(" "), 200));
+        return (record, WithNote(content, "pullRequestComment", "not posted on " + pullRequest + ": " + Shorten(output.ReplaceLineEndings(" ").Trim(), 300)));
+    }
+
+    /// <summary>The comment a visual review leaves on its pull request: the verdict, the summary, findings by severity, what
+    /// was checked, and the screenshots inline. The images are attached by gh, which turns each reference into its upload.</summary>
+    internal static string PullRequestComment(string content, IReadOnlyList<string> imageNames) {
+        JsonObject result;
+        try { result = JsonNode.Parse(content) as JsonObject ?? new JsonObject { ["summary"] = content }; }
+        catch (JsonException) { result = new JsonObject { ["summary"] = content }; }
+        var verdict = Str(result["verdict"]) switch {
+            "approve" => "approved", "changes" => "changes needed", "blocked" => "could not be completed", _ => "notes"
+        };
+        var body = new StringBuilder().Append("**Design review: ").Append(verdict).AppendLine("**").AppendLine();
+        if (Str(result["summary"]) is { Length: > 0 } summary) body.AppendLine(summary).AppendLine();
+        foreach (var finding in (result["findings"] as JsonArray ?? new JsonArray()).OfType<JsonObject>()) {
+            var severity = Str(finding["severity"]) is { Length: > 0 } level ? char.ToUpperInvariant(level[0]) + level[1..] : "Note";
+            body.Append("- **").Append(severity).Append("**, ").Append(Str(finding["area"]) ?? "General").Append(": ")
+                .Append(Str(finding["issue"])).Append(Str(finding["suggestion"]) is { Length: > 0 } fix ? " " + fix : "");
+            if (Str(finding["image"]) is { Length: > 0 } image && imageNames.Contains(image)) body.Append(" (").Append(image).Append(')');
+            body.AppendLine();
+        }
+        if (result["checked"] is JsonArray { Count: > 0 } checkedItems)
+            body.AppendLine().Append("Checked: ").Append(string.Join(", ", checkedItems.Select(Str).OfType<string>())).AppendLine(".");
+        if (result["instanceReviewed"] is JsonValue used && used.TryGetValue<bool>(out var live))
+            body.AppendLine(live ? "Reviewed on the running product." : "Reviewed from screenshots only.");
+        if (imageNames.Count > 0) {
+            body.AppendLine();
+            foreach (var name in imageNames) body.Append("![").Append(name).Append("](").Append(name).AppendLine(")");
+        }
+        var text = body.ToString();
+        return text.Length <= 60000 ? text : text[..60000] + "\n\n...";
+    }
+
+    /// <summary>The image files a helper left to return, in name order, within the per-message limit.</summary>
+    private static string[] OutputImages(string folder) => !Directory.Exists(folder) ? [] : Directory.GetFiles(folder)
+        .Where(IsOutputImage)
+        .Order(StringComparer.Ordinal).Take(CoordinationImage.MaximumPerMessage).ToArray();
+
+    // A file that can't be read is left out rather than failing the result.
+    private static bool IsOutputImage(string file) {
+        try { return new FileInfo(file).Length is > 0 and <= CoordinationImage.MaximumBytes && CoordinationImage.Sniff(Head(file)) is not null; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    private static byte[] Head(string file) {
+        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var head = new byte[Math.Min(16, stream.Length)];
+        stream.ReadExactly(head);
+        return head;
+    }
+
+    /// <summary>Adds one named note to result content: a property of a JSON result, a closing line after text.</summary>
+    internal static string WithNote(string content, string name, string note) {
+        try {
+            if (JsonNode.Parse(content) is JsonObject json) {
+                json[name] = Shorten(note, 400);
+                var serialized = json.ToJsonString();
+                if (Encoding.UTF8.GetByteCount(serialized) <= MaximumResultBytes) return serialized;
+                return content;
+            }
+        } catch (JsonException) { }
+        var line = "\n\n" + Shorten(note, 400);
+        return TrimToBytes(content, MaximumResultBytes - Encoding.UTF8.GetByteCount(line)) + line;
+    }
+
+    private static async Task<(int Exit, string Output)> GhAsync(IEnumerable<string> arguments, string directory, CancellationToken stop) {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        deadline.CancelAfter(TimeSpan.FromMinutes(3));
+        using var process = new System.Diagnostics.Process { StartInfo = new("gh") { UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true, WorkingDirectory = directory } };
+        foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+        process.StartInfo.Environment["GH_PROMPT_DISABLED"] = "1";
+        var started = false;
+        try {
+            started = process.Start();
+            process.StandardInput.Close();
+            var output = process.StandardOutput.ReadToEndAsync(deadline.Token);
+            var error = process.StandardError.ReadToEndAsync(deadline.Token);
+            await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+            return (process.ExitCode, await output.ConfigureAwait(false) + "\n" + await error.ConfigureAwait(false));
+        } catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException ||
+            error is OperationCanceledException && !stop.IsCancellationRequested) {
+            return (-1, error is OperationCanceledException ? "gh timed out" : "gh could not be started: " + error.Message);
+        } finally {
+            // Also on the run being stopped: a gh left running could still post after the record says it did not.
+            try { if (started && !process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+        }
+    }
+
+    /// <summary>Adds image references to result content within the Ledger's 8 KB: an images list in a JSON result, an
+    /// Images section after text. Text gives way to the references; a JSON result keeps as many references as fit.</summary>
+    internal static string WithImages(string content, IReadOnlyList<string> references, int reserve = 0) {
+        if (references.Count == 0) return content;
+        try {
+            if (JsonNode.Parse(content) is JsonObject json) {
+                for (var count = references.Count; count > 0; count--) {
+                    json["images"] = new JsonArray(references.Take(count).Select(r => (JsonNode?)JsonValue.Create(r)).ToArray());
+                    var serialized = json.ToJsonString();
+                    if (Encoding.UTF8.GetByteCount(serialized) <= MaximumResultBytes - reserve) return serialized;
+                }
+                return content;
+            }
+        } catch (JsonException) { }
+        var section = "\n\nImages:\n" + string.Join("\n", references.Select(r => "- " + r));
+        return TrimToBytes(content, MaximumResultBytes - reserve - Encoding.UTF8.GetByteCount(section)) + section;
+    }
+
+    private static string TrimToBytes(string text, int budget) {
+        if (Encoding.UTF8.GetByteCount(text) <= budget) return text;
+        var builder = new StringBuilder();
+        var used = 0;
+        foreach (var rune in text.EnumerateRunes()) {
+            if (used + rune.Utf8SequenceLength > budget - 3) break;
+            builder.Append(rune.ToString());
+            used += rune.Utf8SequenceLength;
+        }
+        return builder.Append("...").ToString();
     }
 
     /// <summary>Waits for the answer to one question with plain Ledger reads at the sweep interval. Returns null when the

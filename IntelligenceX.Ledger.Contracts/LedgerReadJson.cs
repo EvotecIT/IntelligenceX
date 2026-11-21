@@ -76,6 +76,7 @@ namespace IntelligenceX.Ledger.Contracts;
 [JsonSerializable(typeof(CoordinationRetirementReceipt))]
 [JsonSerializable(typeof(AskPolicy))]
 [JsonSerializable(typeof(CoordinationAsk))]
+[JsonSerializable(typeof(CoordinationImage))]
 [JsonSerializable(typeof(CoordinationWakeRequest))]
 [JsonSerializable(typeof(CoordinationWake))]
 [JsonSerializable(typeof(CoordinationWakePage))]
