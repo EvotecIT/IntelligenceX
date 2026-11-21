@@ -17,6 +17,9 @@ public sealed record CoordinationPolicy(long Revision, MachineCapacity[] Machine
         ["engine"] = ["claude", "codex"], ["visual"] = ["claude"],
         ["ciLoop"] = ["codex"], ["mergeLoop"] = ["codex"], ["review"] = ["claude", "codex"], ["quick"] = ["claude", "codex"]
     };
+    /// <summary>Repositories every coordination client, host and operator may work in, besides those their configuration
+    /// lists. Added live by the operator (<c>ix ledger project add</c>); a repository is allowed only once someone adds it.</summary>
+    public string[] Projects { get; set; } = [];
     public Dictionary<string, string> Priority { get; set; } = new(StringComparer.Ordinal) {
         ["benchmark"] = "normal", ["build"] = "normal", ["test"] = "normal"
     };

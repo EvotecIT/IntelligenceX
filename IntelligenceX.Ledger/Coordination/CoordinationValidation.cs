@@ -49,6 +49,8 @@ public static class CoordinationValidation {
                 kind.Value.All(choice => choice.Key is "claude" or "codex" && choice.Value is not null &&
                     (choice.Value.Model is null || Id(choice.Value.Model)) && Effort(choice.Value.Effort) &&
                     (choice.Key == "codex" || choice.Value.Effort != "ultra"))), "invalid-ask-policy");
+        Require(p.Projects is { Length: <= 512 } && p.Projects.All(Id) &&
+            p.Projects.Distinct(StringComparer.Ordinal).Count() == p.Projects.Length, "invalid-project-policy");
         Require(p.Priority is { Count: > 0 and <= 64 } && p.Priority.All(pair => Id(pair.Key) &&
             pair.Value is "low" or "normal" or "high"), "invalid-priority-policy");
     }

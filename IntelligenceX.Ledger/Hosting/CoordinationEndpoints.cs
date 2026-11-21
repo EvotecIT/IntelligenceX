@@ -32,12 +32,20 @@ internal static partial class CoordinationEndpoints {
 
     internal static async Task<bool> AuthenticateAsync(HttpContext context, string bearer, CoordinationConfiguration config,
         CoordinationStore store) {
-        var principal = config.Principals.FirstOrDefault(p => LedgerRuntime.TokenEquals(bearer, p.Token)) ??
-            await store.ExecuteAsync((engine, _) => engine.AuthenticateRequester(bearer), DateTimeOffset.UtcNow, context.RequestAborted);
+        var configured = config.Principals.FirstOrDefault(p => LedgerRuntime.TokenEquals(bearer, p.Token));
+        // Projects the operator added live join a configured principal's own list, so a new repository needs no restart.
+        // Enrolled requesters keep exactly the sources they enrolled.
+        var principal = configured is null
+            ? await store.ExecuteAsync((engine, _) => engine.AuthenticateRequester(bearer), DateTimeOffset.UtcNow, context.RequestAborted)
+            : WithAddedProjects(configured, await store.ExecuteAsync((_, state) => state.Policy.Projects, DateTimeOffset.UtcNow, context.RequestAborted));
         if (principal is null) return false;
         context.Items[typeof(CoordinationPrincipal)] = principal;
         return true;
     }
+
+    internal static CoordinationPrincipal WithAddedProjects(CoordinationPrincipal principal, string[] added) =>
+        added.Length == 0 || added.All(principal.Projects.Contains) ? principal
+            : principal with { Projects = principal.Projects.Union(added, StringComparer.Ordinal).ToArray() };
 
     private static bool Visible(CoordinationWork work, CoordinationPrincipal p) => p.Role switch {
         "operator" => true,
