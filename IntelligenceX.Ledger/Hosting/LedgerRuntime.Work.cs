@@ -80,8 +80,10 @@ internal sealed partial class LedgerRuntime {
                 item is { Kind: "session", Session: { SourceSessionId: not null, StartedBySessionId: null } })
             .Select(item => (item.Provider, item.Session!.SourceSessionId!.Value.ToString())).ToArray(), token);
         var relationships = new WorkRelationships(items, asks, parents);
-        var activeHelpers = items.Select(item => (Item: item, Ask: relationships.Ask(item)))
-            .Where(row => row.Ask is { Finished: false } && !IsDormantSession(row.Item, now)).Select(row => ApplyAskVerdict(row.Item, row.Ask!, now));
+        var helperRows = items.Select(item => (Item: item, Ask: relationships.Ask(item))).Where(row => row.Ask is { Finished: false }).ToArray();
+        // A helper session the loop didn't already count (one that ended normally) is counted here when it goes dormant.
+        dormant += helperRows.Count(row => IsDormantSession(row.Item, now) && LedgerRules.IsNormallyEnded(row.Item));
+        var activeHelpers = helperRows.Where(row => !IsDormantSession(row.Item, now)).Select(row => ApplyAskVerdict(row.Item, row.Ask!, now));
         var current = regular.Where(item => relationships.Ask(item) is null).Concat(activeHelpers);
         var open = recentlyEnded.Select(item => (Item: item, Ask: relationships.Ask(item)))
             .Where(row => row.Ask is null or { Finished: true })
@@ -92,9 +94,15 @@ internal sealed partial class LedgerRuntime {
             machines, historical, relationships, dormant);
     }
 
+    // Unresolved declarations of the current turn and candidate, the same ones that keep an item current.
+    private static bool HasCurrentDeclaration(LedgerItem item) =>
+        LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(x =>
+            LedgerScope.Applies(x.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
+            (x.Fact.CandidateRef is null || item.CandidateRef is null || x.Fact.CandidateRef == item.CandidateRef)))
+            .Any(x => !x.Fact.Resolved);
+
     internal static bool IsDormantSession(LedgerItem item, DateTimeOffset now) {
-        if (item.Kind != "session" || item.Work?.ActiveClaim == true ||
-            item.Declarations.Values.Any(declaration => !declaration.Fact.Resolved)) return false;
+        if (item.Kind != "session" || item.Work?.ActiveClaim == true || HasCurrentDeclaration(item)) return false;
         var lastSign = new[] { item.Session?.LastActivityAtUtc, item.Session?.TurnEndedAtUtc, item.Session?.TurnStartedAtUtc }
             .Concat(item.Deliveries.Values.Select(delivery => delivery.LastStageOrderAtUtc))
             .Concat(item.Declarations.Values.Select(declaration => (DateTimeOffset?)declaration.Fact.RecordedAtUtc))

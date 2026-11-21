@@ -28,11 +28,18 @@ public sealed class DormantSessionTests {
         Assert.False(LedgerRuntime.IsDormantSession(Session(5, turnOpen: false, usageLimit: true), Now));
         Assert.True(LedgerRuntime.IsDormantSession(Session(8, turnOpen: false, usageLimit: true), Now));
         Assert.False(LedgerRuntime.IsDormantSession(Session(10) with { Work = new() { ActiveClaim = true } }, Now));
-        var declared = Session(10);
-        declared.Declarations["synthetic"] = new(new WorkerDeclaration { Id = "synthetic", EpisodeId = "synthetic", Kind = "wait",
-            Scope = new TaskScope("synthetic-task", 1, "synthetic-turn"), CheckpointRef = "synthetic-checkpoint",
+        Assert.False(LedgerRuntime.IsDormantSession(Declared("synthetic-turn"), Now));
+        // A declaration left from an earlier turn no longer holds anything open.
+        Assert.True(LedgerRuntime.IsDormantSession(Declared("synthetic-earlier-turn"), Now));
+    }
+
+    private static LedgerItem Declared(string declarationTurn) {
+        var item = Session(10) with { Scope = new TaskScope("synthetic-task", 1, "synthetic-turn") };
+        item = item with { Session = item.Session! with { TurnId = "synthetic-turn" } };
+        item.Declarations["synthetic"] = new(new WorkerDeclaration { Id = "synthetic", EpisodeId = "synthetic", Kind = "wait",
+            Scope = new TaskScope("synthetic-task", 1, declarationTurn), CheckpointRef = "synthetic-checkpoint",
             ConditionRef = "synthetic-condition", NextActor = "worker", Blocking = true, RecordedAtUtc = Now.AddDays(-10) },
             new(Guid.NewGuid(), "evidence", "1", Now.AddDays(-10), Now.AddDays(-10)));
-        Assert.False(LedgerRuntime.IsDormantSession(declared, Now));
+        return item;
     }
 }
