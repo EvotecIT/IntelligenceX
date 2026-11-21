@@ -274,10 +274,12 @@ function Update-OperatorClient([string]$Version) {
     $commit = Split-Path $Version -Leaf
     $marker = Join-Path $client '.ledger-client-commit'
     if ((Test-Path -LiteralPath $marker) -and (Get-Content -LiteralPath $marker -Raw).Trim() -eq $commit) { return }
-    $staging = "$client.partial"
+    # Each run stages in its own folder, so two installs at once never share one; the coordination folder may not exist
+    # yet when the reporter configuration lives outside the root.
+    $staging = "$client.partial-" + [Guid]::NewGuid().ToString('N')
     $previous = "$client.previous"
     try {
-        if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path $client -Parent)
         Copy-Item -LiteralPath $source -Destination $staging -Recurse
         Set-Content -LiteralPath (Join-Path $staging '.ledger-client-commit') -Value $commit -NoNewline
         if (Test-Path -LiteralPath $previous) { Remove-Item -LiteralPath $previous -Recurse -Force }
@@ -285,6 +287,7 @@ function Update-OperatorClient([string]$Version) {
         Move-Item -LiteralPath $staging -Destination $client
     } catch {
         Write-Warning "Kept the existing operator CLI in ${client}: $($_.Exception.Message)"
+        if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
         if (-not (Test-Path -LiteralPath $client) -and (Test-Path -LiteralPath $previous)) { Move-Item -LiteralPath $previous -Destination $client }
     }
 }
