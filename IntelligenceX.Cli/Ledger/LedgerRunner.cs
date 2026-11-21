@@ -11,6 +11,7 @@ namespace IntelligenceX.Cli.Ledger;
 internal static class LedgerRunner {
     internal static async Task<int> RunAsync(string[] args) {
         if (args.Length > 0 && args[0] == "policy") return await LedgerPolicyRunner.RunAsync(args).ConfigureAwait(false);
+        if (args.Length > 0 && args[0] == "project") return await LedgerProjectRunner.RunAsync(args).ConfigureAwait(false);
         if (args.Length > 0 && args[0] is "repo_activity" or "overlap") return await LedgerRepositoryRunner.RunAsync(args).ConfigureAwait(false);
         if (args.Length > 0 && args[0] is "who" or "machine_status" or "budget_status" or "github_budget" or "auth_state" or "session_status" or "pr_ready" or "cleanup" or "lease_acquire" or "lease_renew" or "lease_release" or
             "session_tree" or "session_trail" or "session_takeover")
@@ -28,6 +29,7 @@ internal static class LedgerRunner {
             Console.WriteLine("ix ledger session_takeover <from-session> <by-session> [--reason <text>] --config <lease-write-json>");
             Console.WriteLine("ix ledger pr_ready <owner/repo> <pr-number> --config <read-json>");
             Console.WriteLine("ix ledger policy show --config <read-json>|policy set <path> <value> --config <operator-json>");
+            Console.WriteLine("ix ledger project list --config <operator-json>|project add|remove <repository> --config <operator-json>");
             Console.WriteLine("ix ledger repo_activity <owner/repo>|overlap <owner/repo> [--recent24h] [--details] [--branch <branch>] [--files <file> ...] [--text <task>] --config <read-json>");
             Console.WriteLine("ix ledger lease_acquire <key> <holder> <machine> <purpose> <ttl-seconds>|lease_renew <key> <lease-id> <ttl-seconds>|lease_release <key> <lease-id> --config <lease-write-json>");
             Console.WriteLine("Set IX_LEDGER_ENDPOINT and IX_LEDGER_READ_TOKEN locally. Output is JSON from the read API.");
