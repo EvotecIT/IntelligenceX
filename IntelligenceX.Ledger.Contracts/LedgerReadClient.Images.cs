@@ -47,7 +47,14 @@ public sealed partial class LedgerReadClient {
         Directory.CreateDirectory(directory);
         var file = Path.Combine(directory, prefix + id + CoordinationImage.Extension(mediaType));
         if (!File.Exists(file) || Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(file, deadline.Token).ConfigureAwait(false))).ToLowerInvariant() != id)
-            await File.WriteAllBytesAsync(file, bytes, deadline.Token).ConfigureAwait(false);
+        {
+            // Written beside the target and renamed when complete, so a failed write never leaves a partial image under its name.
+            var partial = file + ".partial-" + Guid.NewGuid().ToString("N");
+            try {
+                await File.WriteAllBytesAsync(partial, bytes, deadline.Token).ConfigureAwait(false);
+                File.Move(partial, file, overwrite: true);
+            } finally { if (File.Exists(partial)) File.Delete(partial); }
+        }
         return file;
     }
 }
