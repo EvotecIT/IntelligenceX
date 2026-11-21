@@ -44,13 +44,20 @@ public static class CoordinationValidation {
             (p.Ask.CodexModel is null || Id(p.Ask.CodexModel)) && (p.Ask.CodexEffort is null or "low" or "medium" or "high" or "xhigh" or "max" or "ultra") &&
             Id(p.Ask.ClaudeDeliveryModel) && p.Ask.ClaudeSenderMode is "default" or "recipient" && Positive(p.Ask.DeliveryUnconfirmedMinutes) && Positive(p.Ask.UsageLimitProbeMinutes) &&
             p.Ask.UnreachableRetries is >= 0 and <= 16 && Positive(p.Ask.UnreachableRetryMinutes) &&
-            Positive(p.Ask.WakeExpiryHours) && p.Ask.WakeExpiryHours <= 24 * 30 && p.Ask.MaximumWakes is >= 1 and <= 1024, "invalid-ask-policy");
+            Positive(p.Ask.WakeExpiryHours) && p.Ask.WakeExpiryHours <= 24 * 30 && p.Ask.MaximumWakes is >= 1 and <= 1024 &&
+            p.Ask.Models is { Count: <= 64 } && p.Ask.Models.All(kind => Id(kind.Key) && kind.Value is { Count: <= 4 } &&
+                kind.Value.All(choice => choice.Key is "claude" or "codex" && choice.Value is not null &&
+                    (choice.Value.Model is null || Id(choice.Value.Model)) && Effort(choice.Value.Effort) &&
+                    (choice.Key == "codex" || choice.Value.Effort != "ultra"))), "invalid-ask-policy");
         Require(p.Priority is { Count: > 0 and <= 64 } && p.Priority.All(pair => Id(pair.Key) &&
             pair.Value is "low" or "normal" or "high"), "invalid-priority-policy");
     }
 
     private static bool Positive(double value) => double.IsFinite(value) && value > 0;
     private static bool Nonnegative(double value) => double.IsFinite(value) && value >= 0;
+
+    /// <summary>A reasoning effort both Codex and Claude accept, or none; "ultra" is Codex's alone.</summary>
+    internal static bool Effort(string? effort) => effort is null or "low" or "medium" or "high" or "xhigh" or "max" or "ultra";
 
     public static void Request(CoordinationRequest r, CoordinationPrincipal caller) {
         var c = r.Checkpoint;
@@ -69,6 +76,8 @@ public static class CoordinationValidation {
             (h.Images is null || h.Images.Length is > 0 and <= CoordinationImage.MaximumPerMessage && h.Images.All(CoordinationImage.ValidId)) &&
             (h.PullRequest is null || h.Output == "visual-review" && CoordinationAsk.PullRequestReference(h.PullRequest) == h.PullRequest) &&
             r.Kind is "help" or "review", "invalid-helper-options");
+        // "ultra" is Codex's alone; a request that might run on Claude cannot ask for it, however it was submitted.
+        Require(r.Helper?.Effort != "ultra" || r.RequiredProvider == "codex", "invalid-helper-options");
         Checkpoint(c);
         Require(caller.Projects.Contains(c!.Project, StringComparer.Ordinal), "project-not-authorized");
         Require(r.Dependencies is { Length: <= 64 } && r.Dependencies.All(Id) && !r.Dependencies.Contains(r.Id) &&

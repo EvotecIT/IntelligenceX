@@ -23,6 +23,18 @@ public sealed record AskPolicy {
     /// <summary>Codex model and reasoning effort for helper threads. Null uses the machine's Codex default.</summary>
     public string? CodexModel { get; set; }
     public string? CodexEffort { get; set; }
+    /// <summary>
+    /// Model and reasoning effort for helpers by kind of work and provider: <c>models[kind][provider]</c>. The kind is the
+    /// ask's routing kind, or "review" and "visual" for those outputs. An ask's own model and effort win; a missing entry or
+    /// value falls back to <see cref="CodexModel"/>/<see cref="CodexEffort"/> for Codex and the machine's CLI default.
+    /// Edit one value with a policy path such as <c>ask.models.review.claude.model</c>.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, AskModel>> Models { get; set; } = new(StringComparer.Ordinal) {
+        ["engine"] = new(StringComparer.Ordinal) { ["claude"] = new() { Model = "opus", Effort = "medium" }, ["codex"] = new() { Effort = "high" } },
+        ["review"] = new(StringComparer.Ordinal) { ["claude"] = new() { Model = "sonnet", Effort = "medium" }, ["codex"] = new() { Effort = "medium" } },
+        ["visual"] = new(StringComparer.Ordinal) { ["claude"] = new() { Model = "opus", Effort = "medium" } },
+        ["quick"] = new(StringComparer.Ordinal) { ["claude"] = new() { Model = "sonnet", Effort = "low" }, ["codex"] = new() { Effort = "low" } }
+    };
     /// <summary>Model for the one-shot <c>claude -p</c> that only sends a message with SendMessage.</summary>
     public string ClaudeDeliveryModel { get; set; } = "haiku";
     /// <summary>The permission mode of that one-shot sender. "default" keeps the Claude desktop app's hold on a message from a
@@ -51,8 +63,8 @@ public sealed record AskPolicy {
 /// asking session is reached when its provider addresses sessions by name: for Claude Code, the "name [ref]" that
 /// ListAgents shows for the session itself. Continues names an earlier Codex ask of the same requester whose helper
 /// conversation this one carries on from; it runs on the same machine. Continuing a Claude ask instead gives the new
-/// helper the earlier result (with its images) to work from. Model and Effort override the policy's Codex defaults for
-/// this ask. Output "review" asks for a structured review verdict instead of free text, and "visual-review" for a Claude
+/// helper the earlier result (with its images) to work from. Model and Effort override the model and effort the policy
+/// picks for the kind of work and the provider. Output "review" asks for a structured review verdict instead of free text, and "visual-review" for a Claude
 /// design verdict on screenshots or a running instance.</summary>
 public sealed record CoordinationAsk(string Id, string Task, string Project, string Branch, string Commit,
     string ReturnProvider, string ReturnSessionId, string? MachineId = null, string? Provider = null,
@@ -76,6 +88,12 @@ public sealed record CoordinationAsk(string Id, string Task, string Project, str
             @"^(?:https://github\.com/)?(?<owner>[A-Za-z0-9][A-Za-z0-9-]{0,38})/(?<name>[A-Za-z0-9._-]{1,100})(?:#|/pull/)(?<number>[1-9][0-9]{0,8})/?$");
         return match.Success ? match.Groups["owner"].Value + "/" + match.Groups["name"].Value + "#" + match.Groups["number"].Value : null;
     }
+}
+
+/// <summary>A model and reasoning effort for one kind of helper work; either may be left to the default.</summary>
+public sealed record AskModel {
+    public string? Model { get; set; }
+    public string? Effort { get; set; }
 }
 
 /// <summary>An image held by the Ledger: its id is the SHA-256 of its bytes, so the same picture always has the same id.

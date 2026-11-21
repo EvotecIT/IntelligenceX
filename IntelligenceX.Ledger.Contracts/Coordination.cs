@@ -15,7 +15,7 @@ public sealed record CoordinationPolicy(long Revision, MachineCapacity[] Machine
     public double RetainFinishedDays { get; set; } = 14;
     public Dictionary<string, string[]> Routing { get; set; } = new(StringComparer.Ordinal) {
         ["engine"] = ["claude", "codex"], ["visual"] = ["claude"],
-        ["ciLoop"] = ["codex"], ["mergeLoop"] = ["codex"], ["review"] = ["claude", "codex"]
+        ["ciLoop"] = ["codex"], ["mergeLoop"] = ["codex"], ["review"] = ["claude", "codex"], ["quick"] = ["claude", "codex"]
     };
     public Dictionary<string, string> Priority { get; set; } = new(StringComparer.Ordinal) {
         ["benchmark"] = "normal", ["build"] = "normal", ["test"] = "normal"

@@ -449,7 +449,8 @@ public sealed class CoordinationAskTests {
             engine.Ask(Ask("bad-effort") with { Effort = "extreme" }, Sessions)).Message);
         Assert.Equal("invalid-helper-options", Assert.Throws<CoordinationConflictException>(() =>
             engine.Ask(Ask("bad-output") with { Output = "essay" }, Sessions)).Message);
-        Assert.Null(engine.Ask(Ask("plain"), Sessions).Request.Helper);
+        // A plain ask carries the policy's choice for its kind and provider: engine work on Codex, at high effort.
+        Assert.Equal((null, "high"), (engine.Ask(Ask("plain"), Sessions).Request.Helper!.Model, state.Work["plain"].Request.Helper!.Effort));
         Assert.Equal("ultra", engine.Ask(Ask("ultra") with { Model = "gpt-6.1-sol", Effort = "ultra" }, Sessions).Request.Helper!.Effort);
 
         var request = state.Work["plain"].Request with { Id = "forged", Helper = new(ContinuesRequestId: "plain", ForkSessionId: "someone-else") };
@@ -458,10 +459,11 @@ public sealed class CoordinationAskTests {
 
 
     [Fact]
-    public void CodexOptionsRouteToCodexAndAFollowUpNeedsTheEarlierProject() {
+    public void AReviewRoutesToAnOfferedProviderAndAFollowUpNeedsTheEarlierProject() {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);
-        Assert.Equal("ask-options-require-codex", Assert.Throws<CoordinationConflictException>(() =>
+        // These machines offer only Codex, so a review that names Claude has nowhere to run.
+        Assert.Equal("ask-provider-unavailable", Assert.Throws<CoordinationConflictException>(() =>
             engine.Ask(Ask("claude-review") with { Provider = "claude", Output = "review" }, Sessions)).Message);
         Assert.Equal("codex", engine.Ask(Ask("routed-review") with { Output = "review" }, Sessions).Request.RequiredProvider);
 

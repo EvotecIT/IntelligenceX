@@ -28,12 +28,13 @@ internal sealed class ClaudeRunner {
     /// as it runs; <paramref name="accepted"/> runs once Claude has opened the session with the prompt (its init line), which
     /// a resume of a missing session never reaches. The process never outlives this call: any way out stops it and waits.</summary>
     public async Task<TurnOutcome> RunTurnAsync(string sessionId, bool resume, string workspace, string prompt, JsonObject schema,
-        string? model, TimeSpan limit, Func<int, DateTimeOffset, Task> launched, Func<Task> accepted, CancellationToken token) {
+        string? model, TimeSpan limit, Func<int, DateTimeOffset, Task> launched, Func<Task> accepted, CancellationToken token,
+        string? effort = null) {
         var start = new ProcessStartInfo(_executable) {
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
             UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = workspace
         };
-        foreach (var argument in Arguments(sessionId, resume, schema, model, _permissionMode)) start.ArgumentList.Add(argument);
+        foreach (var argument in Arguments(sessionId, resume, schema, model, _permissionMode, effort)) start.ArgumentList.Add(argument);
         var turnId = "claude-" + sessionId;
         Process process;
         try { process = Process.Start(start) ?? throw new InvalidOperationException("claude did not start."); }
@@ -107,7 +108,8 @@ internal sealed class ClaudeRunner {
         } catch (ArgumentException) { return true; } catch (InvalidOperationException) { return true; }
     }
 
-    internal static IEnumerable<string> Arguments(string sessionId, bool resume, JsonObject schema, string? model, string permissionMode) {
+    internal static IEnumerable<string> Arguments(string sessionId, bool resume, JsonObject schema, string? model, string permissionMode,
+        string? effort = null) {
         yield return "-p";
         yield return resume ? "--resume" : "--session-id";
         yield return sessionId;
@@ -119,6 +121,7 @@ internal sealed class ClaudeRunner {
         yield return "--permission-mode";
         yield return permissionMode;
         if (model is not null) { yield return "--model"; yield return model; }
+        if (effort is not null) { yield return "--effort"; yield return effort; }
     }
 
     /// <summary>The turn's outcome from its transcript: the result line's structured answer (or text) and its usage. Only

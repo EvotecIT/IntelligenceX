@@ -24,7 +24,9 @@ public sealed class AskTools(LedgerReadClient client) {
         "Codex: the CODEX_THREAD_ID environment variable of your shell commands. Claude Code: CLAUDE_CODE_SESSION_ID, and also " +
         "sessionAddress: this session's own name and ref exactly as ListAgents shows it (\"This session is <name> [<ref>]\"). " +
         "continues: the id of an earlier Codex ask of yours; the helper carries on from that conversation (a forked copy) on the same machine. " +
-        "model and effort (low, medium, high, xhigh, max, ultra; which a model accepts varies) override the Codex defaults for this ask. " +
+        "The Ledger policy picks a model and effort for each kind of work and provider (for example Sonnet for reviews, Opus for " +
+        "implementation and design reviews); model and effort (low, medium, high, xhigh, max; ultra is Codex only) override that " +
+        "choice for this ask, for Codex or Claude, such as model \"opus\" for a risky review. kind: engine (default), review, visual, quick. " +
         "output: \"review\" for a merge-gate review of the branch at the commit, returned as JSON with pass, verdict, failedChecks, findings and validation. " +
         "output: \"visual-review\" asks Claude for a design verdict (approve, changes or blocked, with findings) on the images you attach and, " +
         "where the task says how to reach it, the running product; name a machine that renders the target natively. " +
