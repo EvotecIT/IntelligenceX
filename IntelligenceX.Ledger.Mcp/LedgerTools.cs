@@ -21,7 +21,7 @@ public sealed class LedgerTools(LedgerReadClient client) {
     public Task<SessionTrail> SessionTrail(string id, CancellationToken cancellationToken = default) => client.SessionTrailAsync(id, cancellationToken);
 
     [McpServerTool(Name = "repo_activity", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Read current repository work grouped by checkout. The compact default includes full live identities, recent-session counts/titles, up to five shared filenames and total counts. Set details for all session rows, and recent24h for 24-hour history. Summary comes first.")]
+    [Description("Read current repository work grouped by checkout. The compact default includes full live identities, recent-session counts/titles, up to five shared filenames and total counts. Set details for all session rows, and recent24h for 24-hour history. Summary comes first. Checkouts lists every checkout and worktree of the repository on every scanned machine, with or without a session: branch, ahead/behind its upstream, uncommitted and untracked files, stashes and branches no remote contains. Each machine rescans every 15 minutes; checkoutScans says when, and a scanned machine with no row has no checkout. Use it to find unpushed work instead of asking another machine.")]
     public Task<RepositoryActivity> RepoActivity(string repo, CancellationToken cancellationToken = default, bool recent24h = false, bool details = false) => client.RepoActivityAsync(repo, cancellationToken, recent24h, details);
 
     [McpServerTool(Name = "overlap", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]

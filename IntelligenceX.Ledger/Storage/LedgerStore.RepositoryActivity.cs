@@ -108,7 +108,13 @@ public sealed partial class LedgerStore {
         if (worktrees.Any(worktree => worktree.FilesCapped)) coverage.Add("changed-files-capped");
         if (worktrees.Any(worktree => worktree.FilesCapped && worktree.FileCount is null)) coverage.Add("changed-file-count-unknown");
         if (worktrees.Any(worktree => worktree.PullRequestsKnown != true)) coverage.Add("pull-requests-unobserved");
-        var result = new RepositoryActivity(RepositoryOverlapEvaluator.Summary(worktrees), repo, worktrees, leases.ToArray(), coverage.ToArray());
+        // Scan freshness lives in checkoutScans and the summary, not in coverage: coverage gaps make overlap verdicts cautious,
+        // and a missing scan says nothing about the sessions those verdicts compare.
+        var (checkouts, scans) = await ReadCheckoutsAsync(db, repo, token);
+        var summary = RepositoryOverlapEvaluator.Summary(worktrees) + CheckoutSummary(checkouts, scans, now);
+        var result = new RepositoryActivity(summary, repo, worktrees, leases.ToArray(), coverage.ToArray()) {
+            Checkouts = scans.Length == 0 ? null : checkouts, CheckoutScans = scans.Length == 0 ? null : scans
+        };
         return details ? result : RepositoryActivityFormatting.Compact(result);
     }
 

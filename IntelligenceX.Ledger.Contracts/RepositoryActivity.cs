@@ -31,7 +31,38 @@ public sealed record RepositoryWorktree(string Machine, string? Worktree, string
     [JsonIgnore] public string[]? ComparisonFiles { get; init; }
     [JsonIgnore] public RepositorySession[]? ComparisonSessions { get; init; }
 }
-public sealed record RepositoryActivity(string Summary, string Repo, RepositoryWorktree[] Worktrees, Lease[] Leases, string[] Coverage);
+public sealed record RepositoryActivity(string Summary, string Repo, RepositoryWorktree[] Worktrees, Lease[] Leases, string[] Coverage) {
+    /// <summary>Every checkout of the repository found by each machine's periodic Git scan, with or without a session.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public RepositoryCheckout[]? Checkouts { get; init; }
+    /// <summary>When each machine last scanned. A machine listed here with no checkout row has no checkout of the repository.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public CheckoutScan[]? CheckoutScans { get; init; }
+}
+
+/// <summary>
+/// One checkout found by a machine's Git scan. Ahead and behind compare with the upstream as of the last fetch. Changed
+/// files ignore line-ending-only differences. Stashes and unpushed branches belong to the repository, so they are
+/// reported on its main checkout only. An unpushed branch has commits that no remote branch contains.
+/// </summary>
+public sealed record CheckoutObservation(string Repo, string Path, string State, bool Primary,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Branch = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Commit = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Upstream = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Ahead = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Behind = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ChangedFiles = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? UntrackedFiles = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Stashes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? UnpushedBranches = null);
+
+/// <summary>A machine's complete scan. It replaces that machine's previous scan as a whole.</summary>
+public sealed record CheckoutCensus(DateTimeOffset ObservedAtUtc, string[] Roots, CheckoutObservation[] Checkouts, bool Truncated = false);
+
+/// <summary>A checkout as repo_activity returns it.</summary>
+public sealed record RepositoryCheckout(string Machine, DateTimeOffset ObservedAtUtc, CheckoutObservation Checkout);
+
+/// <summary>When a machine last scanned its checkouts, and whether the scan stopped at its bound.</summary>
+public sealed record CheckoutScan(string Machine, DateTimeOffset ObservedAtUtc,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Truncated = false);
 public sealed record OverlapMatch(RepositoryWorktree Worktree, string[] Reasons, string[] SharedFiles, int SharedFileCount) {
     /// <summary>Exact branch evidence can belong to a recent session before the checkout changed branches.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string[]? MatchedBranches { get; init; }
