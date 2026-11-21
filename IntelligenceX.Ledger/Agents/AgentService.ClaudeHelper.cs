@@ -141,13 +141,13 @@ internal sealed partial class AgentService {
                 record = (record with { AnswerAttempt = null, AnswerPrompt = null, Phase = "turn" }).Save(_settings.StateDirectory);
             }
         }
-        var outcome = await _claudeHelper.RunTurnAsync(session, mayExist, record.Workspace, prompt, OutputSchema(work), null, limit,
-            Launched, Accepted, stop).ConfigureAwait(false);
+        var outcome = await _claudeHelper.RunTurnAsync(session, mayExist, record.Workspace, prompt, OutputSchema(work), work.Request.Helper?.Model, limit,
+            Launched, Accepted, stop, work.Request.Helper?.Effort).ConfigureAwait(false);
         if (outcome is { Status: "rejected", Error: ClaudeRunner.NoSession }) {
             // No earlier launch got as far as creating the session: start it now, with the task (and any answer given).
             outcome = await _claudeHelper.RunTurnAsync(session, false, record.Workspace,
                 answer is not null ? HelperPrompt(work, record.Workspace) + "\n\n" + answer : HelperPrompt(work, record.Workspace),
-                OutputSchema(work), null, limit, Launched, Accepted, stop).ConfigureAwait(false);
+                OutputSchema(work), work.Request.Helper?.Model, limit, Launched, Accepted, stop, work.Request.Helper?.Effort).ConfigureAwait(false);
         }
         if (record.AnswerAttempt is { } unsent) {
             // Claude never opened the session with the answer, so it didn't arrive: it goes back to pending, and the turn

@@ -43,8 +43,9 @@ public sealed partial class CoordinationEngine {
             work.Request.Checkpoint.Branch == ask.Branch && work.Request.Checkpoint.Commit == ask.Commit &&
             (ask.Provider is null || work.Request.RequiredProvider == ask.Provider) &&
             (ask.Capability is null || work.Request.Capability == ask.Capability) &&
-            work.Request.Helper?.ContinuesRequestId == ask.Continues && work.Request.Helper?.Model == ask.Model &&
-            work.Request.Helper?.Effort == ask.Effort && work.Request.Helper?.Output == ask.Output &&
+            // Model and effort the policy chose are recorded on the work, so a retry that left them out still matches.
+            work.Request.Helper?.ContinuesRequestId == ask.Continues && (ask.Model is null || work.Request.Helper?.Model == ask.Model) &&
+            (ask.Effort is null || work.Request.Helper?.Effort == ask.Effort) && work.Request.Helper?.Output == ask.Output &&
             (work.Request.Helper?.Images ?? []).SequenceEqual(ask.Images ?? [], StringComparer.Ordinal) &&
             work.Request.Helper?.PullRequest == pullRequest;
         if (state.Work.TryGetValue(ask.Id, out var existing) || archived?.RequestId == ask.Id && (existing = archived.Work) is not null) {
@@ -74,9 +75,7 @@ public sealed partial class CoordinationEngine {
             } else {
                 Require(previousResult is not null, "ask-continues-unavailable");
                 carried = previousResult;
-                // Codex-only options route to Codex here too, as they would for a new ask; otherwise the earlier provider.
-                var codexOptions = ask.Model is not null || ask.Effort is not null || ask.Output is not null && !visual;
-                ask = ask with { Provider = ask.Provider ?? (visual ? "claude" : codexOptions ? "codex" : prior.Provider),
+                ask = ask with { Provider = ask.Provider ?? (visual ? "claude" : prior.Provider),
                     Capability = ask.Capability ?? (ask.MachineId is null ? prior.Request.Capability : null) };
             }
         }
@@ -87,24 +86,29 @@ public sealed partial class CoordinationEngine {
         // The provider has to be one a machine with the capability (the named one, if any) may create.
         bool Offers(MachineCapacity m, string p) => m.Enabled && (machine is null || m.Id == machine.Id) &&
             m.Capabilities.Contains(capability!) && (m.AllowedCreateProviders ?? []).Contains(p, StringComparer.Ordinal);
-        // Model, effort, the review and text outputs and conversation forks are Codex helper options; they route to Codex
-        // only. A visual review is Claude's.
-        Require(!visual || ask.Provider is null or "claude" && ask.Model is null && ask.Effort is null, "ask-visual-review-requires-claude");
-        var codexOnly = ask.Model is not null || ask.Effort is not null || ask.Output is not null && !visual || forkSession is not null;
-        Require(!codexOnly || ask.Provider is null or "codex", "ask-options-require-codex");
-        var provider = visual ? "claude" : codexOnly ? "codex" : ask.Provider;
+        // A visual review is Claude's and a fork of a Codex conversation stays with Codex. Model, effort and the other outputs
+        // go with either provider.
+        Require(!visual || ask.Provider is null or "claude", "ask-visual-review-requires-claude");
+        Require(forkSession is null || ask.Provider is null or "codex", "ask-options-require-codex");
+        var provider = visual ? "claude" : forkSession is not null ? "codex" : ask.Provider;
+        // The kind picks the provider (when the ask names none) and the policy's model and effort for it.
+        var kind = ask.Kind ?? ask.Output switch { "review" => "review", "visual-review" => "visual", _ => state.Policy.Ask.DefaultKind };
         if (provider is null) {
-            Require(state.Policy.Routing.TryGetValue(ask.Kind ?? state.Policy.Ask.DefaultKind, out var route), "ask-kind-not-routed");
+            Require(state.Policy.Routing.TryGetValue(kind, out var route), "ask-kind-not-routed");
             provider = route.FirstOrDefault(p => state.Policy.Machines.Any(m => Offers(m, p)));
         }
         Require(provider is not null && state.Policy.Machines.Any(m => Offers(m, provider)), "ask-provider-unavailable");
+        Require(provider != "claude" || ask.Effort != "ultra", "ask-effort-unsupported");
+        var choice = state.Policy.Ask.Models.TryGetValue(kind, out var byProvider) && byProvider.TryGetValue(provider!, out var chosen) ? chosen : null;
+        var model = ask.Model ?? choice?.Model;
+        var effort = ask.Effort ?? choice?.Effort;
         var checkpoint = new WorkCheckpoint(ask.Project, ask.Branch, ask.Commit, null, AskOrigin, AskOrigin);
         var goalId = "ask-" + ask.Id;
         var request = new CoordinationRequest(ask.Id, goalId, "help", capability, ask.MachineId, null, new(AgentSlots: 1),
             checkpoint, [], 1, AskOrigin, provider, ReturnTo: new(returnWorker, caller.MachineId!, ask.ReturnProvider,
                 ask.ReturnSessionId, checkpoint) { Address = ask.ReturnAddress }, TaskBrief: ask.Task,
-            Helper: ask.Continues is null && ask.Model is null && ask.Effort is null && ask.Output is null && ask.Images is null ? null
-                : new(ask.Model, ask.Effort, ask.Output, ask.Continues, forkSession, ask.Images, carried, pullRequest));
+            Helper: ask.Continues is null && model is null && effort is null && ask.Output is null && ask.Images is null ? null
+                : new(model, effort, ask.Output, ask.Continues, forkSession, ask.Images, carried, pullRequest));
         Request(request, caller);
         Require(!state.Goals.ContainsKey(goalId), "ask-goal-conflict");
         Require(state.Work.Values.Count(w => w.State == "queued") < state.Policy.MaximumQueued, "queue-full");
