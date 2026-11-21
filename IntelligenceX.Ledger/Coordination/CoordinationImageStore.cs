@@ -11,8 +11,14 @@ namespace IntelligenceX.Ledger.Coordination;
 /// </summary>
 internal sealed class CoordinationImageStore(string root, long maximumBytes = 2L * 1024 * 1024 * 1024, int maximumFiles = 4096) {
     internal static readonly TimeSpan Retention = TimeSpan.FromDays(30);
+    // Uploads arrive concurrently; checking room, pruning and writing happen as one step so the bounds hold.
+    private readonly object _gate = new();
 
     internal CoordinationImage Put(byte[] bytes, DateTimeOffset now) {
+        lock (_gate) return PutLocked(bytes, now);
+    }
+
+    private CoordinationImage PutLocked(byte[] bytes, DateTimeOffset now) {
         CoordinationValidation.Require(bytes.Length is > 0 and <= CoordinationImage.MaximumBytes, "image-too-large");
         var mediaType = CoordinationImage.Sniff(bytes);
         CoordinationValidation.Require(mediaType is not null, "image-type-unsupported");
@@ -61,12 +67,17 @@ internal sealed class CoordinationImageStore(string root, long maximumBytes = 2L
         var files = new DirectoryInfo(root).EnumerateFiles().Where(f => !f.Name.StartsWith(".partial-", StringComparison.Ordinal))
             .OrderBy(f => f.LastWriteTimeUtc).ToList();
         long total = files.Sum(f => f.Length);
+        var kept = new List<FileInfo>();
         while ((total + incoming > maximumBytes || files.Count + 1 > maximumFiles) && files.Count > 0 &&
                now.UtcDateTime - files[0].LastWriteTimeUtc > Retention) {
-            total -= files[0].Length;
-            try { files[0].Delete(); } catch (IOException) { }
+            var oldest = files[0];
             files.RemoveAt(0);
+            // Only a file that is actually gone frees its room; one that can't be deleted still counts.
+            var length = oldest.Length;
+            try { oldest.Delete(); total -= length; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { kept.Add(oldest); }
         }
+        files.AddRange(kept);
         CoordinationValidation.Require(total + incoming <= maximumBytes && files.Count + 1 <= maximumFiles, "image-store-capacity");
     }
 

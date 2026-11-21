@@ -163,6 +163,27 @@ public sealed class CoordinationImageTests : IDisposable {
         });
     }
 
+    [Fact]
+    public void ABlockedReviewStaysWithinTheLimitEvenInEscapedText() {
+        var json = AgentService.VisualReviewWithoutVerdict(new string('ż', 6000), "session-1");
+        Assert.True(Encoding.UTF8.GetByteCount(json) <= 8192 - 1024);
+        Assert.NotNull(JsonNode.Parse(json)!["truncated"]);
+    }
+
+    [Fact]
+    public void AnExpiredImageThatCannotBeDeletedStillCounts() {
+        if (!OperatingSystem.IsWindows()) return; // Only Windows refuses to delete an open file.
+        var store = new CoordinationImageStore(_directory, maximumBytes: 2500, maximumFiles: 10);
+        var old = store.Put(Png(1000), Now.AddDays(-40));
+        store.Put(Png(1000, 2), Now);
+        using (File.Open(store.Find(old.Id)!.Value.Path, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.Equal("image-store-capacity", Assert.Throws<CoordinationConflictException>(() => store.Put(Png(1000, 3), Now)).Message);
+        Assert.True(store.Exists(old.Id));
+        // Once it can be deleted, it makes room as before.
+        store.Put(Png(1000, 3), Now);
+        Assert.False(store.Exists(old.Id));
+    }
+
     [Theory]
     [InlineData("EvotecIT/Marquee#12", "EvotecIT/Marquee#12")]
     [InlineData("https://github.com/EvotecIT/Marquee/pull/12", "EvotecIT/Marquee#12")]

@@ -10,11 +10,11 @@ public sealed partial class LedgerReadClient {
         if (bytes.Length is 0 or > CoordinationImage.MaximumBytes) throw new InvalidDataException("The image is empty or larger than 8 MB.");
         var mediaType = CoordinationImage.Sniff(bytes) ?? throw new InvalidDataException("Only PNG, JPEG, WebP and GIF images can be sent.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(60));
+        deadline.CancelAfter(TimeSpan.FromMinutes(2));
         using var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
         using var message = new HttpRequestMessage(HttpMethod.Post, "api/coordination/v1/images") { Content = content };
-        using var response = await _client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+        using var response = await _transfers.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             await ThrowCommandRejectionAsync(response, deadline.Token).ConfigureAwait(false);
         var image = await ReadResponseAsync(response, LedgerReadJson.Default.CoordinationImage, deadline.Token).ConfigureAwait(false);
@@ -27,8 +27,8 @@ public sealed partial class LedgerReadClient {
     public async Task<string> DownloadImageAsync(string id, string directory, CancellationToken token = default, string prefix = "") {
         if (!CoordinationImage.ValidId(id)) throw new ArgumentException("Not a Ledger image id.", nameof(id));
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(60));
-        using var response = await _client.GetAsync("api/coordination/v1/images/" + id, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
+        deadline.CancelAfter(TimeSpan.FromMinutes(2));
+        using var response = await _transfers.GetAsync("api/coordination/v1/images/" + id, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
             .ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) throw new FileNotFoundException("The Ledger has no image " + id + ".");
         response.EnsureSuccessStatusCode();

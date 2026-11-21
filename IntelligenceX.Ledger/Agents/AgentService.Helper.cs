@@ -321,11 +321,18 @@ internal sealed partial class AgentService {
     }
 
     /// <summary>A visual review that ended without a verdict still answers in its shape, as blocked, saying what happened.</summary>
-    internal static string VisualReviewWithoutVerdict(string text, string threadId, string source = "Claude session") => new JsonObject {
-        ["pass"] = false, ["verdict"] = "blocked", ["summary"] = Shorten(text, 3000), ["instanceReviewed"] = false,
-        ["checked"] = new JsonArray(), ["findings"] = new JsonArray(),
-        ["truncated"] = text.Length > 3000 ? "The full answer is in " + source + " " + threadId + "." : null
-    }.ToJsonString();
+    internal static string VisualReviewWithoutVerdict(string text, string threadId, string source = "Claude session") {
+        // Bounded by its serialized bytes: escaped non-ASCII text takes up to six bytes a character.
+        for (var budget = 4000; ; budget /= 2) {
+            var summary = TrimToBytes(text, budget);
+            var json = new JsonObject {
+                ["pass"] = false, ["verdict"] = "blocked", ["summary"] = summary, ["instanceReviewed"] = false,
+                ["checked"] = new JsonArray(), ["findings"] = new JsonArray(),
+                ["truncated"] = summary.Length < text.Length ? "The full answer is in " + source + " " + threadId + "." : null
+            }.ToJsonString();
+            if (Encoding.UTF8.GetByteCount(json) <= MaximumResultBytes - ImageReserve || budget < 16) return json;
+        }
+    }
 
     /// <summary>Bytes kept free in a structured result for the references to returned images.</summary>
     private const int ImageReserve = 1024;
@@ -393,7 +400,6 @@ internal sealed partial class AgentService {
             Directory.CreateDirectory(record.Workspace);
             var marker = Path.Combine(record.Workspace, ".ix-ledger-workspace.json");
             if (!File.Exists(marker)) LocalFiles.WriteAtomic(marker, JsonSerializer.Serialize(new { requestId = id, generation = work.Generation, grantId = grant }));
-            if (record.ResultRef is null) await FetchImagesAsync(work, record.Workspace, stop).ConfigureAwait(false);
             var claude = work.Provider == "claude";
             var receipt = new ExecutionReceipt(grant, work.Generation, _bootId, work.Provider + "-" + LocalFiles.Hash(id, work.Generation, grant)[..40]);
             if (record.ThreadId is null && claude) {
@@ -423,6 +429,8 @@ internal sealed partial class AgentService {
             using var renewal = CancellationTokenSource.CreateLinkedTokenSource(stop);
             var renewing = RenewAsync(id, receipt, run, renewal.Token);
             try {
+                // Images arrive while the grant is being renewed, so a slow download cannot let it lapse.
+                if (record.ResultRef is null) await FetchImagesAsync(work, record.Workspace, stop).ConfigureAwait(false);
                 if (record.ResultRef is null) record = claude
                     ? await ConverseClaudeAsync(work, record, receipt, stop).ConfigureAwait(false)
                     : await ConverseAsync(work, record, receipt, stop).ConfigureAwait(false);
@@ -610,7 +618,8 @@ internal sealed partial class AgentService {
             try {
                 await _ledger.DownloadImageAsync(image, folder, stop,
                     (index + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture) + "-").ConfigureAwait(false);
-            } catch (Exception error) when (error is FileNotFoundException or HttpRequestException or InvalidDataException or IOException) {
+            } catch (Exception error) when (error is FileNotFoundException or HttpRequestException or InvalidDataException or IOException ||
+                error is OperationCanceledException && !stop.IsCancellationRequested) {
                 Log("helper-image-unavailable", work.Request.Id + " " + image + " " + error.GetType().Name);
             }
         }
@@ -630,7 +639,8 @@ internal sealed partial class AgentService {
                 Log("helper-image-not-sent", work.Request.Id + " " + Path.GetFileName(file) + " " + error.GetType().Name);
             }
         }
-        return WithImages(content, references);
+        // A visual review that posts to a pull request keeps room for the outcome of that post.
+        return WithImages(content, references, IsVisualReview(work) && work.Request.Helper?.PullRequest is not null ? 512 : 0);
     }
 
     /// <summary>
@@ -665,10 +675,12 @@ internal sealed partial class AgentService {
             Log("helper-pr-comment", work.Request.Id + " " + url);
             return (record, WithNote(content, "pullRequestComment", url));
         }
-        if (exit == -1 && output.StartsWith("gh timed out", StringComparison.Ordinal)) {
-            // A timed-out gh may still have posted, so the attempt stays recorded and is never repeated.
+        if (exit == 0 || exit == -1 && output.StartsWith("gh timed out", StringComparison.Ordinal)) {
+            // gh that succeeded without printing the address, or timed out, may have posted, so the attempt stays recorded
+            // and is never repeated.
             Log("helper-pr-comment-uncertain", work.Request.Id + " " + pullRequest);
-            return (record, WithNote(content, "pullRequestComment", "uncertain: posting on " + pullRequest + " timed out; check the pull request"));
+            return (record, WithNote(content, "pullRequestComment", "uncertain: posting on " + pullRequest + (exit == 0 ? " returned no address" : " timed out") +
+                "; check the pull request"));
         }
         // gh said it failed, so nothing was posted that a retry could duplicate.
         record = (record with { PullRequestComment = null }).Save(_settings.StateDirectory);
@@ -708,8 +720,14 @@ internal sealed partial class AgentService {
 
     /// <summary>The image files a helper left to return, in name order, within the per-message limit.</summary>
     private static string[] OutputImages(string folder) => !Directory.Exists(folder) ? [] : Directory.GetFiles(folder)
-        .Where(file => new FileInfo(file).Length is > 0 and <= CoordinationImage.MaximumBytes && CoordinationImage.Sniff(Head(file)) is not null)
+        .Where(IsOutputImage)
         .Order(StringComparer.Ordinal).Take(CoordinationImage.MaximumPerMessage).ToArray();
+
+    // A file that can't be read is left out rather than failing the result.
+    private static bool IsOutputImage(string file) {
+        try { return new FileInfo(file).Length is > 0 and <= CoordinationImage.MaximumBytes && CoordinationImage.Sniff(Head(file)) is not null; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
 
     private static byte[] Head(string file) {
         using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -739,8 +757,9 @@ internal sealed partial class AgentService {
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true, WorkingDirectory = directory } };
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
         process.StartInfo.Environment["GH_PROMPT_DISABLED"] = "1";
+        var started = false;
         try {
-            process.Start();
+            started = process.Start();
             process.StandardInput.Close();
             var output = process.StandardOutput.ReadToEndAsync(deadline.Token);
             var error = process.StandardError.ReadToEndAsync(deadline.Token);
@@ -748,27 +767,29 @@ internal sealed partial class AgentService {
             return (process.ExitCode, await output.ConfigureAwait(false) + "\n" + await error.ConfigureAwait(false));
         } catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException ||
             error is OperationCanceledException && !stop.IsCancellationRequested) {
-            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
             return (-1, error is OperationCanceledException ? "gh timed out" : "gh could not be started: " + error.Message);
+        } finally {
+            // Also on the run being stopped: a gh left running could still post after the record says it did not.
+            try { if (started && !process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
         }
     }
 
     /// <summary>Adds image references to result content within the Ledger's 8 KB: an images list in a JSON result, an
     /// Images section after text. Text gives way to the references; a JSON result keeps as many references as fit.</summary>
-    internal static string WithImages(string content, IReadOnlyList<string> references) {
+    internal static string WithImages(string content, IReadOnlyList<string> references, int reserve = 0) {
         if (references.Count == 0) return content;
         try {
             if (JsonNode.Parse(content) is JsonObject json) {
                 for (var count = references.Count; count > 0; count--) {
                     json["images"] = new JsonArray(references.Take(count).Select(r => (JsonNode?)JsonValue.Create(r)).ToArray());
                     var serialized = json.ToJsonString();
-                    if (Encoding.UTF8.GetByteCount(serialized) <= MaximumResultBytes) return serialized;
+                    if (Encoding.UTF8.GetByteCount(serialized) <= MaximumResultBytes - reserve) return serialized;
                 }
                 return content;
             }
         } catch (JsonException) { }
         var section = "\n\nImages:\n" + string.Join("\n", references.Select(r => "- " + r));
-        return TrimToBytes(content, MaximumResultBytes - Encoding.UTF8.GetByteCount(section)) + section;
+        return TrimToBytes(content, MaximumResultBytes - reserve - Encoding.UTF8.GetByteCount(section)) + section;
     }
 
     private static string TrimToBytes(string text, int budget) {

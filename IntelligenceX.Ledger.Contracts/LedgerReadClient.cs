@@ -9,18 +9,27 @@ namespace IntelligenceX.Ledger.Contracts;
 public sealed partial class LedgerReadClient : IDisposable {
     private const int MaximumResponseBytes = 2 * 1024 * 1024;
     private readonly HttpClient _client;
+    // Image uploads and downloads move up to 8 MB, so they get their own client with a longer timeout; every other
+    // request keeps the short one.
+    private readonly HttpClient _transfers;
 
     /// <summary>Creates a reader for the explicitly configured local service.</summary>
     public LedgerReadClient(LedgerClientSettings settings) {
         settings.Validate();
+        _client = Create(settings, TimeSpan.FromSeconds(15));
+        _transfers = Create(settings, TimeSpan.FromMinutes(2));
+    }
+
+    private static HttpClient Create(LedgerClientSettings settings, TimeSpan timeout) {
         var handler = new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false };
         if (settings.CertificateSha256 is { } fingerprint) {
             var expected = Convert.FromHexString(fingerprint);
             handler.ServerCertificateCustomValidationCallback = (_, certificate, _, _) => certificate is not null &&
                 CryptographicOperations.FixedTimeEquals(SHA256.HashData(certificate.RawData), expected);
         }
-        _client = new HttpClient(handler) { BaseAddress = new Uri(settings.Endpoint), Timeout = TimeSpan.FromSeconds(15) };
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ReadToken);
+        var client = new HttpClient(handler) { BaseAddress = new Uri(settings.Endpoint), Timeout = timeout };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ReadToken);
+        return client;
     }
 
     /// <summary>Reads a current-work projection whose verdicts were evaluated by the service.</summary>
@@ -82,5 +91,8 @@ public sealed partial class LedgerReadClient : IDisposable {
     }
 
     /// <summary>Releases the owned transport.</summary>
-    public void Dispose() => _client.Dispose();
+    public void Dispose() {
+        _client.Dispose();
+        _transfers.Dispose();
+    }
 }

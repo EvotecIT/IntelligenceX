@@ -74,7 +74,9 @@ public sealed partial class CoordinationEngine {
             } else {
                 Require(previousResult is not null, "ask-continues-unavailable");
                 carried = previousResult;
-                ask = ask with { Provider = ask.Provider ?? (visual ? "claude" : prior.Provider),
+                // Codex-only options route to Codex here too, as they would for a new ask; otherwise the earlier provider.
+                var codexOptions = ask.Model is not null || ask.Effort is not null || ask.Output is not null && !visual;
+                ask = ask with { Provider = ask.Provider ?? (visual ? "claude" : codexOptions ? "codex" : prior.Provider),
                     Capability = ask.Capability ?? (ask.MachineId is null ? prior.Request.Capability : null) };
             }
         }

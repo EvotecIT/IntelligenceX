@@ -7,10 +7,14 @@ internal static partial class CoordinationEndpoints {
     private static void MapAsk(WebApplication app, CoordinationStore store, CoordinationArtifactStore artifacts, CoordinationImageStore images) {
         // Archived requests keep their ids: a retry gets the archived work back, a different ask with the id is rejected.
         app.MapPost(Prefix + "/ask", async (CoordinationAsk ask, HttpContext http, CancellationToken ct) => {
-            CoordinationValidation.Require(ask?.Images is null || ask.Images.Length <= CoordinationImage.MaximumPerMessage &&
+            CoordinationValidation.Require(ask is not null && CoordinationValidation.Id(ask.Id), "invalid-ask");
+            CoordinationValidation.Require(ask.Images is null || ask.Images.Length <= CoordinationImage.MaximumPerMessage &&
                 ask.Images.All(CoordinationImage.ValidId), "invalid-ask-images");
-            // Every image has to be here already, so the helper never starts with a picture it can't fetch.
-            CoordinationValidation.Require(ask!.Images is null || ask.Images.All(images.Exists), "ask-image-unknown");
+            // A new ask's images have to be here already, so its helper never starts with a picture it can't fetch. A retry of an
+            // ask the service already took returns that work even after its images have aged out.
+            var known = await store.ExecuteAsync((_, state) => state.Work.ContainsKey(ask.Id), DateTimeOffset.UtcNow, ct) ||
+                await store.ArchivedAsync(ask.Id, ct) is not null;
+            CoordinationValidation.Require(known || ask.Images is null || ask.Images.All(images.Exists), "ask-image-unknown");
             return Results.Ok(await store.AskAsync(ask, Caller(http), DateTimeOffset.UtcNow, ct,
                 ask.Continues is { } earlier ? await PreviousResultAsync(store, artifacts, earlier, Caller(http), ct) : null));
         });
