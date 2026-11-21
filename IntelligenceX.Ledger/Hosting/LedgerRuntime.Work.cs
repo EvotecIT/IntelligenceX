@@ -67,10 +67,10 @@ internal sealed partial class LedgerRuntime {
             } else if (LedgerRules.IsNormallyEnded(item)) {
                 if (item.Session is { Archived: not true, LastActivityAtUtc: { } activity } && activity >= openSince)
                     recentlyEnded.Add(item);
-            } else if (IsDormantSession(item, now)) {
-                dormant++;
             } else if (!LedgerRules.IsSessionCatalog(item) && IsCurrent(item, now)) {
-                regular.Add(item);
+                // Counted only when the session would otherwise be listed, so the count says how many rows it hid.
+                if (IsDormantSession(item, now)) dormant++;
+                else regular.Add(item);
             }
         }
         var candidates = regular.Concat(recentlyEnded).ToArray();
