@@ -150,6 +150,14 @@ internal sealed partial class AgentService {
             prompt.AppendLine().AppendLine("Images sent with this task are in " + inbound + ". Look at each of them before you start:");
             foreach (var picture in pictures.Order(StringComparer.Ordinal)) prompt.Append("- ").AppendLine(picture);
         }
+        // An image that could not be fetched is named, so the helper never judges as if it had seen it.
+        var present = Directory.Exists(inbound) ? Directory.GetFiles(inbound).Select(Path.GetFileName).OfType<string>().ToArray() : [];
+        var missing = (r.Helper?.Images ?? []).Concat(CoordinationImage.References(r.Helper?.PreviousResult)).Distinct(StringComparer.Ordinal)
+            .Where(id => !present.Any(name => name.Contains(id, StringComparison.Ordinal))).ToArray();
+        if (missing.Length > 0)
+            prompt.AppendLine().AppendLine("These images were sent but could not be fetched, so you have not seen them: " +
+                string.Join(", ", missing.Select(id => CoordinationImage.ReferencePrefix + id)) + ". Say so in your answer" +
+                (IsVisualReview(work) ? "; if you can't judge the design without them, give review.verdict \"blocked\"." : "."));
         if (r.Helper?.PreviousResult is { } previous)
             prompt.AppendLine().Append("This follows ask ").Append(r.Helper.ContinuesRequestId).AppendLine(". Its result was:")
                 .AppendLine(previous).AppendLine("Images that result names (ledger-image:<id>) are in " + inbound + " under the same id.");

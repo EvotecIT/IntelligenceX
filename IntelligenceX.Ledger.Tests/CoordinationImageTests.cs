@@ -121,7 +121,8 @@ public sealed class CoordinationImageTests : IDisposable {
             new("mac", 2, 1, 4, 4096, ["macos-shell"], AllowedCreateProviders: ["codex", "claude"]) ]) };
         var engine = new CoordinationEngine(state, Now);
         var image = new string('a', 64);
-        var work = engine.Ask(Ask("review") with { Output = "visual-review", Images = [image] }, Sessions);
+        var lost = new string('b', 64);
+        var work = engine.Ask(Ask("review") with { Output = "visual-review", Images = [image, lost] }, Sessions);
         var inbound = Path.Combine(_directory, AgentService.ImagesIn);
         Directory.CreateDirectory(inbound);
         File.WriteAllBytes(Path.Combine(inbound, "01-" + image + ".png"), Png(16));
@@ -132,6 +133,9 @@ public sealed class CoordinationImageTests : IDisposable {
         Assert.Contains("This is a visual review", prompt);
         Assert.DoesNotContain("Push anything worth keeping", prompt);
         Assert.DoesNotContain("which is the conversation above", prompt);
+        // The image that never arrived is named, and a visual reviewer is told to block rather than guess.
+        Assert.Contains("could not be fetched, so you have not seen them: ledger-image:" + lost, prompt);
+        Assert.DoesNotContain("ledger-image:" + image + ".", prompt);
     }
 
     [Fact]
