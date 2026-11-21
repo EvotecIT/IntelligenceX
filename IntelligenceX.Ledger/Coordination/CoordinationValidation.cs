@@ -61,8 +61,13 @@ public static class CoordinationValidation {
         Require(r.TaskBrief is null || !string.IsNullOrWhiteSpace(r.TaskBrief) &&
             Encoding.UTF8.GetByteCount(r.TaskBrief) <= 8192, "invalid-task-brief");
         Require(r.Helper is not { } h || (h.Model is null || Id(h.Model)) && h.Effort is null or "low" or "medium" or "high" or "xhigh" or "max" or "ultra" &&
-            h.Output is null or "text" or "review" && (h.ContinuesRequestId is null || Id(h.ContinuesRequestId)) &&
-            (h.ForkSessionId is null || Id(h.ForkSessionId)) && h.ContinuesRequestId is null == h.ForkSessionId is null &&
+            h.Output is null or "text" or "review" or "visual-review" && (h.ContinuesRequestId is null || Id(h.ContinuesRequestId)) &&
+            (h.ForkSessionId is null || Id(h.ForkSessionId)) &&
+            // A follow-up either forks the earlier conversation or carries the earlier result, never both, never neither.
+            (h.ContinuesRequestId is null ? h.ForkSessionId is null && h.PreviousResult is null : h.ForkSessionId is null != h.PreviousResult is null) &&
+            (h.PreviousResult is null || Encoding.UTF8.GetByteCount(h.PreviousResult) <= 8192) &&
+            (h.Images is null || h.Images.Length is > 0 and <= CoordinationImage.MaximumPerMessage && h.Images.All(CoordinationImage.ValidId)) &&
+            (h.PullRequest is null || h.Output == "visual-review" && CoordinationAsk.PullRequestReference(h.PullRequest) == h.PullRequest) &&
             r.Kind is "help" or "review", "invalid-helper-options");
         Checkpoint(c);
         Require(caller.Projects.Contains(c!.Project, StringComparer.Ordinal), "project-not-authorized");
