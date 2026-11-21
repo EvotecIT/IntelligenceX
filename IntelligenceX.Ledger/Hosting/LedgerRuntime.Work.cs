@@ -11,8 +11,16 @@ internal sealed partial class LedgerRuntime {
     private long _workRevision;
     private WorkSnapshot? _workSnapshot;
     private static readonly TimeSpan OpenLookback = TimeSpan.FromDays(7);
+    /// <summary>
+    /// A session with no sign of life for this long is history, not current work: its client ended without recording the
+    /// end of its last turn, or it was archived while a request still pointed at it. It leaves the current view (and the
+    /// stuck count) unless something still holds an active claim or an unresolved declaration on it, and stays readable
+    /// through its item. A session stopped at a usage limit stays longer, until the weekly limit has surely reset, so it
+    /// can still be resumed from the view.
+    /// </summary>
+    internal static readonly TimeSpan DormantAfter = TimeSpan.FromDays(3), DormantAfterUsageLimit = TimeSpan.FromDays(7);
     private sealed record WorkSnapshot(DateTimeOffset At, long Revision, LedgerItem[] Current, LedgerItem[] Open,
-        MachineRow[] Machines, int HistoricalDeliveries, WorkRelationships Relationships) {
+        MachineRow[] Machines, int HistoricalDeliveries, WorkRelationships Relationships, int DormantSessions = 0) {
         public long BuiltAtTicks { get; } = Environment.TickCount64;
     }
 
@@ -51,6 +59,7 @@ internal sealed partial class LedgerRuntime {
         var regular = new List<LedgerItem>();
         var recentlyEnded = new List<LedgerItem>();
         var historical = 0;
+        var dormant = 0;
         var openSince = now - OpenLookback;
         foreach (var item in items) {
             if (IsHistoricalDelivery(item, now)) {
@@ -58,6 +67,8 @@ internal sealed partial class LedgerRuntime {
             } else if (LedgerRules.IsNormallyEnded(item)) {
                 if (item.Session is { Archived: not true, LastActivityAtUtc: { } activity } && activity >= openSince)
                     recentlyEnded.Add(item);
+            } else if (IsDormantSession(item, now)) {
+                dormant++;
             } else if (!LedgerRules.IsSessionCatalog(item) && IsCurrent(item, now)) {
                 regular.Add(item);
             }
@@ -69,8 +80,10 @@ internal sealed partial class LedgerRuntime {
                 item is { Kind: "session", Session: { SourceSessionId: not null, StartedBySessionId: null } })
             .Select(item => (item.Provider, item.Session!.SourceSessionId!.Value.ToString())).ToArray(), token);
         var relationships = new WorkRelationships(items, asks, parents);
-        var activeHelpers = items.Select(item => (Item: item, Ask: relationships.Ask(item)))
-            .Where(row => row.Ask is { Finished: false }).Select(row => ApplyAskVerdict(row.Item, row.Ask!, now));
+        var helperRows = items.Select(item => (Item: item, Ask: relationships.Ask(item))).Where(row => row.Ask is { Finished: false }).ToArray();
+        // A helper session the loop didn't already count (one that ended normally) is counted here when it goes dormant.
+        dormant += helperRows.Count(row => IsDormantSession(row.Item, now) && LedgerRules.IsNormallyEnded(row.Item));
+        var activeHelpers = helperRows.Where(row => !IsDormantSession(row.Item, now)).Select(row => ApplyAskVerdict(row.Item, row.Ask!, now));
         var current = regular.Where(item => relationships.Ask(item) is null).Concat(activeHelpers);
         var open = recentlyEnded.Select(item => (Item: item, Ask: relationships.Ask(item)))
             .Where(row => row.Ask is null or { Finished: true })
@@ -78,7 +91,24 @@ internal sealed partial class LedgerRuntime {
         return new(now, revision, current.OrderBy(item => Priority(item.Current!.Value))
                 .ThenByDescending(item => item.Current!.LastProgressAtUtc).ThenBy(item => item.Id, StringComparer.Ordinal).ToArray(),
             open.OrderByDescending(item => item.Session!.LastActivityAtUtc).ThenBy(item => item.Id, StringComparer.Ordinal).ToArray(),
-            machines, historical, relationships);
+            machines, historical, relationships, dormant);
+    }
+
+    // Unresolved declarations of the current turn and candidate, the same ones that keep an item current.
+    private static bool HasCurrentDeclaration(LedgerItem item) =>
+        LedgerScope.CurrentDeclarations(item.Declarations.Values.Where(x =>
+            LedgerScope.Applies(x.Fact.Scope, item.Scope, item.Session?.TurnId ?? item.Scope?.TurnId) &&
+            (x.Fact.CandidateRef is null || item.CandidateRef is null || x.Fact.CandidateRef == item.CandidateRef)))
+            .Any(x => !x.Fact.Resolved);
+
+    internal static bool IsDormantSession(LedgerItem item, DateTimeOffset now) {
+        if (item.Kind != "session" || item.Work?.ActiveClaim == true || HasCurrentDeclaration(item)) return false;
+        var lastSign = new[] { item.Session?.LastActivityAtUtc, item.Session?.TurnEndedAtUtc, item.Session?.TurnStartedAtUtc }
+            .Concat(item.Deliveries.Values.Select(delivery => delivery.LastStageOrderAtUtc))
+            .Concat(item.Declarations.Values.Select(declaration => (DateTimeOffset?)declaration.Fact.RecordedAtUtc))
+            .Where(at => at is not null).DefaultIfEmpty(item.FirstObservedAtUtc).Max();
+        var limited = item.Session?.UsageLimit == true || item.Current?.ReasonCode == "usage-limit";
+        return lastSign < now - (limited ? DormantAfterUsageLimit : DormantAfter);
     }
 
     private static HashSet<(string Machine, string Provider, Guid Session)> SessionKeys(IEnumerable<LedgerItem> items) =>
@@ -107,6 +137,7 @@ internal sealed partial class LedgerRuntime {
             snapshot.Current.GroupBy(x => x.Current!.Value).ToDictionary(x => x.Key, x => x.Count()), rows,
             ["current-work:unfinished-turn-or-explicit-follow-up", "display-labels:explicit-local-catalog",
              "imported-delivery-history-older-than-24h:" + snapshot.HistoricalDeliveries,
+             "dormant-sessions-silent-over-3d:" + snapshot.DormantSessions,
              servedWhileRefreshing ? "work-view-cache:previous-view-while-refreshing" : "work-view-cache:max-age-10s"],
             selected.Length > limit || open.Length > limit) { OpenCount = includeOpen ? snapshot.Open.Length : null };
     }
