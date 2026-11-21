@@ -264,6 +264,31 @@ function Wait-RunningTurn {
     }
 }
 
+# The operator CLI (ix ledger policy, project, coordination) lives in coordination/client, where operators and the
+# status scripts look for it. It is refreshed from the installed version, so it never lags behind the service it talks
+# to. A copy that can't be replaced (a CLI still running) is kept with a warning; the next install tries again.
+function Update-OperatorClient([string]$Version) {
+    $source = Join-Path $Version 'tools/cli'
+    if (-not (Test-Path -LiteralPath $source)) { return }
+    $client = Join-Path $Root 'coordination/client'
+    $commit = Split-Path $Version -Leaf
+    $marker = Join-Path $client '.ledger-client-commit'
+    if ((Test-Path -LiteralPath $marker) -and (Get-Content -LiteralPath $marker -Raw).Trim() -eq $commit) { return }
+    $staging = "$client.partial"
+    $previous = "$client.previous"
+    try {
+        if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+        Copy-Item -LiteralPath $source -Destination $staging -Recurse
+        Set-Content -LiteralPath (Join-Path $staging '.ledger-client-commit') -Value $commit -NoNewline
+        if (Test-Path -LiteralPath $previous) { Remove-Item -LiteralPath $previous -Recurse -Force }
+        if (Test-Path -LiteralPath $client) { Move-Item -LiteralPath $client -Destination $previous }
+        Move-Item -LiteralPath $staging -Destination $client
+    } catch {
+        Write-Warning "Kept the existing operator CLI in ${client}: $($_.Exception.Message)"
+        if (-not (Test-Path -LiteralPath $client) -and (Test-Path -LiteralPath $previous)) { Move-Item -LiteralPath $previous -Destination $client }
+    }
+}
+
 function Switch-Version([string]$Version, [string]$Previous) {
     Wait-RunningTurn
     $result = Invoke-AgentInstall $Version -Change
@@ -272,6 +297,7 @@ function Switch-Version([string]$Version, [string]$Previous) {
     if ($restart) { Restart-Reporter }
     Start-Agent $Version
     Write-Receipt (Split-Path $Version -Leaf) $Previous
+    Update-OperatorClient $Version
     # Keep only the current and previous versions.
     Get-ChildItem -LiteralPath $Versions -Directory | Where-Object { $_.Name -notin @((Split-Path $Version -Leaf), $Previous) } |
         ForEach-Object {
@@ -322,6 +348,7 @@ switch ($Action) {
         }
         $null = Assert-Kit $version
         if ($current -eq $commit -and (Get-AgentProcess) -and @((Invoke-AgentInstall $version).steps).Count -eq 0) {
+            Update-OperatorClient $version
             [pscustomobject]@{ Installed = $commit; Previous = $recordedPrevious; Running = $true; Changed = $false }
             return
         }
