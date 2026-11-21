@@ -17,7 +17,19 @@ internal static class RepositoryActivityFormatting {
                 Files = largest.worktree.Files![..^1], FilesCapped = true
             };
         }
-        return result;
+        // Then checkout rows: clean, fully read worktrees go first, then clean main checkouts, then the rest from the end.
+        // The summary already names every checkout with pending or unread work.
+        var checkouts = result.Checkouts?.ToList();
+        var omitted = 0;
+        while (checkouts is { Count: > 0 } &&
+               JsonSerializer.SerializeToUtf8Bytes(result with { Checkouts = checkouts.ToArray() }, LedgerReadJson.Default.RepositoryActivity).Length > 3000) {
+            var index = checkouts.FindLastIndex(row => IsClean(row.Checkout) && !row.Checkout.Primary);
+            if (index < 0) index = checkouts.FindLastIndex(row => IsClean(row.Checkout));
+            if (index < 0) index = checkouts.Count - 1;
+            checkouts.RemoveAt(index);
+            omitted++;
+        }
+        return omitted == 0 ? result : result with { Checkouts = checkouts!.ToArray(), CheckoutsOmitted = omitted };
     }
 
     internal static RepositoryOverlap Compact(RepositoryOverlap overlap) => overlap with {
@@ -34,6 +46,10 @@ internal static class RepositoryActivityFormatting {
     };
 
     private static int? Positive(int? value) => value > 0 ? value : null;
+
+    private static bool IsClean(CheckoutObservation checkout) => checkout.State == "observed" && checkout.Ahead is null or 0 &&
+        checkout.ChangedFiles is null or 0 && checkout.UntrackedFiles is null or 0 && checkout.Stashes is null or 0 &&
+        checkout.UnpushedBranches is null or { Length: 0 };
 
     private static RepositoryWorktree CompactWorktree(RepositoryWorktree worktree) {
         var recent = worktree.Sessions.Where(session => !session.Live).ToArray();

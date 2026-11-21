@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using IntelligenceX.Ledger.Contracts;
+using IntelligenceX.Ledger.Storage;
 
 namespace IntelligenceX.Ledger.Reporting;
 
@@ -9,6 +10,8 @@ namespace IntelligenceX.Ledger.Reporting;
 /// </summary>
 internal static partial class CheckoutScanner {
     internal const int MaximumRoots = 16, MaximumRepositories = 400, MaximumCheckouts = 500, MaximumUnpushed = 20;
+    /// <summary>Well under the service's 1 MiB request limit, leaving room for the rest of the health report.</summary>
+    internal const int MaximumCensusBytes = 512 * 1024;
     internal static readonly TimeSpan Interval = TimeSpan.FromMinutes(15), Budget = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan GitTimeout = TimeSpan.FromSeconds(10);
 
@@ -38,32 +41,55 @@ internal static partial class CheckoutScanner {
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
         budget.CancelAfter(Budget);
         var checkouts = new List<CheckoutObservation>();
+        // An incomplete scan only adds to what the service knows; it never makes a missing checkout look gone.
         var truncated = false;
-        var repositories = roots.SelectMany(Children).Distinct(PathComparer).ToArray();
-        if (repositories.Length > MaximumRepositories) { truncated = true; repositories = repositories[..MaximumRepositories]; }
-        foreach (var repository in repositories) {
-            if (budget.IsCancellationRequested || checkouts.Count >= MaximumCheckouts) { truncated = true; break; }
-            try { checkouts.AddRange(await RepositoryAsync(repository, budget.Token)); }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested) { truncated = true; break; }
+        var repositories = new List<string>();
+        foreach (var root in roots) {
+            if (Children(root) is { } children) repositories.AddRange(children);
+            else truncated = true;
         }
-        if (checkouts.Count > MaximumCheckouts) { truncated = true; checkouts = checkouts[..MaximumCheckouts]; }
-        return new(now, roots, checkouts.ToArray(), truncated);
+        var unique = repositories.Distinct(PathComparer).ToArray();
+        if (unique.Length > MaximumRepositories) { truncated = true; unique = unique[..MaximumRepositories]; }
+        foreach (var repository in unique) {
+            if (budget.IsCancellationRequested || checkouts.Count >= MaximumCheckouts) { truncated = true; break; }
+            try {
+                var (rows, complete) = await RepositoryAsync(repository, budget.Token);
+                checkouts.AddRange(rows);
+                truncated |= !complete;
+            } catch (OperationCanceledException) when (!token.IsCancellationRequested) { truncated = true; break; }
+        }
+        // A row the service would refuse would make it refuse the whole health report, so leave such rows out here.
+        var valid = checkouts.Where(LedgerStore.ValidCheckout).Take(MaximumCheckouts).ToList();
+        truncated |= valid.Count != checkouts.Count;
+        var census = new CheckoutCensus(now, roots, valid.ToArray(), truncated);
+        while (System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(census, LedgerJson.Options).Length > MaximumCensusBytes && census.Checkouts.Length > 0)
+            census = census with { Checkouts = census.Checkouts[..(census.Checkouts.Length * 3 / 4)], Truncated = true };
+        return census;
     }
 
-    private static IEnumerable<string> Children(string root) {
+    /// <summary>Repositories directly under a root, or null when the root could not be read.</summary>
+    private static string[]? Children(string root) {
         try {
             return Directory.EnumerateDirectories(root).Where(child => Directory.Exists(Path.Combine(child, ".git")))
                 .Order(StringComparer.OrdinalIgnoreCase).ToArray();
-        } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return []; }
+        } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
     }
 
-    private static async Task<CheckoutObservation[]> RepositoryAsync(string main, CancellationToken token) {
-        if (RepoFromRemote((await GitAsync(main, ["remote", "get-url", "origin"], token))?.Trim()) is not { } repo) return [];
+    /// <summary>The repository's checkouts, and whether every Git read needed to decide its membership succeeded.</summary>
+    private static async Task<(CheckoutObservation[] Rows, bool Complete)> RepositoryAsync(string main, CancellationToken token) {
+        var remotes = await GitAsync(main, ["remote"], token);
+        if (remotes is null) return ([], false);
+        // No origin is a fact, not a failure: such repositories are not listed.
+        if (!remotes.Split('\n', StringSplitOptions.TrimEntries).Contains("origin", StringComparer.Ordinal)) return ([], true);
+        var url = await GitAsync(main, ["remote", "get-url", "origin"], token);
+        if (url is null) return ([], false);
+        if (RepoFromRemote(url.Trim()) is not { } repo) return ([], true);
         var list = await GitAsync(main, ["worktree", "list", "--porcelain"], token);
-        if (list is null) return [new(repo, main, "git-unavailable", true)];
-        var unpushed = Unpushed(await GitAsync(main, ["log", "--branches", "--not", "--remotes", "--simplify-by-decoration",
-            "--decorate-refs=refs/heads/", "--format=%D", "-n", "200"], token));
+        if (list is null) return ([new(repo, main, "git-unavailable", true)], true);
+        var log = await GitAsync(main, ["log", "--branches", "--not", "--remotes", "--simplify-by-decoration",
+            "--decorate-refs=refs/heads/", "--format=%D", "-n", "200"], token);
         var stash = await GitAsync(main, ["stash", "list", "--format=%gd"], token);
+        var unpushed = log is null ? null : Unpushed(log);
         var stashes = stash?.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
         var result = new List<CheckoutObservation>();
         foreach (var (entry, index) in Worktrees(list).Select((entry, index) => (entry, index))) {
@@ -71,37 +97,48 @@ internal static partial class CheckoutScanner {
             var observation = entry.Prunable || !Directory.Exists(entry.Path)
                 ? new CheckoutObservation(repo, entry.Path, "missing", primary, entry.Branch, entry.Commit)
                 : await CheckoutAsync(repo, entry.Path, primary, entry.Branch, entry.Commit, token);
-            if (primary) observation = observation with { Stashes = stashes, UnpushedBranches = unpushed };
+            if (primary) observation = RepositoryFacts(observation, unpushed, stashes);
             result.Add(observation);
         }
         // A main checkout always lists itself first; keep the repository facts even if that line could not be read.
-        if (!result.Any(r => r.Primary)) result.Insert(0, new(repo, main, "git-unavailable", true) { Stashes = stashes, UnpushedBranches = unpushed });
-        return result.ToArray();
+        if (!result.Any(r => r.Primary)) result.Insert(0, RepositoryFacts(new(repo, main, "git-unavailable", true), unpushed, stashes));
+        return (result.ToArray(), true);
     }
 
+    // Repository-wide facts that could not be read leave the main checkout partial rather than looking clean.
+    private static CheckoutObservation RepositoryFacts(CheckoutObservation row, string[]? unpushed, int? stashes) => row with {
+        UnpushedBranches = unpushed, Stashes = stashes,
+        State = row.State == "observed" && (unpushed is null || stashes is null) ? "partial" : row.State
+    };
+
     private static async Task<CheckoutObservation> CheckoutAsync(string repo, string path, bool primary, string? branch, string? commit, CancellationToken token) {
-        var status = await GitAsync(path, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=normal"], token);
+        var status = await GitAsync(path, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"], token);
         if (status is null) return new(repo, path, "git-unavailable", primary, branch, commit);
         string? upstream = null;
         int? ahead = null, behind = null;
         int tracked = 0, untracked = 0;
-        foreach (var line in status.Split('\0', StringSplitOptions.RemoveEmptyEntries)) {
+        var records = status.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < records.Length; i++) {
+            var line = records[i];
             if (line.StartsWith("# branch.upstream ", StringComparison.Ordinal)) upstream = line[18..];
             else if (line.StartsWith("# branch.ab ", StringComparison.Ordinal) && AheadBehind().Match(line) is { Success: true } match) {
                 ahead = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
                 behind = int.Parse(match.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
             } else if (line.StartsWith("? ", StringComparison.Ordinal)) untracked++;
-            else if (line.Length > 2 && line[1] == ' ' && line[0] is '1' or '2' or 'u') tracked++;
+            else if (line.StartsWith("1 ", StringComparison.Ordinal) || line.StartsWith("u ", StringComparison.Ordinal)) tracked++;
+            // A rename or copy record is followed by its original path as a separate record.
+            else if (line.StartsWith("2 ", StringComparison.Ordinal)) { tracked++; i++; }
         }
-        var changed = 0;
+        int changed = 0;
+        var state = "observed";
         // Status counts files whose only change is line endings. Ask diff, which can ignore them, before reporting any.
         if (tracked > 0) {
             var names = await GitAsync(path, ["diff", "--no-ext-diff", "--name-only", "--ignore-cr-at-eol", "HEAD", "--"], token);
-            changed = names?.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length ?? tracked;
+            if (names is null) { changed = tracked; state = "partial"; }
+            else changed = names.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
         }
-        return new(repo, path, "observed", primary, branch, commit, upstream, ahead, behind, changed, untracked);
+        return new(repo, path, state, primary, branch, commit, upstream, ahead, behind, changed, untracked);
     }
-
     internal sealed record WorktreeEntry(string Path, string? Commit, string? Branch, bool Prunable);
 
     /// <summary>Parses <c>git worktree list --porcelain</c>. Git lists the main checkout first.</summary>
@@ -120,8 +157,7 @@ internal static partial class CheckoutScanner {
         }
     }
 
-    internal static string[] Unpushed(string? decorations) {
-        if (decorations is null) return [];
+    internal static string[] Unpushed(string decorations) {
         return decorations.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .SelectMany(line => line.Split(", ", StringSplitOptions.RemoveEmptyEntries))
             .Select(name => name.StartsWith("HEAD -> ", StringComparison.Ordinal) ? name[8..] : name.Trim())
@@ -138,9 +174,10 @@ internal static partial class CheckoutScanner {
         else return null;
         var parts = path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2) return null;
-        var name = parts[^1].EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? parts[^1][..^4] : parts[^1];
-        var repo = parts[^2] + "/" + name;
-        return RepositoryOverlapEvaluator.NormalizeRepo(host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ? repo : host + "/" + repo);
+        if (parts[^1].EndsWith(".git", StringComparison.OrdinalIgnoreCase)) parts[^1] = parts[^1][..^4];
+        var repo = string.Join('/', parts);
+        // GitHub repositories are owner/name, as sessions report them. Other hosts keep every namespace level.
+        return RepositoryOverlapEvaluator.NormalizeRepo(host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ? parts[0] + "/" + parts[1] : host + "/" + repo);
     }
 
     private static Task<string?> GitAsync(string directory, string[] arguments, CancellationToken token) =>

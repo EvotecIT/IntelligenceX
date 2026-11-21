@@ -36,6 +36,8 @@ public sealed record RepositoryActivity(string Summary, string Repo, RepositoryW
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public RepositoryCheckout[]? Checkouts { get; init; }
     /// <summary>When each machine last scanned. A machine listed here with no checkout row has no checkout of the repository.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public CheckoutScan[]? CheckoutScans { get; init; }
+    /// <summary>Checkout rows left out of the compact answer to keep it small, clean ones first. Details returns them all.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? CheckoutsOmitted { get; init; }
 }
 
 /// <summary>

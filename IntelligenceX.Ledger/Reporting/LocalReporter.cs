@@ -191,6 +191,7 @@ public static class LocalReporter {
             }
         }
         CheckoutCensus? pendingCensus = null;
+        var censusAttempts = 0;
         var usageTurn = 0;
         var authCollector = new AuthStateCollector(AuthPaths.ForReporter(file));
         async Task UploadLoop() {
@@ -205,8 +206,13 @@ public static class LocalReporter {
                 }
                 var census = Interlocked.Exchange(ref pendingCensus, null);
                 var receipt = await DeliverAsync(client, spool, Event("machine", "machine", coverage: Volatile.Read(ref coverage)), stop.Token, changes, machineFacts, usage, auth, census);
-                // An undelivered scan waits for the next report unless a newer scan has replaced it.
-                if (receipt is null && census is not null) Interlocked.CompareExchange(ref pendingCensus, census, null);
+                // An undelivered scan waits for the next report unless a newer scan has replaced it. It gets two more tries:
+                // if the service keeps refusing it, the scan must not hold back every later health report.
+                if (census is not null) {
+                    if (receipt is not null) censusAttempts = 0;
+                    else if (++censusAttempts <= 2) Interlocked.CompareExchange(ref pendingCensus, census, null);
+                    else censusAttempts = 0;
+                }
                 if (receipt is { Ok: true, PolicyRevision: > 0, Session: not null }) Volatile.Write(ref lifecyclePolicy, receipt.Session);
             } while (await heartbeatTimer.WaitForNextTickAsync(stop.Token));
         }

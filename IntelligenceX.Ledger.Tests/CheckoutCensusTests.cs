@@ -32,6 +32,9 @@ public sealed class CheckoutCensusTests : IDisposable {
         await CommitAsync(worktree, "Synthetic local work");
         await File.WriteAllTextAsync(Path.Combine(worktree, "work.cs"), "synthetic change");
         await File.WriteAllTextAsync(Path.Combine(worktree, "new.cs"), "synthetic");
+        // A new folder counts its files, not itself.
+        Directory.CreateDirectory(Path.Combine(worktree, "added"));
+        foreach (var name in new[] { "a.cs", "b.cs" }) await File.WriteAllTextAsync(Path.Combine(worktree, "added", name), "synthetic");
 
         await File.WriteAllTextAsync(Path.Combine(main, "stashed.txt"), "synthetic");
         await GitAsync(main, "stash", "push", "--include-untracked", "-m", "synthetic");
@@ -48,7 +51,7 @@ public sealed class CheckoutCensusTests : IDisposable {
         Assert.Equal(["feature/local"], primary.UnpushedBranches!);
         var feature = census.Checkouts[1];
         Assert.False(feature.Primary);
-        Assert.Equal(("feature/local", 1, 1), (feature.Branch, feature.ChangedFiles, feature.UntrackedFiles));
+        Assert.Equal(("observed", "feature/local", 1, 3), (feature.State, feature.Branch, feature.ChangedFiles, feature.UntrackedFiles));
         Assert.Null(feature.UnpushedBranches);
         Assert.Null(feature.Upstream);
     }
@@ -58,6 +61,7 @@ public sealed class CheckoutCensusTests : IDisposable {
     [InlineData("git@github.com:Synthetic/Repository.git", "synthetic/repository")]
     [InlineData("ssh://git@github.com/Synthetic/Repository", "synthetic/repository")]
     [InlineData("https://example.test/group/Repository.git", "example.test/group/repository")]
+    [InlineData("git@example.test:team-a/shared/Repository.git", "example.test/team-a/shared/repository")]
     [InlineData("C:\\synthetic\\origin.git", null)]
     [InlineData("/synthetic/origin.git", null)]
     public void RemoteNamesTheRepositoryAndLocalPathsAreSkipped(string url, string? expected) =>
@@ -86,6 +90,48 @@ public sealed class CheckoutCensusTests : IDisposable {
         Assert.Contains("win-pc feature (2 changed)", activity.Summary);
         // The compact answer leaves out zero counts.
         Assert.Null(activity.Checkouts[0].Checkout.ChangedFiles);
+    }
+
+    [Fact]
+    public async Task IncompleteScansAndOtherReportersNeverEraseCheckouts() {
+        using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
+        await store.InitializeAsync();
+        var row = new CheckoutObservation(Repo, "/repos/repository", "observed", true, "main", UnpushedBranches: [], Stashes: 0, ChangedFiles: 0);
+        var other = row with { Repo = "synthetic/other", Path = "/repos/other" };
+        await store.UpdateReporterHealthAsync(Health("mac", Now, new(Now, ["/repos"], [row, other])), now: Now);
+        // A second reporter on the same machine scanning another folder adds to the first one's rows.
+        await store.UpdateReporterHealthAsync(new ReporterHealth("mac", "reporter-second", "synthetic", Now, []) {
+            Checkouts = new(Now, ["/elsewhere"], [row with { Path = "/elsewhere/repository", Primary = false, State = "partial" }]) }, now: Now);
+        // A later scan that could not read everything reports only the other repository; this one must stay.
+        await store.UpdateReporterHealthAsync(Health("mac", Now.AddMinutes(15), new(Now.AddMinutes(15), ["/repos"], [other], Truncated: true)), now: Now);
+
+        var activity = await store.RepositoryActivityAsync(Repo, Now.AddMinutes(15), details: true);
+
+        var checkouts = Assert.IsType<RepositoryCheckout[]>(activity.Checkouts);
+        Assert.Equal(["/repos/repository", "/elsewhere/repository"], checkouts.Select(c => c.Checkout.Path));
+        Assert.Equal(Now, checkouts[0].ObservedAtUtc);
+        var scan = Assert.Single(activity.CheckoutScans!);
+        Assert.True(scan.Truncated);
+        Assert.Contains("Not fully read: mac repository (partial).", activity.Summary);
+        Assert.DoesNotContain("Nothing unpushed", activity.Summary);
+        Assert.Contains("Scan old or incomplete on mac.", activity.Summary);
+    }
+
+    [Fact]
+    public async Task CompactAnswerDropsCleanCheckoutsFirstAndSaysHowMany() {
+        using var store = new LedgerStore(Path.Combine(_directory, "ledger.sqlite"), new(new()));
+        await store.InitializeAsync();
+        var main = new CheckoutObservation(Repo, "/repos/repository", "observed", true, "main", UnpushedBranches: ["feature/kept"], Stashes: 0, ChangedFiles: 0);
+        var clean = Enumerable.Range(0, 40).Select(i => main with {
+            Path = "/worktrees/a-fairly-long-synthetic-worktree-folder-name-" + i, Primary = false, Branch = "feature/clean-" + i, UnpushedBranches = null, Stashes = null });
+        await store.UpdateReporterHealthAsync(Health("mac", Now, new(Now, ["/repos"], [main, .. clean])), now: Now);
+
+        var compact = await store.RepositoryActivityAsync(Repo, Now);
+
+        Assert.True(compact.CheckoutsOmitted > 0);
+        Assert.Equal(41, compact.Checkouts!.Length + compact.CheckoutsOmitted);
+        Assert.Contains(compact.Checkouts, row => row.Checkout.UnpushedBranches is ["feature/kept"]);
+        Assert.InRange(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(compact, LedgerReadJson.Default.RepositoryActivity).Length, 1, 3000);
     }
 
     [Fact]
