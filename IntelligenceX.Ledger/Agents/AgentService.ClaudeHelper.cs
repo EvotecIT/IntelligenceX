@@ -70,7 +70,7 @@ internal sealed partial class AgentService {
                 }
             }
             // A review is judged by its structured verdict, which the schema allows next to an empty text.
-            if (outcome.Status == "completed" && kind == "result" && IsReview(work) && ReviewResult(outcome.FinalText, session, ClaudeSource) is { } review)
+            if (outcome.Status == "completed" && kind == "result" && StructuredResult(work, outcome.FinalText, session, ClaudeSource) is { } review)
                 return await PublishAsync(work, record with { LastTurn = null }, review, succeeded: true, stop).ConfigureAwait(false);
             if (outcome.Status == "completed" && kind == "result" && !string.IsNullOrWhiteSpace(text))
                 return await PublishAsync(work, record with { LastTurn = null }, TextResult(work, text, session, ClaudeSource), succeeded: true, stop).ConfigureAwait(false);

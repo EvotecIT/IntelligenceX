@@ -50,8 +50,10 @@ public sealed record AskPolicy {
 /// Source fields describe the asker's repository; the helper works in its own empty workspace. ReturnAddress is how the
 /// asking session is reached when its provider addresses sessions by name: for Claude Code, the "name [ref]" that
 /// ListAgents shows for the session itself. Continues names an earlier Codex ask of the same requester whose helper
-/// conversation this one carries on from; it runs on the same machine. Model and Effort override the policy's Codex
-/// defaults for this ask. Output "review" asks for a structured review verdict instead of free text.</summary>
+/// conversation this one carries on from; it runs on the same machine. Continuing a Claude ask instead gives the new
+/// helper the earlier result (with its images) to work from. Model and Effort override the policy's Codex defaults for
+/// this ask. Output "review" asks for a structured review verdict instead of free text, and "visual-review" for a Claude
+/// design verdict on screenshots or a running instance.</summary>
 public sealed record CoordinationAsk(string Id, string Task, string Project, string Branch, string Commit,
     string ReturnProvider, string ReturnSessionId, string? MachineId = null, string? Provider = null,
     string? Kind = null, string? Capability = null, string? ReturnAddress = null, string? Continues = null,
@@ -59,13 +61,54 @@ public sealed record CoordinationAsk(string Id, string Task, string Project, str
     /// <summary>Optional short title visible to Ledger work readers.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? DisplayTitle { get; init; }
+    /// <summary>Ids of images already uploaded to the Ledger (screenshots, mock-ups) that the helper gets as local files.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? Images { get; init; }
+}
+
+/// <summary>An image held by the Ledger: its id is the SHA-256 of its bytes, so the same picture always has the same id.
+/// Results refer to it as <c>ledger-image:&lt;id&gt;</c>.</summary>
+public sealed record CoordinationImage(string Id, string MediaType, long Bytes) {
+    public const string ReferencePrefix = "ledger-image:";
+    /// <summary>Largest image the Ledger accepts, and the most images one ask or result carries.</summary>
+    public const int MaximumBytes = 8 * 1024 * 1024, MaximumPerMessage = 8;
+
+    /// <summary>A 64-character lowercase SHA-256 hex id.</summary>
+    public static bool ValidId(string? id) => id is { Length: 64 } && id.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    /// <summary>Every <c>ledger-image:</c> id mentioned in a text, in order and without repeats.</summary>
+    public static string[] References(string? text) {
+        if (string.IsNullOrEmpty(text)) return [];
+        var found = new List<string>();
+        for (var at = text.IndexOf(ReferencePrefix, StringComparison.Ordinal); at >= 0;
+             at = text.IndexOf(ReferencePrefix, at + ReferencePrefix.Length, StringComparison.Ordinal)) {
+            var start = at + ReferencePrefix.Length;
+            if (start + 64 <= text.Length && text.Substring(start, 64) is var id && ValidId(id) && !found.Contains(id)) found.Add(id);
+        }
+        return found.ToArray();
+    }
+
+    /// <summary>Media type from the file's first bytes: PNG, JPEG, WebP or GIF. Anything else is not an image the Ledger keeps.</summary>
+    public static string? Sniff(ReadOnlySpan<byte> bytes) =>
+        bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "image/png" :
+        bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF ? "image/jpeg" :
+        bytes.Length >= 12 && bytes[..4].SequenceEqual("RIFF"u8) && bytes[8..12].SequenceEqual("WEBP"u8) ? "image/webp" :
+        bytes.Length >= 6 && (bytes[..6].SequenceEqual("GIF87a"u8) || bytes[..6].SequenceEqual("GIF89a"u8)) ? "image/gif" : null;
+
+    /// <summary>File extension for a media type the Ledger keeps.</summary>
+    public static string Extension(string mediaType) => mediaType switch {
+        "image/png" => ".png", "image/jpeg" => ".jpg", "image/webp" => ".webp", "image/gif" => ".gif",
+        _ => throw new ArgumentOutOfRangeException(nameof(mediaType))
+    };
 }
 
 /// <summary>How a help request's helper runs. Model and Effort override the policy's defaults. Output is "text" (the
 /// default) or "review" (a structured verdict with findings and checks). ForkSessionId is the earlier helper session
 /// whose conversation a follow-up continues in a forked copy, and ContinuesRequestId the request that ran it.</summary>
 public sealed record CoordinationHelperOptions(string? Model = null, string? Effort = null, string? Output = null,
-    string? ContinuesRequestId = null, string? ForkSessionId = null);
+    string? ContinuesRequestId = null, string? ForkSessionId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? Images = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousResult = null);
 
 /// <summary>A question from a helper or a notice from the service to the requester. Notices need no answer.
 /// State is asked, answered, expired or resumed; Delivery carries the requester-side send, AnswerDelivery the

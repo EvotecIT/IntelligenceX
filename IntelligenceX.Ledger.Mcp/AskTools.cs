@@ -25,20 +25,62 @@ public sealed class AskTools(LedgerReadClient client) {
         "sessionAddress: this session's own name and ref exactly as ListAgents shows it (\"This session is <name> [<ref>]\"). " +
         "continues: the id of an earlier Codex ask of yours; the helper carries on from that conversation (a forked copy) on the same machine. " +
         "model and effort (low, medium, high, xhigh, max, ultra; which a model accepts varies) override the Codex defaults for this ask. " +
-        "output: \"review\" for a merge-gate review of the branch at the commit, returned as JSON with pass, verdict, failedChecks, findings and validation.")]
-    public Task<CoordinationWork> Ask(string task, string? machine = null, string? provider = null, string? kind = null,
+        "output: \"review\" for a merge-gate review of the branch at the commit, returned as JSON with pass, verdict, failedChecks, findings and validation. " +
+        "output: \"visual-review\" asks Claude for a design verdict (approve, changes or blocked, with findings) on the images you attach and, " +
+        "where the task says how to reach it, the running product; name a machine that renders the target natively. " +
+        "images: up to 8 local PNG, JPEG, WebP or GIF files (screenshots, mock-ups), uploaded first; the helper gets them as files. " +
+        "A result that carries images names them as ledger-image:<id>; ask_images fetches them. " +
+        "continues with a Claude ask (or a visual review) gives the new helper the earlier result and its images, for the next review round.")]
+    public async Task<CoordinationWork> Ask(string task, string? machine = null, string? provider = null, string? kind = null,
         string? capability = null, string? id = null, string? project = null, string? branch = null, string? commit = null,
         string? sessionId = null, string? sessionProvider = null, string? sessionAddress = null, string? continues = null,
         string? model = null, string? effort = null, string? output = null, CancellationToken token = default,
-        [Description("Optional short title visible in the shared Ledger work view.")] string? displayTitle = null) {
+        [Description("Optional short title visible in the shared Ledger work view.")] string? displayTitle = null,
+        [Description("Local image files to send with the task.")] string[]? images = null) {
         var (returnProvider, session) = CurrentSession(sessionId, sessionProvider);
         var target = Source(project, branch, commit, output, GitSource);
         // An uncertain outcome names the id, so a retry with it returns the ask the service may already have taken.
         var askId = id ?? "ask-" + Guid.NewGuid().ToString("N");
-        return Command(client.AskAsync(new CoordinationAsk(askId, task, target.Project, target.Branch, target.Commit,
+        var uploaded = images is { Length: > 0 } ? await UploadAsync(images, token).ConfigureAwait(false) : null;
+        return await Command(client.AskAsync(new CoordinationAsk(askId, task, target.Project, target.Branch, target.Commit,
             returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output) {
-            DisplayTitle = displayTitle
-        }, token), askId);
+            DisplayTitle = displayTitle, Images = uploaded
+        }, token), askId).ConfigureAwait(false);
+    }
+
+    [McpServerTool(Name = "ask_images", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Download the images a result of your ask refers to (ledger-image:<id>) and return their local paths, to open or " +
+        "view them. directory defaults to a ledger-images folder in the machine's task scratch (EVOTEC_SCRATCH_ROOT) or temp folder.")]
+    public async Task<string[]> AskImages(string requestId, string? directory = null, CancellationToken token = default) {
+        var result = await client.ResultContentAsync(requestId, token).ConfigureAwait(false);
+        var ids = CoordinationImage.References(result.Content);
+        if (ids.Length == 0) return [];
+        var folder = directory ?? Path.Combine(Environment.GetEnvironmentVariable("EVOTEC_SCRATCH_ROOT") is { Length: > 0 } scratch
+            ? scratch : Path.GetTempPath(), "ledger-images", requestId);
+        var paths = new List<string>();
+        foreach (var (image, index) in ids.Select((image, index) => (image, index)))
+            paths.Add(await client.DownloadImageAsync(image, folder, token, (index + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture) + "-")
+                .ConfigureAwait(false));
+        return paths.ToArray();
+    }
+
+    /// <summary>Uploads the asker's image files and returns their ids. A missing, oversized or non-image file is rejected
+    /// before anything is asked, naming the file.</summary>
+    private async Task<string[]> UploadAsync(string[] files, CancellationToken token) {
+        static McpException Rejected(string error, string hint) => new(JsonSerializer.Serialize(new { outcome = "rejected", error, hint }));
+        if (files.Length > CoordinationImage.MaximumPerMessage)
+            throw Rejected("too-many-images", "Send at most " + CoordinationImage.MaximumPerMessage + " images with one ask.");
+        var ids = new List<string>();
+        foreach (var file in files) {
+            var info = new FileInfo(file);
+            if (!info.Exists) throw Rejected("image-not-found", file);
+            if (info.Length is 0 or > CoordinationImage.MaximumBytes) throw Rejected("image-too-large", file + " is empty or larger than 8 MB.");
+            var bytes = await File.ReadAllBytesAsync(info.FullName, token).ConfigureAwait(false);
+            if (CoordinationImage.Sniff(bytes) is null) throw Rejected("image-type-unsupported", file + " is not a PNG, JPEG, WebP or GIF image.");
+            var image = await client.UploadImageAsync(bytes, token).ConfigureAwait(false);
+            if (!ids.Contains(image.Id)) ids.Add(image.Id);
+        }
+        return ids.ToArray();
     }
 
     /// <summary>Commit recorded when work in another repository isn't pinned: the helper uses the latest of the branch.</summary>

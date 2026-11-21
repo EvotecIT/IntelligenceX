@@ -21,13 +21,17 @@ public sealed partial class CoordinationEngine {
     /// session client; the asking session must be on that machine. Provider and capability fall back to policy routing
     /// and the target machine. An identical retry returns the existing work, live or <paramref name="archived"/>; any
     /// other reuse of the id is rejected.</summary>
-    public CoordinationWork Ask(CoordinationAsk ask, CoordinationPrincipal caller, CoordinationArchiveEntry? archived = null) {
+    public CoordinationWork Ask(CoordinationAsk ask, CoordinationPrincipal caller, CoordinationArchiveEntry? archived = null,
+        string? previousResult = null) {
         Require(caller.Role == "client" && Id(caller.MachineId) && caller.RequesterId is null, "ask-role-denied");
         Require(ask is not null && Id(ask.Id) && ask.Id.Length <= 120 && Text(ask.Task) && Id(ask.ReturnProvider) &&
             Id(ask.ReturnSessionId) && (ask.MachineId is null || Id(ask.MachineId)) && (ask.Provider is null || Id(ask.Provider)) &&
             (ask.Kind is null || Id(ask.Kind)) && (ask.Capability is null || Id(ask.Capability)) &&
             (ask.ReturnAddress is null || ask.ReturnAddress.Length is > 0 and <= 300 && !ask.ReturnAddress.Any(char.IsControl)) &&
-            (ask.Continues is null || Id(ask.Continues) && ask.Continues != ask.Id), "invalid-ask");
+            (ask.Continues is null || Id(ask.Continues) && ask.Continues != ask.Id) &&
+            (ask.Images is null || ask.Images.Length is > 0 and <= CoordinationImage.MaximumPerMessage &&
+                ask.Images.All(CoordinationImage.ValidId) && ask.Images.Distinct(StringComparer.Ordinal).Count() == ask.Images.Length) &&
+            (previousResult is null || Encoding.UTF8.GetByteCount(previousResult) <= MaximumTextBytes), "invalid-ask");
         bool Same(CoordinationWork work) => work.Requester == caller.Id && IsAsk(work) && work.Request.TaskBrief == ask.Task &&
             work.Request.ReturnTo is { } back && back.Provider == ask.ReturnProvider && back.SessionId == ask.ReturnSessionId &&
             (work.Request.MachineId == ask.MachineId || ask.Continues is not null && ask.MachineId is null) &&
@@ -36,7 +40,8 @@ public sealed partial class CoordinationEngine {
             (ask.Provider is null || work.Request.RequiredProvider == ask.Provider) &&
             (ask.Capability is null || work.Request.Capability == ask.Capability) &&
             work.Request.Helper?.ContinuesRequestId == ask.Continues && work.Request.Helper?.Model == ask.Model &&
-            work.Request.Helper?.Effort == ask.Effort && work.Request.Helper?.Output == ask.Output;
+            work.Request.Helper?.Effort == ask.Effort && work.Request.Helper?.Output == ask.Output &&
+            (work.Request.Helper?.Images ?? []).SequenceEqual(ask.Images ?? [], StringComparer.Ordinal);
         if (state.Work.TryGetValue(ask.Id, out var existing) || archived?.RequestId == ask.Id && (existing = archived.Work) is not null) {
             Require(Same(existing), "request-id-conflict");
             return existing;
@@ -44,20 +49,29 @@ public sealed partial class CoordinationEngine {
         // A session already enrolled under another worker id keeps it, so the result can be delivered to that worker.
         var returnWorker = state.Workers.Values.FirstOrDefault(w => w.MachineId == caller.MachineId && w.Provider == ask.ReturnProvider &&
             w.SessionId == ask.ReturnSessionId)?.Id ?? ask.ReturnProvider + "-" + ask.ReturnSessionId;
-        // A follow-up carries on the earlier helper's conversation, so it runs where that helper ran, with the same provider.
-        string? forkSession = null;
+        var visual = ask.Output == "visual-review";
+        // A follow-up of a Codex ask carries on the earlier helper's conversation, so it runs where that helper ran, with the
+        // same provider. Any other follow-up (a Claude helper, whose conversation can't move to a new workspace, or a switch
+        // of provider) gives the new helper the earlier result instead, with the images it refers to.
+        string? forkSession = null, carried = null;
         if (ask.Continues is not null) {
             CoordinationSessionBinding? priorBinding = null;
             Require(state.Work.TryGetValue(ask.Continues, out var prior) && IsAsk(prior) && prior.Requester == caller.Id &&
-                Terminal.Contains(prior.State) && prior.Provider == "codex" && prior.Machine is not null &&
-                state.Bindings.TryGetValue(prior.Request.Id, out priorBinding) && priorBinding.Provider == "codex",
-                "ask-continues-unavailable");
-            Require(ask.MachineId is null || ask.MachineId == prior!.Machine, "ask-continues-machine-conflict");
-            // The forked conversation is the earlier ask's, so the caller must still be allowed that project.
+                Terminal.Contains(prior.State), "ask-continues-unavailable");
+            // The earlier work is the caller's own, so the caller must still be allowed that project.
             Require(caller.Projects.Contains(prior!.Request.Checkpoint.Project, StringComparer.Ordinal), "ask-continues-project-denied");
-            Require(ask.Provider is null or "codex", "ask-continues-provider-conflict");
-            forkSession = priorBinding!.SessionId;
-            ask = ask with { MachineId = prior!.Machine, Provider = "codex", Capability = ask.Capability ?? prior.Request.Capability };
+            var fork = prior.Provider == "codex" && ask.Provider is null or "codex" && !visual && prior.Machine is not null &&
+                state.Bindings.TryGetValue(prior.Request.Id, out priorBinding) && priorBinding.Provider == "codex";
+            if (fork) {
+                Require(ask.MachineId is null || ask.MachineId == prior.Machine, "ask-continues-machine-conflict");
+                forkSession = priorBinding!.SessionId;
+                ask = ask with { MachineId = prior.Machine, Provider = "codex", Capability = ask.Capability ?? prior.Request.Capability };
+            } else {
+                Require(previousResult is not null, "ask-continues-unavailable");
+                carried = previousResult;
+                ask = ask with { Provider = ask.Provider ?? (visual ? "claude" : prior.Provider),
+                    Capability = ask.Capability ?? (ask.MachineId is null ? prior.Request.Capability : null) };
+            }
         }
         var machine = ask.MachineId is null ? null : state.Policy.Machines.FirstOrDefault(m => m.Id == ask.MachineId);
         Require(ask.MachineId is null || machine is not null, "ask-machine-unknown");
@@ -66,10 +80,12 @@ public sealed partial class CoordinationEngine {
         // The provider has to be one a machine with the capability (the named one, if any) may create.
         bool Offers(MachineCapacity m, string p) => m.Enabled && (machine is null || m.Id == machine.Id) &&
             m.Capabilities.Contains(capability!) && (m.AllowedCreateProviders ?? []).Contains(p, StringComparer.Ordinal);
-        // Model, effort, review output and follow-ups are Codex helper options; they route to Codex only.
-        var codexOnly = ask.Model is not null || ask.Effort is not null || ask.Output is not null || ask.Continues is not null;
+        // Model, effort, the review and text outputs and conversation forks are Codex helper options; they route to Codex
+        // only. A visual review is Claude's.
+        Require(!visual || ask.Provider is null or "claude" && ask.Model is null && ask.Effort is null, "ask-visual-review-requires-claude");
+        var codexOnly = ask.Model is not null || ask.Effort is not null || ask.Output is not null && !visual || forkSession is not null;
         Require(!codexOnly || ask.Provider is null or "codex", "ask-options-require-codex");
-        var provider = codexOnly ? "codex" : ask.Provider;
+        var provider = visual ? "claude" : codexOnly ? "codex" : ask.Provider;
         if (provider is null) {
             Require(state.Policy.Routing.TryGetValue(ask.Kind ?? state.Policy.Ask.DefaultKind, out var route), "ask-kind-not-routed");
             provider = route.FirstOrDefault(p => state.Policy.Machines.Any(m => Offers(m, p)));
@@ -80,8 +96,8 @@ public sealed partial class CoordinationEngine {
         var request = new CoordinationRequest(ask.Id, goalId, "help", capability, ask.MachineId, null, new(AgentSlots: 1),
             checkpoint, [], 1, AskOrigin, provider, ReturnTo: new(returnWorker, caller.MachineId!, ask.ReturnProvider,
                 ask.ReturnSessionId, checkpoint) { Address = ask.ReturnAddress }, TaskBrief: ask.Task,
-            Helper: ask.Continues is null && ask.Model is null && ask.Effort is null && ask.Output is null ? null
-                : new(ask.Model, ask.Effort, ask.Output, ask.Continues, forkSession));
+            Helper: ask.Continues is null && ask.Model is null && ask.Effort is null && ask.Output is null && ask.Images is null ? null
+                : new(ask.Model, ask.Effort, ask.Output, ask.Continues, forkSession, ask.Images, carried));
         Request(request, caller);
         Require(!state.Goals.ContainsKey(goalId), "ask-goal-conflict");
         Require(state.Work.Values.Count(w => w.State == "queued") < state.Policy.MaximumQueued, "queue-full");
