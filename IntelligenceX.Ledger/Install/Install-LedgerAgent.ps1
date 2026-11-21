@@ -310,9 +310,19 @@ function Switch-Version([string]$Version, [string]$Previous) {
 # session that is still open) is left whole for a later install to remove. Matching on command lines covers
 # both an executable started from the folder and a dll hosted by dotnet, as on macOS and Linux.
 function Remove-OldVersions([string[]]$Keep) {
-    $running = @(if ($IsWindows) {
-            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ForEach-Object { if ($_.CommandLine) { $_.CommandLine } else { $_.ExecutablePath } }
-        } else { & ps -axww -o command= 2>$null }) | Where-Object { $_ }
+    $listErrors = $null
+    $running = @(@(if ($IsWindows) {
+            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue -ErrorVariable listErrors |
+                ForEach-Object { if ($_.CommandLine) { $_.CommandLine } else { $_.ExecutablePath } }
+        } else {
+            & ps -axww -o command= 2>$null
+            if ($LASTEXITCODE -ne 0) { $listErrors = "ps exited with $LASTEXITCODE" }
+        }) | Where-Object { $_ })
+    # Without a process list nothing can be shown to be unused, so every old folder waits for a later install.
+    if ($listErrors -or $running.Count -eq 0) {
+        Write-Host "Kept old versions: running processes could not be listed; a later install removes them."
+        return
+    }
     foreach ($folder in Get-ChildItem -LiteralPath $Versions -Directory | Where-Object { $_.Name -notin $Keep }) {
         $prefix = $folder.FullName.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
         $users = @($running | Where-Object { $_.Contains($prefix, [StringComparison]::OrdinalIgnoreCase) }).Count
