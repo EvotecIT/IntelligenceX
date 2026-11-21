@@ -128,6 +128,21 @@ public sealed class CoordinationAskTests {
     }
 
     [Fact]
+    public void AResultQueuedIntoTheAskersOwnThreadSendsNoNoticeBehindIt() {
+        var state = CreateState();
+        var engine = new CoordinationEngine(state, Now);
+        var work = engine.Ask(Ask(), Sessions);
+        var receipt = StartHelper(engine, work);
+        engine.Receipt("ask-1", "terminal", receipt with { ResultRef = "result-1", Succeeded = true, ExclusionVerified = true }, MacHost);
+        engine.ObserveWorker(new("codex-requester-thread", "pc", "codex", true, null, Now, "requester-thread", BootId: "boot"), PcHost);
+        engine.BeginResultDelivery("ask-1", work.Generation, "deliver-1", PcHost);
+        // Queued while the thread was busy: the result waits there for the next turn, and a notice would queue behind it.
+        engine.RecordResultDelivery("ask-1", work.Generation, new("deliver-1", "uncertain", "codex-queued-not-resumed"), PcHost);
+        Assert.Equal("uncertain", state.ResultOutbox["ask-1"].State);
+        Assert.DoesNotContain(state.Questions.Values, q => q.Kind == "notice");
+    }
+
+    [Fact]
     public void AnAskGetsANewHelperEvenWhenAnIdleTemporaryWorkerMatches() {
         var state = CreateState();
         var engine = new CoordinationEngine(state, Now);
