@@ -465,6 +465,11 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     /// --resume (nothing was queued, so it can be asked again without it); or failed.</summary>
     internal enum QueueOutcome { Resumed, HolderOwned, Parked, ResumeUnsupported, Failed }
 
+    private static string FirstLine(string text) {
+        var line = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";
+        return line.Length <= 200 ? line : line[..200];
+    }
+
     internal static QueueOutcome ClassifyQueue(int exitCode, string stderr, bool askedToResume) {
         // clap rejects an unknown flag with exit code 2 before doing anything.
         if (exitCode == 2 && askedToResume && stderr.Contains("unexpected argument '--resume'", StringComparison.Ordinal)) return QueueOutcome.ResumeUnsupported;
@@ -478,6 +483,10 @@ internal sealed class CodexRunner(string executable, string? controlSocket) {
     private async Task<QueueOutcome> QueueAsync(string threadId, string text, CancellationToken token) {
         var (exit, stderr) = await RunQueueAsync(threadId, text, resume: true, token).ConfigureAwait(false);
         var outcome = ClassifyQueue(exit, stderr, askedToResume: true);
+        // A refused resume that isn't recognised as the app holding the thread is recorded as parked. Its first line is
+        // logged, so a new wording from Codex can be told apart from a real absence of any reader.
+        if (outcome == QueueOutcome.Parked && stderr.Contains("could not resume thread", StringComparison.OrdinalIgnoreCase))
+            AgentService.Log("codex-queue-parked", threadId + " " + FirstLine(stderr));
         if (outcome == QueueOutcome.ResumeUnsupported) {
             (exit, stderr) = await RunQueueAsync(threadId, text, resume: false, token).ConfigureAwait(false);
             outcome = ClassifyQueue(exit, stderr, askedToResume: false);

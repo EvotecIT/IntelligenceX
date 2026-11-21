@@ -78,7 +78,10 @@ public sealed partial class CoordinationEngine {
         }
         state.ResultOutbox[id] = result;
         Note(id, "result-" + receipt.Stage, caller.Id, generation, receipt.EvidenceRef);
-        if (result.State == "uncertain") NoticeUncertainResult(id);
+        // A result queued into the asker's own Codex thread waits there for its next turn; a notice about it would only be
+        // queued behind it, so none is sent.
+        if (result.State == "uncertain" && receipt.EvidenceRef?.StartsWith("codex-queued-", StringComparison.Ordinal) != true)
+            NoticeUncertainResult(id);
         if (result.ConsumedAtUtc is not null) Schedule();
         return result;
     }
