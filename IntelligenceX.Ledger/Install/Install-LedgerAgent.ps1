@@ -303,14 +303,36 @@ function Switch-Version([string]$Version, [string]$Previous) {
     Start-Agent $Version
     Write-Receipt (Split-Path $Version -Leaf) $Previous
     Update-OperatorClient $Version
-    # Keep only the current and previous versions.
-    Get-ChildItem -LiteralPath $Versions -Directory | Where-Object { $_.Name -notin @((Split-Path $Version -Leaf), $Previous) } |
-        ForEach-Object {
-            # Inside catch, $_ is the error record, so keep the folder in its own variable.
-            $folder = $_.FullName
-            try { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction Stop }
-            catch { Write-Warning "Kept ${folder}: $($_.Exception.Message)" }
+    Remove-OldVersions @((Split-Path $Version -Leaf), $Previous)
+}
+
+# Keeps the named versions and removes the rest. A folder that a running process uses (an MCP server of a
+# session that is still open) is left whole for a later install to remove. Matching on command lines covers
+# both an executable started from the folder and a dll hosted by dotnet, as on macOS and Linux.
+function Remove-OldVersions([string[]]$Keep) {
+    $listErrors = $null
+    $running = @(@(if ($IsWindows) {
+            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue -ErrorVariable listErrors |
+                ForEach-Object { if ($_.CommandLine) { $_.CommandLine } else { $_.ExecutablePath } }
+        } else {
+            & ps -axww -o command= 2>$null
+            if ($LASTEXITCODE -ne 0) { $listErrors = "ps exited with $LASTEXITCODE" }
+        }) | Where-Object { $_ })
+    # Without a process list nothing can be shown to be unused, so every old folder waits for a later install.
+    if ($listErrors -or $running.Count -eq 0) {
+        Write-Host "Kept old versions: running processes could not be listed; a later install removes them."
+        return
+    }
+    foreach ($folder in Get-ChildItem -LiteralPath $Versions -Directory | Where-Object { $_.Name -notin $Keep }) {
+        $prefix = $folder.FullName.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+        $users = @($running | Where-Object { $_.Contains($prefix, [StringComparison]::OrdinalIgnoreCase) }).Count
+        if ($users -gt 0) {
+            Write-Host "Kept $($folder.Name): $users running process(es) still use it; a later install removes it."
+            continue
         }
+        Remove-Item -LiteralPath $folder.FullName -Recurse -Force -ErrorAction SilentlyContinue -ErrorVariable removeErrors
+        if ($removeErrors) { Write-Host "Kept $($folder.Name): $($removeErrors[0].Exception.Message)" }
+    }
 }
 
 $installed = Read-Json $Receipt
