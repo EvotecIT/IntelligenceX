@@ -30,13 +30,15 @@ public sealed class AskTools(LedgerReadClient client) {
         "where the task says how to reach it, the running product; name a machine that renders the target natively. " +
         "images: up to 8 local PNG, JPEG, WebP or GIF files (screenshots, mock-ups), uploaded first; the helper gets them as files. " +
         "A result that carries images names them as ledger-image:<id>; ask_images fetches them. " +
-        "continues with a Claude ask (or a visual review) gives the new helper the earlier result and its images, for the next review round.")]
+        "continues with a Claude ask (or a visual review) gives the new helper the earlier result and its images, for the next review round. " +
+        "pullRequest (\"owner/name#123\" or its URL) with a visual review: the verdict, findings and images are also posted there as a comment.")]
     public async Task<CoordinationWork> Ask(string task, string? machine = null, string? provider = null, string? kind = null,
         string? capability = null, string? id = null, string? project = null, string? branch = null, string? commit = null,
         string? sessionId = null, string? sessionProvider = null, string? sessionAddress = null, string? continues = null,
         string? model = null, string? effort = null, string? output = null, CancellationToken token = default,
         [Description("Optional short title visible in the shared Ledger work view.")] string? displayTitle = null,
-        [Description("Local image files to send with the task.")] string[]? images = null) {
+        [Description("Local image files to send with the task.")] string[]? images = null,
+        [Description("Pull request where a visual review posts its verdict and images.")] string? pullRequest = null) {
         var (returnProvider, session) = CurrentSession(sessionId, sessionProvider);
         var target = Source(project, branch, commit, output, GitSource);
         // An uncertain outcome names the id, so a retry with it returns the ask the service may already have taken.
@@ -44,7 +46,7 @@ public sealed class AskTools(LedgerReadClient client) {
         var uploaded = images is { Length: > 0 } ? await UploadAsync(images, token).ConfigureAwait(false) : null;
         return await Command(client.AskAsync(new CoordinationAsk(askId, task, target.Project, target.Branch, target.Commit,
             returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output) {
-            DisplayTitle = displayTitle, Images = uploaded
+            DisplayTitle = displayTitle, Images = uploaded, PullRequest = pullRequest
         }, token), askId).ConfigureAwait(false);
     }
 

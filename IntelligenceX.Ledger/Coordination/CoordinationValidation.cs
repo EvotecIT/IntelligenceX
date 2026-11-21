@@ -67,6 +67,7 @@ public static class CoordinationValidation {
             (h.ContinuesRequestId is null ? h.ForkSessionId is null && h.PreviousResult is null : h.ForkSessionId is null != h.PreviousResult is null) &&
             (h.PreviousResult is null || Encoding.UTF8.GetByteCount(h.PreviousResult) <= 8192) &&
             (h.Images is null || h.Images.Length is > 0 and <= CoordinationImage.MaximumPerMessage && h.Images.All(CoordinationImage.ValidId)) &&
+            (h.PullRequest is null || h.Output == "visual-review" && CoordinationAsk.PullRequestReference(h.PullRequest) == h.PullRequest) &&
             r.Kind is "help" or "review", "invalid-helper-options");
         Checkpoint(c);
         Require(caller.Projects.Contains(c!.Project, StringComparer.Ordinal), "project-not-authorized");

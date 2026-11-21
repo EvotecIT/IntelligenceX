@@ -64,6 +64,18 @@ public sealed record CoordinationAsk(string Id, string Task, string Project, str
     /// <summary>Ids of images already uploaded to the Ledger (screenshots, mock-ups) that the helper gets as local files.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string[]? Images { get; init; }
+    /// <summary>A pull request ("owner/name#123" or its GitHub URL) where a visual review posts its verdict, findings and images.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PullRequest { get; init; }
+
+    /// <summary>"owner/name#123" from that form or a GitHub pull request URL; null for anything else.</summary>
+    public static string? PullRequestReference(string? value) {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 300) return null;
+        var text = value.Trim();
+        var match = System.Text.RegularExpressions.Regex.Match(text,
+            @"^(?:https://github\.com/)?(?<owner>[A-Za-z0-9][A-Za-z0-9-]{0,38})/(?<name>[A-Za-z0-9._-]{1,100})(?:#|/pull/)(?<number>[1-9][0-9]{0,8})/?$");
+        return match.Success ? match.Groups["owner"].Value + "/" + match.Groups["name"].Value + "#" + match.Groups["number"].Value : null;
+    }
 }
 
 /// <summary>An image held by the Ledger: its id is the SHA-256 of its bytes, so the same picture always has the same id.
@@ -108,7 +120,8 @@ public sealed record CoordinationImage(string Id, string MediaType, long Bytes) 
 public sealed record CoordinationHelperOptions(string? Model = null, string? Effort = null, string? Output = null,
     string? ContinuesRequestId = null, string? ForkSessionId = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? Images = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousResult = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousResult = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PullRequest = null);
 
 /// <summary>A question from a helper or a notice from the service to the requester. Notices need no answer.
 /// State is asked, answered, expired or resumed; Delivery carries the requester-side send, AnswerDelivery the

@@ -31,7 +31,11 @@ public sealed partial class CoordinationEngine {
             (ask.Continues is null || Id(ask.Continues) && ask.Continues != ask.Id) &&
             (ask.Images is null || ask.Images.Length is > 0 and <= CoordinationImage.MaximumPerMessage &&
                 ask.Images.All(CoordinationImage.ValidId) && ask.Images.Distinct(StringComparer.Ordinal).Count() == ask.Images.Length) &&
-            (previousResult is null || Encoding.UTF8.GetByteCount(previousResult) <= MaximumTextBytes), "invalid-ask");
+            (previousResult is null || Encoding.UTF8.GetByteCount(previousResult) <= MaximumTextBytes) &&
+            (ask.PullRequest is null || CoordinationAsk.PullRequestReference(ask.PullRequest) is not null), "invalid-ask");
+        // Only a visual review posts to a pull request; elsewhere the asker decides what to publish.
+        Require(ask.PullRequest is null || ask.Output == "visual-review", "ask-pull-request-requires-visual-review");
+        var pullRequest = CoordinationAsk.PullRequestReference(ask.PullRequest);
         bool Same(CoordinationWork work) => work.Requester == caller.Id && IsAsk(work) && work.Request.TaskBrief == ask.Task &&
             work.Request.ReturnTo is { } back && back.Provider == ask.ReturnProvider && back.SessionId == ask.ReturnSessionId &&
             (work.Request.MachineId == ask.MachineId || ask.Continues is not null && ask.MachineId is null) &&
@@ -41,7 +45,8 @@ public sealed partial class CoordinationEngine {
             (ask.Capability is null || work.Request.Capability == ask.Capability) &&
             work.Request.Helper?.ContinuesRequestId == ask.Continues && work.Request.Helper?.Model == ask.Model &&
             work.Request.Helper?.Effort == ask.Effort && work.Request.Helper?.Output == ask.Output &&
-            (work.Request.Helper?.Images ?? []).SequenceEqual(ask.Images ?? [], StringComparer.Ordinal);
+            (work.Request.Helper?.Images ?? []).SequenceEqual(ask.Images ?? [], StringComparer.Ordinal) &&
+            work.Request.Helper?.PullRequest == pullRequest;
         if (state.Work.TryGetValue(ask.Id, out var existing) || archived?.RequestId == ask.Id && (existing = archived.Work) is not null) {
             Require(Same(existing), "request-id-conflict");
             return existing;
@@ -97,7 +102,7 @@ public sealed partial class CoordinationEngine {
             checkpoint, [], 1, AskOrigin, provider, ReturnTo: new(returnWorker, caller.MachineId!, ask.ReturnProvider,
                 ask.ReturnSessionId, checkpoint) { Address = ask.ReturnAddress }, TaskBrief: ask.Task,
             Helper: ask.Continues is null && ask.Model is null && ask.Effort is null && ask.Output is null && ask.Images is null ? null
-                : new(ask.Model, ask.Effort, ask.Output, ask.Continues, forkSession, ask.Images, carried));
+                : new(ask.Model, ask.Effort, ask.Output, ask.Continues, forkSession, ask.Images, carried, pullRequest));
         Request(request, caller);
         Require(!state.Goals.ContainsKey(goalId), "ask-goal-conflict");
         Require(state.Work.Values.Count(w => w.State == "queued") < state.Policy.MaximumQueued, "queue-full");

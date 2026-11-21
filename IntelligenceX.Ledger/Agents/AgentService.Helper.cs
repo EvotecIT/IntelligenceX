@@ -169,6 +169,10 @@ internal sealed partial class AgentService {
                     "review.checked lists the surfaces, states, themes and platforms you looked at. Each finding names the area, what is " +
                     "wrong, a specific suggestion, and in image the file name it shows (empty when none). text is a short summary for " +
                     "the requester. For a question, fill review with \"blocked\" and empty lists; it is ignored.");
+        if (IsVisualReview(work) && r.Helper?.PullRequest is { } pullRequest)
+            prompt.AppendLine("Your summary, findings and output images are posted on pull request " + pullRequest + " as an ordinary " +
+                "review comment. Write them as plain review notes about the product: no mention of agents, AI, the Ledger, yourself or this " +
+                "working directory, and nothing private (paths, tokens, customer data).");
         if (IsReview(work))
             prompt.AppendLine().AppendLine("This is a review. Review the changes on that branch at that commit against the base the task names " +
                     "(the repository's default branch if it names none). Use the repository's own conventions and AGENTS.md. Be adversarial: look " +
@@ -586,7 +590,10 @@ internal sealed partial class AgentService {
     /// content, so a retry or reconciliation must publish exactly the same text.</summary>
     private async Task<RunRecord> PublishAsync(CoordinationWork work, RunRecord record, string content, bool succeeded, CancellationToken stop) {
         // Images are attached once, before the content is recorded; a retry publishes the recorded content as it is.
-        if (record.PendingResult is null) content = await AttachImagesAsync(work, record, content, stop).ConfigureAwait(false);
+        if (record.PendingResult is null) {
+            content = await AttachImagesAsync(work, record, content, stop).ConfigureAwait(false);
+            (record, content) = await PostToPullRequestAsync(work, record, content, stop).ConfigureAwait(false);
+        }
         record = (record with { PendingResult = content, PendingSucceeded = succeeded }).Save(_settings.StateDirectory);
         var artifact = await _ledger.PublishResultAsync(work.Request.Id, new CoordinationArtifactCommand(work.Generation, record.GrantId,
             _bootId, content), stop).ConfigureAwait(false);
@@ -612,16 +619,10 @@ internal sealed partial class AgentService {
     /// <summary>Uploads the images the helper left in its output folder and names them in the result. A file that is not
     /// an image, too large or refused is left out and logged.</summary>
     private async Task<string> AttachImagesAsync(CoordinationWork work, RunRecord record, string content, CancellationToken stop) {
-        var folder = Path.Combine(record.Workspace, ImagesOut);
-        if (!Directory.Exists(folder)) return content;
         var references = new List<string>();
-        foreach (var file in Directory.GetFiles(folder).Order(StringComparer.Ordinal)) {
-            if (references.Count >= CoordinationImage.MaximumPerMessage) break;
+        foreach (var file in OutputImages(Path.Combine(record.Workspace, ImagesOut))) {
             try {
-                var info = new FileInfo(file);
-                if (info.Length is 0 or > CoordinationImage.MaximumBytes) continue;
                 var bytes = await File.ReadAllBytesAsync(file, stop).ConfigureAwait(false);
-                if (CoordinationImage.Sniff(bytes) is null) continue;
                 var image = await _ledger.UploadImageAsync(bytes, stop).ConfigureAwait(false);
                 references.Add(CoordinationImage.ReferencePrefix + image.Id + " (" + Shorten(Path.GetFileName(file), 60) + ")");
             } catch (Exception error) when (error is IOException or HttpRequestException or InvalidDataException or
@@ -630,6 +631,126 @@ internal sealed partial class AgentService {
             }
         }
         return WithImages(content, references);
+    }
+
+    /// <summary>
+    /// Posts a visual review on the pull request its ask names, with the helper's output images attached, and adds the
+    /// comment's address to the result. The attempt is recorded before gh runs: a restart that finds it unfinished does not
+    /// post again, since the first attempt may have gone through. A failed post is noted in the result instead.
+    /// </summary>
+    private async Task<(RunRecord Record, string Content)> PostToPullRequestAsync(CoordinationWork work, RunRecord record, string content,
+        CancellationToken stop) {
+        if (!IsVisualReview(work) || work.Request.Helper?.PullRequest is not { } pullRequest) return (record, content);
+        if (record.PullRequestComment == "posting") {
+            Log("helper-pr-comment-uncertain", work.Request.Id + " " + pullRequest);
+            return (record, WithNote(content, "pullRequestComment", "uncertain: an earlier attempt to post on " + pullRequest + " may have gone through"));
+        }
+        if (record.PullRequestComment is { } posted) return (record, WithNote(content, "pullRequestComment", posted));
+        var hash = pullRequest.LastIndexOf('#');
+        var (repo, number) = (pullRequest[..hash], pullRequest[(hash + 1)..]);
+        var folder = Path.Combine(record.Workspace, ImagesOut);
+        var images = OutputImages(folder);
+        var bodyFile = Path.Combine(record.Workspace, ".ledger", "pull-request-comment.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(bodyFile)!);
+        await File.WriteAllTextAsync(bodyFile, PullRequestComment(content, images.Select(Path.GetFileName).OfType<string>().ToArray()), stop)
+            .ConfigureAwait(false);
+        record = (record with { PullRequestComment = "posting" }).Save(_settings.StateDirectory);
+        var arguments = new List<string> { "pr", "comment", number, "--repo", repo, "--body-file", bodyFile };
+        foreach (var image in images) { arguments.Add("--attach"); arguments.Add(Path.GetFileName(image)); }
+        var (exit, output) = await GhAsync(arguments, Directory.Exists(folder) ? folder : record.Workspace, stop).ConfigureAwait(false);
+        var url = output.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault(line => line.StartsWith("https://github.com/", StringComparison.Ordinal));
+        if (exit == 0 && url is not null) {
+            record = (record with { PullRequestComment = url }).Save(_settings.StateDirectory);
+            Log("helper-pr-comment", work.Request.Id + " " + url);
+            return (record, WithNote(content, "pullRequestComment", url));
+        }
+        if (exit == -1 && output.StartsWith("gh timed out", StringComparison.Ordinal)) {
+            // A timed-out gh may still have posted, so the attempt stays recorded and is never repeated.
+            Log("helper-pr-comment-uncertain", work.Request.Id + " " + pullRequest);
+            return (record, WithNote(content, "pullRequestComment", "uncertain: posting on " + pullRequest + " timed out; check the pull request"));
+        }
+        // gh said it failed, so nothing was posted that a retry could duplicate.
+        record = (record with { PullRequestComment = null }).Save(_settings.StateDirectory);
+        Log("helper-pr-comment-failed", work.Request.Id + " " + exit + " " + Shorten(output.ReplaceLineEndings(" "), 200));
+        return (record, WithNote(content, "pullRequestComment", "not posted on " + pullRequest + ": " + Shorten(output.ReplaceLineEndings(" ").Trim(), 300)));
+    }
+
+    /// <summary>The comment a visual review leaves on its pull request: the verdict, the summary, findings by severity, what
+    /// was checked, and the screenshots inline. The images are attached by gh, which turns each reference into its upload.</summary>
+    internal static string PullRequestComment(string content, IReadOnlyList<string> imageNames) {
+        JsonObject result;
+        try { result = JsonNode.Parse(content) as JsonObject ?? new JsonObject { ["summary"] = content }; }
+        catch (JsonException) { result = new JsonObject { ["summary"] = content }; }
+        var verdict = Str(result["verdict"]) switch {
+            "approve" => "approved", "changes" => "changes needed", "blocked" => "could not be completed", _ => "notes"
+        };
+        var body = new StringBuilder().Append("**Design review: ").Append(verdict).AppendLine("**").AppendLine();
+        if (Str(result["summary"]) is { Length: > 0 } summary) body.AppendLine(summary).AppendLine();
+        foreach (var finding in (result["findings"] as JsonArray ?? new JsonArray()).OfType<JsonObject>()) {
+            var severity = Str(finding["severity"]) is { Length: > 0 } level ? char.ToUpperInvariant(level[0]) + level[1..] : "Note";
+            body.Append("- **").Append(severity).Append("**, ").Append(Str(finding["area"]) ?? "General").Append(": ")
+                .Append(Str(finding["issue"])).Append(Str(finding["suggestion"]) is { Length: > 0 } fix ? " " + fix : "");
+            if (Str(finding["image"]) is { Length: > 0 } image && imageNames.Contains(image)) body.Append(" (").Append(image).Append(')');
+            body.AppendLine();
+        }
+        if (result["checked"] is JsonArray { Count: > 0 } checkedItems)
+            body.AppendLine().Append("Checked: ").Append(string.Join(", ", checkedItems.Select(Str).OfType<string>())).AppendLine(".");
+        if (result["instanceReviewed"] is JsonValue used && used.TryGetValue<bool>(out var live))
+            body.AppendLine(live ? "Reviewed on the running product." : "Reviewed from screenshots only.");
+        if (imageNames.Count > 0) {
+            body.AppendLine();
+            foreach (var name in imageNames) body.Append("![").Append(name).Append("](").Append(name).AppendLine(")");
+        }
+        var text = body.ToString();
+        return text.Length <= 60000 ? text : text[..60000] + "\n\n...";
+    }
+
+    /// <summary>The image files a helper left to return, in name order, within the per-message limit.</summary>
+    private static string[] OutputImages(string folder) => !Directory.Exists(folder) ? [] : Directory.GetFiles(folder)
+        .Where(file => new FileInfo(file).Length is > 0 and <= CoordinationImage.MaximumBytes && CoordinationImage.Sniff(Head(file)) is not null)
+        .Order(StringComparer.Ordinal).Take(CoordinationImage.MaximumPerMessage).ToArray();
+
+    private static byte[] Head(string file) {
+        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var head = new byte[Math.Min(16, stream.Length)];
+        stream.ReadExactly(head);
+        return head;
+    }
+
+    /// <summary>Adds one named note to result content: a property of a JSON result, a closing line after text.</summary>
+    internal static string WithNote(string content, string name, string note) {
+        try {
+            if (JsonNode.Parse(content) is JsonObject json) {
+                json[name] = Shorten(note, 400);
+                var serialized = json.ToJsonString();
+                if (Encoding.UTF8.GetByteCount(serialized) <= MaximumResultBytes) return serialized;
+                return content;
+            }
+        } catch (JsonException) { }
+        var line = "\n\n" + Shorten(note, 400);
+        return TrimToBytes(content, MaximumResultBytes - Encoding.UTF8.GetByteCount(line)) + line;
+    }
+
+    private static async Task<(int Exit, string Output)> GhAsync(IEnumerable<string> arguments, string directory, CancellationToken stop) {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        deadline.CancelAfter(TimeSpan.FromMinutes(3));
+        using var process = new System.Diagnostics.Process { StartInfo = new("gh") { UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true, WorkingDirectory = directory } };
+        foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+        process.StartInfo.Environment["GH_PROMPT_DISABLED"] = "1";
+        try {
+            process.Start();
+            process.StandardInput.Close();
+            var output = process.StandardOutput.ReadToEndAsync(deadline.Token);
+            var error = process.StandardError.ReadToEndAsync(deadline.Token);
+            await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+            return (process.ExitCode, await output.ConfigureAwait(false) + "\n" + await error.ConfigureAwait(false));
+        } catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException ||
+            error is OperationCanceledException && !stop.IsCancellationRequested) {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            return (-1, error is OperationCanceledException ? "gh timed out" : "gh could not be started: " + error.Message);
+        }
     }
 
     /// <summary>Adds image references to result content within the Ledger's 8 KB: an images list in a JSON result, an

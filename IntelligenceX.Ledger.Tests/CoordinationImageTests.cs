@@ -163,6 +163,43 @@ public sealed class CoordinationImageTests : IDisposable {
         });
     }
 
+    [Theory]
+    [InlineData("EvotecIT/Marquee#12", "EvotecIT/Marquee#12")]
+    [InlineData("https://github.com/EvotecIT/Marquee/pull/12", "EvotecIT/Marquee#12")]
+    [InlineData("https://github.com/EvotecIT/Marquee/pull/12/", "EvotecIT/Marquee#12")]
+    [InlineData("https://example.test/EvotecIT/Marquee/pull/12", null)]
+    [InlineData("EvotecIT/Marquee#0", null)]
+    [InlineData("Marquee#12", null)]
+    public void PullRequestsAreNamedByOwnerNameAndNumber(string value, string? expected) =>
+        Assert.Equal(expected, CoordinationAsk.PullRequestReference(value));
+
+    [Fact]
+    public void OnlyAVisualReviewPostsToAPullRequestAndItsCommentReadsAsAReview() {
+        var state = new CoordinationState { Policy = new(1, [
+            new("pc", 1, 1, 4, 4096, ["windows-shell"], AllowedCreateProviders: ["claude", "codex"]) ]) };
+        var engine = new CoordinationEngine(state, Now);
+        Assert.Equal("ask-pull-request-requires-visual-review", Assert.Throws<CoordinationConflictException>(() =>
+            engine.Ask(Ask("plain", "pc") with { PullRequest = "EvotecIT/Marquee#12" }, Sessions)).Message);
+        var work = engine.Ask(Ask("visual", "pc") with { Output = "visual-review", PullRequest = "https://github.com/EvotecIT/Marquee/pull/12" }, Sessions);
+        Assert.Equal("EvotecIT/Marquee#12", work.Request.Helper!.PullRequest);
+
+        var result = new JsonObject {
+            ["pass"] = false, ["verdict"] = "changes", ["summary"] = "The header crowds the logo.", ["instanceReviewed"] = true,
+            ["checked"] = new JsonArray("light theme", "dark theme"),
+            ["findings"] = new JsonArray(new JsonObject { ["severity"] = "high", ["area"] = "Header", ["issue"] = "The logo touches the edge.",
+                ["suggestion"] = "Add 16 px of padding.", ["image"] = "header.png" })
+        }.ToJsonString();
+        var comment = AgentService.PullRequestComment(result, ["header.png"]);
+        Assert.StartsWith("**Design review: changes needed**", comment);
+        Assert.Contains("- **High**, Header: The logo touches the edge. Add 16 px of padding. (header.png)", comment);
+        Assert.Contains("Checked: light theme, dark theme.", comment);
+        Assert.Contains("Reviewed on the running product.", comment);
+        Assert.EndsWith("![header.png](header.png)" + Environment.NewLine, comment);
+        Assert.Equal("https://github.com/EvotecIT/Marquee/pull/12#issuecomment-1",
+            (string)JsonNode.Parse(AgentService.WithNote(result, "pullRequestComment", "https://github.com/EvotecIT/Marquee/pull/12#issuecomment-1"))!["pullRequestComment"]!);
+        Assert.EndsWith("\n\nnot posted", AgentService.WithNote("Plain text.", "pullRequestComment", "not posted"));
+    }
+
     private static CoordinationAsk Ask(string id, string machine = "mac") =>
         new(id, "Review the dashboard layout.", "sample", "main", Commit, "codex", "requester-thread", machine);
 

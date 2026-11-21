@@ -129,6 +129,9 @@ internal sealed record RunRecord {
     /// <summary>Result content chosen before it is published, so a retry or reconciliation publishes the same content.</summary>
     public string? PendingResult { get; init; }
     public bool PendingSucceeded { get; init; }
+    /// <summary>The pull request comment a visual review posted: "posting" while gh runs, then its URL. A restart that finds
+    /// "posting" does not post again, since the first attempt may have gone through.</summary>
+    public string? PullRequestComment { get; init; }
     /// <summary>A Claude helper's running process (id and start time), so a restarted service can stop one left behind.</summary>
     public int? ProcessId { get; init; }
     public DateTimeOffset? ProcessStartedUtc { get; init; }
