@@ -76,6 +76,8 @@ public static class CoordinationValidation {
             (h.Images is null || h.Images.Length is > 0 and <= CoordinationImage.MaximumPerMessage && h.Images.All(CoordinationImage.ValidId)) &&
             (h.PullRequest is null || h.Output == "visual-review" && CoordinationAsk.PullRequestReference(h.PullRequest) == h.PullRequest) &&
             r.Kind is "help" or "review", "invalid-helper-options");
+        // "ultra" is Codex's alone; a request that might run on Claude cannot ask for it, however it was submitted.
+        Require(r.Helper?.Effort != "ultra" || r.RequiredProvider == "codex", "invalid-helper-options");
         Checkpoint(c);
         Require(caller.Projects.Contains(c!.Project, StringComparer.Ordinal), "project-not-authorized");
         Require(r.Dependencies is { Length: <= 64 } && r.Dependencies.All(Id) && !r.Dependencies.Contains(r.Id) &&

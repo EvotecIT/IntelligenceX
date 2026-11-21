@@ -100,8 +100,9 @@ public sealed partial class CoordinationEngine {
         Require(provider is not null && state.Policy.Machines.Any(m => Offers(m, provider)), "ask-provider-unavailable");
         Require(provider != "claude" || ask.Effort != "ultra", "ask-effort-unsupported");
         var choice = state.Policy.Ask.Models.TryGetValue(kind, out var byProvider) && byProvider.TryGetValue(provider!, out var chosen) ? chosen : null;
-        var model = ask.Model ?? choice?.Model;
-        var effort = ask.Effort ?? choice?.Effort;
+        // Everything is resolved now, including Codex's older global defaults, so a later policy edit never changes this ask.
+        var model = ask.Model ?? choice?.Model ?? (provider == "codex" ? state.Policy.Ask.CodexModel : null);
+        var effort = ask.Effort ?? choice?.Effort ?? (provider == "codex" ? state.Policy.Ask.CodexEffort : null);
         var checkpoint = new WorkCheckpoint(ask.Project, ask.Branch, ask.Commit, null, AskOrigin, AskOrigin);
         var goalId = "ask-" + ask.Id;
         var request = new CoordinationRequest(ask.Id, goalId, "help", capability, ask.MachineId, null, new(AgentSlots: 1),

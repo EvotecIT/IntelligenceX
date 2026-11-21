@@ -67,6 +67,21 @@ public sealed class CoordinationModelTests {
     }
 
     [Fact]
+    public void CodexGlobalDefaultsAreRecordedAtAdmissionAndUltraNeverReachesClaude() {
+        var engine = Engine(out var state);
+        state.Policy.Ask.CodexModel = "gpt-6";
+        state.Policy.Ask.Models["review"].Remove("codex");
+        var work = engine.Ask(Ask("codex-review") with { Output = "review", Provider = "codex" }, Sessions);
+        // Recorded on the request, so editing the policy afterwards leaves this ask as it was.
+        Assert.Equal(("gpt-6", null), (work.Request.Helper!.Model, work.Request.Helper.Effort));
+        state.Policy.Ask.CodexModel = "gpt-7";
+        Assert.Same(state.Work["codex-review"], engine.Ask(Ask("codex-review") with { Output = "review", Provider = "codex", Model = "gpt-6" }, Sessions));
+
+        var claudeUltra = work.Request with { Id = "submitted-ultra", RequiredProvider = "claude", Helper = new(Effort: "ultra") };
+        Assert.Equal("invalid-helper-options", Assert.Throws<CoordinationConflictException>(() => engine.Submit(claudeUltra, Sessions)).Message);
+    }
+
+    [Fact]
     public void TheClaudeHelperIsStartedWithTheChosenModelAndEffort() {
         var arguments = ClaudeRunner.Arguments("session", false, new JsonObject(), "sonnet", "bypassPermissions", "medium").ToArray();
         Assert.Equal(["--model", "sonnet", "--effort", "medium"], arguments[^4..]);
