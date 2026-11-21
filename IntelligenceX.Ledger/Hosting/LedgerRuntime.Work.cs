@@ -59,7 +59,7 @@ internal sealed partial class LedgerRuntime {
         var regular = new List<LedgerItem>();
         var recentlyEnded = new List<LedgerItem>();
         var historical = 0;
-        var dormant = 0;
+        var countedDormant = new HashSet<LedgerItem>(ReferenceEqualityComparer.Instance);
         var openSince = now - OpenLookback;
         foreach (var item in items) {
             if (IsHistoricalDelivery(item, now)) {
@@ -67,10 +67,10 @@ internal sealed partial class LedgerRuntime {
             } else if (LedgerRules.IsNormallyEnded(item)) {
                 if (item.Session is { Archived: not true, LastActivityAtUtc: { } activity } && activity >= openSince)
                     recentlyEnded.Add(item);
-            } else if (IsDormantSession(item, now)) {
-                dormant++;
             } else if (!LedgerRules.IsSessionCatalog(item) && IsCurrent(item, now)) {
-                regular.Add(item);
+                // Counted only when the session would otherwise be listed, so the count says how many rows it hid.
+                if (IsDormantSession(item, now)) countedDormant.Add(item);
+                else regular.Add(item);
             }
         }
         var candidates = regular.Concat(recentlyEnded).ToArray();
@@ -81,8 +81,9 @@ internal sealed partial class LedgerRuntime {
             .Select(item => (item.Provider, item.Session!.SourceSessionId!.Value.ToString())).ToArray(), token);
         var relationships = new WorkRelationships(items, asks, parents);
         var helperRows = items.Select(item => (Item: item, Ask: relationships.Ask(item))).Where(row => row.Ask is { Finished: false }).ToArray();
-        // A helper session the loop didn't already count (one that ended normally) is counted here when it goes dormant.
-        dormant += helperRows.Count(row => IsDormantSession(row.Item, now) && LedgerRules.IsNormallyEnded(row.Item));
+        // Dormant helpers are hidden from current work too; count the ones the loop above didn't reach.
+        foreach (var row in helperRows) if (IsDormantSession(row.Item, now)) countedDormant.Add(row.Item);
+        var dormant = countedDormant.Count;
         var activeHelpers = helperRows.Where(row => !IsDormantSession(row.Item, now)).Select(row => ApplyAskVerdict(row.Item, row.Ask!, now));
         var current = regular.Where(item => relationships.Ask(item) is null).Concat(activeHelpers);
         var open = recentlyEnded.Select(item => (Item: item, Ask: relationships.Ask(item)))
