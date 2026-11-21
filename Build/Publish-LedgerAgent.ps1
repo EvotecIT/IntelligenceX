@@ -9,6 +9,8 @@ The kit has the layout the Ledger service and reporter installers expect, plus w
 - osx-arm64: app/ and manifest.json (with the runtime) for Install-MacLedgerReporter.ps1.
 - tools/mcp: the MCP server with the ask tools.
 - tools/tray: the tray (Windows) and menu bar (macOS) app, installed with Install-LedgerTray.ps1.
+- tools/cli: the operator CLI (ix ledger policy, project, coordination), which Install-LedgerAgent.ps1 places in
+  coordination/client so it always matches the installed agent.
 - tools/hook: the Claude inbox hook as a Native AOT executable. Native AOT builds only for the operating system it
   runs on, so build each platform's kit on that platform; -NoHook leaves it out.
 - agent-manifest.json and Install-LedgerAgent.ps1, which installs the agent service from this kit, and
@@ -60,6 +62,7 @@ function Publish([string]$Project, [string]$Destination, [string[]]$Extra = @())
 Publish 'IntelligenceX.Ledger/IntelligenceX.Ledger.csproj' $app @('--self-contained', 'false')
 Publish 'IntelligenceX.Ledger.Mcp/IntelligenceX.Ledger.Mcp.csproj' (Join-Path $Output 'tools/mcp') @('--self-contained', 'false')
 Publish 'IntelligenceX.Ledger.Tray/IntelligenceX.Ledger.Tray.csproj' (Join-Path $Output 'tools/tray') @('--self-contained', 'false')
+Publish 'IntelligenceX.Cli/IntelligenceX.Cli.csproj' (Join-Path $Output 'tools/cli') @('--self-contained', 'false', '-f', 'net10.0')
 if (-not $NoHook) {
     # The native linker on Windows is found through vswhere, which the Visual Studio installer doesn't put on PATH.
     if ($IsWindows -and -not (Get-Command vswhere -ErrorAction SilentlyContinue)) {
