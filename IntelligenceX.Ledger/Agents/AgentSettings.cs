@@ -151,11 +151,16 @@ internal sealed record RunRecord {
         if (LocalFiles.ReadShared(file) is not { } text) return null;
         try { return JsonSerializer.Deserialize<RunRecord>(text); }
         catch (JsonException) {
+            // The marker keeps the grant listed as taken up, so a thread the record named is never requeued around.
+            LocalFiles.WriteAtomic(file + QuarantineSuffix, JsonSerializer.Serialize(new QuarantinedRun(requestId, generation)));
             File.Move(file, file + ".unreadable-" + DateTimeOffset.UtcNow.ToUnixTimeSeconds(), overwrite: true);
             AgentService.Log("run-record-unreadable", requestId);
             return null;
         }
     }
+
+    private const string QuarantineSuffix = ".quarantined";
+    private sealed record QuarantinedRun(string RequestId, long Generation);
 
     /// <summary>The grants of every run record not yet done: the grants this host has taken up. A record is saved before
     /// anything is created for its grant, so a grant missing here never got a thread, process or workspace. Null when a
@@ -178,6 +183,18 @@ internal sealed record RunRecord {
                 continue;
             }
             if (record.Phase != "done") grants.Add((record.RequestId, record.Generation, record.GrantId));
+        }
+        // A set-aside record's grant is unknown, but its request and generation are: list them as taken up.
+        foreach (var marker in Directory.EnumerateFiles(folder, "*.json" + QuarantineSuffix)) {
+            QuarantinedRun? run;
+            try { run = LocalFiles.ReadShared(marker) is { } text ? JsonSerializer.Deserialize<QuarantinedRun>(text) : null; }
+            catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { run = null; }
+            if (run is null) {
+                if (File.Exists(marker)) { AgentService.Log("run-record-unreadable", Path.GetFileName(marker)); return null; }
+                continue;
+            }
+            if (!grants.Any(g => g.Item1 == run.RequestId && g.Item2 == run.Generation))
+                grants.Add((run.RequestId, run.Generation, "quarantined"));
         }
         return grants;
     }

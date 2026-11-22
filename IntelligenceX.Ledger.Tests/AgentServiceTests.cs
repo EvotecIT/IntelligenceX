@@ -96,6 +96,10 @@ public sealed class AgentServiceTests {
             new RunRecord { RequestId = "ask-1", Generation = 2, GrantId = "grant-1", Workspace = "w" }.Save(directory);
             new RunRecord { RequestId = "ask-2", Generation = 1, GrantId = "grant-2", Workspace = "w", Phase = "done" }.Save(directory);
             Assert.Equal([("ask-1", 2L, "grant-1")], RunRecord.Unfinished(directory)!);
+            // A record the sweep set aside keeps its request and generation listed.
+            File.WriteAllText(RunRecord.FileFor(directory, "ask-4", 3), "");
+            Assert.Null(RunRecord.Load(directory, "ask-4", 3));
+            Assert.Equal([("ask-1", 2L, "grant-1"), ("ask-4", 3L, "quarantined")], RunRecord.Unfinished(directory)!);
             File.WriteAllText(RunRecord.FileFor(directory, "ask-3", 1), "{");
             Assert.Null(RunRecord.Unfinished(directory));
         } finally {
