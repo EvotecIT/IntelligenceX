@@ -1,6 +1,7 @@
 using System.Text.Json;
 using DBAClientX;
 using IntelligenceX.Codex;
+using IntelligenceX.Ledger.Agents;
 using IntelligenceX.Ledger.Reporting;
 using IntelligenceX.Telemetry.Agents;
 using IntelligenceX.Telemetry.Usage;
@@ -197,6 +198,69 @@ public sealed class ArchiveCleanupTests : IDisposable {
         Assert.True(Directory.Exists(scratch));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReopenRemainsTerminalWhenReceiptWritesFail(bool failFirstArchiveWrite) {
+        var local = NewChat();
+        var archived = local with { IsArchived = true };
+        var blockReceipt = false;
+        var store = NewStore((path, receipt) => {
+            if (blockReceipt) throw new IOException("Simulated receipt write failure");
+            LocalFiles.WriteAtomic(path, receipt);
+        });
+        var id = Guid.Parse(local.Id);
+        store.Register(id, local, local.WorkingDirectory, [], ReadyAt);
+        blockReceipt = failFirstArchiveWrite;
+        Capture(store, archived, ReadyAt.AddSeconds(1));
+        var persistedArchive = failFirstArchiveWrite ? null : "retained";
+        Assert.Equal(persistedArchive, store.Read(id).Receipt?.State);
+
+        blockReceipt = true;
+        var reopenedAt = ReadyAt.AddSeconds(2);
+        Capture(store, local, reopenedAt);
+        Assert.Equal(persistedArchive, store.Read(id).Receipt?.State);
+
+        blockReceipt = false;
+        Capture(store, archived, ReadyAt.AddSeconds(3));
+        var receipt = store.Read(id).Receipt!;
+        Assert.Equal("reopened", receipt.State);
+        Assert.Equal(reopenedAt, receipt.ObservedAtUtc);
+        Assert.Empty(receipt.Paths);
+
+        Capture(store, archived, ReadyAt.AddSeconds(4));
+        Assert.Equal(reopenedAt, store.Read(id).Receipt!.ObservedAtUtc);
+        Assert.True(Directory.Exists(local.WorkingDirectory));
+    }
+
+    [Fact]
+    public void FreshNativeReadConfirmsANewlyRegisteredArchiveEvenWhenTheReporterMissedReopening() {
+        var local = NewChat();
+        var archived = local with { IsArchived = true };
+        var store = NewStore();
+        var id = Guid.Parse(local.Id);
+        _archives.Observe([archived], ReadyAt.AddSeconds(-2));
+        store.Register(id, local, local.WorkingDirectory, [], ReadyAt);
+
+        // A metadata read spanning registration could have saved an obsolete archive flag.
+        _archives.Observe([archived], ReadyAt.AddSeconds(1), readStartedAtUtc: ReadyAt.AddSeconds(-1));
+        store.Observe([archived], _archives, ReadyAt.AddSeconds(1));
+        var held = store.Read(id).Receipt!;
+        Assert.Equal("waiting-for-new-archive", held.State);
+        Assert.Empty(held.Paths);
+
+        var freshRead = ReadyAt.AddSeconds(2);
+        _archives.Observe([archived], freshRead.AddSeconds(1), readStartedAtUtc: freshRead);
+        store.Observe([archived], _archives, freshRead.AddSeconds(1));
+        var receipt = store.Read(id).Receipt!;
+        Assert.Equal("retained", receipt.State);
+        Assert.Equal(freshRead, receipt.ArchiveObservedAtUtc);
+
+        Capture(store, archived, ReadyAt.AddSeconds(4));
+        Assert.Equal(freshRead, store.Read(id).Receipt!.ArchiveObservedAtUtc);
+        Assert.Equal(ReadyAt.AddSeconds(-2), _archives.For(archived)!.ObservedAtUtc);
+    }
+
     private AgentSessionState NewChat() {
         var worktree = CreateDirectory("worktree");
         File.WriteAllText(Path.Combine(worktree, ".git"), "gitdir: fixture");
@@ -208,10 +272,10 @@ public sealed class ArchiveCleanupTests : IDisposable {
 
     private string CreateDirectory(string name) => Directory.CreateDirectory(Path.Combine(_root, name)).FullName;
 
-    private ArchiveCleanupStore NewStore() => new(new() {
+    private ArchiveCleanupStore NewStore(Action<string, string>? writeReceipt = null) => new(new() {
         Endpoint = "http://127.0.0.1:1", Token = new('t', 32), MachineId = "fixture", ReporterId = "reporter",
         SpoolDirectory = Path.Combine(_root, "spool")
-    });
+    }, writeReceipt);
 
     private void Capture(ArchiveCleanupStore store, AgentSessionState session, DateTimeOffset now) {
         _archives.Observe([session], now);

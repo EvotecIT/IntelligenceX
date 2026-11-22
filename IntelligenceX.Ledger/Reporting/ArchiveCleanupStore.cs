@@ -15,8 +15,11 @@ internal sealed record ArchiveCleanupReceipt(string State, DateTimeOffset Observ
 
 /// <summary>Host-local, opt-in reconciliation for desktop cleanup. The reporter observes registered paths without
 /// acquiring deletion or archive authority. The chat-to-worktree binding survives branch deletion.</summary>
-internal sealed class ArchiveCleanupStore(ReporterSettings settings) {
+internal sealed class ArchiveCleanupStore(ReporterSettings settings, Action<string, string>? writeReceipt = null) {
     private readonly string _directory = Path.Combine(Path.GetFullPath(settings.SpoolDirectory), "archive-cleanup");
+
+    private readonly Action<string, string> _writeReceipt = writeReceipt ?? LocalFiles.WriteAtomic;
+    private readonly Dictionary<(Guid Id, DateTimeOffset ReadyAtUtc), ArchiveCleanupReceipt> _pendingReceipts = new();
 
     private string RegistrationPath(Guid id) => Path.Combine(_directory, id.ToString("D") + ".ready.json");
     private string ReceiptPath(Guid id) => Path.Combine(_directory, id.ToString("D") + ".receipt.json");
@@ -66,14 +69,21 @@ internal sealed class ArchiveCleanupStore(ReporterSettings settings) {
                 var registration = Read<ArchiveCleanupRegistration>(file);
                 if (registration is null || registration.Scratch is null || registration.Machine != settings.MachineId ||
                     !string.Equals(file, RegistrationPath(registration.ThreadId), PathComparison)) continue;
-                var prior = Read<ArchiveCleanupReceipt>(ReceiptPath(registration.ThreadId));
+                var key = (registration.ThreadId, registration.ReadyAtUtc);
+                var receiptPath = ReceiptPath(registration.ThreadId);
+                var retrying = _pendingReceipts.TryGetValue(key, out var prior);
+                if (!retrying) prior = Read<ArchiveCleanupReceipt>(receiptPath);
                 sessionsById ??= IndexSessions(sessions);
                 sessionsById.TryGetValue((registration.SourceRootId, registration.ThreadId), out var session);
                 var evidence = session is null ? null : archives.For(session);
                 var receipt = Evaluate(registration, session, evidence, prior, now);
-                if (prior is null || prior.State != receipt.State || prior.ArchiveObservedAtUtc != receipt.ArchiveObservedAtUtc ||
-                    prior.Paths is null || !prior.Paths.SequenceEqual(receipt.Paths))
-                    LocalFiles.WriteAtomic(ReceiptPath(registration.ThreadId), JsonSerializer.Serialize(receipt, LedgerJson.Options));
+                if (retrying || prior is null || prior.State != receipt.State || prior.ArchiveObservedAtUtc != receipt.ArchiveObservedAtUtc ||
+                    prior.Paths is null || !prior.Paths.SequenceEqual(receipt.Paths)) {
+                    // Retain a known archive or reopen across a failed write, then reconcile with the next observation.
+                    if (receipt.ArchiveObservedAtUtc is not null) _pendingReceipts[key] = receipt;
+                    _writeReceipt(receiptPath, JsonSerializer.Serialize(receipt, LedgerJson.Options));
+                    _pendingReceipts.Remove(key);
+                }
             } catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) {
                 Console.Error.WriteLine("archive-cleanup-record-unavailable");
             }
@@ -100,14 +110,17 @@ internal sealed class ArchiveCleanupStore(ReporterSettings settings) {
             string.Equals(cwd, registration.WorkingDirectory, PathComparison);
         if (session is null || archive is null) return Hold("archive-state-unavailable");
         if (!archive.Archived) return Hold(prior?.ArchiveObservedAtUtc is null ? "waiting-for-archive" : "reopened");
-        if (archive.ObservedAtUtc <= registration.ReadyAtUtc) return Hold("waiting-for-new-archive");
+        if (archive.ReadStartedAtUtc <= registration.ReadyAtUtc) return Hold("waiting-for-new-archive");
+        // Registration already observed the chat active. A later native read can confirm its next
+        // archive even when the reporter missed the intervening active state.
+        var archivedAt = prior?.ArchiveObservedAtUtc ?? archive.ReadStartedAtUtc;
         if (SessionOrigin.For(session).Origin != "human" || session.TurnOpen != false ||
-            !MatchesWorkspace(session.WorkingDirectory) || !MatchesWorkspace(archive.WorkingDirectory)) return Hold("chat-binding-unconfirmed", archive.ObservedAtUtc);
+            !MatchesWorkspace(session.WorkingDirectory) || !MatchesWorkspace(archive.WorkingDirectory)) return Hold("chat-binding-unconfirmed", archivedAt);
 
         string[] targets = registration.Worktree is { } worktree ? [worktree, .. registration.Scratch] : registration.Scratch;
         var paths = targets.Select(path => new ArchiveCleanupPath(path, PathState(path))).ToArray();
         return new(paths.All(path => path.State == "absent") ? "verified-absent" : "retained",
-            now, archive.ObservedAtUtc, paths);
+            now, archivedAt, paths);
     }
 
     private static T? Read<T>(string file) where T : class => LocalFiles.ReadShared(file) is { } content

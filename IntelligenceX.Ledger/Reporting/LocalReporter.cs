@@ -136,11 +136,12 @@ public static class LocalReporter {
         var claudeCliRoots = ClaudeDesktopAccounts.CliProfileRoots();
         await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
             readMetadataAsync: async ct => {
+                var readStartedAtUtc = DateTimeOffset.UtcNow;
                 var available = await IntelligenceX.Codex.CodexAgentSessionMetadataReader.ReadAvailableAsync(
                     LocalAgentWorkStateService.DiscoverRoots().Where(r =>
                         r.SourceKind == IntelligenceX.Telemetry.Usage.UsageSourceKind.LocalLogs && r.ProviderId == "codex"), ct);
                 Volatile.Write(ref metadataDiagnostics, available.Diagnostics.ToArray());
-                archives.Observe(available.Sessions, DateTimeOffset.UtcNow);
+                archives.Observe(available.Sessions, DateTimeOffset.UtcNow, readStartedAtUtc);
                 return available.Sessions;
             }, github: settings.GitHub ? github : null);
         var changes = new ReporterChangeTracker(spool, settings.SpoolDirectory);
