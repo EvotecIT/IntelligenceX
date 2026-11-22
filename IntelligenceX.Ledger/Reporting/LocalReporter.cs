@@ -154,6 +154,11 @@ public static class LocalReporter {
         var captureGate = new object();
         void Capture(AgentWorkSnapshot snapshot) {
             lock (captureGate) {
+            // Local receipts can be recorded before draining the historical sessions into the upload spool.
+            try { archiveCleanup.Observe(snapshot.Sessions, archives, DateTimeOffset.UtcNow); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
+                Console.Error.WriteLine("archive-cleanup-observation-unavailable");
+            }
             foreach (var session in snapshot.Sessions) {
                 if (session.ObservationSources == AgentObservationSources.TitleIndex) continue;
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
@@ -189,10 +194,6 @@ public static class LocalReporter {
                 changes.TryAppend(Event(id, session.Provider) with { Work = work });
             }
             changes.Checkpoint();
-            try { archiveCleanup.Observe(snapshot.Sessions, archives, DateTimeOffset.UtcNow); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
-                Console.Error.WriteLine("archive-cleanup-observation-unavailable");
-            }
             }
         }
         CheckoutCensus? pendingCensus = null;
