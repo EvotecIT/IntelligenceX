@@ -403,6 +403,7 @@ internal sealed partial class AgentService {
         using var run = CancellationTokenSource.CreateLinkedTokenSource(stop);
         var key = RunKey(id, work.Generation);
         _runs[key] = run;
+        _running[key] = new CoordinationActiveGrant(id, work.Generation, grant);
         try {
             stop = run.Token;
             Directory.CreateDirectory(record.Workspace);
@@ -453,6 +454,7 @@ internal sealed partial class AgentService {
                 try { await renewing.ConfigureAwait(false); } catch (OperationCanceledException) { }
             }
         } finally {
+            _running.TryRemove(key, out _);
             _runs.TryRemove(new KeyValuePair<string, CancellationTokenSource>(key, run));
         }
     }
@@ -825,11 +827,15 @@ internal sealed partial class AgentService {
         }
     }
 
-    /// <summary>Keeps the grant alive while the helper works or waits for an answer. A renewal the service rejects means
-    /// the grant is gone, so the run stops and reconciliation takes over.</summary>
+    /// <summary>Keeps the grant alive while the helper works or waits for an answer, beside the heartbeat that lists every
+    /// running grant. A renewal that could not reach the service is retried within a minute, so a slow Ledger does not let
+    /// a working helper's grant lapse. A renewal the service rejects means the grant is gone, so the run stops and
+    /// reconciliation takes over.</summary>
     private async Task RenewAsync(string id, ExecutionReceipt receipt, CancellationTokenSource run, CancellationToken token) {
+        var delay = TimeSpan.FromSeconds(Math.Max(5, _grantSeconds / 3.0));
         while (!token.IsCancellationRequested) {
-            await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, _grantSeconds / 3.0)), token).ConfigureAwait(false);
+            await Task.Delay(delay, token).ConfigureAwait(false);
+            delay = TimeSpan.FromSeconds(Math.Max(5, _grantSeconds / 3.0));
             try { await _ledger.ReceiptAsync(id, "renew", receipt, token).ConfigureAwait(false); }
             catch (CoordinationCommandRejectedException error) {
                 Log("renew-rejected", id + " " + error.Message);
@@ -838,6 +844,7 @@ internal sealed partial class AgentService {
             } catch (Exception error) when (error is HttpRequestException or IOException ||
                 error is TaskCanceledException && !token.IsCancellationRequested) {
                 Log("renew-unavailable", id + " " + error.Message);
+                delay = TimeSpan.FromSeconds(Math.Clamp(_grantSeconds / 10.0, 5, 60));
             }
         }
     }

@@ -19,4 +19,14 @@ public sealed class CodexActiveTurnTests {
         Assert.True(CodexRunner.Remaining(DateTimeOffset.UtcNow.AddSeconds(3), TimeSpan.FromSeconds(15)) <= TimeSpan.FromSeconds(3));
         Assert.Equal(TimeSpan.Zero, CodexRunner.Remaining(DateTimeOffset.UtcNow.AddSeconds(-1), TimeSpan.FromSeconds(15)));
     }
+
+    [Fact]
+    public void TheSameParametersCanBeSentInASecondRequest() {
+        // A resumed ask forks an archived thread: the fork is refused, the source unarchived and the same fork sent again.
+        var parameters = new System.Text.Json.Nodes.JsonObject { ["threadId"] = "source", ["excludeTurns"] = true };
+        var first = CodexAppServer.Request(1, "thread/fork", parameters);
+        var second = CodexAppServer.Request(3, "thread/fork", parameters);
+        Assert.Equal(first["params"]!.ToJsonString(), second["params"]!.ToJsonString());
+        Assert.Equal("source", second["params"]!["threadId"]!.GetValue<string>());
+    }
 }

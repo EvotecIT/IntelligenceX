@@ -20,6 +20,21 @@ public sealed partial class CoordinationEngine {
         (long)demand.CpuUnits + used.CpuUnits <= m.CpuUnits && demand.MemoryMiB <= m.MemoryMiB - used.MemoryMiB &&
         (demand.Processors is null || demand.Processors.All(p => m.BenchmarkProcessors?.Contains(p) == true && used.Processors?.Contains(p) != true));
 
+    /// <summary>True when the machine reports load (memory pressure or sustained CPU) and already runs a helper, so a new
+    /// helper waits. The slots in policy are a ceiling, not a target; one helper is always allowed.</summary>
+    private bool LoadHeld(CoordinationRequest request, string machine) => request.Resources.AgentSlots > 0 &&
+        state.Hosts.TryGetValue(machine, out var host) && host.LoadHold is not null && Used(machine).AgentSlots > 0;
+
+    /// <summary>Admitted work that no host has bound, submitted or run, and that its host, in an observation made after
+    /// the grant lapsed, reports holding nothing for. The host records a grant before it creates anything for it, so
+    /// returning that work to the queue leaves no thread or workspace behind. Anything the host may have started, a
+    /// host that stopped answering, and hosts that predate the report keep the never-created reconciliation.</summary>
+    private bool NeverStarted(CoordinationWork work) => work.State == "admitted" && work.ExecutionId is null &&
+        state.Hosts.TryGetValue(work.Machine!, out var host) && host.ActiveGrants is not null && Fresh(work.Machine!) &&
+        host.ObservedAtUtc > work.RenewByUtc && host.BootId == work.BootId &&
+        !host.ActiveGrants.Any(g => g.RequestId == work.Request.Id && g.Generation == work.Generation) &&
+        !(state.Bindings.TryGetValue(work.Request.Id, out var binding) && binding.Generation == work.Generation);
+
     private static bool AwaitingCreatedWorker(CoordinationWork work) => Occupied.Contains(work.State) &&
         work.Request.Kind is "help" or "review" && work.Assignee is null && work.Provider is not null;
 
@@ -65,6 +80,14 @@ public sealed partial class CoordinationEngine {
                 (!state.Workers.TryGetValue(currentBinding.WorkerId, out var currentWorker) || currentWorker.Candidate is null ||
                  !SameCandidate(currentBinding.Candidate, currentWorker.Candidate));
             var requesterHeld = !RequesterReady(work);
+            if (now > work.RenewByUtc && !bootChanged && !sourceChanged && !requesterHeld && !goal.Stopped && !goal.Paused &&
+                Authorized(work, goal) && NeverStarted(work)) {
+                // Admitted work whose host never took it up goes back to the queue instead of failing; it is admitted
+                // again, with a new grant, when a host can start it.
+                Put(work with { State = "queued", Machine = null, Assignee = null, Provider = null, GrantId = null, RenewByUtc = null,
+                    BootId = null, Reason = "grant-lapsed-before-start" }, "requeued", "service");
+                continue;
+            }
             if (now > work.RenewByUtc || bootChanged || sourceChanged || requesterHeld || goal.Stopped || goal.Paused || !Authorized(work, goal))
                 Put(work with { State = "reconcile", Reason = bootChanged ? "boot-changed" : sourceChanged ? "worker-source-changed" : requesterHeld ? "requester-held" : goal.Stopped || goal.Paused ? "goal-held" :
                     !Authorized(work, goal) ? "control-changed" : "grant-overdue" }, "reconciliation-required", "service");
@@ -102,11 +125,12 @@ public sealed partial class CoordinationEngine {
                 (r.Resources.Processors is null || r.Resources.Processors.All(p => state.Hosts[m.Id].Processors?.Contains(p) == true)) &&
                 (!needsWorker || workers.Any(w => w.MachineId == m.Id) || CreationProvider(r, m, state.Hosts[m.Id]) is not null))
                 .OrderBy(m => m.Id, StringComparer.Ordinal).ToArray();
-            var ready = candidates.Where(m => !blocked.Contains(m.Id) && Fits(r.Resources, m, Used(m.Id))).ToArray();
+            var ready = candidates.Where(m => !blocked.Contains(m.Id) && Fits(r.Resources, m, Used(m.Id)) && !LoadHeld(r, m.Id)).ToArray();
             var machine = ready.FirstOrDefault(m => !needsWorker || workers.Any(w => w.MachineId == m.Id)) ?? ready.FirstOrDefault();
             if (machine is null) {
                 state.Work[r.Id] = work with { Reason = candidates.Length == 0
-                    ? needsWorker && workers.Length == 0 ? "worker-unavailable" : "machine-unavailable" : "capacity" };
+                    ? needsWorker && workers.Length == 0 ? "worker-unavailable" : "machine-unavailable"
+                    : candidates.All(m => LoadHeld(r, m.Id)) ? "machine-busy" : "capacity" };
                 // Ready work cannot repeatedly bypass an earlier conflicting request, including an exclusive benchmark.
                 foreach (var candidate in candidates) blocked.Add(candidate.Id);
                 continue;

@@ -263,8 +263,21 @@ public sealed partial class CoordinationEngine {
             !state.Questions.Values.Any(q => q.RequestId == w.Request.Id && q.Kind == "notice")).ToArray())
             AddQuestion(work, "notice", "No machine has taken request " + work.Request.Id + " after " +
                 ask.AdmissionMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) + " minutes (" +
-                (work.Reason ?? "waiting") + "). It stays queued; cancel it if it is no longer needed.");
+                (work.Reason ?? "waiting") + "). " + QueuedNotice(work.Reason));
     }
+
+    /// <summary>What a queued ask waits for. Waits on machines start on their own; a held goal or requester and unaccepted
+    /// dependencies need someone to act.</summary>
+    internal static string QueuedNotice(string? reason) => reason switch {
+        "goal-held-or-changed" => "It stays held until its goal is resumed, or the request is reauthorized after a goal change. " +
+            "Cancel it if you no longer want it.",
+        "requester-held" => "It stays held until the session that asked is active again. Cancel it if you no longer want it.",
+        "dependency-not-accepted" => "It starts once the requests it depends on are accepted.",
+        "capacity" => "It stays queued and starts on its own when a helper slot frees up; running helpers keep their slots " +
+            "until they finish. Nothing needs doing.",
+        "machine-busy" => "It stays queued and starts on its own when the machine's load drops. Nothing needs doing.",
+        _ => "It stays queued and starts on its own when a machine can take it. Nothing needs doing."
+    };
 
     /// <summary>Tells an asker, once, that its result may not have arrived and where to read it.</summary>
     private void NoticeUncertainResult(string requestId) {

@@ -108,4 +108,8 @@ public sealed record CoordinationAcknowledgement(bool Acknowledged, int? GrantSe
     /// <summary>The current ask policy, returned to hosts with each heartbeat so their limits follow policy changes.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public AskPolicy? Ask { get; init; }
+    /// <summary>True from a service that renews the grants a host lists in <see cref="CoordinationHost.ActiveGrants"/>.
+    /// A host lists them only after this, because an older service rejects the unknown field.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool RenewsActiveGrants { get; init; }
 }

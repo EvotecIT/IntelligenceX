@@ -5,6 +5,27 @@ using IntelligenceX.Ledger.Reporting;
 namespace IntelligenceX.Ledger.Hosting;
 
 internal static class LeaseEndpoints {
+    /// <summary>One machine's status, or null for a machine with no expected reporter.</summary>
+    internal static async Task<MachineStatus?> ReadMachineStatusAsync(LedgerStore store, LedgerSettings settings, string id,
+        DateTimeOffset now, CancellationToken ct) {
+        if (!settings.ExpectedReporters.TryGetValue(id, out var expected)) return null;
+        var health = await store.HeartbeatsAsync(ct);
+        var state = expected.All(health.ContainsKey) && expected.All(r => now - health[r] <= settings.Rules.ReporterTimeout)
+            ? "healthy" : expected.Any(health.ContainsKey) ? "reporter-silent" : "not-enrolled";
+        return await store.MachineStatusAsync(id, state, now, ct);
+    }
+
+    /// <summary>The load reason that holds new helpers on a machine (memory pressure or sustained CPU), or null. A read
+    /// that fails holds nothing, so a heartbeat never fails for it.</summary>
+    internal static async Task<string?> HelperLoadHoldAsync(LedgerStore store, LedgerSettings settings, string id, CancellationToken ct) {
+        try {
+            var reason = (await ReadMachineStatusAsync(store, settings, id, DateTimeOffset.UtcNow, ct))?.Resources?.Reason;
+            return reason is "memory-pressure" or "sustained-cpu" ? reason : null;
+        } catch (Exception error) when (error is not OperationCanceledException) {
+            return null;
+        }
+    }
+
     internal static void Map(WebApplication app, LedgerStore store, LedgerSettings settings) {
         const string api = "/api/ledger/v1";
         app.MapGet(api + "/leases", async (string key, bool? prefix, CancellationToken ct) =>
@@ -26,14 +47,8 @@ internal static class LeaseEndpoints {
             Coordination.CoordinationValidation.Require(CoordinationEndpoints.Caller(http).Role == "operator", "lease-approval-role-denied");
             return Results.Ok(await store.ApproveLeaseAsync(value, DateTimeOffset.UtcNow, ct));
         });
-        app.MapGet(api + "/machine-status/{id}", async (string id, CancellationToken ct) => {
-            if (!settings.ExpectedReporters.TryGetValue(id, out var expected)) return Results.NotFound();
-            var health = await store.HeartbeatsAsync(ct);
-            var now = DateTimeOffset.UtcNow;
-            var state = expected.All(health.ContainsKey) && expected.All(r => now - health[r] <= settings.Rules.ReporterTimeout)
-                ? "healthy" : expected.Any(health.ContainsKey) ? "reporter-silent" : "not-enrolled";
-            return Results.Ok(await store.MachineStatusAsync(id, state, now, ct));
-        });
+        app.MapGet(api + "/machine-status/{id}", async (string id, CancellationToken ct) =>
+            await ReadMachineStatusAsync(store, settings, id, DateTimeOffset.UtcNow, ct) is { } status ? Results.Ok(status) : Results.NotFound());
         app.MapGet(api + "/budget-status", async (CancellationToken ct) => {
             // Session limits are observed from every reporter; account windows and credits come from this host's own clients.
             var observed = store.BudgetStatusAsync(ct);

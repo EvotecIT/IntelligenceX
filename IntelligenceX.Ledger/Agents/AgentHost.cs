@@ -92,11 +92,15 @@ internal sealed partial class AgentService {
     private readonly ClaudeRunner _claudeHelper;
     private readonly ConcurrentDictionary<string, Task> _active = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _runs = new(StringComparer.Ordinal);
+    /// <summary>The grant of each helper run in <see cref="_runs"/>, reported with every heartbeat so the service renews it.</summary>
+    private readonly ConcurrentDictionary<string, CoordinationActiveGrant> _running = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _deferred = new(StringComparer.Ordinal);
     private readonly string _bootId;
     private CancellationToken _life;
     private AskPolicy _policy = new();
     private int _grantSeconds = 120;
+    /// <summary>Set once the service acknowledged that it renews listed grants; until then heartbeats omit the list.</summary>
+    private volatile bool _renewsActiveGrants;
 
     private readonly Action<SignInFact> _publishSignIn;
 
@@ -160,6 +164,20 @@ internal sealed partial class AgentService {
         }
     }
 
+    /// <summary>The grants this host has taken up: the helpers running now first, then unfinished run records, at most
+    /// what one observation may list. A listed grant is never returned to the queue; only running ones are renewed.
+    /// Null while a run record can't be read, or when there are more than one observation may list, so the service
+    /// keeps reconciliation for everything instead of treating a missing grant as never taken up.</summary>
+    internal CoordinationActiveGrant[]? ActiveGrants() {
+        var running = _running.Values.ToArray();
+        if (RunRecord.Unfinished(_settings.StateDirectory) is not { } unfinished) return null;
+        var taken = unfinished
+            .Where(r => !running.Any(g => g.RequestId == r.RequestId && g.Generation == r.Generation))
+            .Select(r => new CoordinationActiveGrant(r.RequestId, r.Generation, r.GrantId, Running: false));
+        var all = running.OrderBy(g => g.RequestId, StringComparer.Ordinal).ThenBy(g => g.Generation).Concat(taken).ToArray();
+        return all.Length <= Coordination.CoordinationEngine.MaximumActiveGrants ? all : null;
+    }
+
     private async Task HeartbeatAsync(CancellationToken stop) {
         // A provider is offered while its status check says it is signed in. Starting one just to prove it answers cost a
         // process per machine every minute; a helper that can't start fails and is retried instead.
@@ -168,7 +186,8 @@ internal sealed partial class AgentService {
             .Where(provider => _signIn.TryGetValue(provider, out var state) && state.Ready).ToArray();
         try {
             var ack = await _ledger.HostAsync(new CoordinationHost(_machineId, _bootId, DateTimeOffset.UtcNow, _settings.Capabilities,
-                CreatableProviders: creatable), stop).ConfigureAwait(false);
+                CreatableProviders: creatable) { ActiveGrants = _renewsActiveGrants ? ActiveGrants() : null }, stop).ConfigureAwait(false);
+            _renewsActiveGrants = ack.RenewsActiveGrants;
             if (ack.GrantSeconds is > 0) _grantSeconds = ack.GrantSeconds.Value;
             if (ack.Ask is not null) _policy = ack.Ask;
         } catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or

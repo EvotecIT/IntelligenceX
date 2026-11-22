@@ -63,6 +63,10 @@ public sealed class CoordinationRequesterHttpTests {
             var acknowledged = await host.HostAsync(new("synthetic-machine", "boot", DateTimeOffset.UtcNow, ["review"]), token);
             Assert.True(acknowledged.Acknowledged);
             Assert.Equal(37, acknowledged.GrantSeconds);
+            // The host lists its running grants only once the service says it renews them; the list is accepted.
+            Assert.True(acknowledged.RenewsActiveGrants);
+            Assert.True((await host.HostAsync(new("synthetic-machine", "boot", DateTimeOffset.UtcNow.AddMilliseconds(5), ["review"]) {
+                ActiveGrants = [new("unknown-request", 1, "unknown-grant")] }, token)).Acknowledged);
             Assert.Equal(HttpStatusCode.Conflict, (await Assert.ThrowsAsync<HttpRequestException>(() =>
                 host.PolicyAsync(token))).StatusCode);
         });

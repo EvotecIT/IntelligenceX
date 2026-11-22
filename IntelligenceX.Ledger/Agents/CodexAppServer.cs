@@ -139,12 +139,17 @@ internal sealed class CodexAppServer : IAsyncDisposable {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(timeout);
         try {
-            await SendAsync(new JsonObject { ["id"] = id, ["method"] = method, ["params"] = parameters ?? new JsonObject() }, deadline.Token).ConfigureAwait(false);
+            await SendAsync(Request(id, method, parameters), deadline.Token).ConfigureAwait(false);
             return await completion.Task.WaitAsync(deadline.Token).ConfigureAwait(false);
         } catch (OperationCanceledException) when (!token.IsCancellationRequested) {
             throw new TimeoutException("Codex app server did not answer " + method + ".");
         } finally { _pending.TryRemove(id, out _); }
     }
+
+    /// <summary>One request message. It carries a copy of the parameters, so a caller can send the same parameters again,
+    /// as the fork of an archived thread does after unarchiving it.</summary>
+    internal static JsonObject Request(long id, string method, JsonObject? parameters) =>
+        new() { ["id"] = id, ["method"] = method, ["params"] = parameters?.DeepClone() ?? new JsonObject() };
 
     private async Task SendAsync(JsonObject message, CancellationToken token) {
         var bytes = Encoding.UTF8.GetBytes(message.ToJsonString());

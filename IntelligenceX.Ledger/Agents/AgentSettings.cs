@@ -151,10 +151,52 @@ internal sealed record RunRecord {
         if (LocalFiles.ReadShared(file) is not { } text) return null;
         try { return JsonSerializer.Deserialize<RunRecord>(text); }
         catch (JsonException) {
+            // The marker keeps the grant listed as taken up, so a thread the record named is never requeued around.
+            LocalFiles.WriteAtomic(file + QuarantineSuffix, JsonSerializer.Serialize(new QuarantinedRun(requestId, generation)));
             File.Move(file, file + ".unreadable-" + DateTimeOffset.UtcNow.ToUnixTimeSeconds(), overwrite: true);
             AgentService.Log("run-record-unreadable", requestId);
             return null;
         }
+    }
+
+    private const string QuarantineSuffix = ".quarantined";
+    private sealed record QuarantinedRun(string RequestId, long Generation);
+
+    /// <summary>The grants of every run record not yet done: the grants this host has taken up. A record is saved before
+    /// anything is created for its grant, so a grant missing here never got a thread, process or workspace. Null when a
+    /// record can't be read: its grant is unknown, so the host can't say what it holds and must not report absence.</summary>
+    public static List<(string RequestId, long Generation, string GrantId)>? Unfinished(string stateDirectory) {
+        var grants = new List<(string, long, string)>();
+        var folder = Path.Combine(stateDirectory, "runs");
+        if (!Directory.Exists(folder)) return grants;
+        foreach (var file in Directory.EnumerateFiles(folder, "*.json")) {
+            if (file.EndsWith(".tokens.json", StringComparison.Ordinal)) continue;
+            RunRecord? record;
+            try { record = LocalFiles.ReadShared(file) is { } text ? JsonSerializer.Deserialize<RunRecord>(text) : null; }
+            catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) {
+                AgentService.Log("run-record-unreadable", Path.GetFileName(file));
+                return null;
+            }
+            if (record is null) {
+                // A file that vanished between listing and reading (pruned) holds nothing; anything else is unreadable.
+                if (File.Exists(file)) { AgentService.Log("run-record-unreadable", Path.GetFileName(file)); return null; }
+                continue;
+            }
+            if (record.Phase != "done") grants.Add((record.RequestId, record.Generation, record.GrantId));
+        }
+        // A set-aside record's grant is unknown, but its request and generation are: list them as taken up.
+        foreach (var marker in Directory.EnumerateFiles(folder, "*.json" + QuarantineSuffix)) {
+            QuarantinedRun? run;
+            try { run = LocalFiles.ReadShared(marker) is { } text ? JsonSerializer.Deserialize<QuarantinedRun>(text) : null; }
+            catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { run = null; }
+            if (run is null) {
+                if (File.Exists(marker)) { AgentService.Log("run-record-unreadable", Path.GetFileName(marker)); return null; }
+                continue;
+            }
+            if (!grants.Any(g => g.Item1 == run.RequestId && g.Item2 == run.Generation))
+                grants.Add((run.RequestId, run.Generation, "quarantined"));
+        }
+        return grants;
     }
 
     /// <summary>Removes run records older than <paramref name="age"/> once the run is done and its helper retired (or it
