@@ -94,8 +94,8 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
                     state.Workers[worker.Id] = worker with { Eligible = false, UnavailableReason = "host-restarted" };
             }
         }
-        // The list itself is not kept; an empty one records that this host reports its running grants.
-        state.Hosts[host.MachineId] = host with { ActiveGrants = host.ActiveGrants is null ? null : [] };
+        // The latest list is kept: it is the host's evidence of which grants it has taken up.
+        state.Hosts[host.MachineId] = host;
         RenewActiveGrants(host);
         Schedule();
     }
@@ -108,7 +108,7 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
     /// changed, or someone stopped it. Renewal is not journaled; the stage history keeps only real transitions.</summary>
     private void RenewActiveGrants(CoordinationHost host) {
         if (host.ActiveGrants is null) return;
-        foreach (var grant in host.ActiveGrants) {
+        foreach (var grant in host.ActiveGrants.Where(g => g.Running)) {
             if (!state.Work.TryGetValue(grant.RequestId, out var work) || work.Machine != host.MachineId ||
                 work.Generation != grant.Generation || work.GrantId != grant.GrantId || work.BootId != host.BootId ||
                 !Occupied.Contains(work.State) || work.State == "reconcile") continue;

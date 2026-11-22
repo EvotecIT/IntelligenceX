@@ -110,15 +110,17 @@ public sealed record ExecutionReceipt(string GrantId, long Generation, string Bo
 /// CreatableProviders lists only currently observed eligible creation routes; unknown/unavailable routes are omitted.</summary>
 public sealed record CoordinationHost(string MachineId, string BootId, DateTimeOffset ObservedAtUtc,
     string[] Capabilities, int[]? Processors = null, string[]? CreatableProviders = null) {
-    /// <summary>Grants this host is running a helper for right now. Each observation renews the listed grants, so a
-    /// helper keeps its grant for as long as it works. Null from hosts that predate the field: their grants renew only
-    /// through renew receipts.</summary>
+    /// <summary>Every grant this host holds local state for. Each observation renews the grants marked running, so a
+    /// helper keeps its grant for as long as it works. A grant the host doesn't list was never taken up there, which is
+    /// what lets lapsed admitted work return to the queue. Null from hosts that predate the field: their grants renew
+    /// only through renew receipts.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CoordinationActiveGrant[]? ActiveGrants { get; init; }
 }
 
-/// <summary>One grant a host reports as running: the request, its admitted generation and the grant identity.</summary>
-public sealed record CoordinationActiveGrant(string RequestId, long Generation, string GrantId);
+/// <summary>One grant a host holds local state for: the request, its admitted generation and the grant identity.
+/// Running is true while a helper run for it is live on the host; only those grants are renewed.</summary>
+public sealed record CoordinationActiveGrant(string RequestId, long Generation, string GrantId, bool Running = true);
 
 /// <summary>Host-enrolled worker eligibility for bounded requested execution. Known unavailable or provider-limit
 /// conditions must be reported as ineligible with an explicit reason. Native providers enforce their own limits.

@@ -10,7 +10,7 @@ namespace IntelligenceX.Ledger.Mcp;
 [McpServerToolType]
 public sealed class CoordinationTools(LedgerReadClient client) {
     [McpServerTool(Name = "request_cancel", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Cancel an original requester's queued generation-zero intent using its exact expectedGeneration=0 and bounded reasonRef. apply=true is required. Identical retries retain the reason and request body. Admission closes cancellation eligibility.")]
+    [Description("Cancel an original requester's queued intent that holds no grant, using its exact current expectedGeneration (0 unless it was admitted and returned to the queue) and bounded reasonRef. apply=true is required. Identical retries retain the reason and request body. Admission closes cancellation eligibility.")]
     public Task<CoordinationWork> Cancel(string requestId, CoordinationCancellation command, bool apply = false, CancellationToken token = default) {
         if (!apply) throw new ArgumentException("Set apply=true for explicit queued request cancellation.");
         return CommandAsync(client.CancelAsync(requestId, command, token));

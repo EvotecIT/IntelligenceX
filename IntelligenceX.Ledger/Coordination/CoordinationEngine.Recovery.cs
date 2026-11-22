@@ -19,7 +19,7 @@ public sealed partial class CoordinationEngine {
         Require(!goal.Paused && !goal.Stopped && !goal.Accepted &&
             authorization.ControlRevision == ControlRevision(goal) &&
             work.Request.AuthorizationRef == goal.AuthorizationRef, "reauthorization-goal-held");
-        Require(work.State == "queued" && work.Generation == 0 && work.GrantId is null && work.ExecutionId is null ||
+        Require(work.State == "queued" && Unadmitted(work) ||
             Terminal.Contains(work.State) && state.ResultOutbox.TryGetValue(work.Request.Id, out var result) &&
             result.Generation == work.Generation && result.ConsumedAtUtc is null && result.State is "intent" or "held",
             "reauthorization-native-operation-held");

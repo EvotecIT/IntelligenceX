@@ -164,9 +164,16 @@ internal sealed partial class AgentService {
         }
     }
 
-    /// <summary>The grants of the helpers running now, at most what one observation may list.</summary>
-    internal CoordinationActiveGrant[] ActiveGrants() => _running.Values.OrderBy(g => g.RequestId, StringComparer.Ordinal)
-        .ThenBy(g => g.Generation).Take(Coordination.CoordinationEngine.MaximumActiveGrants).ToArray();
+    /// <summary>The grants this host has taken up: the helpers running now first, then unfinished run records, at most
+    /// what one observation may list. A listed grant is never returned to the queue; only running ones are renewed.</summary>
+    internal CoordinationActiveGrant[] ActiveGrants() {
+        var running = _running.Values.ToArray();
+        var taken = RunRecord.Unfinished(_settings.StateDirectory)
+            .Where(r => !running.Any(g => g.RequestId == r.RequestId && g.Generation == r.Generation))
+            .Select(r => new CoordinationActiveGrant(r.RequestId, r.Generation, r.GrantId, Running: false));
+        return running.OrderBy(g => g.RequestId, StringComparer.Ordinal).ThenBy(g => g.Generation).Concat(taken)
+            .Take(Coordination.CoordinationEngine.MaximumActiveGrants).ToArray();
+    }
 
     private async Task HeartbeatAsync(CancellationToken stop) {
         // A provider is offered while its status check says it is signed in. Starting one just to prove it answers cost a

@@ -106,6 +106,35 @@ public sealed class CoordinationLongRunningGrantTests {
     }
 
     [Fact]
+    public void WorkItsHostHasTakenUpIsNeitherRenewedNorRequeuedWhenItIsNotRunning() {
+        var state = CreateState();
+        var admitted = new CoordinationEngine(state, Now).Submit(Help(), Requester);
+        // The host saved a run record (it may have created a thread) but no run is live.
+        var held = new CoordinationActiveGrant("help", admitted.Generation, admitted.GrantId!, Running: false);
+        Heartbeat(At(state, 30), state, 30, [held]);
+        Assert.Equal(admitted.RenewByUtc, state.Work["help"].RenewByUtc);
+        var lapse = state.Policy.GrantSeconds + 1;
+        Heartbeat(At(state, lapse), state, lapse, [held]);
+        Assert.Equal("reconcile", state.Work["help"].State);
+        Assert.Equal("grant-overdue", state.Work["help"].Reason);
+    }
+
+    [Fact]
+    public void RequeuedWorkCanStillBeCancelledAtItsCurrentGeneration() {
+        var state = CreateState();
+        var admitted = new CoordinationEngine(state, Now).Submit(Help(), Requester);
+        var lapse = state.Policy.GrantSeconds + 1;
+        var later = At(state, lapse);
+        // Its worker hasn't been seen since, so the requeued work stays queued.
+        Heartbeat(later, state, lapse, []);
+        var requeued = state.Work["help"];
+        Assert.Equal("queued", requeued.State);
+        Assert.Equal(admitted.Generation, requeued.Generation);
+        Assert.Throws<CoordinationConflictException>(() => later.Cancel("help", new(0, "not-needed"), Requester));
+        Assert.Equal("cancelled", later.Cancel("help", new(requeued.Generation, "not-needed"), Requester).State);
+    }
+
+    [Fact]
     public void QueuedWorkWaitsForCapacityWithoutExpiring() {
         var state = CreateState();
         var e = new CoordinationEngine(state, Now);

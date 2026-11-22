@@ -157,6 +157,20 @@ internal sealed record RunRecord {
         }
     }
 
+    /// <summary>The grants of every run record not yet done: the grants this host has taken up. A record is saved before
+    /// anything is created for its grant, so a grant missing here never got a thread, process or workspace.</summary>
+    public static IEnumerable<(string RequestId, long Generation, string GrantId)> Unfinished(string stateDirectory) {
+        var folder = Path.Combine(stateDirectory, "runs");
+        if (!Directory.Exists(folder)) yield break;
+        foreach (var file in Directory.EnumerateFiles(folder, "*.json")) {
+            if (file.EndsWith(".tokens.json", StringComparison.Ordinal)) continue;
+            RunRecord? record;
+            try { record = LocalFiles.ReadShared(file) is { } text ? JsonSerializer.Deserialize<RunRecord>(text) : null; }
+            catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { record = null; }
+            if (record is not null && record.Phase != "done") yield return (record.RequestId, record.Generation, record.GrantId);
+        }
+    }
+
     /// <summary>Removes run records older than <paramref name="age"/> once the run is done and its helper retired (or it
     /// never had a thread), with their token files and set-aside records.</summary>
     public static void Prune(string stateDirectory, TimeSpan age, Func<string, bool> active) {

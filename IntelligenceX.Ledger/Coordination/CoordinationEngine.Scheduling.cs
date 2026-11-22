@@ -20,11 +20,14 @@ public sealed partial class CoordinationEngine {
         (long)demand.CpuUnits + used.CpuUnits <= m.CpuUnits && demand.MemoryMiB <= m.MemoryMiB - used.MemoryMiB &&
         (demand.Processors is null || demand.Processors.All(p => m.BenchmarkProcessors?.Contains(p) == true && used.Processors?.Contains(p) != true));
 
-    /// <summary>Admitted work that no host has bound, submitted or run yet, on a host that reports its running grants. Its
-    /// host renews the grant while it creates the helper, so a lapsed one was never taken up and returning it to the queue
-    /// loses nothing. Hosts that predate the report keep the never-created reconciliation.</summary>
+    /// <summary>Admitted work that no host has bound, submitted or run, and that its host, in an observation made after
+    /// the grant lapsed, reports holding nothing for. The host records a grant before it creates anything for it, so
+    /// returning that work to the queue leaves no thread or workspace behind. Anything the host may have started, a
+    /// host that stopped answering, and hosts that predate the report keep the never-created reconciliation.</summary>
     private bool NeverStarted(CoordinationWork work) => work.State == "admitted" && work.ExecutionId is null &&
-        state.Hosts.TryGetValue(work.Machine!, out var host) && host.ActiveGrants is not null &&
+        state.Hosts.TryGetValue(work.Machine!, out var host) && host.ActiveGrants is not null && Fresh(work.Machine!) &&
+        host.ObservedAtUtc > work.RenewByUtc && host.BootId == work.BootId &&
+        !host.ActiveGrants.Any(g => g.RequestId == work.Request.Id && g.Generation == work.Generation) &&
         !(state.Bindings.TryGetValue(work.Request.Id, out var binding) && binding.Generation == work.Generation);
 
     private static bool AwaitingCreatedWorker(CoordinationWork work) => Occupied.Contains(work.State) &&
