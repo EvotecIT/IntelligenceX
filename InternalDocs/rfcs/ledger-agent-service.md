@@ -259,5 +259,8 @@ starting an app server every minute.
 - After a reboot, or when a host stops reporting a running helper, the helper is stopped and its work so far is
   returned as a failed result; it isn't resumed in place.
 - Capacity is the machine's `agentSlots` in policy. Codex and Claude helpers share it, and each gets its own grant,
-  thread and workspace, so concurrent helpers never share a checkout. The Macs run up to four helpers at once.
+  thread and workspace, so concurrent helpers never share a checkout. The Macs run at most four helpers at once.
+  The slots are a ceiling: while the machine's reporter shows memory pressure or sustained CPU, the heartbeat records
+  a load hold, and a machine that already runs a helper admits no other (`machine-busy`). One with none still admits
+  one, and load never stops a running helper.
 - Workspace content left by a helper holds its retirement for review instead of being deleted.
