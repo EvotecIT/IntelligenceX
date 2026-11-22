@@ -116,7 +116,7 @@ internal static partial class CoordinationEndpoints {
         app.MapPost(Prefix + "/hosts", async (CoordinationHost host, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, state) => {
                 e.ObserveHost(host, Caller(http));
-                return new CoordinationAcknowledgement(true, state.Policy.GrantSeconds) { Ask = state.Policy.Ask };
+                return new CoordinationAcknowledgement(true, state.Policy.GrantSeconds) { Ask = state.Policy.Ask, RenewsActiveGrants = true };
             }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/workers", async (CoordinationWorker worker, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => { e.ObserveWorker(worker, Caller(http)); return new { acknowledged = true }; }, DateTimeOffset.UtcNow, ct)));

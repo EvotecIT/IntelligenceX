@@ -99,6 +99,8 @@ internal sealed partial class AgentService {
     private CancellationToken _life;
     private AskPolicy _policy = new();
     private int _grantSeconds = 120;
+    /// <summary>Set once the service acknowledged that it renews listed grants; until then heartbeats omit the list.</summary>
+    private volatile bool _renewsActiveGrants;
 
     private readonly Action<SignInFact> _publishSignIn;
 
@@ -174,7 +176,8 @@ internal sealed partial class AgentService {
             .Where(provider => _signIn.TryGetValue(provider, out var state) && state.Ready).ToArray();
         try {
             var ack = await _ledger.HostAsync(new CoordinationHost(_machineId, _bootId, DateTimeOffset.UtcNow, _settings.Capabilities,
-                CreatableProviders: creatable) { ActiveGrants = ActiveGrants() }, stop).ConfigureAwait(false);
+                CreatableProviders: creatable) { ActiveGrants = _renewsActiveGrants ? ActiveGrants() : null }, stop).ConfigureAwait(false);
+            _renewsActiveGrants = ack.RenewsActiveGrants;
             if (ack.GrantSeconds is > 0) _grantSeconds = ack.GrantSeconds.Value;
             if (ack.Ask is not null) _policy = ack.Ask;
         } catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or
