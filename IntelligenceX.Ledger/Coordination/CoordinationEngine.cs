@@ -84,7 +84,9 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
             state.Policy.Machines.Any(m => m.Id == host.MachineId) && host.Capabilities is { Length: <= 64 } && host.Capabilities.All(Id) &&
             Providers(host.CreatableProviders) &&
             host.ObservedAtUtc <= now.AddSeconds(10) && now - host.ObservedAtUtc <= TimeSpan.FromSeconds(30) &&
-            (host.Processors is null || host.Processors.Length <= 4096 && host.Processors.All(p => p >= 0)), "invalid-host-observation");
+            (host.Processors is null || host.Processors.Length <= 4096 && host.Processors.All(p => p >= 0)) &&
+            (host.ActiveGrants is null || host.ActiveGrants.Length <= MaximumActiveGrants && host.ActiveGrants.All(g =>
+                g is not null && Id(g.RequestId) && Id(g.GrantId) && g.Generation > 0)), "invalid-host-observation");
         if (state.Hosts.TryGetValue(host.MachineId, out var previous)) {
             Require(host.ObservedAtUtc > previous.ObservedAtUtc, "host-observation-out-of-order");
             if (previous.BootId != host.BootId) {
@@ -92,8 +94,27 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
                     state.Workers[worker.Id] = worker with { Eligible = false, UnavailableReason = "host-restarted" };
             }
         }
-        state.Hosts[host.MachineId] = host;
+        // The list itself is not kept; an empty one records that this host reports its running grants.
+        state.Hosts[host.MachineId] = host with { ActiveGrants = host.ActiveGrants is null ? null : [] };
+        RenewActiveGrants(host);
         Schedule();
+    }
+
+    /// <summary>Most grants one host observation may list.</summary>
+    internal const int MaximumActiveGrants = 256;
+
+    /// <summary>Renews the grants a live host says it is still running. A helper is never stopped for taking long: its
+    /// grant lapses only when its host stops reporting it (the helper or the host died), its host restarted, its source
+    /// changed, or someone stopped it. Renewal is not journaled; the stage history keeps only real transitions.</summary>
+    private void RenewActiveGrants(CoordinationHost host) {
+        if (host.ActiveGrants is null) return;
+        foreach (var grant in host.ActiveGrants) {
+            if (!state.Work.TryGetValue(grant.RequestId, out var work) || work.Machine != host.MachineId ||
+                work.Generation != grant.Generation || work.GrantId != grant.GrantId || work.BootId != host.BootId ||
+                !Occupied.Contains(work.State) || work.State == "reconcile") continue;
+            var renewBy = now.AddSeconds(state.Policy.GrantSeconds);
+            if (work.RenewByUtc is null || work.RenewByUtc < renewBy) state.Work[work.Request.Id] = work with { RenewByUtc = renewBy };
+        }
     }
 
     /// <summary>Publishes host evidence. Guarded preparation atomically rejects source replacement while

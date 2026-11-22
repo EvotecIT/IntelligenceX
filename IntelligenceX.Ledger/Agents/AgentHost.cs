@@ -92,6 +92,8 @@ internal sealed partial class AgentService {
     private readonly ClaudeRunner _claudeHelper;
     private readonly ConcurrentDictionary<string, Task> _active = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _runs = new(StringComparer.Ordinal);
+    /// <summary>The grant of each helper run in <see cref="_runs"/>, reported with every heartbeat so the service renews it.</summary>
+    private readonly ConcurrentDictionary<string, CoordinationActiveGrant> _running = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _deferred = new(StringComparer.Ordinal);
     private readonly string _bootId;
     private CancellationToken _life;
@@ -160,6 +162,10 @@ internal sealed partial class AgentService {
         }
     }
 
+    /// <summary>The grants of the helpers running now, at most what one observation may list.</summary>
+    internal CoordinationActiveGrant[] ActiveGrants() => _running.Values.OrderBy(g => g.RequestId, StringComparer.Ordinal)
+        .ThenBy(g => g.Generation).Take(Coordination.CoordinationEngine.MaximumActiveGrants).ToArray();
+
     private async Task HeartbeatAsync(CancellationToken stop) {
         // A provider is offered while its status check says it is signed in. Starting one just to prove it answers cost a
         // process per machine every minute; a helper that can't start fails and is retried instead.
@@ -168,7 +174,7 @@ internal sealed partial class AgentService {
             .Where(provider => _signIn.TryGetValue(provider, out var state) && state.Ready).ToArray();
         try {
             var ack = await _ledger.HostAsync(new CoordinationHost(_machineId, _bootId, DateTimeOffset.UtcNow, _settings.Capabilities,
-                CreatableProviders: creatable), stop).ConfigureAwait(false);
+                CreatableProviders: creatable) { ActiveGrants = ActiveGrants() }, stop).ConfigureAwait(false);
             if (ack.GrantSeconds is > 0) _grantSeconds = ack.GrantSeconds.Value;
             if (ack.Ask is not null) _policy = ack.Ask;
         } catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or

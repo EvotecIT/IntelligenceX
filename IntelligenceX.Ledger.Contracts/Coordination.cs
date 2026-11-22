@@ -109,7 +109,16 @@ public sealed record ExecutionReceipt(string GrantId, long Generation, string Bo
 /// <summary>Qualified machine observation. The service does not launch programs or change tool workflows.
 /// CreatableProviders lists only currently observed eligible creation routes; unknown/unavailable routes are omitted.</summary>
 public sealed record CoordinationHost(string MachineId, string BootId, DateTimeOffset ObservedAtUtc,
-    string[] Capabilities, int[]? Processors = null, string[]? CreatableProviders = null);
+    string[] Capabilities, int[]? Processors = null, string[]? CreatableProviders = null) {
+    /// <summary>Grants this host is running a helper for right now. Each observation renews the listed grants, so a
+    /// helper keeps its grant for as long as it works. Null from hosts that predate the field: their grants renew only
+    /// through renew receipts.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CoordinationActiveGrant[]? ActiveGrants { get; init; }
+}
+
+/// <summary>One grant a host reports as running: the request, its admitted generation and the grant identity.</summary>
+public sealed record CoordinationActiveGrant(string RequestId, long Generation, string GrantId);
 
 /// <summary>Host-enrolled worker eligibility for bounded requested execution. Known unavailable or provider-limit
 /// conditions must be reported as ineligible with an explicit reason. Native providers enforce their own limits.

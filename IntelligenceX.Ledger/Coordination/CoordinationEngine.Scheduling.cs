@@ -20,6 +20,13 @@ public sealed partial class CoordinationEngine {
         (long)demand.CpuUnits + used.CpuUnits <= m.CpuUnits && demand.MemoryMiB <= m.MemoryMiB - used.MemoryMiB &&
         (demand.Processors is null || demand.Processors.All(p => m.BenchmarkProcessors?.Contains(p) == true && used.Processors?.Contains(p) != true));
 
+    /// <summary>Admitted work that no host has bound, submitted or run yet, on a host that reports its running grants. Its
+    /// host renews the grant while it creates the helper, so a lapsed one was never taken up and returning it to the queue
+    /// loses nothing. Hosts that predate the report keep the never-created reconciliation.</summary>
+    private bool NeverStarted(CoordinationWork work) => work.State == "admitted" && work.ExecutionId is null &&
+        state.Hosts.TryGetValue(work.Machine!, out var host) && host.ActiveGrants is not null &&
+        !(state.Bindings.TryGetValue(work.Request.Id, out var binding) && binding.Generation == work.Generation);
+
     private static bool AwaitingCreatedWorker(CoordinationWork work) => Occupied.Contains(work.State) &&
         work.Request.Kind is "help" or "review" && work.Assignee is null && work.Provider is not null;
 
@@ -65,6 +72,13 @@ public sealed partial class CoordinationEngine {
                 (!state.Workers.TryGetValue(currentBinding.WorkerId, out var currentWorker) || currentWorker.Candidate is null ||
                  !SameCandidate(currentBinding.Candidate, currentWorker.Candidate));
             var requesterHeld = !RequesterReady(work);
+            if (now > work.RenewByUtc && !bootChanged && !sourceChanged && NeverStarted(work)) {
+                // Admitted work whose host never took it up goes back to the queue instead of failing; it is admitted
+                // again, with a new grant, when a host can start it.
+                Put(work with { State = "queued", Machine = null, Assignee = null, Provider = null, GrantId = null, RenewByUtc = null,
+                    BootId = null, Reason = "grant-lapsed-before-start" }, "requeued", "service");
+                continue;
+            }
             if (now > work.RenewByUtc || bootChanged || sourceChanged || requesterHeld || goal.Stopped || goal.Paused || !Authorized(work, goal))
                 Put(work with { State = "reconcile", Reason = bootChanged ? "boot-changed" : sourceChanged ? "worker-source-changed" : requesterHeld ? "requester-held" : goal.Stopped || goal.Paused ? "goal-held" :
                     !Authorized(work, goal) ? "control-changed" : "grant-overdue" }, "reconciliation-required", "service");

@@ -249,6 +249,15 @@ starting an app server every minute.
   app runs it as its next turn (`codex-queued-in-app`). Without a daemon (or with a CLI too old for `--resume`) the message only waits
   in the queue, which nothing may drain, so the delivery is recorded as uncertain (`codex-queued-not-resumed`), never as
   delivered, and isn't sent again.
-- After a reboot or a lapsed grant the helper is stopped and its work so far is returned as a failed result; it isn't
-  resumed in place.
+- A helper runs for as long as it needs. Each heartbeat lists the grants of the helpers the host is running
+  (`activeGrants`), and the service renews those grants, so a long build or test run never lapses while the helper
+  and its host are alive. A grant ends only when its host stops reporting it (the helper or the host died), the host
+  restarts, its source changes, or someone stops or cancels the work.
+- Admitted work whose host never took it up (no binding, no execution) goes back to the queue when its grant lapses
+  and is admitted again with a new grant. Hosts that don't send `activeGrants` keep the older never-created
+  reconciliation.
+- After a reboot, or when a host stops reporting a running helper, the helper is stopped and its work so far is
+  returned as a failed result; it isn't resumed in place.
+- Capacity is the machine's `agentSlots` in policy. Codex and Claude helpers share it, and each gets its own grant,
+  thread and workspace, so concurrent helpers never share a checkout. The Macs run up to four helpers at once.
 - Workspace content left by a helper holds its retirement for review instead of being deleted.

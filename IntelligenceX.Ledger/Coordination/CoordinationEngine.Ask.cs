@@ -263,7 +263,9 @@ public sealed partial class CoordinationEngine {
             !state.Questions.Values.Any(q => q.RequestId == w.Request.Id && q.Kind == "notice")).ToArray())
             AddQuestion(work, "notice", "No machine has taken request " + work.Request.Id + " after " +
                 ask.AdmissionMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) + " minutes (" +
-                (work.Reason ?? "waiting") + "). It stays queued; cancel it if it is no longer needed.");
+                (work.Reason ?? "waiting") + "). It stays queued and starts on its own when " + (work.Reason == "capacity"
+                    ? "a helper slot frees up; running helpers keep their slots until they finish." : "a machine can take it.") +
+                " Nothing needs doing; cancel it only if you no longer want it.");
     }
 
     /// <summary>Tells an asker, once, that its result may not have arrived and where to read it.</summary>
