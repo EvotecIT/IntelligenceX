@@ -172,7 +172,8 @@ public static class Program {
         LeaseEndpoints.Map(app, store, settings);
         Catalog.WorkCatalogEndpoints.Map(app, catalog, runtime);
         if (coordinationStore is not null) {
-            CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory, (link, ct) => store.RecordLinksAsync([link], ct));
+            CoordinationEndpoints.Map(app, coordinationStore, settings.DataDirectory, (link, ct) => store.RecordLinksAsync([link], ct),
+                (machine, ct) => LeaseEndpoints.HelperLoadHoldAsync(store, settings, machine, ct));
         }
         app.MapGet(prefix + "/policy", async (CancellationToken ct) => Results.Ok(await ReadPolicy(ct)));
         app.MapPost(prefix + "/events", async (LedgerEvent[] events, CancellationToken ct) => {

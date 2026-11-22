@@ -86,7 +86,8 @@ public sealed partial class CoordinationEngine(CoordinationState state, DateTime
             host.ObservedAtUtc <= now.AddSeconds(10) && now - host.ObservedAtUtc <= TimeSpan.FromSeconds(30) &&
             (host.Processors is null || host.Processors.Length <= 4096 && host.Processors.All(p => p >= 0)) &&
             (host.ActiveGrants is null || host.ActiveGrants.Length <= MaximumActiveGrants && host.ActiveGrants.All(g =>
-                g is not null && Id(g.RequestId) && Id(g.GrantId) && g.Generation > 0)), "invalid-host-observation");
+                g is not null && Id(g.RequestId) && Id(g.GrantId) && g.Generation > 0)) &&
+            (host.LoadHold is null || Id(host.LoadHold)), "invalid-host-observation");
         if (state.Hosts.TryGetValue(host.MachineId, out var previous)) {
             Require(host.ObservedAtUtc > previous.ObservedAtUtc, "host-observation-out-of-order");
             if (previous.BootId != host.BootId) {

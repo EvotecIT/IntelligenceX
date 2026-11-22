@@ -20,6 +20,11 @@ public sealed partial class CoordinationEngine {
         (long)demand.CpuUnits + used.CpuUnits <= m.CpuUnits && demand.MemoryMiB <= m.MemoryMiB - used.MemoryMiB &&
         (demand.Processors is null || demand.Processors.All(p => m.BenchmarkProcessors?.Contains(p) == true && used.Processors?.Contains(p) != true));
 
+    /// <summary>True when the machine reports load (memory pressure or sustained CPU) and already runs a helper, so a new
+    /// helper waits. The slots in policy are a ceiling, not a target; one helper is always allowed.</summary>
+    private bool LoadHeld(CoordinationRequest request, string machine) => request.Resources.AgentSlots > 0 &&
+        state.Hosts.TryGetValue(machine, out var host) && host.LoadHold is not null && Used(machine).AgentSlots > 0;
+
     /// <summary>Admitted work that no host has bound, submitted or run, and that its host, in an observation made after
     /// the grant lapsed, reports holding nothing for. The host records a grant before it creates anything for it, so
     /// returning that work to the queue leaves no thread or workspace behind. Anything the host may have started, a
@@ -120,11 +125,12 @@ public sealed partial class CoordinationEngine {
                 (r.Resources.Processors is null || r.Resources.Processors.All(p => state.Hosts[m.Id].Processors?.Contains(p) == true)) &&
                 (!needsWorker || workers.Any(w => w.MachineId == m.Id) || CreationProvider(r, m, state.Hosts[m.Id]) is not null))
                 .OrderBy(m => m.Id, StringComparer.Ordinal).ToArray();
-            var ready = candidates.Where(m => !blocked.Contains(m.Id) && Fits(r.Resources, m, Used(m.Id))).ToArray();
+            var ready = candidates.Where(m => !blocked.Contains(m.Id) && Fits(r.Resources, m, Used(m.Id)) && !LoadHeld(r, m.Id)).ToArray();
             var machine = ready.FirstOrDefault(m => !needsWorker || workers.Any(w => w.MachineId == m.Id)) ?? ready.FirstOrDefault();
             if (machine is null) {
                 state.Work[r.Id] = work with { Reason = candidates.Length == 0
-                    ? needsWorker && workers.Length == 0 ? "worker-unavailable" : "machine-unavailable" : "capacity" };
+                    ? needsWorker && workers.Length == 0 ? "worker-unavailable" : "machine-unavailable"
+                    : candidates.All(m => LoadHeld(r, m.Id)) ? "machine-busy" : "capacity" };
                 // Ready work cannot repeatedly bypass an earlier conflicting request, including an exclusive benchmark.
                 foreach (var candidate in candidates) blocked.Add(candidate.Id);
                 continue;

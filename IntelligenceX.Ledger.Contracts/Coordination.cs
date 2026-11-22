@@ -116,6 +116,11 @@ public sealed record CoordinationHost(string MachineId, string BootId, DateTimeO
     /// only through renew receipts.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CoordinationActiveGrant[]? ActiveGrants { get; init; }
+    /// <summary>Set by the service from the machine's reporter: why new helpers wait there (memory-pressure or
+    /// sustained-cpu). A busy machine keeps every helper it is running and admits a new one only when it runs none, so
+    /// one helper can always work through a long sequence. Whatever a host sends here is replaced.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LoadHold { get; init; }
 }
 
 /// <summary>One grant a host holds local state for: the request, its admitted generation and the grant identity.

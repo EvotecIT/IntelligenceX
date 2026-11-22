@@ -154,6 +154,35 @@ public sealed class CoordinationLongRunningGrantTests {
     }
 
     [Fact]
+    public void ABusyMachineKeepsItsHelperAndAdmitsNoSecondOneUntilTheLoadClears() {
+        var state = new CoordinationState { Policy = Policy with { Machines = Policy.Machines.Select(m => m.Id == "helper-host"
+            ? m with { AgentSlots = 4, CpuUnits = 16, AllowedCreateProviders = ["provider-a"] } : m).ToArray() } };
+        var e = new CoordinationEngine(state, Now);
+        e.SetGoal(new("task", "", 0, false, false, "authorization", ["result-verified"]), Requester, 0);
+        void Observe(CoordinationEngine engine, double t, string? hold, CoordinationActiveGrant[]? running = null) {
+            foreach (var host in new[] { SourceHost, HelperHost })
+                engine.ObserveHost(new(host.MachineId!, "boot", Now.AddSeconds(t), state.Policy.Machines.Single(m => m.Id == host.MachineId).Capabilities,
+                    CreatableProviders: host == HelperHost ? ["provider-a"] : null) {
+                    LoadHold = host == HelperHost ? hold : null, ActiveGrants = host == HelperHost ? running ?? [] : null }, host);
+            engine.ObserveWorker(RequesterWorker with { ObservedAtUtc = Now.AddSeconds(t) }, SourceHost);
+        }
+        Observe(e, 0, "memory-pressure");
+        CoordinationRequest Create(string id) => Help(id) with { ReadOnly = true, Resources = new(AgentSlots: 1, CpuUnits: 1) };
+        // One helper is always allowed, so a long sequence of work can run on a busy machine.
+        Assert.Equal("admitted", e.Submit(Create("train"), Requester).State);
+        Assert.Equal("queued", e.Submit(Create("other"), Requester).State);
+        Assert.Equal("machine-busy", state.Work["other"].Reason);
+        var train = state.Work["train"];
+        // Load never stops the running helper, however long it works.
+        for (var t = 30.0; t <= 3 * 3600; t += 30) Observe(At(state, t), t, "sustained-cpu", [new(train.Request.Id, train.Generation, train.GrantId!)]);
+        Assert.Equal("admitted", state.Work["train"].State);
+        Assert.Equal("queued", state.Work["other"].State);
+        var clear = 3 * 3600 + 30.0;
+        Observe(At(state, clear), clear, null, [new(train.Request.Id, train.Generation, train.GrantId!)]);
+        Assert.Equal("admitted", state.Work["other"].State);
+    }
+
+    [Fact]
     public void FourAgentSlotsAdmitFourHelpersAtOnceOnOneMachine() {
         var state = new CoordinationState { Policy = Policy with { Machines = Policy.Machines.Select(m => m.Id == "helper-host"
             ? m with { AgentSlots = 4, CpuUnits = 16, AllowedCreateProviders = ["provider-a"] } : m).ToArray() } };

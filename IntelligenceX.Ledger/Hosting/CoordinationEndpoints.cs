@@ -55,7 +55,7 @@ internal static partial class CoordinationEndpoints {
     };
 
     internal static void Map(WebApplication app, CoordinationStore store, string dataDirectory,
-        Func<SessionLink, CancellationToken, Task>? bound = null) {
+        Func<SessionLink, CancellationToken, Task>? bound = null, Func<string, CancellationToken, Task<string?>>? loadHold = null) {
         var artifacts = new CoordinationArtifactStore(Path.Combine(dataDirectory, "coordination-results"));
         store.Archived = artifacts.ArchiveEntries;
         MapArtifacts(app, store, artifacts);
@@ -113,11 +113,14 @@ internal static partial class CoordinationEndpoints {
             }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/requests/{id}/accept", async (string id, CoordinationAcceptance acceptance, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => e.Accept(id, acceptance.ResultRef, Caller(http)), DateTimeOffset.UtcNow, ct)));
-        app.MapPost(Prefix + "/hosts", async (CoordinationHost host, HttpContext http, CancellationToken ct) =>
-            Results.Ok(await store.ExecuteAsync((e, state) => {
-                e.ObserveHost(host, Caller(http));
+        app.MapPost(Prefix + "/hosts", async (CoordinationHost host, HttpContext http, CancellationToken ct) => {
+            // The load hold comes from the machine's own reporter, never from the host's observation.
+            var hold = loadHold is null || !CoordinationValidation.Id(host?.MachineId) ? null : await loadHold(host!.MachineId, ct);
+            return Results.Ok(await store.ExecuteAsync((e, state) => {
+                e.ObserveHost(host! with { LoadHold = hold }, Caller(http));
                 return new CoordinationAcknowledgement(true, state.Policy.GrantSeconds) { Ask = state.Policy.Ask, RenewsActiveGrants = true };
-            }, DateTimeOffset.UtcNow, ct)));
+            }, DateTimeOffset.UtcNow, ct));
+        });
         app.MapPost(Prefix + "/workers", async (CoordinationWorker worker, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => { e.ObserveWorker(worker, Caller(http)); return new { acknowledged = true }; }, DateTimeOffset.UtcNow, ct)));
         app.MapPost(Prefix + "/workers/prepare", async (CoordinationWorker worker, HttpContext http, CancellationToken ct) =>
