@@ -4,7 +4,7 @@ namespace IntelligenceX.Ledger.Reporting;
 
 /// <summary>Archive evidence belongs to the selected provider/root/session origin.</summary>
 internal sealed class SessionArchiveCache {
-    internal sealed record Observation(bool Archived, DateTimeOffset ObservedAtUtc);
+    internal sealed record Observation(bool Archived, DateTimeOffset ObservedAtUtc, string? WorkingDirectory);
     private IReadOnlyDictionary<(string Id, string Root), Observation> _snapshot =
         new Dictionary<(string, string), Observation>();
 
@@ -14,9 +14,11 @@ internal sealed class SessionArchiveCache {
                 !string.IsNullOrEmpty(session.SourceRootId))
             .GroupBy(session => (session.Id, Root: session.SourceRootId!))
             .ToDictionary(group => group.Key, group => {
-                var archived = group.First().IsArchived;
-                return prior.TryGetValue(group.Key, out var previous) && previous.Archived == archived
-                    ? previous : new Observation(archived, observedAtUtc);
+                var native = group.First();
+                if (prior.TryGetValue(group.Key, out var previous) && previous.Archived == native.IsArchived)
+                    return previous.WorkingDirectory == native.WorkingDirectory
+                        ? previous : previous with { WorkingDirectory = native.WorkingDirectory };
+                return new Observation(native.IsArchived, observedAtUtc, native.WorkingDirectory);
             });
         Volatile.Write(ref _snapshot, next);
     }

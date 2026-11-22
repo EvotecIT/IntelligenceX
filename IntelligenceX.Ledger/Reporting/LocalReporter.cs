@@ -131,6 +131,7 @@ public static class LocalReporter {
         ClaimSnapshot? claimSnapshot = null;
         AgentSourceDiagnostic[] metadataDiagnostics = [];
         var archives = new SessionArchiveCache();
+        var archiveCleanup = new ArchiveCleanupStore(settings);
         var claudeAccounts = new ClaudeDesktopAccounts();
         var claudeCliRoots = ClaudeDesktopAccounts.CliProfileRoots();
         await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
@@ -188,6 +189,10 @@ public static class LocalReporter {
                 changes.TryAppend(Event(id, session.Provider) with { Work = work });
             }
             changes.Checkpoint();
+            try { archiveCleanup.Observe(snapshot.Sessions, archives, DateTimeOffset.UtcNow); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
+                Console.Error.WriteLine("archive-cleanup-observation-unavailable");
+            }
             }
         }
         CheckoutCensus? pendingCensus = null;
