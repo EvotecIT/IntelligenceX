@@ -72,7 +72,8 @@ public sealed partial class CoordinationEngine {
                 (!state.Workers.TryGetValue(currentBinding.WorkerId, out var currentWorker) || currentWorker.Candidate is null ||
                  !SameCandidate(currentBinding.Candidate, currentWorker.Candidate));
             var requesterHeld = !RequesterReady(work);
-            if (now > work.RenewByUtc && !bootChanged && !sourceChanged && NeverStarted(work)) {
+            if (now > work.RenewByUtc && !bootChanged && !sourceChanged && !requesterHeld && !goal.Stopped && !goal.Paused &&
+                Authorized(work, goal) && NeverStarted(work)) {
                 // Admitted work whose host never took it up goes back to the queue instead of failing; it is admitted
                 // again, with a new grant, when a host can start it.
                 Put(work with { State = "queued", Machine = null, Assignee = null, Provider = null, GrantId = null, RenewByUtc = null,
