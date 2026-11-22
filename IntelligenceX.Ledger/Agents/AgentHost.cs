@@ -165,14 +165,17 @@ internal sealed partial class AgentService {
     }
 
     /// <summary>The grants this host has taken up: the helpers running now first, then unfinished run records, at most
-    /// what one observation may list. A listed grant is never returned to the queue; only running ones are renewed.</summary>
-    internal CoordinationActiveGrant[] ActiveGrants() {
+    /// what one observation may list. A listed grant is never returned to the queue; only running ones are renewed.
+    /// Null while a run record can't be read, or when there are more than one observation may list, so the service
+    /// keeps reconciliation for everything instead of treating a missing grant as never taken up.</summary>
+    internal CoordinationActiveGrant[]? ActiveGrants() {
         var running = _running.Values.ToArray();
-        var taken = RunRecord.Unfinished(_settings.StateDirectory)
+        if (RunRecord.Unfinished(_settings.StateDirectory) is not { } unfinished) return null;
+        var taken = unfinished
             .Where(r => !running.Any(g => g.RequestId == r.RequestId && g.Generation == r.Generation))
             .Select(r => new CoordinationActiveGrant(r.RequestId, r.Generation, r.GrantId, Running: false));
-        return running.OrderBy(g => g.RequestId, StringComparer.Ordinal).ThenBy(g => g.Generation).Concat(taken)
-            .Take(Coordination.CoordinationEngine.MaximumActiveGrants).ToArray();
+        var all = running.OrderBy(g => g.RequestId, StringComparer.Ordinal).ThenBy(g => g.Generation).Concat(taken).ToArray();
+        return all.Length <= Coordination.CoordinationEngine.MaximumActiveGrants ? all : null;
     }
 
     private async Task HeartbeatAsync(CancellationToken stop) {

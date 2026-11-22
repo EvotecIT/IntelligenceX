@@ -211,4 +211,17 @@ public sealed class CoordinationLongRunningGrantTests {
         Assert.DoesNotContain("activeGrants", System.Text.Json.JsonSerializer.Serialize(host with { ActiveGrants = null },
             LedgerReadJson.Default.CoordinationHost), StringComparison.OrdinalIgnoreCase);
     }
+
+    [Theory]
+    [InlineData("capacity", true)]
+    [InlineData("machine-busy", true)]
+    [InlineData("machine-unavailable", true)]
+    [InlineData("goal-held-or-changed", false)]
+    [InlineData("requester-held", false)]
+    [InlineData("dependency-not-accepted", false)]
+    public void TheQueueNoticeSaysNothingNeedsDoingOnlyForMachineWaits(string reason, bool startsOnItsOwn) {
+        var text = CoordinationEngine.QueuedNotice(reason);
+        Assert.Equal(startsOnItsOwn, text.Contains("starts on its own", StringComparison.Ordinal));
+        Assert.Equal(startsOnItsOwn, text.Contains("Nothing needs doing", StringComparison.Ordinal));
+    }
 }

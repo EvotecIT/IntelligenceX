@@ -87,6 +87,22 @@ public sealed class AgentServiceTests {
         }
     }
 
+    // Protects requeueing: a host that can't read one of its run records can't say which grants it holds, so it must
+    // report nothing rather than an incomplete list that would let the service requeue work it may have started.
+    [Fact]
+    public void UnfinishedGrantsAreUnknownWhileARunRecordCannotBeRead() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));
+        try {
+            new RunRecord { RequestId = "ask-1", Generation = 2, GrantId = "grant-1", Workspace = "w" }.Save(directory);
+            new RunRecord { RequestId = "ask-2", Generation = 1, GrantId = "grant-2", Workspace = "w", Phase = "done" }.Save(directory);
+            Assert.Equal([("ask-1", 2L, "grant-1")], RunRecord.Unfinished(directory)!);
+            File.WriteAllText(RunRecord.FileFor(directory, "ask-3", 1), "{");
+            Assert.Null(RunRecord.Unfinished(directory));
+        } finally {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public void RunRecordsStayUntilTheirHelperIsRetired() {
         var directory = Path.Combine(Path.GetTempPath(), "ix-ledger-tests", Guid.NewGuid().ToString("N"));

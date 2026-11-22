@@ -158,17 +158,28 @@ internal sealed record RunRecord {
     }
 
     /// <summary>The grants of every run record not yet done: the grants this host has taken up. A record is saved before
-    /// anything is created for its grant, so a grant missing here never got a thread, process or workspace.</summary>
-    public static IEnumerable<(string RequestId, long Generation, string GrantId)> Unfinished(string stateDirectory) {
+    /// anything is created for its grant, so a grant missing here never got a thread, process or workspace. Null when a
+    /// record can't be read: its grant is unknown, so the host can't say what it holds and must not report absence.</summary>
+    public static List<(string RequestId, long Generation, string GrantId)>? Unfinished(string stateDirectory) {
+        var grants = new List<(string, long, string)>();
         var folder = Path.Combine(stateDirectory, "runs");
-        if (!Directory.Exists(folder)) yield break;
+        if (!Directory.Exists(folder)) return grants;
         foreach (var file in Directory.EnumerateFiles(folder, "*.json")) {
             if (file.EndsWith(".tokens.json", StringComparison.Ordinal)) continue;
             RunRecord? record;
             try { record = LocalFiles.ReadShared(file) is { } text ? JsonSerializer.Deserialize<RunRecord>(text) : null; }
-            catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { record = null; }
-            if (record is not null && record.Phase != "done") yield return (record.RequestId, record.Generation, record.GrantId);
+            catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) {
+                AgentService.Log("run-record-unreadable", Path.GetFileName(file));
+                return null;
+            }
+            if (record is null) {
+                // A file that vanished between listing and reading (pruned) holds nothing; anything else is unreadable.
+                if (File.Exists(file)) { AgentService.Log("run-record-unreadable", Path.GetFileName(file)); return null; }
+                continue;
+            }
+            if (record.Phase != "done") grants.Add((record.RequestId, record.Generation, record.GrantId));
         }
+        return grants;
     }
 
     /// <summary>Removes run records older than <paramref name="age"/> once the run is done and its helper retired (or it
