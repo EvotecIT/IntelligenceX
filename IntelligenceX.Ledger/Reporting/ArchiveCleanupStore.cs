@@ -60,16 +60,15 @@ internal sealed class ArchiveCleanupStore(ReporterSettings settings) {
 
     internal void Observe(IReadOnlyList<AgentSessionState> sessions, SessionArchiveCache archives, DateTimeOffset now) {
         if (!Directory.Exists(_directory)) return;
+        Dictionary<(string Root, Guid Id), AgentSessionState?>? sessionsById = null;
         foreach (var file in Directory.EnumerateFiles(_directory, "*.ready.json")) {
             try {
                 var registration = Read<ArchiveCleanupRegistration>(file);
                 if (registration is null || registration.Scratch is null || registration.Machine != settings.MachineId ||
                     !string.Equals(file, RegistrationPath(registration.ThreadId), PathComparison)) continue;
                 var prior = Read<ArchiveCleanupReceipt>(ReceiptPath(registration.ThreadId));
-                var matching = sessions.Where(session => session.Provider == "codex" &&
-                    session.SourceRootId == registration.SourceRootId &&
-                    Guid.TryParse(session.Id, out var id) && id == registration.ThreadId).Take(2).ToArray();
-                var session = matching.Length == 1 ? matching[0] : null;
+                sessionsById ??= IndexSessions(sessions);
+                sessionsById.TryGetValue((registration.SourceRootId, registration.ThreadId), out var session);
                 var evidence = session is null ? null : archives.For(session);
                 var receipt = Evaluate(registration, session, evidence, prior, now);
                 if (prior is null || prior.State != receipt.State || prior.ArchiveObservedAtUtc != receipt.ArchiveObservedAtUtc ||
@@ -79,6 +78,17 @@ internal sealed class ArchiveCleanupStore(ReporterSettings settings) {
                 Console.Error.WriteLine("archive-cleanup-record-unavailable");
             }
         }
+    }
+
+    private static Dictionary<(string Root, Guid Id), AgentSessionState?> IndexSessions(IReadOnlyList<AgentSessionState> sessions) {
+        var indexed = new Dictionary<(string Root, Guid Id), AgentSessionState?>();
+        foreach (var session in sessions) {
+            if (session.Provider != "codex" || session.SourceRootId is not { Length: > 0 } root ||
+                !Guid.TryParse(session.Id, out var id)) continue;
+            // More than one observation of this exact source makes the chat binding ambiguous.
+            if (!indexed.TryAdd((root, id), session)) indexed[(root, id)] = null;
+        }
+        return indexed;
     }
 
     internal static ArchiveCleanupReceipt Evaluate(ArchiveCleanupRegistration registration, AgentSessionState? session,

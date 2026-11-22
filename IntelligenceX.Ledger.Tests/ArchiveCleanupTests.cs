@@ -1,5 +1,9 @@
+using System.Text.Json;
+using DBAClientX;
+using IntelligenceX.Codex;
 using IntelligenceX.Ledger.Reporting;
 using IntelligenceX.Telemetry.Agents;
+using IntelligenceX.Telemetry.Usage;
 using Xunit;
 
 namespace IntelligenceX.Ledger.Tests;
@@ -124,6 +128,73 @@ public sealed class ArchiveCleanupTests : IDisposable {
         var receipt = store.Read(id).Receipt!;
         Assert.Equal("chat-binding-unconfirmed", receipt.State);
         Assert.Empty(receipt.Paths);
+    }
+
+    [Fact]
+    public void MatchingArchiveDoesNotResolveAnAmbiguousChat() {
+        var local = NewChat();
+        var store = NewStore();
+        var id = Guid.Parse(local.Id);
+        store.Register(id, local, local.WorkingDirectory, [], ReadyAt);
+        var archivedAt = ReadyAt.AddSeconds(1);
+        var archived = local with { IsArchived = true };
+        _archives.Observe([archived], archivedAt);
+        store.Observe([archived, archived with { WorkingDirectory = CreateDirectory("other-workspace") }], _archives, archivedAt);
+        var receipt = store.Read(id).Receipt!;
+        Assert.Equal("archive-state-unavailable", receipt.State);
+        Assert.Empty(receipt.Paths);
+    }
+
+    [Fact]
+    public async Task RelocatedRolloutWaitsForAnExplicitDesktopArchiveFlag() {
+        var local = NewChat();
+        var id = Guid.Parse(local.Id);
+        var source = new SourceRootRecord("desktop-fixture", "codex", UsageSourceKind.LocalLogs, CreateDirectory("codex"));
+        var sessions = Directory.CreateDirectory(Path.Combine(source.Path, "sessions")).FullName;
+        var archived = Directory.CreateDirectory(Path.Combine(source.Path, "archived_sessions")).FullName;
+        var filename = $"rollout-2030-01-01T00-00-00-{id:D}.jsonl";
+        var rollout = Path.Combine(sessions, filename);
+        var events = new object[] {
+            new { timestamp = ReadyAt.AddSeconds(-3), type = "session_meta", payload = new { id, cwd = local.WorkingDirectory, source = "desktop" } },
+            new { timestamp = ReadyAt.AddSeconds(-2), type = "event_msg", payload = new { type = "task_started", turn_id = "turn" } },
+            new { timestamp = ReadyAt.AddSeconds(-1), type = "event_msg", payload = new { type = "task_completed", turn_id = "turn" } }
+        };
+        await File.WriteAllLinesAsync(rollout, events.Select(entry => JsonSerializer.Serialize(entry)));
+        var databasePath = Path.Combine(source.Path, "state_5.sqlite");
+        using var database = new SQLite();
+        await using (var writer = await database.OpenSessionAsync(databasePath)) {
+            await writer.ExecuteNonQueryAsync("CREATE TABLE threads(id TEXT PRIMARY KEY, cwd TEXT, archived INTEGER)");
+            await writer.ExecuteNonQueryAsync("INSERT INTO threads VALUES (@id, @cwd, 0)",
+                new Dictionary<string, object?> { ["id"] = local.Id, ["cwd"] = local.WorkingDirectory });
+        }
+
+        var store = NewStore();
+        var scratch = CreateDirectory("scratch");
+        var initialMetadata = await CodexAgentSessionMetadataReader.ReadAsync(source);
+        store.Register(id, Assert.Single(initialMetadata), null, [scratch], ReadyAt);
+        File.Move(rollout, Path.Combine(archived, filename));
+
+        async Task ObserveAsync(DateTimeOffset now) {
+            var metadata = await CodexAgentSessionMetadataReader.ReadAsync(source);
+            _archives.Observe(metadata, now);
+            var snapshot = LocalAgentWorkStateService.ReadLocal([source], nowUtc: now, codexMetadata: metadata,
+                options: new AgentWorkOptions { ActiveWithin = null });
+            store.Observe(snapshot.Sessions, _archives, now);
+        }
+
+        await ObserveAsync(ReadyAt.AddSeconds(1));
+        Assert.Equal("waiting-for-archive", store.Read(id).Receipt!.State);
+        await using (var writer = await database.OpenSessionAsync(databasePath)) {
+            await writer.ExecuteNonQueryAsync("UPDATE threads SET archived = 1 WHERE id = @id",
+                new Dictionary<string, object?> { ["id"] = local.Id });
+        }
+        var archiveObservedAt = ReadyAt.AddSeconds(2);
+        await ObserveAsync(archiveObservedAt);
+        var receipt = store.Read(id).Receipt!;
+        Assert.Equal("retained", receipt.State);
+        Assert.Equal(archiveObservedAt, receipt.ArchiveObservedAtUtc);
+        Assert.Equal(new ArchiveCleanupPath(scratch, "directory-present"), Assert.Single(receipt.Paths));
+        Assert.True(Directory.Exists(scratch));
     }
 
     private AgentSessionState NewChat() {
