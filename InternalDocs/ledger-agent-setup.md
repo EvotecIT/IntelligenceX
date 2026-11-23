@@ -69,3 +69,22 @@ process), run the runtime update, then install the agent from the same kit, whic
 - An `ask` from another machine to this one comes back with a result.
 - The agent's own log is `agent-service/agent.log`, with one previous copy kept as `agent.log.1`. A line is written when
   something changes, not on every sweep.
+
+## Observe cleanup after archiving a Codex chat
+
+At the end of a task in a manually started Codex chat, register its exact chat ID and its linked checkout, any
+disposable scratch directories created for that task, or both. Run the command on the machine that owns the paths, using the same reporter
+configuration as the running reporter.
+
+```text
+IntelligenceX.Ledger archive-cleanup ready --config <reporter.json> --thread <chat-id> --worktree <checkout-path> --scratch <scratch-path>
+IntelligenceX.Ledger archive-cleanup status --config <reporter.json> --thread <chat-id>
+```
+
+The person who started the chat archives it in Codex Desktop. Once the local reporter observes that archive,
+it checks the registered paths if the chat identity and working directory match and the last turn is closed.
+The receipt reports each path and whether it is still present. Registration and receipt stay in the local reporter
+spool. If the reporter observes the chat reopen, it ends the original registration.
+
+Codex manages its own worktree snapshot and removal. This pilot only observes paths, so a scratch directory will
+remain until its owner removes it.

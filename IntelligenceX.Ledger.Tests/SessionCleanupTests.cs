@@ -45,6 +45,24 @@ public sealed class SessionCleanupTests : IDisposable {
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(8192)]
+    public void ScheduledCodexChatKeepsItsNativeOriginThroughSmallAndProjectedLogs(int padding) {
+        Directory.CreateDirectory(_root);
+        var id = Guid.NewGuid();
+        var meta = new { timestamp = Now, type = "session_meta", payload = new {
+            id, source = "vscode", thread_source = "automation", padding = new string('x', padding)
+        } };
+        File.WriteAllText(Path.Combine(_root, $"rollout-2030-01-01T00-00-00-{id:D}.jsonl"), JsonSerializer.Serialize(meta));
+        var observed = Assert.Single(LocalAgentWorkStateService.ReadLocal(
+            [new SourceRootRecord("synthetic-root", "codex", UsageSourceKind.LocalLogs, _root)], nowUtc: Now,
+            options: new AgentWorkOptions { ActiveWithin = null }).Sessions);
+        Assert.Equal("vscode", observed.SessionSource);
+        Assert.Equal("automation", observed.ThreadSource);
+        Assert.Equal(("unknown", "native-automation"), SessionOrigin.For(observed));
+    }
+
+    [Theory]
     [InlineData("codex", "Auto: synthetic", null, null, "agent")]
     [InlineData("codex", "AUTO: synthetic", null, null, "agent")]
     [InlineData("codex", "Claude: synthetic", null, null, "agent")]

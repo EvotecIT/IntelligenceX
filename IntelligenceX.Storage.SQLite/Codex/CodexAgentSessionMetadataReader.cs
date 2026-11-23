@@ -59,7 +59,7 @@ public static class CodexAgentSessionMetadataReader {
         var names = new HashSet<string>(columns, StringComparer.OrdinalIgnoreCase);
         if (!names.Contains("id")) throw new InvalidDataException("Codex thread metadata schema is unavailable.");
         // threads.title can be initialized from the first prompt. It has no explicit-name provenance.
-        var fields = new[] { "id", "cwd", "git_branch", "git_origin_url", "created_at", "updated_at", "archived", "created_at_ms", "updated_at_ms" };
+        var fields = new[] { "id", "cwd", "git_branch", "git_origin_url", "created_at", "updated_at", "archived", "created_at_ms", "updated_at_ms", "thread_source" };
         var query = "SELECT " + string.Join(", ", fields.Select(field => names.Contains(field) ? "\"" + field + "\"" : "NULL")) + " FROM threads;";
         var machine = root.MachineLabel ?? (root.SourceKind == UsageSourceKind.LocalLogs ? Environment.MachineName : null);
         return await sqlite.QueryReadOnlyAsListAsync(database, query, row => {
@@ -72,6 +72,7 @@ public static class CodexAgentSessionMetadataReader {
                 StartedAtUtc = ReadTime(row, 7, milliseconds: true) ?? ReadTime(row, 4),
                 LastActivityAtUtc = ReadTime(row, 8, milliseconds: true) ?? ReadTime(row, 5),
                 IsArchived = archived, ArchiveStateKnown = !row.IsDBNull(6),
+                ThreadSource = ReadText(row, 9),
                 State = archived ? AgentWorkState.Finished : AgentWorkState.Idle
             };
         }, cancellationToken: cancellationToken).ConfigureAwait(false);

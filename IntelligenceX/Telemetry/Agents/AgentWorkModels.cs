@@ -55,6 +55,8 @@ public sealed record AgentSessionState {
     public string? Title { get; init; }
     /// <summary>Structured native launcher identity, when present.</summary>
     public string? SessionSource { get; init; }
+    /// <summary>Native Codex thread creation source, such as user or automation, independent of the launcher.</summary>
+    public string? ThreadSource { get; init; }
     /// <summary>Native parent session identity. A message parent is a separate relationship.</summary>
     public string? ParentSessionId { get; init; }
     /// <summary>Number of observed provider turn starts.</summary>

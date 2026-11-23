@@ -20,6 +20,7 @@ internal static class SessionOrigin {
 
     internal static (string Origin, string Evidence) For(AgentSessionState session) {
         if (session.Provider == "codex" && session.SessionSource == "subagent") return ("agent", "native-subagent-source");
+        if (session.Provider == "codex" && session.ThreadSource == "automation") return ("unknown", "native-automation");
         if (session.Provider == "claude" && session.ParentSessionId is not null) return ("agent", "native-parent-session");
         if (session.Title is { } title && (title.StartsWith("Auto:", StringComparison.OrdinalIgnoreCase) ||
             title.StartsWith("Claude:", StringComparison.Ordinal))) return ("agent", "worker-title-prefix");

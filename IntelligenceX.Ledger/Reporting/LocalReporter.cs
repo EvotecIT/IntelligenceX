@@ -131,15 +131,17 @@ public static class LocalReporter {
         ClaimSnapshot? claimSnapshot = null;
         AgentSourceDiagnostic[] metadataDiagnostics = [];
         var archives = new SessionArchiveCache();
+        var archiveCleanup = new ArchiveCleanupStore(settings);
         var claudeAccounts = new ClaudeDesktopAccounts();
         var claudeCliRoots = ClaudeDesktopAccounts.CliProfileRoots();
         await using var watcher = new AgentWorkWatcher(options: new AgentWorkOptions { ActiveWithin = null, LocalSourcesOnly = true },
             readMetadataAsync: async ct => {
+                var readStartedAtUtc = DateTimeOffset.UtcNow;
                 var available = await IntelligenceX.Codex.CodexAgentSessionMetadataReader.ReadAvailableAsync(
                     LocalAgentWorkStateService.DiscoverRoots().Where(r =>
                         r.SourceKind == IntelligenceX.Telemetry.Usage.UsageSourceKind.LocalLogs && r.ProviderId == "codex"), ct);
                 Volatile.Write(ref metadataDiagnostics, available.Diagnostics.ToArray());
-                archives.Observe(available.Sessions, DateTimeOffset.UtcNow);
+                archives.Observe(available.Sessions, DateTimeOffset.UtcNow, readStartedAtUtc);
                 return available.Sessions;
             }, github: settings.GitHub ? github : null);
         var changes = new ReporterChangeTracker(spool, settings.SpoolDirectory);
@@ -153,6 +155,11 @@ public static class LocalReporter {
         var captureGate = new object();
         void Capture(AgentWorkSnapshot snapshot) {
             lock (captureGate) {
+            // Local receipts can be recorded before draining the historical sessions into the upload spool.
+            try { archiveCleanup.Observe(snapshot.Sessions, archives, DateTimeOffset.UtcNow); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
+                Console.Error.WriteLine("archive-cleanup-observation-unavailable");
+            }
             foreach (var session in snapshot.Sessions) {
                 if (session.ObservationSources == AgentObservationSources.TitleIndex) continue;
                 var id = ItemId(settings.MachineId, session.Provider, session.Id);
