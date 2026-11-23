@@ -237,6 +237,31 @@ public sealed class AuthStateTests : IDisposable {
             (kept.State, kept.Facts!["account"], kept.Facts["scopes"], kept.Facts["token-source"], kept.Facts["check"], kept.CheckedAtUtc));
     }
 
+    // An unknown answer that still named the account (gh couldn't read its token) keeps those facts through a timeout too.
+    [Fact]
+    public async Task AGitHubTimeoutAfterAnUnreadableTokenKeepsItsFacts() {
+        var home = Path.Combine(_directory, "home-unreadable");
+        var bin = Path.Combine(_directory, "bin-unreadable");
+        Directory.CreateDirectory(Path.Combine(home, ".codex"));
+        Directory.CreateDirectory(bin);
+        File.WriteAllText(Path.Combine(bin, OperatingSystem.IsWindows() ? "gh.exe" : "gh"), "gh");
+        var finishes = true;
+        var clock = Now;
+        var paths = new AuthPaths(home, (name, target) => name == "PATH" && target == EnvironmentVariableTarget.Process ? bin : null, installFolders: false);
+        var collector = new AuthStateCollector(paths, (_, args, _) => Task.FromResult<(int?, string)>(
+            args[0] == "--version" ? (0, "gh version 2.99.0") : finishes
+                ? (0, """{"hosts":{"github.com":[{"state":"error","active":true,"login":"someone","tokenSource":"default"}]}}""")
+                : (null, "")), () => clock);
+
+        var unreadable = (await collector.CollectAsync(CancellationToken.None)).Single(f => f.Provider == "github");
+        Assert.Equal(("unknown", "token-unreadable", "someone"), (unreadable.State, unreadable.Facts!["check"], unreadable.Facts["account"]));
+
+        finishes = false;
+        clock = Now.AddMinutes(16);
+        var kept = (await collector.CollectAsync(CancellationToken.None)).Single(f => f.Provider == "github");
+        Assert.Equal(("unknown", "someone", "default", "not-run"), (kept.State, kept.Facts!["account"], kept.Facts["token-source"], kept.Facts["check"]));
+    }
+
     [Fact]
     public void ValidationKeepsFactsSmallAndNamed() {
         var fact = new AuthFact("github", "signed-in", Now) { Facts = new() { ["scopes"] = "repo" } };

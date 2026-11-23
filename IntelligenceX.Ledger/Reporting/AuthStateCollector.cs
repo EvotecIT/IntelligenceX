@@ -77,7 +77,7 @@ internal sealed partial class AuthStateCollector {
             // A check that didn't finish says nothing new, so the last answer stands with the check marked; reporting
             // unknown would record every fact as removed and then restored on the next good check.
             facts["check"] = "not-run";
-            if (_last.FirstOrDefault(fact => fact.Provider == "github") is { State: not ("unknown" or "not-installed") } known) {
+            if (_last.FirstOrDefault(fact => fact.Provider == "github") is { State: not "not-installed" } known) {
                 var kept = new Dictionary<string, string>(known.Facts ?? [], StringComparer.Ordinal);
                 // What this read found itself (file time, token variables, binary, version) replaces the old values.
                 foreach (var key in new[] { "check", "hosts-written", "env-override", "binary", "version" }) kept.Remove(key);
