@@ -103,14 +103,16 @@ public sealed class ArchiveCleanupTests : IDisposable {
     }
 
     [Theory]
-    [InlineData(false, "desktop", "waiting-for-new-archive")]
-    [InlineData(true, "subagent", "chat-binding-unconfirmed")]
-    public void StaleArchiveAndNonHumanSessionsCannotReconcilePaths(bool newArchive, string origin, string expected) {
+    [InlineData(false, "desktop", "user", "waiting-for-new-archive")]
+    [InlineData(true, "subagent", "user", "chat-binding-unconfirmed")]
+    [InlineData(true, "vscode", "automation", "chat-binding-unconfirmed")]
+    [InlineData(true, "vscode", null, "chat-binding-unconfirmed")]
+    public void StaleArchiveAndNonHumanSessionsCannotReconcilePaths(bool newArchive, string origin, string? threadSource, string expected) {
         var local = NewChat();
         var store = NewStore();
         var id = Guid.Parse(local.Id);
         store.Register(id, local, local.WorkingDirectory, [], ReadyAt);
-        Capture(store, local with { IsArchived = true, SessionSource = origin },
+        Capture(store, local with { IsArchived = true, SessionSource = origin, ThreadSource = threadSource },
             newArchive ? ReadyAt.AddSeconds(1) : ReadyAt.AddSeconds(-1));
         var receipt = store.Read(id).Receipt!;
         Assert.Equal(expected, receipt.State);
@@ -156,7 +158,7 @@ public sealed class ArchiveCleanupTests : IDisposable {
         var filename = $"rollout-2030-01-01T00-00-00-{id:D}.jsonl";
         var rollout = Path.Combine(sessions, filename);
         var events = new object[] {
-            new { timestamp = ReadyAt.AddSeconds(-3), type = "session_meta", payload = new { id, cwd = local.WorkingDirectory, source = "desktop" } },
+            new { timestamp = ReadyAt.AddSeconds(-3), type = "session_meta", payload = new { id, cwd = local.WorkingDirectory, source = "desktop", thread_source = "user" } },
             new { timestamp = ReadyAt.AddSeconds(-2), type = "event_msg", payload = new { type = "task_started", turn_id = "turn" } },
             new { timestamp = ReadyAt.AddSeconds(-1), type = "event_msg", payload = new { type = "task_completed", turn_id = "turn" } }
         };
@@ -164,8 +166,8 @@ public sealed class ArchiveCleanupTests : IDisposable {
         var databasePath = Path.Combine(source.Path, "state_5.sqlite");
         using var database = new SQLite();
         await using (var writer = await database.OpenSessionAsync(databasePath)) {
-            await writer.ExecuteNonQueryAsync("CREATE TABLE threads(id TEXT PRIMARY KEY, cwd TEXT, archived INTEGER)");
-            await writer.ExecuteNonQueryAsync("INSERT INTO threads VALUES (@id, @cwd, 0)",
+            await writer.ExecuteNonQueryAsync("CREATE TABLE threads(id TEXT PRIMARY KEY, cwd TEXT, archived INTEGER, thread_source TEXT)");
+            await writer.ExecuteNonQueryAsync("INSERT INTO threads VALUES (@id, @cwd, 0, 'user')",
                 new Dictionary<string, object?> { ["id"] = local.Id, ["cwd"] = local.WorkingDirectory });
         }
 
@@ -261,11 +263,22 @@ public sealed class ArchiveCleanupTests : IDisposable {
         Assert.Equal(ReadyAt.AddSeconds(-2), _archives.For(archived)!.ObservedAtUtc);
     }
 
+    [Theory]
+    [InlineData("automation")]
+    [InlineData(null)]
+    public void RegistrationRequiresEvidenceOfAManuallyStartedChat(string? threadSource) {
+        var desktop = NewChat() with { SessionSource = "vscode", ThreadSource = threadSource };
+        var store = NewStore();
+        var id = Guid.Parse(desktop.Id);
+        Assert.Throws<InvalidDataException>(() => store.Register(id, desktop, desktop.WorkingDirectory, [], ReadyAt));
+        Assert.Null(store.Read(id).Registration);
+    }
+
     private AgentSessionState NewChat() {
         var worktree = CreateDirectory("worktree");
         File.WriteAllText(Path.Combine(worktree, ".git"), "gitdir: fixture");
         return new() {
-            Provider = "codex", SessionSource = "desktop", SourceRootId = "local-profile",
+            Provider = "codex", SessionSource = "desktop", ThreadSource = "user", SourceRootId = "local-profile",
             Id = Guid.NewGuid().ToString("D"), WorkingDirectory = worktree, ArchiveStateKnown = true, TurnOpen = false
         };
     }

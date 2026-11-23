@@ -33,9 +33,9 @@ internal sealed class ArchiveCleanupStore(ReporterSettings settings, Action<stri
     internal ArchiveCleanupRegistration Register(Guid id, AgentSessionState nativeSession, string? worktree,
         IEnumerable<string> scratch, DateTimeOffset now) {
         if (id == Guid.Empty || !Guid.TryParse(nativeSession.Id, out var nativeId) || id != nativeId ||
-            nativeSession is not { Provider: "codex", ArchiveStateKnown: true, IsArchived: false, SourceRootId.Length: > 0 } ||
+            nativeSession is not { Provider: "codex", ThreadSource: "user", ArchiveStateKnown: true, IsArchived: false, SourceRootId.Length: > 0 } ||
             !TryNormalize(nativeSession.WorkingDirectory, out var cwd))
-            throw new InvalidDataException("Registration requires a matching, active local Codex chat with known archive state and working directory.");
+            throw new InvalidDataException("Registration requires a matching, active, manually started local Codex chat with known archive state and working directory.");
 
         var scratchPaths = scratch.Select(ExistingDirectory).ToArray();
         if (worktree is not null) {
@@ -114,7 +114,8 @@ internal sealed class ArchiveCleanupStore(ReporterSettings settings, Action<stri
         // Registration already observed the chat active. A later native read can confirm its next
         // archive even when the reporter missed the intervening active state.
         var archivedAt = prior?.ArchiveObservedAtUtc ?? archive.ReadStartedAtUtc;
-        if (SessionOrigin.For(session).Origin != "human" || session.TurnOpen != false ||
+        if (archive.ThreadSource != "user" || session.ThreadSource != "user" ||
+            SessionOrigin.For(session).Origin != "human" || session.TurnOpen != false ||
             !MatchesWorkspace(session.WorkingDirectory) || !MatchesWorkspace(archive.WorkingDirectory)) return Hold("chat-binding-unconfirmed", archivedAt);
 
         string[] targets = registration.Worktree is { } worktree ? [worktree, .. registration.Scratch] : registration.Scratch;

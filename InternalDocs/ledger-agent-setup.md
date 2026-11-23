@@ -72,8 +72,8 @@ process), run the runtime update, then install the agent from the same kit, whic
 
 ## Observe cleanup after archiving a Codex chat
 
-At the end of a task, register the exact local chat ID and its linked checkout, any disposable scratch directories
-created for that task, or both. Run the command on the machine that owns the paths, using the same reporter
+At the end of a task in a manually started Codex chat, register its exact chat ID and its linked checkout, any
+disposable scratch directories created for that task, or both. Run the command on the machine that owns the paths, using the same reporter
 configuration as the running reporter.
 
 ```text
