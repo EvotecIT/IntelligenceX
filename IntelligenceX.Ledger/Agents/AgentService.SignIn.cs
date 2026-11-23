@@ -92,10 +92,12 @@ internal sealed partial class AgentService {
         if (await CodexStatusAsync(stop).ConfigureAwait(false) is { } codex) ObserveCheck("codex", codex);
     }
 
-    /// <summary>Applies a status check. A check that timed out or failed is "unknown" and never changes whether the
-    /// provider is usable. A signed-out answer counts only when the next check agrees, so one slow or failed check on a
-    /// busy machine neither publishes a sign-in item nor prompts; until then the state reads "unknown". The decision and
-    /// the state change share one lock, so a send failure recorded meanwhile is never overwritten.</summary>
+    /// <summary>Applies a status check. A check that timed out or failed is inconclusive and never changes whether the
+    /// provider is usable. A signed-out answer counts only when the next check agrees. An inconclusive check, or a
+    /// signed-out answer still waiting for its confirmation, keeps the state already known, so one slow or failed check
+    /// on a busy machine publishes nothing and the sign-in state doesn't flap; "unknown" is shown only while no check
+    /// has given an answer yet. The decision and the state change share one lock, so a send failure recorded meanwhile
+    /// is never overwritten.</summary>
     internal void ObserveCheck(string provider, string result) {
         ProviderSignIn? changed;
         lock (_signInGate) {
@@ -103,8 +105,7 @@ internal sealed partial class AgentService {
             var count = signedOut ? _signedOutChecks[provider] = _signedOutChecks.GetValueOrDefault(provider) + 1 : 0;
             if (!signedOut) _signedOutChecks.Remove(provider);
             if (signedOut && count < SignedOutConfirmations || result == "unknown") {
-                // A provider already known to need sign-in keeps that state until a check shows otherwise.
-                if (_signIn.GetValueOrDefault(provider) is { Ready: false }) return;
+                if (_signIn.ContainsKey(provider)) return;
                 result = "unknown";
             }
             changed = result switch {
@@ -170,7 +171,13 @@ internal sealed partial class AgentService {
     /// <summary>`claude auth status --json`. Null when the Claude CLI isn't installed here.</summary>
     private async Task<string?> ClaudeStatusAsync(CancellationToken stop) {
         var run = await RunAsync(_settings.ClaudeExecutable, ["auth", "status", "--json"], stop).ConfigureAwait(false);
-        return run.Missing ? null : ClaudeStatus(run.Code, run.Output, DateTimeOffset.UtcNow);
+        return run.Missing ? null : Inconclusive("claude", run.Code, ClaudeStatus(run.Code, run.Output, DateTimeOffset.UtcNow));
+    }
+
+    /// <summary>Logs why a status check gave no answer, so the cause shows up without a sign-in state change.</summary>
+    private static string Inconclusive(string provider, int? code, string result) {
+        if (result == "unknown") Log("sign-in-check-inconclusive", provider + (code is null ? " timed out" : " exit " + code));
+        return result;
     }
 
     /// <summary>"signed-in", "signed-out", "expired", or "unknown" when the check timed out or its answer can't be read.</summary>
@@ -194,7 +201,7 @@ internal sealed partial class AgentService {
     /// <summary>`codex login status`. Null when Codex isn't installed here.</summary>
     private async Task<string?> CodexStatusAsync(CancellationToken stop) {
         var run = await RunAsync(CodexCli.Resolve(_settings.CodexExecutable), ["login", "status"], stop).ConfigureAwait(false);
-        return run.Missing ? null : CodexStatus(run.Code);
+        return run.Missing ? null : Inconclusive("codex", run.Code, CodexStatus(run.Code));
     }
 
     /// <summary>Exit code 0 is signed in and any other finished exit signed out; a check that didn't finish is "unknown".</summary>
