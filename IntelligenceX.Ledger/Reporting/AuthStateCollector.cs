@@ -73,7 +73,19 @@ internal sealed partial class AuthStateCollector {
         facts["binary"] = binaries[0];
         if (await VersionAsync(binaries[0], token).ConfigureAwait(false) is { } version) facts["version"] = version;
         var (code, output) = await _run(binaries[0], ["auth", "status", "--json", "hosts"], token).ConfigureAwait(false);
-        if (code is null) { facts["check"] = "not-run"; return new("github", "unknown", now) { Facts = facts }; }
+        if (code is null) {
+            // A check that didn't finish says nothing new, so the last answer stands with the check marked; reporting
+            // unknown would record every fact as removed and then restored on the next good check.
+            facts["check"] = "not-run";
+            if (_last.FirstOrDefault(fact => fact.Provider == "github") is { State: not ("unknown" or "not-installed") } known) {
+                var kept = new Dictionary<string, string>(known.Facts ?? [], StringComparer.Ordinal);
+                // What this read found itself (file time, token variables, binary, version) replaces the old values.
+                foreach (var key in new[] { "check", "hosts-written", "env-override", "binary", "version" }) kept.Remove(key);
+                foreach (var (key, value) in facts) kept[key] = value;
+                return new("github", known.State, now) { Facts = kept };
+            }
+            return new("github", "unknown", now) { Facts = facts };
+        }
         var state = ParseGitHub(output, facts);
         if (code != 0) facts["check"] = "exit-" + code;
         return new("github", state, now) { Facts = facts };

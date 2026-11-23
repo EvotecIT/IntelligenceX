@@ -274,7 +274,9 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
             "versions" => (change.After is null ? name + " is down to one version" : name + " versions now " + change.After, change.After is null ? "good" : "warn"),
             "version" => (name + " updated to " + change.After, "neutral"),
             "binaries" => (name + " binaries changed", "neutral"),
-            "config-fingerprint" => (name + " config.toml rewritten", "warn"),
+            // Every Ledger agent install re-registers its MCP server there, so a rewrite is routine; the setting that
+            // matters, where Codex keeps its sign-in, is "credential-store".
+            "config-fingerprint" => (name + " config.toml rewritten", "neutral"),
             "credentials" => (name + (change.After == "none" ? " sign-in file removed" : " sign-in file is back"), change.After == "none" ? "bad" : "neutral"),
             // A file time that goes away comes with the file itself going away, which "credentials" already says.
             "credentials-written" when change.Before is null || change.After is null => ((string?)null, ""),
@@ -337,7 +339,7 @@ internal sealed record TrayView(TrayState State, string Headline, string[] Ledge
 
     /// <summary>Fields whose change is worth a notification. File times and version upgrades are kept in the history only.</summary>
     internal static readonly HashSet<string> NotifyFields = new(StringComparer.Ordinal) {
-        "state", "account", "scopes", "token-source", "env-override", "versions", "agent-sign-in", "credentials", "config-fingerprint", "credential-store"
+        "state", "account", "scopes", "token-source", "env-override", "versions", "agent-sign-in", "credentials", "credential-store"
     };
 }
 

@@ -205,6 +205,38 @@ public sealed class AuthStateTests : IDisposable {
         Assert.Equal(count + 1, runs.Count); // gh status again; versions come from the cache.
     }
 
+    // A gh check that doesn't finish keeps the last answer, so the history doesn't record every fact as removed and back.
+    [Fact]
+    public async Task AGitHubCheckThatDoesNotFinishKeepsTheLastAnswer() {
+        var home = Path.Combine(_directory, "home-timeout");
+        var bin = Path.Combine(_directory, "bin-timeout");
+        Directory.CreateDirectory(Path.Combine(home, ".codex"));
+        Directory.CreateDirectory(bin);
+        File.WriteAllText(Path.Combine(bin, OperatingSystem.IsWindows() ? "gh.exe" : "gh"), "gh");
+        var finishes = false;
+        var clock = Now;
+        var paths = new AuthPaths(home, (name, target) => name == "PATH" && target == EnvironmentVariableTarget.Process ? bin : null, installFolders: false);
+        var collector = new AuthStateCollector(paths, (_, args, _) => Task.FromResult<(int?, string)>(
+            args[0] == "--version" ? (0, "gh version 2.99.0") : finishes
+                ? (0, """{"hosts":{"github.com":[{"state":"success","active":true,"login":"someone","scopes":"repo","tokenSource":"keyring"}]}}""")
+                : (null, "")), () => clock);
+
+        var first = (await collector.CollectAsync(CancellationToken.None)).Single(f => f.Provider == "github");
+        Assert.Equal(("unknown", "not-run"), (first.State, first.Facts!["check"]));
+
+        finishes = true;
+        clock = Now.AddMinutes(16);
+        var answered = (await collector.CollectAsync(CancellationToken.None)).Single(f => f.Provider == "github");
+        Assert.Equal(("signed-in", "keyring"), (answered.State, answered.Facts!["token-source"]));
+        Assert.False(answered.Facts.ContainsKey("check"));
+
+        finishes = false;
+        clock = Now.AddMinutes(32);
+        var kept = (await collector.CollectAsync(CancellationToken.None)).Single(f => f.Provider == "github");
+        Assert.Equal(("signed-in", "someone", "repo", "keyring", "not-run", Now.AddMinutes(32)),
+            (kept.State, kept.Facts!["account"], kept.Facts["scopes"], kept.Facts["token-source"], kept.Facts["check"], kept.CheckedAtUtc));
+    }
+
     [Fact]
     public void ValidationKeepsFactsSmallAndNamed() {
         var fact = new AuthFact("github", "signed-in", Now) { Facts = new() { ["scopes"] = "repo" } };
