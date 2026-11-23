@@ -40,14 +40,36 @@ public sealed class SignInCheckTests : IDisposable {
         Assert.Equal(expected, AgentService.ClaudeStatus(exit, output, Now));
 
     [Fact]
-    public void OneSignedOutCheckReadsUnknownAndTheSecondInARowAsksForSignIn() {
+    public void OneSignedOutCheckKeepsSignedInAndTheSecondInARowAsksForSignIn() {
         var service = Service();
         service.ObserveCheck("codex", "signed-in");
         service.ObserveCheck("codex", "signed-out");
-        Assert.Equal(("unknown", false), (_published[^1].Reason, _published[^1].Required));
+        Assert.Equal(("signed-in", false), (_published[^1].Reason, _published[^1].Required));
         service.ObserveCheck("codex", "signed-out");
         Assert.Equal(("signed-out", true), (_published[^1].Reason, _published[^1].Required));
-        Assert.Equal(["signed-in", "unknown", "signed-out"], _published.Select(fact => fact.Reason));
+        Assert.Equal(["signed-in", "signed-out"], _published.Select(fact => fact.Reason));
+    }
+
+    [Fact]
+    public void FailedChecksBetweenGoodOnesPublishNothing() {
+        var service = Service();
+        service.ObserveCheck("claude", "signed-in");
+        service.ObserveCheck("claude", "unknown");
+        service.ObserveCheck("claude", "signed-in");
+        service.ObserveCheck("claude", "unknown");
+        service.ObserveCheck("claude", "signed-out");
+        service.ObserveCheck("claude", "signed-in");
+        Assert.Equal(["signed-in"], _published.Select(fact => fact.Reason));
+    }
+
+    [Fact]
+    public void AFailedFirstCheckReadsUnknownUntilACheckAnswers() {
+        var service = Service();
+        service.ObserveCheck("claude", "unknown");
+        service.ObserveCheck("claude", "signed-out");
+        Assert.Equal(("unknown", false), (_published[^1].Reason, _published[^1].Required));
+        service.ObserveCheck("claude", "signed-in");
+        Assert.Equal(["unknown", "signed-in"], _published.Select(fact => fact.Reason));
     }
 
     [Fact]
