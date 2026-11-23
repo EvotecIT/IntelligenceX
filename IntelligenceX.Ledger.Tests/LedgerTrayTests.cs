@@ -121,8 +121,11 @@ public sealed class LedgerTrayTests {
         Assert.Empty(notifier.Next(Overview([], [old]), Now));
 
         var written = new AuthChange("mac", "codex", Now, "config-written", "a", "b");
+        // Each agent install re-registers its MCP server in config.toml; the timeline shows it, nothing announces it.
+        var rewritten = new AuthChange("mac", "codex", Now, "config-fingerprint", "a", "b");
+        Assert.Equal("neutral", TrayView.Describe(rewritten, Now)!.Tone);
         var scopes = new AuthChange("win-pc", "github", Now, "scopes", "repo, workflow", "repo");
-        var notes = notifier.Next(Overview([], [scopes, written, old]), Now);
+        var notes = notifier.Next(Overview([], [scopes, written, rewritten, old]), Now);
         var note = Assert.Single(notes);
         Assert.Equal("GitHub changed on win-pc", note.Title);
         Assert.Contains("GitHub lost workflow", note.Body);
