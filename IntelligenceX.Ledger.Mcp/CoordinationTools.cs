@@ -25,8 +25,8 @@ public sealed class CoordinationTools(LedgerReadClient client, LocalRoute? local
     [Description("One compact project answer: queue counts, admitted machine capacity and up to eight outstanding requests with next conditions. No local scanning or model polling is needed.")]
     public async Task<CoordinationSummary> Status(string project, CancellationToken token = default) {
         try { return await client.CoordinationStatusAsync(project, token).ConfigureAwait(false); }
-        catch (LedgerUnreachableException error) when (_local.Available) {
-            try { return await _local.Client!.CoordinationStatusAsync(project, token).ConfigureAwait(false) with { Route = "local" }; }
+        catch (LedgerUnreachableException error) when (_local.Current() is { } local) {
+            try { return await local.Client.CoordinationStatusAsync(project, token).ConfigureAwait(false) with { Route = "local" }; }
             catch (HttpRequestException) { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(error); throw; }
         }
     }

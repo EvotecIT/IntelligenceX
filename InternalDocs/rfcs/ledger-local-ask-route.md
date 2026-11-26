@@ -27,7 +27,8 @@ So the agent service hosts a second, machine-scoped coordination store and serve
 - Its policy is the Ledger's, narrowed to this machine. The heartbeat answer carries the policy revision and the
   host's projects; when either changes, the agent reads `GET /api/coordination/v1/hosts/policy` (the policy with only
   the caller's machine, so a host still can't read the full policy) and caches it. The local store never admits work
-  for another machine, and it keeps finished requests live for one second so the next heartbeat archives them.
+  for another machine, and it keeps finished requests live for an hour (or the Ledger's retention, when shorter), so
+  a follow-up ask (`continues`) works during an outage; the heartbeat then archives them for import.
 - Two principals the agent creates on first start and keeps in its private state (mode 600): `<machine>-host` for
   itself and `<machine>-sessions` for this machine's sessions, the same ids as on the Ledger, so an imported request
   is visible there to the same sessions. They exist only in the local store; the Ledger's principals and tokens are
@@ -35,21 +36,24 @@ So the agent service hosts a second, machine-scoped coordination store and serve
 
 A second `AgentService` instance in the same process runs against the local endpoint with its own state subfolder.
 Every helper, question, result, delivery and retirement path is then the existing code: there is no second
-implementation to keep in step. Only the Ledger instance asks the user to sign in, so a signed-out provider produces
+implementation to keep in step. It reads the boot identity and the Claude permission modes the session hooks record from the Ledger instance's state
+folder. Only the Ledger instance asks the user to sign in, so a signed-out provider produces
 one prompt, not two.
 
 ### Routing in the MCP tools
 
 The agent writes `local-client.json` (endpoint, sessions token, machine id; mode 600) beside the machine's Ledger
-client files when its local store starts. The MCP loads it when it is there; a missing or damaged file changes
-nothing.
+client files when its local store starts, and removes it when the store stops. The MCP reads it again whenever it
+changes, so sessions started before the store use it too; a missing or damaged file changes nothing.
 
 - **`ask` without an id** (a new ask): try the Ledger. On `unreachable`, if the target is this machine (`machine` equals
   the local machine id, or no machine is named), submit the same ask to the local store for this machine and return it
   with `"route": "local"`. Otherwise, or when the local store isn't running or refuses it, return `unreachable` as
   today, with `local` naming why the local store didn't take it.
-- **`ask` with an id** (a retry): if the local store has that id, return it. Otherwise go only to the Ledger. An id
-  that may already be in the Ledger (an earlier `uncertain`) is never routed locally, so it can't run twice.
+- **`ask` with an id** (a retry): if the local store has that id, return it. Only the store's own "not found" sends it
+  to the Ledger: when the file is there but the store doesn't answer (the agent crashed), the retry is reported
+  unreachable, since the store may hold it. An id that may already be in the Ledger (an earlier `uncertain`) is never
+  routed locally, so it can't run twice.
 - **Request-scoped tools** (`ask_answer`, `ask_images`, `ask_usage`, `request_status`, `request_result`,
   `request_consume_result`, `request_accept`, `request_cancel`): the local store when it holds the id, otherwise the
   Ledger. A request is never in both stores, so this needs no Ledger call to decide.
@@ -70,7 +74,10 @@ never schedules it:
 - An id the Ledger already has with different content is rejected with `import-conflict`, and the local record is kept
   for a person to look at.
 
-The agent remembers each id it has sent (imported or refused), so it sends each once.
+The Ledger checks the host's project scope and machine as for a submission. An import may use the service's 1 MiB
+request limit, since an entry with questions, answers and the result can exceed a command's 64 KiB. The agent
+remembers each id it has sent (imported, refused or too large), so it sends each once, and one that isn't imported
+never holds up the ones after it.
 
 Requests still running when the Ledger returns finish locally. New asks go to the Ledger again from the first
 successful call.
@@ -91,6 +98,8 @@ local store off.
 - **Capacity.** Local and Ledger admission count slots separately. While the Ledger is down it admits nothing new for
   this machine. When it returns while local helpers still run, the machine can briefly run more helpers than
   `agentSlots`. The local agent can report its running helpers in the Ledger heartbeat as occupied, which closes this.
+- **Follow-ups after the import.** The Ledger resolves `continues` from live work only, so once a local ask is imported
+  (an hour after it finished) a follow-up starts fresh rather than continuing it.
 - **Dependencies.** A local ask can't depend on a Ledger request, and a Ledger request can't depend on a local one
   until it is imported.
 - **Other machines can't see local work** until the import, apart from what the reporter sends (the helper sessions

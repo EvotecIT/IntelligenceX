@@ -20,8 +20,10 @@ internal static partial class CoordinationEndpoints {
             CoordinationArchiveEntry? entry;
             try { entry = import.Entry.Deserialize<CoordinationArchiveEntry>(ImportJson); }
             catch (JsonException) { entry = null; }
-            CoordinationValidation.Require(entry is not null && entry.Work is not null && entry.Work.Request is not null, "invalid-import");
-            if (entry!.Work.ResultRef is { } resultRef) {
+            CoordinationValidation.Require(entry is not null && entry.Work is not null && entry.Work.Request?.Checkpoint is not null, "invalid-import");
+            // Checked before the result file is written, so an import for another project leaves nothing behind.
+            CoordinationValidation.Require(caller.Projects.Contains(entry!.Work.Request.Checkpoint.Project, StringComparer.Ordinal), "project-not-authorized");
+            if (entry.Work.ResultRef is { } resultRef) {
                 CoordinationValidation.Require(import.Content is { Length: > 0 } content && resultRef ==
                     "result-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content))), "import-result-mismatch");
                 CoordinationValidation.Require(entry.Work.GrantId is not null, "invalid-import");

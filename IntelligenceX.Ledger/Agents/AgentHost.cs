@@ -83,7 +83,8 @@ public static class AgentHost {
                 AgentService.Log("local-store-started", local.Endpoint);
                 using var ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(settings.CoordinationConfig));
                 using var client = LedgerReadClient.ForCoordination(new CoordinationClientSettings(local.Endpoint, local.HostToken));
-                var service = new AgentService(settings with { StateDirectory = Path.Combine(LocalCoordination.Folder(settings), "agent") },
+                var service = new AgentService(settings with {
+                        StateDirectory = Path.Combine(LocalCoordination.Folder(settings), "agent"), HookStateDirectory = settings.StateDirectory },
                     settings.MachineId, client, publishSignIn: _ => { }, cachesPolicy: false) {
                     // The instance that works the Ledger already asks the user to sign in; a second dialog would repeat it.
                     SignInPrompt = (_, _) => Task.CompletedTask
@@ -165,7 +166,7 @@ internal sealed partial class AgentService {
         Directory.CreateDirectory(settings.WorkspaceRoot);
         _claude = new(settings.ClaudeExecutable, settings.StateDirectory);
         _claudeHelper = new(settings.ClaudeExecutable, settings.ClaudeHelperPermissionMode);
-        _bootId = BootIdentity.Get(settings.StateDirectory, machineId);
+        _bootId = BootIdentity.Get(settings.HookState, machineId);
     }
 
     private static (string Line, DateTimeOffset At) _lastLog;

@@ -49,9 +49,12 @@ public sealed partial class LedgerReadClient {
     public Task<CoordinationWork> ReceiptAsync(string id, string stage, ExecutionReceipt receipt, CancellationToken token = default) =>
         PostAsync("requests/" + Uri.EscapeDataString(id) + "/receipts/" + Uri.EscapeDataString(stage), receipt,
             LedgerReadJson.Default.ExecutionReceipt, LedgerReadJson.Default.CoordinationWork, token);
-    /// <summary>Records a request finished in a machine's local store, under its own id. Never schedules it again.</summary>
+    /// <summary>Records a request finished in a machine's local store, under its own id. Never schedules it again. A whole
+    /// archive entry (questions, answers and the result) can exceed a command's bound, so it may use the service's request
+    /// body limit.</summary>
     public Task<CoordinationAcknowledgement> ImportAsync(CoordinationImport import, CancellationToken token = default) =>
-        PostAsync("imports", import, LedgerReadJson.Default.CoordinationImport, LedgerReadJson.Default.CoordinationAcknowledgement, token);
+        PostAsync("imports", import, LedgerReadJson.Default.CoordinationImport, LedgerReadJson.Default.CoordinationAcknowledgement, token,
+            LedgerJson.MaximumBatchBytes);
     public Task<CoordinationAcknowledgement> HostAsync(CoordinationHost host, CancellationToken token = default) =>
         PostAsync("hosts", host, LedgerReadJson.Default.CoordinationHost, LedgerReadJson.Default.CoordinationAcknowledgement, token);
     public Task<CoordinationAcknowledgement> WorkerAsync(CoordinationWorker worker, CancellationToken token = default) =>
@@ -69,9 +72,9 @@ public sealed partial class LedgerReadClient {
             LedgerReadJson.Default.CoordinationWorkerStatus, token);
 
     private async Task<TResult> PostAsync<T, TResult>(string route, T value, JsonTypeInfo<T> inputType,
-        JsonTypeInfo<TResult> outputType, CancellationToken token) {
+        JsonTypeInfo<TResult> outputType, CancellationToken token, int maximumBytes = 65536) {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(value, inputType);
-        if (bytes.Length > 65536) throw new InvalidDataException("Coordination command exceeds its bound.");
+        if (bytes.Length > maximumBytes) throw new InvalidDataException("Coordination command exceeds its bound.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(15));
         using var content = new ByteArrayContent(bytes);

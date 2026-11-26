@@ -16,8 +16,9 @@ public sealed class LocalCoordinationTests {
         new("other-machine", 1, 1, 4, 4096, ["reservation"], AllowedCreateProviders: ["codex", "claude"])]);
 
     // Protects the outage path end to end: while the Ledger is unreachable, a new ask for this machine is taken by the
-    // agent's local store and the request tools find it there; asks for another machine, or retries of an id the Ledger
-    // may hold, are never sent there. Once the Ledger answers, the finished request is imported under its own id, once.
+    // agent's local store (even when the session's tools started before it) and the request tools find it there; asks for
+    // another machine, or retries of an id the Ledger may hold, are never sent there. Once the Ledger answers, the finished
+    // request is imported under its own id, once. A retry the local store can't answer for never goes to the Ledger.
     [Fact]
     public async Task AsksForThisMachineUseTheLocalStoreWhileTheLedgerIsDownAndAreImportedOnce() {
         var hostToken = new string('h', 32);
@@ -33,14 +34,16 @@ public sealed class LocalCoordinationTests {
                 var settings = new AgentSettings {
                     MachineId = "synthetic-machine", ReporterConfig = Path.Combine(root, "reporter.json"),
                     CoordinationConfig = Path.Combine(root, "coordination", "host-client.json"), StateDirectory = Path.Combine(root, "state"),
-                    WorkspaceRoot = Path.Combine(root, "work"), Capabilities = ["reservation"], LocalCoordinationPort = FreePort()
+                    WorkspaceRoot = Path.Combine(root, "work"), Capabilities = ["reservation"], LocalCoordinationPort = FreePort(),
+                    LocalFinishedRetention = TimeSpan.FromSeconds(1)
                 };
                 Directory.CreateDirectory(Path.GetDirectoryName(settings.CoordinationConfig)!);
                 LocalCoordination.Cache(settings, Policy, ["sample"]);
+                var route = LocalRoute.Load(settings.CoordinationConfig);
+                Assert.Null(route.Current());
                 await using var local = await LocalCoordination.StartAsync(settings, token);
                 Assert.NotNull(local);
                 using var down = LedgerReadClient.ForCoordination(new($"http://127.0.0.1:{FreePort()}/", new string('t', 32)));
-                var route = LocalRoute.Load(settings.CoordinationConfig);
                 var asks = new AskTools(down, route);
                 var requests = new CoordinationTools(down, route);
 
@@ -63,6 +66,18 @@ public sealed class LocalCoordinationTests {
                 var imported = await sessions.RequestAsync(work.Request.Id, token);
                 Assert.Equal("cancelled", imported.Work.State);
                 Assert.Empty((await sessions.CoordinationStatusAsync("sample", token)).Items);
+
+                // A store that stopped without removing its file (a crash) may still hold the id: the retry is reported
+                // unreachable and the Ledger never sees it.
+                await local.DisposeAsync();
+                var clientFile = Path.Combine(Path.GetDirectoryName(settings.CoordinationConfig)!, LocalCoordination.ClientFileName);
+                Assert.False(File.Exists(clientFile));
+                File.WriteAllText(clientFile, JsonSerializer.Serialize(new { endpoint = $"http://127.0.0.1:{FreePort()}/",
+                    token = new string('s', 32), machineId = "synthetic-machine" }));
+                var crashed = new AskTools(sessions, LocalRoute.Load(settings.CoordinationConfig));
+                Assert.Equal("unreachable", Outcome(await Assert.ThrowsAsync<McpException>(() => AskAsync(crashed, "ask-held-locally", null))));
+                Assert.Equal(HttpStatusCode.NotFound, (await Assert.ThrowsAsync<HttpRequestException>(() =>
+                    sessions.RequestAsync("ask-held-locally", token))).StatusCode);
             } finally {
                 if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
             }
@@ -70,7 +85,8 @@ public sealed class LocalCoordinationTests {
     }
 
     // Protects the Ledger from local work replacing or rerunning its own: an identical import is answered again, while
-    // an id the Ledger holds live or archived with different content, or one from another machine, is refused.
+    // an id the Ledger holds live or archived with different content, or one from another machine or for a project the
+    // host may not use, is refused.
     [Fact]
     public void AnImportIsRecordedOnceAndNeverReplacesLedgerWork() {
         var host = new CoordinationPrincipal("synthetic-machine-host", "host", "unused", ["sample"], "synthetic-machine");
@@ -85,6 +101,10 @@ public sealed class LocalCoordinationTests {
             .Import(entry with { Work = entry.Work with { Reason = "changed" } }, host, entry)));
         Assert.Equal("import-machine-conflict", Code(() => new CoordinationEngine(state, CoordinationLifecycleTests.Now)
             .Import(Finished("ask-local-2", "other-machine"), host, null)));
+        var foreign = Finished("ask-local-3", "synthetic-machine");
+        Assert.Equal("project-not-authorized", Code(() => new CoordinationEngine(state, CoordinationLifecycleTests.Now)
+            .Import(foreign with { Work = foreign.Work with { Request = foreign.Work.Request with {
+                Checkpoint = foreign.Work.Request.Checkpoint with { Project = "other" } } } }, host, null)));
         state.Work["ask-live"] = Finished("ask-live", "synthetic-machine").Work;
         Assert.Equal("import-conflict", Code(() => new CoordinationEngine(state, CoordinationLifecycleTests.Now)
             .Import(Finished("ask-live", "synthetic-machine"), host, null)));

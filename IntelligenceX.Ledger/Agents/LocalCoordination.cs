@@ -22,8 +22,11 @@ internal sealed class LocalCoordination : IAsyncDisposable {
     private readonly CoordinationArtifactStore _artifacts;
     private readonly string _folder;
 
-    private LocalCoordination(WebApplication app, CoordinationStore store, string folder, string endpoint, string hostToken) {
+    private readonly string _clientFile;
+
+    private LocalCoordination(WebApplication app, CoordinationStore store, string folder, string clientFile, string endpoint, string hostToken) {
         _app = app;
+        _clientFile = clientFile;
         _store = store;
         _folder = folder;
         _artifacts = new CoordinationArtifactStore(Path.Combine(folder, "coordination-results"));
@@ -51,10 +54,11 @@ internal sealed class LocalCoordination : IAsyncDisposable {
     }
 
     /// <summary>The Ledger's policy for this machine only: nothing is admitted elsewhere, and a finished request leaves the
-    /// live state a second later, so it can be imported.</summary>
-    internal static CoordinationPolicy LocalPolicy(CoordinationPolicy policy, string machineId, long revision) {
-        var local = policy with { Revision = revision, Machines = policy.Machines.Where(m => m.Id == machineId).ToArray() };
-        local.RetainFinishedDays = 1.0 / 86400; // one second: the next heartbeat moves it to the archive for import
+    /// live state after <see cref="AgentSettings.LocalFinishedRetention"/> (or the Ledger's own retention, when shorter), so
+    /// it can be imported.</summary>
+    internal static CoordinationPolicy LocalPolicy(CoordinationPolicy policy, AgentSettings settings, long revision) {
+        var local = policy with { Revision = revision, Machines = policy.Machines.Where(m => m.Id == settings.MachineId).ToArray() };
+        local.RetainFinishedDays = Math.Min(policy.RetainFinishedDays, settings.LocalFinishedRetention.TotalDays);
         return local;
     }
 
@@ -69,10 +73,10 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             new CoordinationPrincipal(settings.MachineId + "-host", "host", tokens.Host, snapshot.Projects, settings.MachineId),
             new CoordinationPrincipal(settings.MachineId + "-sessions", "client", tokens.Sessions, snapshot.Projects, settings.MachineId)
         };
-        var store = new CoordinationStore(Path.Combine(folder, "coordination.sqlite"), LocalPolicy(snapshot.Policy, settings.MachineId, 1), principals);
+        var store = new CoordinationStore(Path.Combine(folder, "coordination.sqlite"), LocalPolicy(snapshot.Policy, settings, 1), principals);
         await store.InitializeAsync(token).ConfigureAwait(false);
-        await ApplyPolicyAsync(store, snapshot.Policy, settings.MachineId, token).ConfigureAwait(false);
-        var configuration = new CoordinationConfiguration { Principals = principals, InitialPolicy = LocalPolicy(snapshot.Policy, settings.MachineId, 1) };
+        await ApplyPolicyAsync(store, snapshot.Policy, settings, token).ConfigureAwait(false);
+        var configuration = new CoordinationConfiguration { Principals = principals, InitialPolicy = LocalPolicy(snapshot.Policy, settings, 1) };
         var builder = Program.CreateWebBuilder();
         builder.Logging.ClearProviders();
         builder.Services.ConfigureHttpJsonOptions(options => {
@@ -111,19 +115,19 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             MachineId = settings.MachineId
         }, Json));
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(clientFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        return new LocalCoordination(app, store, folder, endpoint, tokens.Host);
+        return new LocalCoordination(app, store, folder, clientFile, endpoint, tokens.Host);
     }
 
     /// <summary>Brings the local policy up to the cached one when it changed.</summary>
     internal Task RefreshPolicyAsync(AgentSettings settings, CancellationToken token) =>
-        Cached(settings) is { } snapshot ? ApplyPolicyAsync(_store, snapshot.Policy, settings.MachineId, token) : Task.CompletedTask;
+        Cached(settings) is { } snapshot ? ApplyPolicyAsync(_store, snapshot.Policy, settings, token) : Task.CompletedTask;
 
-    private static Task ApplyPolicyAsync(CoordinationStore store, CoordinationPolicy cached, string machineId, CancellationToken token) =>
+    private static Task ApplyPolicyAsync(CoordinationStore store, CoordinationPolicy cached, AgentSettings settings, CancellationToken token) =>
         store.ExecuteAsync((engine, state) => {
-            var wanted = LocalPolicy(cached, machineId, state.Policy.Revision);
+            var wanted = LocalPolicy(cached, settings, state.Policy.Revision);
             if (JsonSerializer.Serialize(wanted, Json) == JsonSerializer.Serialize(state.Policy, Json) ||
-                !wanted.Machines.Any(m => m.Id == machineId)) return false;
-            engine.ReplacePolicy(LocalPolicy(cached, machineId, state.Policy.Revision + 1), Operator, state.Policy.Revision);
+                !wanted.Machines.Any(m => m.Id == settings.MachineId)) return false;
+            engine.ReplacePolicy(LocalPolicy(cached, settings, state.Policy.Revision + 1), Operator, state.Policy.Revision);
             return true;
         }, DateTimeOffset.UtcNow, token);
 
@@ -140,8 +144,8 @@ internal sealed class LocalCoordination : IAsyncDisposable {
 
     private string ExportedFile => Path.Combine(_folder, "exported.json");
 
-    /// <summary>Imports every finished local request into the Ledger, oldest first. An imported or conflicting id is
-    /// remembered so it is sent once; a conflict stays in the local archive for someone to look at. Stops at the first
+    /// <summary>Imports every finished local request into the Ledger, oldest first. An imported, conflicting or oversized id
+    /// is remembered so it is sent once; one that isn't imported stays in the local archive for someone to look at. Stops at the first
     /// transport failure, since the Ledger is still unreachable.</summary>
     internal async Task<int> ExportAsync(LedgerReadClient ledger, CancellationToken token) {
         var done = File.Exists(ExportedFile)
@@ -159,6 +163,10 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             } catch (CoordinationCommandRejectedException error) {
                 outcome = error.ErrorCode;
                 AgentService.Log("local-import-rejected", entry.RequestId + " " + error.ErrorCode);
+            } catch (InvalidDataException) {
+                // Larger than the Ledger takes: it stays in the local archive, and the entries after it still go.
+                outcome = "too-large";
+                AgentService.Log("local-import-rejected", entry.RequestId + " too-large");
             }
             done[entry.RequestId] = outcome;
             LocalFiles.WriteAtomic(ExportedFile, JsonSerializer.Serialize(done, Json));
@@ -166,7 +174,10 @@ internal sealed class LocalCoordination : IAsyncDisposable {
         return imported;
     }
 
+    /// <summary>Stops serving and removes the sessions' client file, so their tools stop looking here. A store that stops
+    /// without this (a crash) leaves the file, and its requests are then reported unreachable rather than sent elsewhere.</summary>
     public async ValueTask DisposeAsync() {
+        try { File.Delete(_clientFile); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         await _app.StopAsync().ConfigureAwait(false);
         await _app.DisposeAsync().ConfigureAwait(false);
         _store.Dispose();

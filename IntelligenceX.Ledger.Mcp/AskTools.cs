@@ -63,18 +63,19 @@ public sealed class AskTools(LedgerReadClient client, LocalRoute? localRoute = n
 
     /// <summary>Sends an ask to the Ledger, or to this machine's local store: always when the local store already holds
     /// the id, and for a new ask to this machine when the Ledger can't be reached. A retry whose id the local store
-    /// doesn't hold goes only to the Ledger, because the Ledger may already have it.</summary>
+    /// doesn't hold goes only to the Ledger, because the Ledger may already have it, and one the local store can't say it
+    /// doesn't hold goes nowhere: the error comes back for a later retry.</summary>
     /// <remarks>A local ask runs on this machine, so the local store gets this machine's id when the caller named none.</remarks>
     internal async Task<CoordinationWork> RouteAsync(Func<LedgerReadClient, string?, Task<CoordinationWork>> send, bool fresh, string? machine,
         string askId, CancellationToken token) {
-        if (!fresh && await _local.HoldsAsync(askId, token).ConfigureAwait(false))
-            return await send(_local.Client!, machine ?? _local.MachineId).ConfigureAwait(false) with { Route = "local" };
+        if (!fresh && await _local.HolderAsync(askId, token).ConfigureAwait(false) is { } holder)
+            return await send(holder.Client, machine ?? holder.MachineId).ConfigureAwait(false) with { Route = "local" };
         try { return await send(client, machine).ConfigureAwait(false); }
-        catch (LedgerUnreachableException error) when (fresh && _local.Available && (machine is null || machine == _local.MachineId)) {
-            try { return await send(_local.Client!, _local.MachineId).ConfigureAwait(false) with { Route = "local" }; }
+        catch (LedgerUnreachableException error) when (fresh && _local.Current() is { } local && (machine is null || machine == local.MachineId)) {
+            try { return await send(local.Client, local.MachineId).ConfigureAwait(false) with { Route = "local" }; }
             // The agent isn't serving its store, or this machine can't run the ask: report the Ledger as unreachable.
             catch (LedgerUnreachableException) { throw Unreachable.Exception(error, askId, local: "local-store-unreachable"); }
-            catch (CoordinationCommandRejectedException local) { throw Unreachable.Exception(error, askId, local: local.ErrorCode); }
+            catch (CoordinationCommandRejectedException refused) { throw Unreachable.Exception(error, askId, local: refused.ErrorCode); }
         }
     }
 

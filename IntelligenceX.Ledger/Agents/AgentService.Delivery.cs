@@ -132,7 +132,7 @@ internal sealed partial class AgentService {
         if (to.Provider == "claude") {
             // SendMessage addresses sessions by the name ListAgents shows; the asker supplied its own.
             ClaudeSendOutcome sent;
-            var recorded = ClaudeSessionModes.Read(_settings.StateDirectory, to.SessionId);
+            var recorded = ClaudeSessionModes.Read(_settings.HookState, to.SessionId);
             var (senderMode, matched) = ClaudeDelivery(_policy.ClaudeSenderMode, recorded);
             try {
                 sent = await _claude.SendAsync(to.Address ?? to.SessionId, text, _policy.ClaudeDeliveryModel, stop, senderMode).ConfigureAwait(false);
@@ -155,7 +155,7 @@ internal sealed partial class AgentService {
             }
             // Sent from another mode, the app may hold it for the user's approval and tells only the sender, which has exited.
             // A mode the session recorded during the send may not be the one the message met.
-            if (sent.Stage == "submitted" && (!matched || ClaudeSessionModes.Read(_settings.StateDirectory, to.SessionId) != recorded))
+            if (sent.Stage == "submitted" && (!matched || ClaudeSessionModes.Read(_settings.HookState, to.SessionId) != recorded))
                 return ("uncertain", "claude-may-be-held-for-approval");
             return (sent.Stage, sent.Evidence);
         }
