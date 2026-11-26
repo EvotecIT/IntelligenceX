@@ -115,7 +115,10 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             if (line.StartsWith('[')) { origin = line.Replace(" ", "", StringComparison.Ordinal) == "[remote\"origin\"]"; continue; }
             if (!origin || !line.StartsWith("url", StringComparison.Ordinal) || line.IndexOf('=') is not (var equals and > 0) ||
                 line[..equals].Trim() != "url") continue;
-            var url = line[(equals + 1)..].Trim().TrimEnd('/');
+            var url = line[(equals + 1)..].Trim();
+            // Git allows a quoted value.
+            if (url.Length >= 2 && url[0] == '"' && url[^1] == '"') url = url[1..^1];
+            url = url.TrimEnd('/');
             if (url.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) url = url[..^4];
             var name = url.Split('/', ':', '\\').Last();
             return DeclarationValidation.Identifier(name) ? name : null;
@@ -216,10 +219,10 @@ internal sealed class LocalCoordination : IAsyncDisposable {
 
     /// <summary>True when the store must restart to match its policy: the host has other projects than the store's
     /// principals were created with (those scopes are fixed for the life of the store), or the policy no longer has this
-    /// machine, in which case the store doesn't start again. A store on the bootstrap policy also restarts when its
-    /// checkouts are gone. When the Ledger's first policy keeps the same projects, <see cref="RefreshPolicyAsync"/>
-    /// replaces the bootstrap policy in place.</summary>
-    internal bool Stale(AgentSettings settings) => Current(settings) is not { } snapshot ? _bootstrap : Differs(snapshot, settings);
+    /// machine, in which case the store doesn't start again. So does having no policy at all: a cache file that can't be
+    /// read, or a bootstrap policy whose checkouts are gone or that the Ledger ended. When the Ledger's first policy keeps
+    /// the same projects, <see cref="RefreshPolicyAsync"/> replaces the bootstrap policy in place.</summary>
+    internal bool Stale(AgentSettings settings) => Current(settings) is not { } snapshot || Differs(snapshot, settings);
 
     private bool Differs(Snapshot snapshot, AgentSettings settings) => !snapshot.Policy.Machines.Any(m => m.Id == settings.MachineId) ||
         !snapshot.Projects.Order(StringComparer.Ordinal).SequenceEqual(_projects.Order(StringComparer.Ordinal), StringComparer.Ordinal);

@@ -117,7 +117,7 @@ public sealed class LocalCoordinationTests {
                     (origin is null ? "" : "[remote \"origin\"]\n\turl = " + origin + "\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n"));
             }
             Checkout("sample", "https://github.com/synthetic/sample.git");
-            Checkout("second-folder", "git@github.com:synthetic/second.git");
+            Checkout("second-folder", "\"git@github.com:synthetic/second.git\"");
             Checkout("unpublished", null);
             Directory.CreateDirectory(Path.Combine(repositories, "not-a-checkout"));
             var settings = new AgentSettings {
@@ -175,7 +175,12 @@ public sealed class LocalCoordinationTests {
                 await local.DisposeAsync();
                 local = null;
                 Assert.Null(await LocalCoordination.StartAsync(settings, CancellationToken.None));
+                // A running store whose cache becomes unreadable closes too.
+                LocalCoordination.Cache(settings, Policy, ["sample"]);
+                local = await LocalCoordination.StartAsync(settings, CancellationToken.None);
+                Assert.False(local!.Stale(settings));
                 File.WriteAllText(Path.Combine(LocalCoordination.Folder(settings), "policy.json"), "{");
+                Assert.True(local.Stale(settings));
                 Assert.Null(await LocalCoordination.StartAsync(settings, CancellationToken.None));
             } finally {
                 if (local is not null) await local.DisposeAsync();
