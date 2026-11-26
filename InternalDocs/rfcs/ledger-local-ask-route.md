@@ -79,9 +79,12 @@ never schedules it:
   for a person to look at.
 
 The Ledger checks the host's project scope and machine as for a submission. An import may use the service's 1 MiB
-request limit, since an entry with questions, answers and the result can exceed a command's 64 KiB. The agent
-remembers each id it has sent (imported, refused or too large), so it sends each once, and one that isn't imported
-never holds up the ones after it.
+request limit, since an entry with questions, answers and the result can exceed a command's 64 KiB. The images the
+ask and its result name are uploaded first under the same content ids, and the ask's display title travels with the
+entry; the Ledger writes the entry, the title and the result file in one store operation, only after the import is
+accepted. The agent pages through the whole local archive and remembers each id it has sent (imported, refused or too
+large), so it sends each once, and one that isn't imported never holds up the ones after it. Only an imported (or
+already held) id lets the agent remove the local client file when its store stops.
 
 Requests still running when the Ledger returns finish locally. New asks go to the Ledger again from the first
 successful call.
@@ -104,8 +107,13 @@ local store off.
   `agentSlots`. The local agent can report its running helpers in the Ledger heartbeat as occupied, which closes this.
 - **Follow-ups after the import.** The Ledger resolves `continues` from live work only, so once a local ask is imported
   (an hour after it finished) a follow-up starts fresh rather than continuing it.
-- **Dependencies.** A local ask can't depend on a Ledger request, and a Ledger request can't depend on a local one
-  until it is imported.
+- **Dependencies.** A local ask can't depend on a Ledger request, and a Ledger request can't depend on a local one,
+  imported or not: the Ledger resolves dependencies from live work only.
+- **Status after recovery.** Once the Ledger answers, `coordination_status` shows the Ledger's work only, so a local
+  ask still running is visible through `request_status` (which finds it locally) but not in the project summary.
+- **Retries after the import.** A local ask that named no machine is stored with this machine's id. While the local
+  file is there, a retry goes to the local store and matches; after the file is removed, a retry without `machine`
+  doesn't match the Ledger's copy and is refused as `request-id-conflict` (nothing runs twice).
 - **Other machines can't see local work** until the import, apart from what the reporter sends (the helper sessions
   themselves).
 - **New local credentials.** They never leave the machine and grant nothing on the Ledger, but they are new

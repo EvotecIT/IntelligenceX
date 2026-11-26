@@ -74,6 +74,9 @@ public static class AgentHost {
     internal static async Task RunLocalAsync(AgentSettings settings, CancellationToken stop) {
         while (!stop.IsCancellationRequested) {
             LocalCoordination? local = null;
+            LedgerReadClient? ledger = null, client = null;
+            CancellationTokenSource? restart = null;
+            Task? running = null;
             try {
                 local = await LocalCoordination.StartAsync(settings, stop).ConfigureAwait(false);
                 if (local is null) {
@@ -81,22 +84,21 @@ public static class AgentHost {
                     continue;
                 }
                 AgentService.Log("local-store-started", local.Endpoint);
-                using var ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(settings.CoordinationConfig));
-                using var client = LedgerReadClient.ForCoordination(new CoordinationClientSettings(local.Endpoint, local.HostToken));
+                ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(settings.CoordinationConfig));
+                client = LedgerReadClient.ForCoordination(new CoordinationClientSettings(local.Endpoint, local.HostToken));
                 var service = new AgentService(settings with {
                         StateDirectory = Path.Combine(LocalCoordination.Folder(settings), "agent"), HookStateDirectory = settings.StateDirectory },
                     settings.MachineId, client, publishSignIn: _ => { }, cachesPolicy: false) {
                     // The instance that works the Ledger already asks the user to sign in; a second dialog would repeat it.
                     SignInPrompt = (_, _) => Task.CompletedTask
                 };
-                using var restart = CancellationTokenSource.CreateLinkedTokenSource(stop);
-                var running = service.RunAsync(restart.Token);
+                restart = CancellationTokenSource.CreateLinkedTokenSource(stop);
+                running = service.RunAsync(restart.Token);
                 while (!stop.IsCancellationRequested && !running.IsCompleted) {
-                    if (local.ProjectsChanged(settings)) {
-                        // The store's principals carry the projects it started with: restart it with the new ones.
-                        AgentService.Log("local-store-projects-changed", local.Endpoint);
-                        await restart.CancelAsync().ConfigureAwait(false);
-                        try { await running.ConfigureAwait(false); } catch (OperationCanceledException) when (!stop.IsCancellationRequested) { }
+                    if (local.Stale(settings)) {
+                        // The store's principals carry the projects it started with, and a policy needs this machine:
+                        // restart it to match the Ledger (it stays closed when the machine was removed).
+                        AgentService.Log("local-store-stale", local.Endpoint);
                         break;
                     }
                     try {
@@ -109,7 +111,7 @@ public static class AgentHost {
                     }
                     await Task.WhenAny(running, Task.Delay(TimeSpan.FromMinutes(1), stop)).ConfigureAwait(false);
                 }
-                if (!restart.IsCancellationRequested || stop.IsCancellationRequested) await running.ConfigureAwait(false);
+                if (running.IsCompleted) await running.ConfigureAwait(false);
             } catch (OperationCanceledException) when (stop.IsCancellationRequested) {
                 return;
             } catch (Exception error) {
@@ -117,6 +119,15 @@ public static class AgentHost {
                 try { await Task.Delay(TimeSpan.FromSeconds(30), stop).ConfigureAwait(false); }
                 catch (OperationCanceledException) { return; }
             } finally {
+                // The agent instance and its helpers stop before the store and clients they use are released, on every path.
+                if (running is not null) {
+                    await restart!.CancelAsync().ConfigureAwait(false);
+                    try { await running.ConfigureAwait(false); }
+                    catch (Exception error) when (error is OperationCanceledException || !stop.IsCancellationRequested) { }
+                }
+                restart?.Dispose();
+                client?.Dispose();
+                ledger?.Dispose();
                 if (local is not null) await local.DisposeAsync().ConfigureAwait(false);
             }
         }

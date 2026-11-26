@@ -48,11 +48,13 @@ public sealed class LocalCoordinationTests {
                 var asks = new AskTools(down, route);
                 var requests = new CoordinationTools(down, route);
 
-                var work = await AskAsync(asks, id: null, machine: null);
+                var image = Path.Combine(root, "screen.png");
+                File.WriteAllBytes(image, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3]);
+                var work = await AskAsync(asks, id: null, machine: null, images: [image]);
                 Assert.Equal("local", work.Route);
                 Assert.Equal("unreachable", Outcome(await Assert.ThrowsAsync<McpException>(() => AskAsync(asks, null, "other-machine"))));
                 Assert.Equal("unreachable", Outcome(await Assert.ThrowsAsync<McpException>(() => AskAsync(asks, "ask-maybe-in-the-ledger", null))));
-                Assert.Equal(work.Request.Id, (await AskAsync(asks, work.Request.Id, null)).Request.Id);
+                Assert.Equal(work.Request.Id, (await AskAsync(asks, work.Request.Id, null, images: [image])).Request.Id);
 
                 Assert.Equal("cancelled", (await requests.Cancel(work.Request.Id, new(0, "no-longer-needed"), apply: true)).State);
                 // With the Ledger answering (here: refusing this token), a follow-up of the local ask still goes to the local
@@ -71,12 +73,19 @@ public sealed class LocalCoordinationTests {
                 using var sessions = LedgerReadClient.ForCoordination(new(endpoint, sessionsToken));
                 var imported = await sessions.RequestAsync(work.Request.Id, token);
                 Assert.Equal("cancelled", imported.Work.State);
+                // Its title and image came with it: a retry naming them matches the Ledger's copy, and the image reads there.
+                Assert.Equal(work.Request.Id, (await AskAsync(new AskTools(sessions), work.Request.Id, "synthetic-machine", images: [image])).Request.Id);
+                var imageId = Assert.Single(imported.Work.Request.Helper!.Images!);
+                Assert.True(File.Exists(await sessions.DownloadImageAsync(imageId, Path.Combine(root, "downloaded"), token)));
                 Assert.Empty((await sessions.CoordinationStatusAsync("sample", token)).Items);
 
-                // New projects from the Ledger mean new principal scopes, so the agent restarts the store.
-                Assert.False(local.ProjectsChanged(settings));
+                // New projects mean new principal scopes, and a policy without this machine closes the store: either way
+                // the agent restarts it.
+                Assert.False(local.Stale(settings));
                 LocalCoordination.Cache(settings, Policy, ["sample", "another"]);
-                Assert.True(local.ProjectsChanged(settings));
+                Assert.True(local.Stale(settings));
+                LocalCoordination.Cache(settings, Policy with { Machines = Policy.Machines.Where(m => m.Id != "synthetic-machine").ToArray() }, ["sample"]);
+                Assert.True(local.Stale(settings));
 
                 // The store stops while it still holds a request: its file stays, the retry is reported unreachable and
                 // the Ledger never sees it.
@@ -109,6 +118,10 @@ public sealed class LocalCoordinationTests {
             .Import(entry with { Work = entry.Work with { Reason = "changed" } }, host, entry)));
         Assert.Equal("import-machine-conflict", Code(() => new CoordinationEngine(state, CoordinationLifecycleTests.Now)
             .Import(Finished("ask-local-2", "other-machine"), host, null)));
+        // Each machine field is checked: one naming this host can't hide another naming a different machine.
+        var mixed = Finished("ask-local-4", "other-machine");
+        Assert.Equal("import-machine-conflict", Code(() => new CoordinationEngine(state, CoordinationLifecycleTests.Now)
+            .Import(mixed with { Work = mixed.Work with { Machine = "synthetic-machine" } }, host, null)));
         var foreign = Finished("ask-local-3", "synthetic-machine");
         Assert.Equal("project-not-authorized", Code(() => new CoordinationEngine(state, CoordinationLifecycleTests.Now)
             .Import(foreign with { Work = foreign.Work with { Request = foreign.Work.Request with {
@@ -128,9 +141,11 @@ public sealed class LocalCoordinationTests {
 
     private static string Code(Action action) => Assert.Throws<CoordinationConflictException>(action).Message;
 
-    private static Task<CoordinationWork> AskAsync(AskTools tools, string? id, string? machine, string? continues = null) =>
+    private static Task<CoordinationWork> AskAsync(AskTools tools, string? id, string? machine, string? continues = null,
+        string[]? images = null) =>
         tools.Ask("probe", machine: machine, provider: "codex", id: id, project: "sample", branch: "main",
-            commit: new string('c', 40), sessionId: "session-1", sessionProvider: "claude", continues: continues);
+            commit: new string('c', 40), sessionId: "session-1", sessionProvider: "claude", continues: continues,
+            displayTitle: images is null ? null : "Local probe", images: images);
 
     private static string? Outcome(McpException error) {
         using var json = JsonDocument.Parse(error.Message);

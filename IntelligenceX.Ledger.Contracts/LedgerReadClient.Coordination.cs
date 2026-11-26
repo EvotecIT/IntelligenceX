@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
 namespace IntelligenceX.Ledger.Contracts;
@@ -132,4 +133,8 @@ public sealed record CoordinationAcknowledgement(bool Acknowledged, int? GrantSe
 
 /// <summary>A finished request a machine handled in its local store while the Ledger was unreachable: its archive entry
 /// as the local store wrote it, and the result content its result reference names.</summary>
-public sealed record CoordinationImport(JsonElement Entry, string? Content);
+public sealed record CoordinationImport(JsonElement Entry, string? Content) {
+    /// <summary>The ask's display title, kept with it so a retry with the same title still matches.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Title { get; init; }
+}

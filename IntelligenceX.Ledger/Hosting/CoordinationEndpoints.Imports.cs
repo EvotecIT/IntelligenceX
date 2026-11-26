@@ -11,8 +11,8 @@ internal static partial class CoordinationEndpoints {
         UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow, MaxDepth = 32
     };
 
-    /// <summary>Takes requests a machine finished in its local store while the Ledger was unreachable. The result file is
-    /// written first (content-addressed, so a rejected import leaves nothing that names it), then the archive entry.</summary>
+    /// <summary>Takes requests a machine finished in its local store while the Ledger was unreachable: the archive entry, its
+    /// title and its result file, written together once the engine has accepted the import.</summary>
     private static void MapImports(WebApplication app, CoordinationStore store, CoordinationArtifactStore artifacts) =>
         app.MapPost(Prefix + "/imports", async (CoordinationImport import, HttpContext http, CancellationToken ct) => {
             var caller = Caller(http);
@@ -27,9 +27,10 @@ internal static partial class CoordinationEndpoints {
                 CoordinationValidation.Require(import.Content is { Length: > 0 } content && resultRef ==
                     "result-" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content))), "import-result-mismatch");
                 CoordinationValidation.Require(entry.Work.GrantId is not null, "invalid-import");
-                artifacts.Import(entry.Work, import.Content!);
             }
-            return Results.Ok(await store.ExecuteAsync(entry.RequestId, (engine, _, archived) => engine.Import(entry, caller, archived),
-                DateTimeOffset.UtcNow, ct));
+            // The result files are written only once the engine accepted the import, inside the same store operation.
+            return Results.Ok(await store.ImportAsync(entry, import.Title, caller, () => {
+                if (entry.Work.ResultRef is not null) artifacts.Import(entry.Work, import.Content!);
+            }, DateTimeOffset.UtcNow, ct));
         });
 }

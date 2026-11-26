@@ -20,6 +20,7 @@ internal sealed class LocalCoordination : IAsyncDisposable {
     private readonly WebApplication _app;
     private readonly CoordinationStore _store;
     private readonly CoordinationArtifactStore _artifacts;
+    private readonly CoordinationImageStore _images;
     private readonly string _folder;
 
     private readonly string _clientFile;
@@ -34,6 +35,7 @@ internal sealed class LocalCoordination : IAsyncDisposable {
         _store = store;
         _folder = folder;
         _artifacts = new CoordinationArtifactStore(Path.Combine(folder, "coordination-results"));
+        _images = new CoordinationImageStore(Path.Combine(folder, "coordination-images"));
         Endpoint = endpoint;
         HostToken = hostToken;
     }
@@ -70,6 +72,7 @@ internal sealed class LocalCoordination : IAsyncDisposable {
     internal static async Task<LocalCoordination?> StartAsync(AgentSettings settings, CancellationToken token) {
         if (settings.LocalCoordinationPort <= 0 || Cached(settings) is not { } snapshot ||
             !snapshot.Policy.Machines.Any(m => m.Id == settings.MachineId)) return null;
+        // A store left from an earlier run that the Ledger no longer allows stays closed; its file keeps its ids local.
         var folder = Folder(settings);
         Directory.CreateDirectory(folder);
         var tokens = Tokens(Path.Combine(folder, "principals.json"));
@@ -78,6 +81,19 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             new CoordinationPrincipal(settings.MachineId + "-sessions", "client", tokens.Sessions, snapshot.Projects, settings.MachineId)
         };
         var store = new CoordinationStore(Path.Combine(folder, "coordination.sqlite"), LocalPolicy(snapshot.Policy, settings, 1), principals);
+        WebApplication? app = null;
+        try {
+            return await ServeAsync(settings, snapshot, folder, tokens, principals, store, started => app = started, token).ConfigureAwait(false);
+        } catch {
+            // Nothing owns the store or the listener until it is returned: release both, so a later start can take them.
+            if (app is not null) await app.DisposeAsync().ConfigureAwait(false);
+            store.Dispose();
+            throw;
+        }
+    }
+
+    private static async Task<LocalCoordination> ServeAsync(AgentSettings settings, Snapshot snapshot, string folder, LocalTokens tokens,
+        CoordinationPrincipal[] principals, CoordinationStore store, Action<WebApplication> built, CancellationToken token) {
         await store.InitializeAsync(token).ConfigureAwait(false);
         await ApplyPolicyAsync(store, snapshot.Policy, settings, token).ConfigureAwait(false);
         var configuration = new CoordinationConfiguration { Principals = principals, InitialPolicy = LocalPolicy(snapshot.Policy, settings, 1) };
@@ -93,6 +109,7 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             server.Listen(IPAddress.Loopback, settings.LocalCoordinationPort);
         });
         var app = builder.Build();
+        built(app);
         app.Use(async (context, next) => {
             context.Response.Headers.CacheControl = "no-store";
             var header = context.Request.Headers.Authorization.ToString();
@@ -122,10 +139,12 @@ internal sealed class LocalCoordination : IAsyncDisposable {
         return new LocalCoordination(app, store, folder, clientFile, snapshot.Projects, endpoint, tokens.Host);
     }
 
-    /// <summary>True when the Ledger has since given this host other projects than the store's principals were created
-    /// with. Those scopes are fixed for the life of the store, so the agent restarts it.</summary>
-    internal bool ProjectsChanged(AgentSettings settings) =>
-        Cached(settings) is { } snapshot && !snapshot.Projects.Order(StringComparer.Ordinal).SequenceEqual(_projects.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+    /// <summary>True when the store must restart to match the Ledger: the host has other projects than the store's
+    /// principals were created with (those scopes are fixed for the life of the store), or the policy no longer has this
+    /// machine, in which case the store doesn't start again.</summary>
+    internal bool Stale(AgentSettings settings) =>
+        Cached(settings) is { } snapshot && (!snapshot.Policy.Machines.Any(m => m.Id == settings.MachineId) ||
+            !snapshot.Projects.Order(StringComparer.Ordinal).SequenceEqual(_projects.Order(StringComparer.Ordinal), StringComparer.Ordinal));
 
     /// <summary>Brings the local policy up to the cached one when it changed.</summary>
     internal Task RefreshPolicyAsync(AgentSettings settings, CancellationToken token) =>
@@ -134,6 +153,7 @@ internal sealed class LocalCoordination : IAsyncDisposable {
     private static Task ApplyPolicyAsync(CoordinationStore store, CoordinationPolicy cached, AgentSettings settings, CancellationToken token) =>
         store.ExecuteAsync((engine, state) => {
             var wanted = LocalPolicy(cached, settings, state.Policy.Revision);
+            // A policy without this machine can't be applied (a policy needs a machine); the agent stops the store instead.
             if (JsonSerializer.Serialize(wanted, Json) == JsonSerializer.Serialize(state.Policy, Json) ||
                 !wanted.Machines.Any(m => m.Id == settings.MachineId)) return false;
             engine.ReplacePolicy(LocalPolicy(cached, settings, state.Policy.Revision + 1), Operator, state.Policy.Revision);
@@ -157,25 +177,49 @@ internal sealed class LocalCoordination : IAsyncDisposable {
         ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(ExportedFile), Json) ?? new(StringComparer.Ordinal)
         : new(StringComparer.Ordinal);
 
-    /// <summary>True while the store holds a request the Ledger hasn't been sent: live work, or archived and not exported.</summary>
+    /// <summary>Outcomes after which the Ledger holds the id itself, so its record answers for it.</summary>
+    private static bool Transferred(string outcome) => outcome is "imported" or "import-conflict";
+
+    /// <summary>True while the store holds a request the Ledger doesn't: live work, or archived and not imported.</summary>
     private async Task<bool> HoldsUnsentAsync() {
-        if (await _store.ExecuteAsync((_, state) => state.Work.Count, DateTimeOffset.UtcNow, CancellationToken.None).ConfigureAwait(false) > 0) return true;
+        if (await _store.ReadAsync(state => state.Work.Count).ConfigureAwait(false) > 0) return true;
         var done = Exported();
-        return (await _store.ArchivedSinceAsync(DateTimeOffset.MinValue).ConfigureAwait(false)).Any(entry => !done.ContainsKey(entry.RequestId));
+        return (await ArchiveAsync(CancellationToken.None).ConfigureAwait(false))
+            .Any(entry => !done.TryGetValue(entry.RequestId, out var outcome) || !Transferred(outcome));
     }
 
-    /// <summary>Imports every finished local request into the Ledger, oldest first. An imported, conflicting or oversized id
-    /// is remembered so it is sent once; one that isn't imported stays in the local archive for someone to look at. Stops at the first
+    /// <summary>The whole local archive, oldest first. The store reads at most 10,000 entries at a time.</summary>
+    private async Task<List<CoordinationArchiveEntry>> ArchiveAsync(CancellationToken token) {
+        var all = new List<CoordinationArchiveEntry>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var since = DateTimeOffset.MinValue;
+        while (true) {
+            var page = await _store.ArchivedSinceAsync(since, token).ConfigureAwait(false);
+            all.AddRange(page.Where(entry => seen.Add(entry.RequestId)));
+            if (page.Length < CoordinationStore.ArchivePageSize || page[^1].FinishedAtUtc == since) return all;
+            since = page[^1].FinishedAtUtc;
+        }
+    }
+
+    /// <summary>Imports every finished local request into the Ledger, oldest first, with the images it names and its title. An
+    /// imported, conflicting or oversized id is remembered so it is sent once; one the Ledger didn't take stays in the local
+    /// archive for someone to look at, and keeps the local route. Stops at the first
     /// transport failure, since the Ledger is still unreachable.</summary>
     internal async Task<int> ExportAsync(LedgerReadClient ledger, CancellationToken token) {
         var done = Exported();
         var imported = 0;
-        foreach (var entry in await _store.ArchivedSinceAsync(DateTimeOffset.MinValue, token).ConfigureAwait(false)) {
+        foreach (var entry in await ArchiveAsync(token).ConfigureAwait(false)) {
             if (done.ContainsKey(entry.RequestId)) continue;
             var content = entry.Work.ResultRef is { } resultRef ? _artifacts.ReadResult(resultRef)?.Content : null;
             string outcome;
             try {
-                await ledger.ImportAsync(new CoordinationImport(JsonSerializer.SerializeToElement(entry, Json), content), token).ConfigureAwait(false);
+                // The images the ask and its result name go first, under the same content ids, so the Ledger's copy reads whole.
+                foreach (var id in (entry.Work.Request.Helper?.Images ?? []).Concat(CoordinationImage.References(content)).Distinct(StringComparer.Ordinal))
+                    if (_images.Find(id) is { } image)
+                        await ledger.UploadImageAsync(await File.ReadAllBytesAsync(image.Path, token).ConfigureAwait(false), token).ConfigureAwait(false);
+                await ledger.ImportAsync(new CoordinationImport(JsonSerializer.SerializeToElement(entry, Json), content) {
+                    Title = await _store.AskTitleAsync(entry.RequestId, token).ConfigureAwait(false)
+                }, token).ConfigureAwait(false);
                 outcome = "imported";
                 imported++;
             } catch (CoordinationCommandRejectedException error) {

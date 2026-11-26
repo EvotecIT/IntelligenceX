@@ -74,7 +74,8 @@ public sealed partial class CoordinationEngine {
         var id = entry.RequestId;
         Require(CoordinationValidation.Id(id) && entry.Work.Request.Id == id, "invalid-import");
         // A local store admits only its own machine; a request it never admitted has no machine yet.
-        Require((entry.Work.Machine ?? entry.Work.Request.MachineId ?? caller.MachineId) == caller.MachineId, "import-machine-conflict");
+        Require(entry.Work.Machine is null || entry.Work.Machine == caller.MachineId, "import-machine-conflict");
+        Require(entry.Work.Request.MachineId is null || entry.Work.Request.MachineId == caller.MachineId, "import-machine-conflict");
         // The same project scope as a submission: a host can't write history for a project its sessions may not ask about.
         Require(caller.Projects.Contains(entry.Work.Request.Checkpoint.Project, StringComparer.Ordinal), "project-not-authorized");
         Require(Terminal.Contains(entry.Work.State), "import-not-finished");
