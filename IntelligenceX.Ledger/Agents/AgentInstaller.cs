@@ -14,11 +14,15 @@ internal sealed record AgentInstallStep(string Action, string Detail, Func<Task>
 internal static class AgentInstaller {
     private const string McpName = "ix_ask";
     private const string Usage = "Usage: IntelligenceX.Ledger agent-install --reporter <reporter.json> --version <installed-version-folder> " +
-        "[--agent-config <agent.json>] [--workspace-root <dir>] [--capability <name>]... [--codex <path>] [--claude <path>] [--apply]";
+        "[--agent-config <agent.json>] [--workspace-root <dir>] [--repository-root <dir>]... [--capability <name>]... [--codex <path>] [--claude <path>] [--apply]";
     private static readonly JsonSerializerOptions Indented = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     internal sealed record Options(string ReporterConfig, string Version, string AgentConfig, string? WorkspaceRoot, string[] Capabilities,
-        string? Codex, string? Claude, bool Apply);
+        string? Codex, string? Claude, bool Apply) {
+        public string[] RepositoryRoots { get; init; } = [];
+        /// <summary>The machine's repository root (EVOTEC_GITHUB_ROOT), for a reporter that has no roots yet.</summary>
+        public string? MachineRepositoryRoot { get; init; }
+    }
 
     public static async Task<int> RunAsync(string[] args) {
         Options options;
@@ -40,6 +44,7 @@ internal static class AgentInstaller {
     internal static Options Parse(string[] args) {
         string? reporter = null, version = null, agentConfig = null, workspace = null, codex = null, claude = null;
         var capabilities = new List<string>();
+        var repositories = new List<string>();
         var apply = false;
         for (var i = 1; i < args.Length; i++) {
             string Next() => i + 1 < args.Length ? args[++i] : throw new ArgumentException("Missing value for " + args[i] + ".");
@@ -48,6 +53,7 @@ internal static class AgentInstaller {
                 case "--version": version = Next(); break;
                 case "--agent-config": agentConfig = Next(); break;
                 case "--workspace-root": workspace = Next(); break;
+                case "--repository-root": repositories.Add(Path.GetFullPath(Next())); break;
                 case "--capability": capabilities.Add(Next()); break;
                 case "--codex": codex = Next(); break;
                 case "--claude": claude = Next(); break;
@@ -58,7 +64,10 @@ internal static class AgentInstaller {
         if (reporter is null || version is null) throw new ArgumentException("--reporter and --version are required.");
         reporter = Path.GetFullPath(reporter);
         return new(reporter, Path.GetFullPath(version), Path.GetFullPath(agentConfig ?? Path.Combine(Path.GetDirectoryName(reporter)!, "agent.json")),
-            workspace, capabilities.ToArray(), codex, claude, apply);
+            workspace, capabilities.ToArray(), codex, claude, apply) {
+            RepositoryRoots = repositories.ToArray(),
+            MachineRepositoryRoot = Environment.GetEnvironmentVariable("EVOTEC_GITHUB_ROOT") is { Length: > 0 } github ? Path.GetFullPath(github) : null
+        };
     }
 
     /// <summary>Works out every change without making any. Find locates the Codex and Claude CLIs.</summary>
@@ -79,6 +88,14 @@ internal static class AgentInstaller {
         var agent = AgentSettings(options, existing ?? legacy, reporter, root, hostClient, find);
         if (!JsonNode.DeepEquals(existing, agent))
             steps.Add(new("write-agent-config", options.AgentConfig, () => { LocalFiles.WriteAtomic(options.AgentConfig, agent.ToJsonString(Indented)); return Task.CompletedTask; }));
+        // The reporter's repository roots: the folders it scans for checkouts, and the projects the local store's bootstrap
+        // policy allows. Older agent versions read the same file, so a rollback keeps working.
+        if (RepositoryRoots(options, reporter) is { } roots)
+            steps.Add(new("write-reporter-repository-roots", string.Join(", ", roots) + " (the reporter scans them after its next restart)", () => {
+                reporter["repositoryRoots"] = new JsonArray(roots.Select(r => (JsonNode)r).ToArray());
+                LocalFiles.WriteAtomic(options.ReporterConfig, reporter.ToJsonString(Indented));
+                return Task.CompletedTask;
+            }));
         var mcp = McpCommand(options.Version, sessionsClient);
         // MCP registration uses the CLI the agent runs: the desktop app's when it is installed, otherwise the configured one.
         var codex = agent["codexExecutable"]?.GetValue<string>() is { } configured ? CodexCli.Resolve(configured) : null;
@@ -142,6 +159,17 @@ internal static class AgentInstaller {
             else agent.Remove(key);
         }
         return agent;
+    }
+
+    /// <summary>The roots to write to the reporter, or null when it keeps its own: an explicit --repository-root replaces
+    /// them, and a reporter without any gets the machine's repository root (EVOTEC_GITHUB_ROOT) when that is set.</summary>
+    internal static string[]? RepositoryRoots(Options options, JsonObject reporter) {
+        var stored = reporter["repositoryRoots"] is JsonArray array
+            ? array.Select(r => r?.GetValueKind() == JsonValueKind.String ? r.GetValue<string>() : null).OfType<string>().ToArray() : [];
+        var wanted = options.RepositoryRoots.Length > 0 ? options.RepositoryRoots
+            : stored.Length > 0 ? stored
+            : options.MachineRepositoryRoot is { } machine ? [machine] : [];
+        return wanted.Length == 0 || wanted.SequenceEqual(stored, StringComparer.Ordinal) ? null : wanted;
     }
 
     /// <summary>Finds a CLI: Codex in the desktop app first (see <see cref="CodexCli"/>), otherwise on PATH or in the

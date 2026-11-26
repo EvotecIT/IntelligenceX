@@ -39,6 +39,9 @@ public sealed record AgentSettings {
     /// folder. The local store's agent instance keeps its own run records but reads these from there.</summary>
     internal string? HookStateDirectory { get; init; }
     internal string HookState => HookStateDirectory ?? StateDirectory;
+    /// <summary>Folders holding this machine's checkouts, for the local store's bootstrap policy. Null reads the reporter's
+    /// <c>repositoryRoots</c>, which the installer maintains.</summary>
+    internal string[]? RepositoryRoots { get; init; }
 }
 
 /// <summary>A stable identity for the current OS boot, kept across service restarts within that boot.</summary>

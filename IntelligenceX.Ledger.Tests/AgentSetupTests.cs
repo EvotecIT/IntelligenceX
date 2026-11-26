@@ -74,6 +74,20 @@ public sealed class AgentSetupTests : IDisposable {
         Assert.Null(agent["claudeExecutable"]);
     }
 
+    // The repository roots decide what the local store's bootstrap policy allows. They live in the reporter's settings,
+    // which older agent versions also read, so a reinstall keeps them and only an explicit --repository-root replaces them.
+    [Fact]
+    public void RepositoryRootsStayInTheReporterUnlessReplaced() {
+        var config = Reporter();
+        var reporter = JsonNode.Parse(File.ReadAllText(config))!.AsObject();
+        reporter["repositoryRoots"] = new JsonArray("/stored");
+        var options = Options(config, Version(hook: false), ["macos-shell"]);
+        Assert.Null(AgentInstaller.RepositoryRoots(options, reporter));
+        Assert.Equal(["/chosen"], AgentInstaller.RepositoryRoots(options with { RepositoryRoots = ["/chosen"] }, reporter)!);
+        Assert.Null(AgentInstaller.AgentSettings(options with { RepositoryRoots = ["/chosen"] }, null, reporter, _root, "host.json",
+            NoClis)["repositoryRoots"]);
+    }
+
     [Fact]
     public void InstallNeedsTheMachineClientFilesAnInstalledVersionAndACapability() {
         var config = Reporter();

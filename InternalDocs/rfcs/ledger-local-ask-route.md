@@ -29,6 +29,16 @@ So the agent service hosts a second, machine-scoped coordination store and serve
   the caller's machine, so a host still can't read the full policy) and caches it. The local store never admits work
   for another machine, and it keeps finished requests live for an hour (or the Ledger's retention, when shorter), so
   a follow-up ask (`continues`) works during an outage; the heartbeat then archives them for import.
+- Before the Ledger has ever answered (nothing cached yet), the store runs on a built-in bootstrap policy: this
+  machine only, Codex and Claude helpers with two agent slots between them, no build, test or benchmark capacity, and
+  principals scoped to the repositories checked out directly under the reporter's `repositoryRoots` (the origin
+  remote's repository name, read from `.git/config`). It is built in memory and never cached, so the Ledger's first policy replaces it: in
+  place when the projects match, by a store restart when they differ. A cached policy without this machine, or a cache
+  file that can't be read, closes the store; the bootstrap policy is never used again once a cache file exists. A
+  Ledger that answers and refuses the host (or sends no policy) also ends it, with nothing cached. The installer
+  keeps the reporter's `repositoryRoots`, takes `--repository-root`, and fills them from `EVOTEC_GITHUB_ROOT` when
+  the reporter has none. They live in the reporter's settings, which older agent versions read too, so a rollback
+  keeps working.
 - Two principals the agent creates on first start and keeps in its private state (mode 600): `<machine>-host` for
   itself and `<machine>-sessions` for this machine's sessions, the same ids as on the Ledger, so an imported request
   is visible there to the same sessions. When the Ledger gives the host other projects, the agent restarts the store with the new scopes. They exist only in the local store; the Ledger's principals and tokens are
@@ -97,8 +107,8 @@ successful call.
 | MCP | Route new same-machine asks and request-scoped calls as above. |
 | Ledger service | Import endpoint and engine operation; `hosts/policy`; policy revision and projects in the heartbeat answer. |
 
-The agent installer needs no change: `localCoordinationPort` in `agent.json` defaults to 7349, and 0 turns the
-local store off.
+`localCoordinationPort` in `agent.json` defaults to 7349, and 0 turns the local store off. The installer only adds
+the reporter's `repositoryRoots` for the bootstrap policy.
 
 ## Limits and risks
 
@@ -114,6 +124,9 @@ local store off.
 - **Retries after the import.** A local ask that named no machine is stored with this machine's id. While the local
   file is there, a retry goes to the local store and matches; after the file is removed, a retry without `machine`
   doesn't match the Ledger's copy and is refused as `request-id-conflict` (nothing runs twice).
+- **Bootstrap scope.** The bootstrap policy trusts the checkouts on disk: any repository cloned under a repository
+  root with an origin remote can be asked about locally until the Ledger's policy arrives. A clone added during an
+  outage restarts the store, like a project change from the Ledger.
 - **Other machines can't see local work** until the import, apart from what the reporter sends (the helper sessions
   themselves).
 - **New local credentials.** They never leave the machine and grant nothing on the Ledger, but they are new

@@ -78,13 +78,14 @@ public static class AgentHost {
             CancellationTokenSource? restart = null;
             Task? running = null;
             try {
+                // The Ledger's client first: settings it can't load fail before the store binds its port and writes its file.
+                ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(settings.CoordinationConfig));
                 local = await LocalCoordination.StartAsync(settings, stop).ConfigureAwait(false);
                 if (local is null) {
                     await Task.Delay(TimeSpan.FromMinutes(1), stop).ConfigureAwait(false);
                     continue;
                 }
                 AgentService.Log("local-store-started", local.Endpoint);
-                ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(settings.CoordinationConfig));
                 client = LedgerReadClient.ForCoordination(new CoordinationClientSettings(local.Endpoint, local.HostToken));
                 var service = new AgentService(settings with {
                         StateDirectory = Path.Combine(LocalCoordination.Folder(settings), "agent"), HookStateDirectory = settings.StateDirectory },
@@ -263,9 +264,16 @@ internal sealed partial class AgentService {
             if (_cachesPolicy && ack.PolicyRevision is { } revision && ack.Projects is { } projects &&
                 (LocalCoordination.Cached(_settings) is not { } cached || cached.Policy.Revision != revision || !cached.Projects.SequenceEqual(projects)))
                 LocalCoordination.Cache(_settings, await _ledger.HostPolicyAsync(stop).ConfigureAwait(false), projects);
+            // An answer without a policy (a Ledger too old to send one) still ends the local store's bootstrap policy.
+            else if (_cachesPolicy && ack.PolicyRevision is null) LocalCoordination.CloseBootstrap(_settings);
         } catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or
             CoordinationCommandRejectedException or JsonException && !stop.IsCancellationRequested) {
             Log("heartbeat-unavailable", error.GetType().Name + ": " + error.Message);
+            // The Ledger answered and refused this host (not enrolled, removed, or its token revoked): the bootstrap policy
+            // must not keep serving it, so the store waits for a policy the Ledger gives.
+            if (_cachesPolicy && error is CoordinationCommandRejectedException or HttpRequestException {
+                    StatusCode: System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden })
+                LocalCoordination.CloseBootstrap(_settings);
         }
     }
 

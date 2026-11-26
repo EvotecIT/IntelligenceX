@@ -31,6 +31,7 @@ param(
     [string]$ReporterConfig,
     [string[]]$Capability = @(),
     [string]$WorkspaceRoot,
+    [string[]]$RepositoryRoot = @(),
     [string]$Codex,
     [string]$Claude,
     [switch]$AllowUnmerged,
@@ -107,6 +108,7 @@ function Invoke-AgentInstall([string]$Version, [switch]$Change) {
         '--agent-config', $AgentConfig)
     foreach ($name in $Capability) { $arguments += @('--capability', $name) }
     if ($WorkspaceRoot) { $arguments += @('--workspace-root', $WorkspaceRoot) }
+    foreach ($path in $RepositoryRoot) { $arguments += @('--repository-root', $path) }
     if ($Codex) { $arguments += @('--codex', $Codex) }
     if ($Claude) { $arguments += @('--claude', $Claude) }
     if ($Change) { $arguments += '--apply' }

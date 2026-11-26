@@ -9,7 +9,8 @@ namespace IntelligenceX.Ledger.Agents;
 
 /// <summary>A coordination store for this machine alone, which the agent serves on loopback so that sessions here keep
 /// asking each other for work while the Ledger can't be reached. It runs the same engine and endpoints as the Ledger, with
-/// the last policy the Ledger gave this host, narrowed to this machine. A second agent instance works its feeds with the
+/// the last policy the Ledger gave this host, narrowed to this machine, or, before the Ledger has ever answered, a built-in
+/// bootstrap policy that covers only asks between this machine's sessions. A second agent instance works its feeds with the
 /// usual helper and delivery code. Requests it finishes are imported into the Ledger under their own ids once it answers.
 /// Its two principals (this host and this machine's sessions) exist only here and grant nothing on the Ledger.</summary>
 internal sealed class LocalCoordination : IAsyncDisposable {
@@ -25,12 +26,14 @@ internal sealed class LocalCoordination : IAsyncDisposable {
 
     private readonly string _clientFile;
     private readonly string[] _projects;
+    private readonly bool _bootstrap;
     private int _disposed;
 
-    private LocalCoordination(WebApplication app, CoordinationStore store, string folder, string clientFile, string[] projects,
+    private LocalCoordination(WebApplication app, CoordinationStore store, string folder, string clientFile, Snapshot snapshot,
         string endpoint, string hostToken) {
         _app = app;
-        _projects = projects;
+        _projects = snapshot.Projects;
+        _bootstrap = snapshot.Bootstrap;
         _clientFile = clientFile;
         _store = store;
         _folder = folder;
@@ -45,9 +48,83 @@ internal sealed class LocalCoordination : IAsyncDisposable {
 
     internal static string Folder(AgentSettings settings) => Path.Combine(settings.StateDirectory, "local-coordination");
     private static string PolicyFile(AgentSettings settings) => Path.Combine(Folder(settings), "policy.json");
+    private static string BootstrapClosedFile(AgentSettings settings) => Path.Combine(Folder(settings), "bootstrap-closed");
 
-    /// <summary>The policy and projects the Ledger last gave this host.</summary>
-    internal sealed record Snapshot(CoordinationPolicy Policy, string[] Projects);
+    /// <summary>The policy and projects the Ledger last gave this host, or the built-in bootstrap policy
+    /// (<see cref="Bootstrap"/> true), which is never cached.</summary>
+    internal sealed record Snapshot(CoordinationPolicy Policy, string[] Projects) {
+        internal bool Bootstrap { get; init; }
+    }
+
+    /// <summary>What the store runs on: the Ledger's cached policy once there is one, and the bootstrap policy only while the
+    /// Ledger has never answered this host. A cache file that can't be read gives nothing, never the bootstrap policy.</summary>
+    internal static Snapshot? Current(AgentSettings settings) =>
+        File.Exists(PolicyFile(settings)) ? Cached(settings) : File.Exists(BootstrapClosedFile(settings)) ? null : Bootstrap(settings);
+
+    /// <summary>Ends the bootstrap policy for good: the Ledger answered this host without a policy to cache (it refused the
+    /// host, or is too old to send one), so the store waits for a cached policy instead.</summary>
+    internal static void CloseBootstrap(AgentSettings settings) {
+        if (File.Exists(BootstrapClosedFile(settings))) return;
+        Directory.CreateDirectory(Folder(settings));
+        LocalFiles.WriteAtomic(BootstrapClosedFile(settings), "");
+    }
+
+    /// <summary>The policy for a machine whose agent has never had an answer from the Ledger: Codex and Claude helpers on
+    /// this machine, two agent slots between them, in the repositories checked out under the reporter's repository roots.
+    /// No other machine, no build, test or benchmark capacity, and the principals carry only those projects. Null when no
+    /// checkout is found. It is never written to the cache, so the Ledger's first policy replaces it.</summary>
+    internal static Snapshot? Bootstrap(AgentSettings settings) {
+        var projects = CheckedOutProjects(settings.RepositoryRoots ?? ReporterRoots(settings.ReporterConfig));
+        if (projects.Length == 0 || settings.Capabilities.Length == 0) return null;
+        var machine = new MachineCapacity(settings.MachineId, AgentSlots: 2, BuildSlots: 0, CpuUnits: 1, MemoryMiB: 1,
+            settings.Capabilities, AllowedCreateProviders: ["codex", "claude"]);
+        return new Snapshot(new CoordinationPolicy(1, [machine]), projects) { Bootstrap = true };
+    }
+
+    /// <summary>The project names (the repository name of the origin remote, as the ask tools send it) of the Git checkouts
+    /// directly under the roots. Reads each checkout's .git/config; a checkout without an origin is left out.</summary>
+    internal static string[] CheckedOutProjects(IEnumerable<string> roots) {
+        var projects = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var root in roots.Where(Directory.Exists)) {
+            IEnumerable<string> children;
+            try { children = Directory.EnumerateDirectories(root).ToArray(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { continue; }
+            foreach (var child in children) {
+                if (projects.Count >= 400) return projects.ToArray();
+                var config = Path.Combine(child, ".git", "config");
+                try { if (File.Exists(config) && OriginName(File.ReadAllLines(config)) is { } name) projects.Add(name); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        return projects.ToArray();
+    }
+
+    /// <summary>The reporter's <c>repositoryRoots</c>, the folders it scans for checkouts. Empty when it has none.</summary>
+    private static string[] ReporterRoots(string reporterConfig) {
+        try {
+            return File.Exists(reporterConfig) && System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(reporterConfig))?["repositoryRoots"]
+                is System.Text.Json.Nodes.JsonArray roots
+                ? roots.Select(root => root?.GetValueKind() == JsonValueKind.String ? root.GetValue<string>() : null).OfType<string>().ToArray() : [];
+        } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return []; }
+    }
+
+    private static string? OriginName(string[] lines) {
+        var origin = false;
+        foreach (var raw in lines) {
+            var line = raw.Trim();
+            if (line.StartsWith('[')) { origin = line.Replace(" ", "", StringComparison.Ordinal) == "[remote\"origin\"]"; continue; }
+            if (!origin || !line.StartsWith("url", StringComparison.Ordinal) || line.IndexOf('=') is not (var equals and > 0) ||
+                line[..equals].Trim() != "url") continue;
+            var url = line[(equals + 1)..].Trim();
+            // Git allows a quoted value.
+            if (url.Length >= 2 && url[0] == '"' && url[^1] == '"') url = url[1..^1];
+            url = url.TrimEnd('/');
+            if (url.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) url = url[..^4];
+            var name = url.Split('/', ':', '\\').Last();
+            return DeclarationValidation.Identifier(name) ? name : null;
+        }
+        return null;
+    }
 
     internal static Snapshot? Cached(AgentSettings settings) {
         try { return File.Exists(PolicyFile(settings)) ? JsonSerializer.Deserialize<Snapshot>(File.ReadAllText(PolicyFile(settings)), Json) : null; }
@@ -68,9 +145,10 @@ internal sealed class LocalCoordination : IAsyncDisposable {
         return local;
     }
 
-    /// <summary>Opens the store and serves it on loopback. Null while no policy for this machine has been cached yet.</summary>
+    /// <summary>Opens the store and serves it on loopback. Null while there is no policy for this machine: the cached one
+    /// leaves it out, or nothing is cached and no checkout is found for the bootstrap policy.</summary>
     internal static async Task<LocalCoordination?> StartAsync(AgentSettings settings, CancellationToken token) {
-        if (settings.LocalCoordinationPort <= 0 || Cached(settings) is not { } snapshot ||
+        if (settings.LocalCoordinationPort <= 0 || Current(settings) is not { } snapshot ||
             !snapshot.Policy.Machines.Any(m => m.Id == settings.MachineId)) return null;
         // A store left from an earlier run that the Ledger no longer allows stays closed; its file keeps its ids local.
         var folder = Folder(settings);
@@ -136,19 +214,24 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             MachineId = settings.MachineId
         }, Json));
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(clientFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        return new LocalCoordination(app, store, folder, clientFile, snapshot.Projects, endpoint, tokens.Host);
+        return new LocalCoordination(app, store, folder, clientFile, snapshot, endpoint, tokens.Host);
     }
 
-    /// <summary>True when the store must restart to match the Ledger: the host has other projects than the store's
+    /// <summary>True when the store must restart to match its policy: the host has other projects than the store's
     /// principals were created with (those scopes are fixed for the life of the store), or the policy no longer has this
-    /// machine, in which case the store doesn't start again.</summary>
-    internal bool Stale(AgentSettings settings) =>
-        Cached(settings) is { } snapshot && (!snapshot.Policy.Machines.Any(m => m.Id == settings.MachineId) ||
-            !snapshot.Projects.Order(StringComparer.Ordinal).SequenceEqual(_projects.Order(StringComparer.Ordinal), StringComparer.Ordinal));
+    /// machine, in which case the store doesn't start again. So does having no policy at all: a cache file that can't be
+    /// read, or a bootstrap policy whose checkouts are gone or that the Ledger ended. When the Ledger's first policy keeps
+    /// the same projects, <see cref="RefreshPolicyAsync"/> replaces the bootstrap policy in place.</summary>
+    internal bool Stale(AgentSettings settings) => Current(settings) is not { } snapshot || Differs(snapshot, settings);
 
-    /// <summary>Brings the local policy up to the cached one when it changed.</summary>
+    private bool Differs(Snapshot snapshot, AgentSettings settings) => !snapshot.Policy.Machines.Any(m => m.Id == settings.MachineId) ||
+        !snapshot.Projects.Order(StringComparer.Ordinal).SequenceEqual(_projects.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+
+    /// <summary>Brings the local policy up to the current one when it changed. A policy that needs a restart (other projects,
+    /// or no entry for this machine) isn't applied here, so the principals never keep wider scopes than the policy; the
+    /// next <see cref="Stale"/> check restarts the store.</summary>
     internal Task RefreshPolicyAsync(AgentSettings settings, CancellationToken token) =>
-        Cached(settings) is { } snapshot ? ApplyPolicyAsync(_store, snapshot.Policy, settings, token) : Task.CompletedTask;
+        Current(settings) is { } snapshot && !Differs(snapshot, settings) ? ApplyPolicyAsync(_store, snapshot.Policy, settings, token) : Task.CompletedTask;
 
     private static Task ApplyPolicyAsync(CoordinationStore store, CoordinationPolicy cached, AgentSettings settings, CancellationToken token) =>
         store.ExecuteAsync((engine, state) => {
