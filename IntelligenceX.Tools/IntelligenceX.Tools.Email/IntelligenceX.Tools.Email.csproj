@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <!-- Prefer local Mailozaurr sources; fall back to package for CI/consumers. -->
+    <PackageReference Include="AngleSharp" Version="1.10.5" />
     <ProjectReference Include="$(MailozaurrRoot)$(IxToolsMailozaurrProjectMarker)"
                       Condition="Exists('$(MailozaurrRoot)$(IxToolsMailozaurrProjectMarker)')" />
     <PackageReference Include="Mailozaurr" Version="$(MailozaurrNuGetVersion)"

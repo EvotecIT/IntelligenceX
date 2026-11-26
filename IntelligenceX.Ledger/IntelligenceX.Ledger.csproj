@@ -9,6 +9,6 @@
     <ProjectReference Include="../IntelligenceX.Ledger.Contracts/IntelligenceX.Ledger.Contracts.csproj" />
     <ProjectReference Include="../IntelligenceX/IntelligenceX.csproj" />
     <ProjectReference Include="../IntelligenceX.Storage.SQLite/IntelligenceX.Storage.SQLite.csproj" />
-    <PackageReference Include="DBAClientX.SQLite" Version="1.0.18" />
+    <PackageReference Include="DBAClientX.SQLite" Version="1.0.19" />
   </ItemGroup>
 </Project>

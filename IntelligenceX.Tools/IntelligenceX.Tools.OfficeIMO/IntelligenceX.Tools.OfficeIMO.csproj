@@ -36,6 +36,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="!Exists('$(OfficeImoReaderProject)') AND '$(OfficeImoReaderNuGetVersion)' != ''">
+    <PackageReference Include="AngleSharp" Version="1.10.5" />
     <PackageReference Include="OfficeIMO.Reader" Version="$(OfficeImoReaderNuGetVersion)" />
   </ItemGroup>
 </Project>
