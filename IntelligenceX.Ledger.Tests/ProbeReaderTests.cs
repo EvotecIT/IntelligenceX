@@ -212,7 +212,7 @@ public sealed class ProbeReaderTests : IDisposable {
         });
         using var client = new HttpClient(handler);
         var elapsed = Stopwatch.StartNew();
-        var result = await Reader(client).ReadAsync();
+        var result = await Reader(client, failure == "timeout" ? TimeProvider.System : null).ReadAsync();
         Assert.Equal("unavailable", result.State);
         Assert.Equal(failure switch {
             "connect" => "transport-unavailable", "http" => "http-503", "json" or "schema" => "invalid-response",
@@ -319,7 +319,10 @@ public sealed class ProbeReaderTests : IDisposable {
         }
     }
 
-    private ProbeReader Reader(HttpClient client) => new(client, _directory, "synthetic-reader");
+    // The read deadline runs on a clock that never moves unless a test is about the deadline, so a slow runner can't turn
+    // a fixture's answer into "timeout".
+    private ProbeReader Reader(HttpClient client, TimeProvider? clock = null) =>
+        new(client, _directory, "synthetic-reader", timeProvider: clock ?? new Microsoft.Extensions.Time.Testing.FakeTimeProvider());
     private string StatePath => Path.Combine(_directory, "reader-state.json");
 
     private async Task SaveAllowedAsync() {

@@ -18,7 +18,8 @@ public sealed class LocalCoordinationTests {
     // Protects the outage path end to end: while the Ledger is unreachable, a new ask for this machine is taken by the
     // agent's local store (even when the session's tools started before it) and the request tools find it there; asks for
     // another machine, or retries of an id the Ledger may hold, are never sent there. Once the Ledger answers, the finished
-    // request is imported under its own id, once. A retry the local store can't answer for never goes to the Ledger.
+    // request is imported under its own id, once. A follow-up goes to the store holding the ask it continues. A stopped
+    // store that still holds a request keeps its file, and a retry it can't answer for never goes to the Ledger.
     [Fact]
     public async Task AsksForThisMachineUseTheLocalStoreWhileTheLedgerIsDownAndAreImportedOnce() {
         var hostToken = new string('h', 32);
@@ -54,8 +55,13 @@ public sealed class LocalCoordinationTests {
                 Assert.Equal(work.Request.Id, (await AskAsync(asks, work.Request.Id, null)).Request.Id);
 
                 Assert.Equal("cancelled", (await requests.Cancel(work.Request.Id, new(0, "no-longer-needed"), apply: true)).State);
+                // With the Ledger answering (here: refusing this token), a follow-up of the local ask still goes to the local
+                // store, which judges it; the Ledger would leave the outcome uncertain.
+                using var refusing = LedgerReadClient.ForCoordination(new(endpoint, new string('x', 32)));
+                var followUp = await Assert.ThrowsAsync<McpException>(() => AskAsync(new AskTools(refusing, route), null, null, continues: work.Request.Id));
+                Assert.Equal("rejected", Outcome(followUp));
                 await Task.Delay(TimeSpan.FromSeconds(1.5), token);
-                await AskAsync(asks, null, null); // a later command moves the finished request to the local archive
+                var pending = await AskAsync(asks, null, null); // a later command moves the finished request to the local archive
 
                 using var ledger = LedgerReadClient.ForCoordination(new(endpoint, hostToken));
                 // What the agent caches for its local store: this machine only.
@@ -67,17 +73,19 @@ public sealed class LocalCoordinationTests {
                 Assert.Equal("cancelled", imported.Work.State);
                 Assert.Empty((await sessions.CoordinationStatusAsync("sample", token)).Items);
 
-                // A store that stopped without removing its file (a crash) may still hold the id: the retry is reported
-                // unreachable and the Ledger never sees it.
+                // New projects from the Ledger mean new principal scopes, so the agent restarts the store.
+                Assert.False(local.ProjectsChanged(settings));
+                LocalCoordination.Cache(settings, Policy, ["sample", "another"]);
+                Assert.True(local.ProjectsChanged(settings));
+
+                // The store stops while it still holds a request: its file stays, the retry is reported unreachable and
+                // the Ledger never sees it.
                 await local.DisposeAsync();
-                var clientFile = Path.Combine(Path.GetDirectoryName(settings.CoordinationConfig)!, LocalCoordination.ClientFileName);
-                Assert.False(File.Exists(clientFile));
-                File.WriteAllText(clientFile, JsonSerializer.Serialize(new { endpoint = $"http://127.0.0.1:{FreePort()}/",
-                    token = new string('s', 32), machineId = "synthetic-machine" }));
-                var crashed = new AskTools(sessions, LocalRoute.Load(settings.CoordinationConfig));
-                Assert.Equal("unreachable", Outcome(await Assert.ThrowsAsync<McpException>(() => AskAsync(crashed, "ask-held-locally", null))));
+                Assert.True(File.Exists(Path.Combine(Path.GetDirectoryName(settings.CoordinationConfig)!, LocalCoordination.ClientFileName)));
+                var stopped = new AskTools(sessions, LocalRoute.Load(settings.CoordinationConfig));
+                Assert.Equal("unreachable", Outcome(await Assert.ThrowsAsync<McpException>(() => AskAsync(stopped, pending.Request.Id, null))));
                 Assert.Equal(HttpStatusCode.NotFound, (await Assert.ThrowsAsync<HttpRequestException>(() =>
-                    sessions.RequestAsync("ask-held-locally", token))).StatusCode);
+                    sessions.RequestAsync(pending.Request.Id, token))).StatusCode);
             } finally {
                 if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
             }
@@ -120,9 +128,9 @@ public sealed class LocalCoordinationTests {
 
     private static string Code(Action action) => Assert.Throws<CoordinationConflictException>(action).Message;
 
-    private static Task<CoordinationWork> AskAsync(AskTools tools, string? id, string? machine) =>
+    private static Task<CoordinationWork> AskAsync(AskTools tools, string? id, string? machine, string? continues = null) =>
         tools.Ask("probe", machine: machine, provider: "codex", id: id, project: "sample", branch: "main",
-            commit: new string('c', 40), sessionId: "session-1", sessionProvider: "claude");
+            commit: new string('c', 40), sessionId: "session-1", sessionProvider: "claude", continues: continues);
 
     private static string? Outcome(McpException error) {
         using var json = JsonDocument.Parse(error.Message);

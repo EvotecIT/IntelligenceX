@@ -89,8 +89,16 @@ public static class AgentHost {
                     // The instance that works the Ledger already asks the user to sign in; a second dialog would repeat it.
                     SignInPrompt = (_, _) => Task.CompletedTask
                 };
-                var running = service.RunAsync(stop);
+                using var restart = CancellationTokenSource.CreateLinkedTokenSource(stop);
+                var running = service.RunAsync(restart.Token);
                 while (!stop.IsCancellationRequested && !running.IsCompleted) {
+                    if (local.ProjectsChanged(settings)) {
+                        // The store's principals carry the projects it started with: restart it with the new ones.
+                        AgentService.Log("local-store-projects-changed", local.Endpoint);
+                        await restart.CancelAsync().ConfigureAwait(false);
+                        try { await running.ConfigureAwait(false); } catch (OperationCanceledException) when (!stop.IsCancellationRequested) { }
+                        break;
+                    }
                     try {
                         await local.RefreshPolicyAsync(settings, stop).ConfigureAwait(false);
                         var imported = await local.ExportAsync(ledger, stop).ConfigureAwait(false);
@@ -101,7 +109,7 @@ public static class AgentHost {
                     }
                     await Task.WhenAny(running, Task.Delay(TimeSpan.FromMinutes(1), stop)).ConfigureAwait(false);
                 }
-                await running.ConfigureAwait(false);
+                if (!restart.IsCancellationRequested || stop.IsCancellationRequested) await running.ConfigureAwait(false);
             } catch (OperationCanceledException) when (stop.IsCancellationRequested) {
                 return;
             } catch (Exception error) {

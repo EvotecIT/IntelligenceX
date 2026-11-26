@@ -31,7 +31,7 @@ So the agent service hosts a second, machine-scoped coordination store and serve
   a follow-up ask (`continues`) works during an outage; the heartbeat then archives them for import.
 - Two principals the agent creates on first start and keeps in its private state (mode 600): `<machine>-host` for
   itself and `<machine>-sessions` for this machine's sessions, the same ids as on the Ledger, so an imported request
-  is visible there to the same sessions. They exist only in the local store; the Ledger's principals and tokens are
+  is visible there to the same sessions. When the Ledger gives the host other projects, the agent restarts the store with the new scopes. They exist only in the local store; the Ledger's principals and tokens are
   not touched.
 
 A second `AgentService` instance in the same process runs against the local endpoint with its own state subfolder.
@@ -43,8 +43,10 @@ one prompt, not two.
 ### Routing in the MCP tools
 
 The agent writes `local-client.json` (endpoint, sessions token, machine id; mode 600) beside the machine's Ledger
-client files when its local store starts, and removes it when the store stops. The MCP reads it again whenever it
-changes, so sessions started before the store use it too; a missing or damaged file changes nothing.
+client files when its local store starts. When the store stops, it removes the file only if the Ledger has every
+request it held; otherwise the file stays, so those ids keep resolving to the (stopped) store and are reported
+unreachable rather than sent to the Ledger. The MCP reads the file again whenever it changes, so sessions started
+before the store use it too; a missing or damaged file changes nothing.
 
 - **`ask` without an id** (a new ask): try the Ledger. On `unreachable`, if the target is this machine (`machine` equals
   the local machine id, or no machine is named), submit the same ask to the local store for this machine and return it
@@ -54,6 +56,8 @@ changes, so sessions started before the store use it too; a missing or damaged f
   to the Ledger: when the file is there but the store doesn't answer (the agent crashed), the retry is reported
   unreachable, since the store may hold it. An id that may already be in the Ledger (an earlier `uncertain`) is never
   routed locally, so it can't run twice.
+- **`ask` with `continues`** (a follow-up): to the store holding the ask it continues, so a local conversation can be
+  continued after the Ledger is back, until that ask is imported.
 - **Request-scoped tools** (`ask_answer`, `ask_images`, `ask_usage`, `request_status`, `request_result`,
   `request_consume_result`, `request_accept`, `request_cancel`): the local store when it holds the id, otherwise the
   Ledger. A request is never in both stores, so this needs no Ledger call to decide.

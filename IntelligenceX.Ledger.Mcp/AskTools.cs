@@ -58,17 +58,19 @@ public sealed class AskTools(LedgerReadClient client, LocalRoute? localRoute = n
                 DisplayTitle = displayTitle, Images = uploaded, PullRequest = pullRequest
             }, token).ConfigureAwait(false);
         }
-        return await Command(RouteAsync(On, id is null, machine, askId, token), askId, retried: id is not null).ConfigureAwait(false);
+        return await Command(RouteAsync(On, id is null, machine, askId, token, continues), askId, retried: id is not null).ConfigureAwait(false);
     }
 
     /// <summary>Sends an ask to the Ledger, or to this machine's local store: always when the local store already holds
-    /// the id, and for a new ask to this machine when the Ledger can't be reached. A retry whose id the local store
+    /// the id or the ask a follow-up continues, and for a new ask to this machine when the Ledger can't be reached. A retry whose id the local store
     /// doesn't hold goes only to the Ledger, because the Ledger may already have it, and one the local store can't say it
     /// doesn't hold goes nowhere: the error comes back for a later retry.</summary>
     /// <remarks>A local ask runs on this machine, so the local store gets this machine's id when the caller named none.</remarks>
     internal async Task<CoordinationWork> RouteAsync(Func<LedgerReadClient, string?, Task<CoordinationWork>> send, bool fresh, string? machine,
-        string askId, CancellationToken token) {
-        if (!fresh && await _local.HolderAsync(askId, token).ConfigureAwait(false) is { } holder)
+        string askId, CancellationToken token, string? continues = null) {
+        // A retry goes where its id is; a new follow-up goes where the ask it continues is, since the Ledger can't continue
+        // a local ask it hasn't imported.
+        if ((fresh ? continues : askId) is { } owned && await _local.HolderAsync(owned, token).ConfigureAwait(false) is { } holder)
             return await send(holder.Client, machine ?? holder.MachineId).ConfigureAwait(false) with { Route = "local" };
         try { return await send(client, machine).ConfigureAwait(false); }
         catch (LedgerUnreachableException error) when (fresh && _local.Current() is { } local && (machine is null || machine == local.MachineId)) {

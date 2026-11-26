@@ -23,9 +23,13 @@ internal sealed class LocalCoordination : IAsyncDisposable {
     private readonly string _folder;
 
     private readonly string _clientFile;
+    private readonly string[] _projects;
+    private int _disposed;
 
-    private LocalCoordination(WebApplication app, CoordinationStore store, string folder, string clientFile, string endpoint, string hostToken) {
+    private LocalCoordination(WebApplication app, CoordinationStore store, string folder, string clientFile, string[] projects,
+        string endpoint, string hostToken) {
         _app = app;
+        _projects = projects;
         _clientFile = clientFile;
         _store = store;
         _folder = folder;
@@ -115,8 +119,13 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             MachineId = settings.MachineId
         }, Json));
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(clientFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        return new LocalCoordination(app, store, folder, clientFile, endpoint, tokens.Host);
+        return new LocalCoordination(app, store, folder, clientFile, snapshot.Projects, endpoint, tokens.Host);
     }
+
+    /// <summary>True when the Ledger has since given this host other projects than the store's principals were created
+    /// with. Those scopes are fixed for the life of the store, so the agent restarts it.</summary>
+    internal bool ProjectsChanged(AgentSettings settings) =>
+        Cached(settings) is { } snapshot && !snapshot.Projects.Order(StringComparer.Ordinal).SequenceEqual(_projects.Order(StringComparer.Ordinal), StringComparer.Ordinal);
 
     /// <summary>Brings the local policy up to the cached one when it changed.</summary>
     internal Task RefreshPolicyAsync(AgentSettings settings, CancellationToken token) =>
@@ -144,13 +153,22 @@ internal sealed class LocalCoordination : IAsyncDisposable {
 
     private string ExportedFile => Path.Combine(_folder, "exported.json");
 
+    private Dictionary<string, string> Exported() => File.Exists(ExportedFile)
+        ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(ExportedFile), Json) ?? new(StringComparer.Ordinal)
+        : new(StringComparer.Ordinal);
+
+    /// <summary>True while the store holds a request the Ledger hasn't been sent: live work, or archived and not exported.</summary>
+    private async Task<bool> HoldsUnsentAsync() {
+        if (await _store.ExecuteAsync((_, state) => state.Work.Count, DateTimeOffset.UtcNow, CancellationToken.None).ConfigureAwait(false) > 0) return true;
+        var done = Exported();
+        return (await _store.ArchivedSinceAsync(DateTimeOffset.MinValue).ConfigureAwait(false)).Any(entry => !done.ContainsKey(entry.RequestId));
+    }
+
     /// <summary>Imports every finished local request into the Ledger, oldest first. An imported, conflicting or oversized id
     /// is remembered so it is sent once; one that isn't imported stays in the local archive for someone to look at. Stops at the first
     /// transport failure, since the Ledger is still unreachable.</summary>
     internal async Task<int> ExportAsync(LedgerReadClient ledger, CancellationToken token) {
-        var done = File.Exists(ExportedFile)
-            ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(ExportedFile), Json) ?? []
-            : new Dictionary<string, string>(StringComparer.Ordinal);
+        var done = Exported();
         var imported = 0;
         foreach (var entry in await _store.ArchivedSinceAsync(DateTimeOffset.MinValue, token).ConfigureAwait(false)) {
             if (done.ContainsKey(entry.RequestId)) continue;
@@ -174,11 +192,14 @@ internal sealed class LocalCoordination : IAsyncDisposable {
         return imported;
     }
 
-    /// <summary>Stops serving and removes the sessions' client file, so their tools stop looking here. A store that stops
-    /// without this (a crash) leaves the file, and its requests are then reported unreachable rather than sent elsewhere.</summary>
+    /// <summary>Stops serving. The sessions' client file is removed only when the Ledger has every request this store
+    /// held, so their tools stop looking here. While any request is still here (or after a crash) the file stays, and a
+    /// retry or request call for a local id is reported unreachable rather than sent to the Ledger.</summary>
     public async ValueTask DisposeAsync() {
-        try { File.Delete(_clientFile); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         await _app.StopAsync().ConfigureAwait(false);
+        try { if (!await HoldsUnsentAsync().ConfigureAwait(false)) File.Delete(_clientFile); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
         await _app.DisposeAsync().ConfigureAwait(false);
         _store.Dispose();
     }
