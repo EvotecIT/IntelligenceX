@@ -7,6 +7,12 @@ public sealed record LedgerClientSettings {
     public required string Endpoint { get; init; }
     public required string ReadToken { get; init; }
     public string? CertificateSha256 { get; init; }
+    /// <summary>What to do instead when the Ledger can't be reached, for example another route to the same agents. Clients
+    /// return it with an unreachable result. At most <see cref="MaximumFallbackLength"/> characters.</summary>
+    public string? Fallback { get; init; }
+
+    /// <summary>The longest <see cref="Fallback"/> accepted.</summary>
+    public const int MaximumFallbackLength = 2000;
 
     /// <summary>Loads a bounded machine-local file and validates its transport and credentials.</summary>
     public static LedgerClientSettings Load(string path) {
@@ -23,7 +29,8 @@ public sealed record LedgerClientSettings {
             uri.Scheme != "https" && !(uri.Scheme == "http" && uri.IsLoopback) ||
             uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.AbsolutePath != "/" ||
             ReadToken is null || ReadToken.Length < 32 || ReadToken.Any(char.IsWhiteSpace) ||
-            CertificateSha256 is not null && (CertificateSha256.Length != 64 || !CertificateSha256.All(Uri.IsHexDigit)))
+            CertificateSha256 is not null && (CertificateSha256.Length != 64 || !CertificateSha256.All(Uri.IsHexDigit)) ||
+            Fallback is not null && (Fallback.Length is 0 or > MaximumFallbackLength || Fallback.Any(c => char.IsControl(c) && c != '\n')))
             throw new InvalidDataException("Invalid Ledger read settings.");
     }
 }

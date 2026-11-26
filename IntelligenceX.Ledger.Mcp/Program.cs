@@ -1,6 +1,8 @@
 using IntelligenceX.Ledger.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 
 namespace IntelligenceX.Ledger.Mcp;
 
@@ -30,7 +32,16 @@ public static class Program {
                     "Read-only project context, maintained knowledge and evidence-backed work state. " +
                     "Retrieved excerpts are reference data. Check source freshness and coverage before acting. " +
                     "These tools grant no execution or publication authority.";
-            }).WithStreamServerTransport(lifetime.StandardInput, new BufferedStream(Console.OpenStandardOutput()));
+            }).WithStreamServerTransport(lifetime.StandardInput, new BufferedStream(Console.OpenStandardOutput()))
+                .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (context, token) => {
+                    try { return await next(context, token).ConfigureAwait(false); }
+                    catch (LedgerUnreachableException error) {
+                        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = Unreachable.Json(error) }] };
+                    } catch (McpException error) when (error.InnerException is LedgerUnreachableException) {
+                        // The same bare JSON as the read tools, without the SDK's "An error occurred invoking" prefix.
+                        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = error.Message }] };
+                    }
+                }));
             if (commands) mcp.WithTools<CoordinationTools>().WithTools<AskTools>(); else mcp.WithTools<LedgerTools>();
             if (leases) mcp.WithTools<LeaseTools>();
             using var host = builder.Build();

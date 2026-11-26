@@ -14,7 +14,7 @@ public sealed partial class LedgerReadClient {
         using var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
         using var message = new HttpRequestMessage(HttpMethod.Post, "api/coordination/v1/images") { Content = content };
-        using var response = await _transfers.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+        using var response = await SendAsync(_transfers, message, deadline.Token).ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             await ThrowCommandRejectionAsync(response, deadline.Token).ConfigureAwait(false);
         var image = await ReadResponseAsync(response, LedgerReadJson.Default.CoordinationImage, deadline.Token).ConfigureAwait(false);
@@ -28,8 +28,8 @@ public sealed partial class LedgerReadClient {
         if (!CoordinationImage.ValidId(id)) throw new ArgumentException("Not a Ledger image id.", nameof(id));
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromMinutes(2));
-        using var response = await _transfers.GetAsync("api/coordination/v1/images/" + id, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
-            .ConfigureAwait(false);
+        using var message = new HttpRequestMessage(HttpMethod.Get, "api/coordination/v1/images/" + id);
+        using var response = await SendAsync(_transfers, message, deadline.Token).ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) throw new FileNotFoundException("The Ledger has no image " + id + ".");
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > CoordinationImage.MaximumBytes) throw new InvalidDataException("The image exceeds its bound.");

@@ -4,6 +4,9 @@ namespace IntelligenceX.Ledger.Contracts;
 
 /// <summary>Explicit separate command enrollment. This credential never reuses an observation token.</summary>
 public sealed record CoordinationClientSettings(string Endpoint, string Token, string? CertificateSha256 = null) {
+    /// <inheritdoc cref="LedgerClientSettings.Fallback"/>
+    public string? Fallback { get; init; }
+
     public static CoordinationClientSettings Load(string path) {
         if (new FileInfo(path).Length > 65536) throw new InvalidDataException("Coordination client configuration exceeds its bound.");
         var value = JsonSerializer.Deserialize(File.ReadAllText(path), LedgerReadJson.Default.CoordinationClientSettings)
@@ -11,7 +14,7 @@ public sealed record CoordinationClientSettings(string Endpoint, string Token, s
         value.TransportSettings().Validate();
         return value;
     }
-    public LedgerClientSettings TransportSettings() => new() { Endpoint = Endpoint, ReadToken = Token, CertificateSha256 = CertificateSha256 };
+    public LedgerClientSettings TransportSettings() => new() { Endpoint = Endpoint, ReadToken = Token, CertificateSha256 = CertificateSha256, Fallback = Fallback };
 }
 
 public sealed record CoordinationGoalCommand(CoordinationGoal Goal, long ExpectedRevision);

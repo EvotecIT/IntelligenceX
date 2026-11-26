@@ -59,7 +59,7 @@ public sealed partial class LedgerReadClient {
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _leaseWriteToken);
         request.Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(value, type));
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+        using var response = await SendAsync(_commands, request, deadline.Token).ConfigureAwait(false);
         return await ReadResponseAsync(response, result, deadline.Token).ConfigureAwait(false);
     }
 }

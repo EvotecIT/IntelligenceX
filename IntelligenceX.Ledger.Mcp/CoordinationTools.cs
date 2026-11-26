@@ -60,6 +60,7 @@ public sealed class CoordinationTools(LedgerReadClient client) {
 
     private static async Task<T> CommandAsync<T>(Task<T> command) {
         try { return await command.ConfigureAwait(false); }
+        catch (LedgerUnreachableException error) { throw Unreachable.Exception(error); }
         catch (CoordinationCommandRejectedException error) {
             throw new McpException(JsonSerializer.Serialize(new { outcome = "rejected", error = error.ErrorCode }));
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or

@@ -22,6 +22,17 @@ Copy both files privately to the machine's `coordination` folder next to its rep
 (`%LOCALAPPDATA%\IntelligenceX\Ledger\coordination` or `~/.local/share/intelligencex-ledger/coordination`), mode 600 on
 macOS. They hold tokens: never put them in Git, issues or shared folders.
 
+Either file can also carry an optional `fallback`: up to 2,000 characters saying what to do when the Ledger can't be
+reached, such as another route to the same agents. When a client can't open a connection (the name doesn't resolve,
+the connection is refused, the host doesn't answer within five seconds, or the TLS handshake or certificate pin
+fails), the MCP tools return `{"outcome":"unreachable","sent":false,"reason":...,"endpoint":...}` with that text, and
+`ask` adds its id. Commands open a new connection for every request, so for them this means the service never
+received this attempt. For a new ask that means the Ledger has nothing, and the caller either uses the fallback or
+retries with the id once the Ledger answers, never both: the Ledger can't know about work sent another way. Only a new
+ask or wake gets the fallback text. An ask retried with its id may have arrived on an earlier attempt, so its result
+names no fallback and says to retry with the same id; answers, reads and other commands also carry no fallback and are
+retried once the Ledger answers. A failure after the connection opened still returns `uncertain`, because the request may have arrived.
+
 ## 2. Build the kit (on the same operating system as the target)
 
 ```powershell

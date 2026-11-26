@@ -20,6 +20,10 @@ public sealed class AskTools(LedgerReadClient client) {
         "project: the repository the work is in, by name or owner/name; omit it for this session's Git checkout. For another repository, " +
         "branch defaults to its default branch and commit to its latest (pass commit to pin it; a review needs one). " +
         "Rejections name the field and carry a hint. Reuse the same id when retrying after an error. " +
+        "outcome unreachable (sent: false) means this attempt could not connect to the Ledger. For a new ask the Ledger has " +
+        "nothing: use the fallback it names, or retry with the id once the Ledger answers, never both. When you passed an id, " +
+        "an earlier attempt may have arrived, so the result names no fallback: retry only with the same id. " +
+        "outcome uncertain means the ask may have arrived: retry only with the same id. " +
         "sessionId is this session's own id, where the answer is delivered; pass it when the tool reports session-unknown. " +
         "Codex: the CODEX_THREAD_ID environment variable of your shell commands. Claude Code: CLAUDE_CODE_SESSION_ID, and also " +
         "sessionAddress: this session's own name and ref exactly as ListAgents shows it (\"This session is <name> [<ref>]\"). " +
@@ -45,11 +49,13 @@ public sealed class AskTools(LedgerReadClient client) {
         var target = Source(project, branch, commit, output, GitSource);
         // An uncertain outcome names the id, so a retry with it returns the ask the service may already have taken.
         var askId = id ?? "ask-" + Guid.NewGuid().ToString("N");
-        var uploaded = images is { Length: > 0 } ? await UploadAsync(images, token).ConfigureAwait(false) : null;
+        string[]? uploaded;
+        try { uploaded = images is { Length: > 0 } ? await UploadAsync(images, token).ConfigureAwait(false) : null; }
+        catch (LedgerUnreachableException error) { throw Unreachable.Exception(error, askId, retried: id is not null); }
         return await Command(client.AskAsync(new CoordinationAsk(askId, task, target.Project, target.Branch, target.Commit,
             returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output) {
             DisplayTitle = displayTitle, Images = uploaded, PullRequest = pullRequest
-        }, token), askId).ConfigureAwait(false);
+        }, token), askId, retried: id is not null).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "ask_images", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -144,7 +150,7 @@ public sealed class AskTools(LedgerReadClient client) {
         }
         var wakeId = id ?? "wake-" + Guid.NewGuid().ToString("N");
         return Command(client.WakeAsync(new CoordinationWakeRequest(wakeId, prompt, provider, session, sessionAddress, repo, pr, afterMinutes), token),
-            wakeId, "wake");
+            wakeId, "wake", retried: id is not null);
     }
 
     [McpServerTool(Name = "wake_cancel", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -217,8 +223,9 @@ public sealed class AskTools(LedgerReadClient client) {
         ["ask-provider-unavailable"] = "No machine with that capability may start that provider. Omit provider or pick another machine."
     };
 
-    private static async Task<T> Command<T>(Task<T> command, string? retryId = null, string tool = "ask") {
+    private static async Task<T> Command<T>(Task<T> command, string? retryId = null, string tool = "ask", bool retried = false) {
         try { return await command.ConfigureAwait(false); }
+        catch (LedgerUnreachableException error) { throw Unreachable.Exception(error, retryId, tool, retried); }
         catch (CoordinationCommandRejectedException error) {
             throw new McpException(Hints.TryGetValue(error.ErrorCode, out var hint)
                 ? JsonSerializer.Serialize(new { outcome = "rejected", error = error.ErrorCode, hint })

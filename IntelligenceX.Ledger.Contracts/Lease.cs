@@ -103,6 +103,8 @@ public sealed record LeaseClientSettings {
     public required string ReadToken { get; init; }
     public required string WriteToken { get; init; }
     public string? CertificateSha256 { get; init; }
+    /// <inheritdoc cref="LedgerClientSettings.Fallback"/>
+    public string? Fallback { get; init; }
 
     public static LeaseClientSettings Load(string path) {
         if (new FileInfo(path).Length > 65536) throw new InvalidDataException("Lease settings exceed their bound.");
@@ -114,7 +116,7 @@ public sealed record LeaseClientSettings {
         return value;
     }
 
-    internal LedgerClientSettings ReadSettings() => new() { Endpoint = Endpoint, ReadToken = ReadToken, CertificateSha256 = CertificateSha256 };
+    internal LedgerClientSettings ReadSettings() => new() { Endpoint = Endpoint, ReadToken = ReadToken, CertificateSha256 = CertificateSha256, Fallback = Fallback };
 }
 
 /// <summary>Latest reporter liveness and coverage, stored as one row rather than journal entries.</summary>
