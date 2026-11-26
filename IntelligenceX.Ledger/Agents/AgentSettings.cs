@@ -19,6 +19,9 @@ public sealed record AgentSettings {
     public required string WorkspaceRoot { get; init; }
     /// <summary>Capabilities this host attests, matching the machine's policy entry.</summary>
     public required string[] Capabilities { get; init; }
+    /// <summary>Folders holding this machine's repository checkouts. Before the Ledger has ever answered, the local store
+    /// allows asks only in the repositories checked out directly under them.</summary>
+    public string[] RepositoryRoots { get; init; } = [];
     public string CodexExecutable { get; init; } = "codex";
     /// <summary>The Codex app's control socket. Null uses CODEX_HOME or ~/.codex.</summary>
     public string? CodexControlSocket { get; init; }

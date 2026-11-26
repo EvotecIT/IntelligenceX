@@ -101,6 +101,80 @@ public sealed class LocalCoordinationTests {
         });
     }
 
+    // Protects the first outage on a machine whose agent has never had an answer from the Ledger: the built-in bootstrap
+    // policy lets this machine's sessions ask Codex and Claude here, only in the repositories checked out under its
+    // repository roots, and never another machine. The Ledger's policy replaces it as soon as it is cached: in place when
+    // the projects match (here taking Claude away), by a restart when it narrows the projects, and a policy without this
+    // machine, or a cache that can't be read, closes the store instead of falling back to the bootstrap policy.
+    [Fact]
+    public async Task TheBootstrapPolicyCoversOnlyThisMachinesCheckoutsUntilTheLedgersPolicyReplacesIt() {
+        var root = LedgerTestPaths.NewDirectory("local-bootstrap");
+        try {
+            var repositories = Path.Combine(root, "repositories");
+            void Checkout(string folder, string? origin) {
+                Directory.CreateDirectory(Path.Combine(repositories, folder, ".git"));
+                File.WriteAllText(Path.Combine(repositories, folder, ".git", "config"), "[core]\n\tbare = false\n" +
+                    (origin is null ? "" : "[remote \"origin\"]\n\turl = " + origin + "\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n"));
+            }
+            Checkout("sample", "https://github.com/synthetic/sample.git");
+            Checkout("second-folder", "git@github.com:synthetic/second.git");
+            Checkout("unpublished", null);
+            Directory.CreateDirectory(Path.Combine(repositories, "not-a-checkout"));
+            var settings = new AgentSettings {
+                MachineId = "synthetic-machine", ReporterConfig = Path.Combine(root, "reporter.json"),
+                CoordinationConfig = Path.Combine(root, "coordination", "host-client.json"), StateDirectory = Path.Combine(root, "state"),
+                WorkspaceRoot = Path.Combine(root, "work"), Capabilities = ["reservation"], LocalCoordinationPort = FreePort(),
+                RepositoryRoots = [repositories]
+            };
+            Directory.CreateDirectory(Path.GetDirectoryName(settings.CoordinationConfig)!);
+            Assert.Equal(["sample", "second"], LocalCoordination.CheckedOutProjects(settings.RepositoryRoots));
+            Assert.Null(await LocalCoordination.StartAsync(settings with { RepositoryRoots = [Path.Combine(root, "missing")] }, CancellationToken.None));
+
+            var route = LocalRoute.Load(settings.CoordinationConfig);
+            using var down = LedgerReadClient.ForCoordination(new($"http://127.0.0.1:{FreePort()}/", new string('t', 32)));
+            var asks = new AskTools(down, route);
+            var local = await LocalCoordination.StartAsync(settings, CancellationToken.None);
+            try {
+                Assert.NotNull(local);
+                Assert.Equal("local", (await Ask(asks, "sample", "claude")).Route);
+                Assert.Equal("local", (await Ask(asks, "second", "codex")).Route);
+                Assert.Equal("project-not-authorized", Refusal(await Assert.ThrowsAsync<McpException>(() => Ask(asks, "unpublished", "codex"))));
+                Assert.Equal("unreachable", Outcome(await Assert.ThrowsAsync<McpException>(() => Ask(asks, "sample", "codex", "other-machine"))));
+                Assert.False(local!.Stale(settings));
+
+                // The Ledger's first policy, with the same projects but only Codex: applied in place.
+                LocalCoordination.Cache(settings, Policy with { Machines = [Policy.Machines[0] with { AllowedCreateProviders = ["codex"] }] },
+                    ["sample", "second"]);
+                Assert.False(local.Stale(settings));
+                await local.RefreshPolicyAsync(settings, CancellationToken.None);
+                Assert.Equal("ask-provider-unavailable", Refusal(await Assert.ThrowsAsync<McpException>(() => Ask(asks, "sample", "claude"))));
+                Assert.Equal("local", (await Ask(asks, "second", "codex")).Route);
+
+                // A later policy with fewer projects restarts the store with the narrower principals.
+                LocalCoordination.Cache(settings, Policy, ["sample"]);
+                Assert.True(local.Stale(settings));
+                await local.DisposeAsync();
+                local = await LocalCoordination.StartAsync(settings, CancellationToken.None);
+                Assert.NotNull(local);
+                Assert.Equal("project-not-authorized", Refusal(await Assert.ThrowsAsync<McpException>(() => Ask(asks, "second", "codex"))));
+                Assert.Equal("local", (await Ask(asks, "sample", "claude")).Route);
+
+                // Without this machine, or unreadable, the cache closes the store; the bootstrap policy never comes back.
+                LocalCoordination.Cache(settings, Policy with { Machines = [Policy.Machines[1]] }, ["sample"]);
+                Assert.True(local!.Stale(settings));
+                await local.DisposeAsync();
+                local = null;
+                Assert.Null(await LocalCoordination.StartAsync(settings, CancellationToken.None));
+                File.WriteAllText(Path.Combine(LocalCoordination.Folder(settings), "policy.json"), "{");
+                Assert.Null(await LocalCoordination.StartAsync(settings, CancellationToken.None));
+            } finally {
+                if (local is not null) await local.DisposeAsync();
+            }
+        } finally {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     // Protects the Ledger from local work replacing or rerunning its own: an identical import is answered again, while
     // an id the Ledger holds live or archived with different content, or one from another machine or for a project the
     // host may not use, is refused.
@@ -146,6 +220,16 @@ public sealed class LocalCoordinationTests {
         tools.Ask("probe", machine: machine, provider: "codex", id: id, project: "sample", branch: "main",
             commit: new string('c', 40), sessionId: "session-1", sessionProvider: "claude", continues: continues,
             displayTitle: images is null ? null : "Local probe", images: images);
+
+    private static Task<CoordinationWork> Ask(AskTools tools, string project, string provider, string? machine = null) =>
+        tools.Ask("probe", machine: machine, provider: provider, project: project, branch: "main", commit: new string('c', 40),
+            sessionId: "session-1", sessionProvider: "claude");
+
+    /// <summary>Why the local store refused an ask the Ledger couldn't take.</summary>
+    private static string? Refusal(McpException error) {
+        using var json = JsonDocument.Parse(error.Message);
+        return json.RootElement.TryGetProperty("local", out var code) ? code.GetString() : error.Message;
+    }
 
     private static string? Outcome(McpException error) {
         using var json = JsonDocument.Parse(error.Message);

@@ -74,6 +74,20 @@ public sealed class AgentSetupTests : IDisposable {
         Assert.Null(agent["claudeExecutable"]);
     }
 
+    // The repository roots decide what the local store's bootstrap policy allows, so a reinstall keeps them and an explicit
+    // --repository-root replaces them.
+    [Fact]
+    public void RepositoryRootsSurviveAReinstallUnlessReplaced() {
+        var config = Reporter();
+        var reporter = JsonNode.Parse(File.ReadAllText(config))!.AsObject();
+        var existing = new JsonObject { ["capabilities"] = new JsonArray("macos-shell"), ["repositoryRoots"] = new JsonArray("/stored") };
+        var options = Options(config, Version(hook: false), []);
+        Assert.Equal(["/stored"], AgentInstaller.AgentSettings(options, existing, reporter, _root, "host.json", NoClis)["repositoryRoots"]!
+            .AsArray().Select(r => r!.GetValue<string>()));
+        Assert.Equal(["/chosen"], AgentInstaller.AgentSettings(options with { RepositoryRoots = ["/chosen"] }, existing, reporter, _root,
+            "host.json", NoClis)["repositoryRoots"]!.AsArray().Select(r => r!.GetValue<string>()));
+    }
+
     [Fact]
     public void InstallNeedsTheMachineClientFilesAnInstalledVersionAndACapability() {
         var config = Reporter();

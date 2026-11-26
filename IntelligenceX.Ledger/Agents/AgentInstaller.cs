@@ -14,11 +14,13 @@ internal sealed record AgentInstallStep(string Action, string Detail, Func<Task>
 internal static class AgentInstaller {
     private const string McpName = "ix_ask";
     private const string Usage = "Usage: IntelligenceX.Ledger agent-install --reporter <reporter.json> --version <installed-version-folder> " +
-        "[--agent-config <agent.json>] [--workspace-root <dir>] [--capability <name>]... [--codex <path>] [--claude <path>] [--apply]";
+        "[--agent-config <agent.json>] [--workspace-root <dir>] [--repository-root <dir>]... [--capability <name>]... [--codex <path>] [--claude <path>] [--apply]";
     private static readonly JsonSerializerOptions Indented = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     internal sealed record Options(string ReporterConfig, string Version, string AgentConfig, string? WorkspaceRoot, string[] Capabilities,
-        string? Codex, string? Claude, bool Apply);
+        string? Codex, string? Claude, bool Apply) {
+        public string[] RepositoryRoots { get; init; } = [];
+    }
 
     public static async Task<int> RunAsync(string[] args) {
         Options options;
@@ -40,6 +42,7 @@ internal static class AgentInstaller {
     internal static Options Parse(string[] args) {
         string? reporter = null, version = null, agentConfig = null, workspace = null, codex = null, claude = null;
         var capabilities = new List<string>();
+        var repositories = new List<string>();
         var apply = false;
         for (var i = 1; i < args.Length; i++) {
             string Next() => i + 1 < args.Length ? args[++i] : throw new ArgumentException("Missing value for " + args[i] + ".");
@@ -48,6 +51,7 @@ internal static class AgentInstaller {
                 case "--version": version = Next(); break;
                 case "--agent-config": agentConfig = Next(); break;
                 case "--workspace-root": workspace = Next(); break;
+                case "--repository-root": repositories.Add(Path.GetFullPath(Next())); break;
                 case "--capability": capabilities.Add(Next()); break;
                 case "--codex": codex = Next(); break;
                 case "--claude": claude = Next(); break;
@@ -58,7 +62,7 @@ internal static class AgentInstaller {
         if (reporter is null || version is null) throw new ArgumentException("--reporter and --version are required.");
         reporter = Path.GetFullPath(reporter);
         return new(reporter, Path.GetFullPath(version), Path.GetFullPath(agentConfig ?? Path.Combine(Path.GetDirectoryName(reporter)!, "agent.json")),
-            workspace, capabilities.ToArray(), codex, claude, apply);
+            workspace, capabilities.ToArray(), codex, claude, apply) { RepositoryRoots = repositories.ToArray() };
     }
 
     /// <summary>Works out every change without making any. Find locates the Codex and Claude CLIs.</summary>
@@ -134,6 +138,11 @@ internal static class AgentInstaller {
         agent["stateDirectory"] = Existing("stateDirectory") ?? Path.Combine(root, "agent");
         agent["workspaceRoot"] = workspace;
         agent["capabilities"] = new JsonArray(capabilities.Select(c => (JsonNode)c).ToArray());
+        // The checkouts the local store's bootstrap policy allows: explicit, then configured, then the machine's repository root.
+        var repositories = options.RepositoryRoots.Length > 0 ? options.RepositoryRoots
+            : existing?["repositoryRoots"]?.AsArray().Select(r => r!.GetValue<string>()).ToArray() is { Length: > 0 } stored ? stored
+            : Environment.GetEnvironmentVariable("EVOTEC_GITHUB_ROOT") is { Length: > 0 } github ? [github] : [];
+        if (repositories.Length > 0) agent["repositoryRoots"] = new JsonArray(repositories.Select(r => (JsonNode)r).ToArray());
         // A stored path that no longer exists (or a bare name) is looked up again; a CLI that isn't installed is left out.
         string? Cli(string? chosen, string? stored, string name) =>
             chosen ?? (stored is not null && Path.IsPathFullyQualified(stored) && File.Exists(stored) ? stored : find(name));
