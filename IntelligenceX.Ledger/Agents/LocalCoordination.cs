@@ -211,12 +211,11 @@ internal sealed class LocalCoordination : IAsyncDisposable {
         foreach (var entry in await ArchiveAsync(token).ConfigureAwait(false)) {
             if (done.ContainsKey(entry.RequestId)) continue;
             var content = entry.Work.ResultRef is { } resultRef ? _artifacts.ReadResult(resultRef)?.Content : null;
+            // The images the ask and its result name go first, under the same content ids, so the Ledger's copy reads whole.
+            // Until they are there, the request isn't recorded and the next pass tries it again.
+            if (!await UploadImagesAsync(ledger, entry, content, token).ConfigureAwait(false)) continue;
             string outcome;
             try {
-                // The images the ask and its result name go first, under the same content ids, so the Ledger's copy reads whole.
-                foreach (var id in (entry.Work.Request.Helper?.Images ?? []).Concat(CoordinationImage.References(content)).Distinct(StringComparer.Ordinal))
-                    if (_images.Find(id) is { } image)
-                        await ledger.UploadImageAsync(await File.ReadAllBytesAsync(image.Path, token).ConfigureAwait(false), token).ConfigureAwait(false);
                 await ledger.ImportAsync(new CoordinationImport(JsonSerializer.SerializeToElement(entry, Json), content) {
                     Title = await _store.AskTitleAsync(entry.RequestId, token).ConfigureAwait(false)
                 }, token).ConfigureAwait(false);
@@ -234,6 +233,23 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             LocalFiles.WriteAtomic(ExportedFile, JsonSerializer.Serialize(done, Json));
         }
         return imported;
+    }
+
+    /// <summary>Uploads the images a request names. False while the Ledger's image store is full, which clears as old
+    /// images expire. An image the Ledger never takes (an unsupported or oversized file) is logged and left out, so the
+    /// request itself is still imported, with that reference unresolved.</summary>
+    private async Task<bool> UploadImagesAsync(LedgerReadClient ledger, CoordinationArchiveEntry entry, string? content, CancellationToken token) {
+        foreach (var id in (entry.Work.Request.Helper?.Images ?? []).Concat(CoordinationImage.References(content)).Distinct(StringComparer.Ordinal)) {
+            if (_images.Find(id) is not { } image) continue;
+            try { await ledger.UploadImageAsync(await File.ReadAllBytesAsync(image.Path, token).ConfigureAwait(false), token).ConfigureAwait(false); }
+            catch (CoordinationCommandRejectedException error) when (error.ErrorCode == "image-store-capacity") {
+                AgentService.Log("local-import-deferred", entry.RequestId + " image-store-capacity");
+                return false;
+            } catch (Exception error) when (error is CoordinationCommandRejectedException or InvalidDataException) {
+                AgentService.Log("local-image-skipped", entry.RequestId + " " + id);
+            }
+        }
+        return true;
     }
 
     /// <summary>Stops serving. The sessions' client file is removed only when the Ledger has every request this store
