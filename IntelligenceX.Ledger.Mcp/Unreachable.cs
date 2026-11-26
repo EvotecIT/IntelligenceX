@@ -6,7 +6,9 @@ using ModelContextProtocol;
 namespace IntelligenceX.Ledger.Mcp;
 
 /// <summary>The tool result for a Ledger the client could not connect to. Unlike "uncertain", it says the request never
-/// reached the service, so the caller can use the configured fallback without risking the same work twice.</summary>
+/// reached the service. Only a fresh ask or wake, whose id this attempt generated, is offered the configured fallback:
+/// that one is known to be absent from the Ledger. A retry, an answer or another command may repeat an earlier attempt
+/// that did arrive, so sending it another way could do the same thing twice.</summary>
 internal static class Unreachable {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -21,7 +23,7 @@ internal static class Unreachable {
                   (tool ?? "ask") + " again with this id, and don't send this work another way."
                 : "Nothing reached the Ledger. Either use the fallback, or call " + (tool ?? "ask") +
                   " again with this id once the Ledger answers, not both.",
-            retried ? null : error.Fallback), Options);
+            id is null || retried ? null : error.Fallback), Options);
 
     internal static McpException Exception(LedgerUnreachableException error, string? id = null, string? tool = null, bool retried = false) =>
         new(Json(error, id, tool, retried), error);

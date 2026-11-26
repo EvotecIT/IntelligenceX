@@ -70,6 +70,11 @@ public sealed class AskToolsTests {
             using var retried = JsonDocument.Parse(retry.Message);
             Assert.Equal("ask-unreachable-1", retried.RootElement.GetProperty("id").GetString());
             Assert.False(retried.RootElement.TryGetProperty("fallback", out _));
+            // So may an answer: the Ledger takes an identical one again, but the same answer sent another way would not be.
+            var answer = await Assert.ThrowsAsync<McpException>(() => new AskTools(client).Answer("ask-unreachable-1", 1, "yes"));
+            using var answered = JsonDocument.Parse(answer.Message);
+            Assert.Equal("unreachable", answered.RootElement.GetProperty("outcome").GetString());
+            Assert.False(answered.RootElement.TryGetProperty("fallback", out _));
         } finally { File.Delete(config); }
     }
 
