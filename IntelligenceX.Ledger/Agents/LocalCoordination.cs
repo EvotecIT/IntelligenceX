@@ -48,6 +48,7 @@ internal sealed class LocalCoordination : IAsyncDisposable {
 
     internal static string Folder(AgentSettings settings) => Path.Combine(settings.StateDirectory, "local-coordination");
     private static string PolicyFile(AgentSettings settings) => Path.Combine(Folder(settings), "policy.json");
+    private static string BootstrapClosedFile(AgentSettings settings) => Path.Combine(Folder(settings), "bootstrap-closed");
 
     /// <summary>The policy and projects the Ledger last gave this host, or the built-in bootstrap policy
     /// (<see cref="Bootstrap"/> true), which is never cached.</summary>
@@ -55,16 +56,25 @@ internal sealed class LocalCoordination : IAsyncDisposable {
         internal bool Bootstrap { get; init; }
     }
 
-    /// <summary>What the store runs on: the Ledger's cached policy once there is one, and the bootstrap policy only while no
-    /// policy has ever been cached. A cache file that can't be read gives nothing, never the bootstrap policy.</summary>
-    internal static Snapshot? Current(AgentSettings settings) => File.Exists(PolicyFile(settings)) ? Cached(settings) : Bootstrap(settings);
+    /// <summary>What the store runs on: the Ledger's cached policy once there is one, and the bootstrap policy only while the
+    /// Ledger has never answered this host. A cache file that can't be read gives nothing, never the bootstrap policy.</summary>
+    internal static Snapshot? Current(AgentSettings settings) =>
+        File.Exists(PolicyFile(settings)) ? Cached(settings) : File.Exists(BootstrapClosedFile(settings)) ? null : Bootstrap(settings);
+
+    /// <summary>Ends the bootstrap policy for good: the Ledger answered this host without a policy to cache (it refused the
+    /// host, or is too old to send one), so the store waits for a cached policy instead.</summary>
+    internal static void CloseBootstrap(AgentSettings settings) {
+        if (File.Exists(BootstrapClosedFile(settings))) return;
+        Directory.CreateDirectory(Folder(settings));
+        LocalFiles.WriteAtomic(BootstrapClosedFile(settings), "");
+    }
 
     /// <summary>The policy for a machine whose agent has never had an answer from the Ledger: Codex and Claude helpers on
-    /// this machine, one agent slot each, in the repositories checked out under <see cref="AgentSettings.RepositoryRoots"/>.
+    /// this machine, two agent slots between them, in the repositories checked out under the reporter's repository roots.
     /// No other machine, no build, test or benchmark capacity, and the principals carry only those projects. Null when no
     /// checkout is found. It is never written to the cache, so the Ledger's first policy replaces it.</summary>
     internal static Snapshot? Bootstrap(AgentSettings settings) {
-        var projects = CheckedOutProjects(settings.RepositoryRoots);
+        var projects = CheckedOutProjects(settings.RepositoryRoots ?? ReporterRoots(settings.ReporterConfig));
         if (projects.Length == 0 || settings.Capabilities.Length == 0) return null;
         var machine = new MachineCapacity(settings.MachineId, AgentSlots: 2, BuildSlots: 0, CpuUnits: 1, MemoryMiB: 1,
             settings.Capabilities, AllowedCreateProviders: ["codex", "claude"]);
@@ -87,6 +97,15 @@ internal sealed class LocalCoordination : IAsyncDisposable {
             }
         }
         return projects.ToArray();
+    }
+
+    /// <summary>The reporter's <c>repositoryRoots</c>, the folders it scans for checkouts. Empty when it has none.</summary>
+    private static string[] ReporterRoots(string reporterConfig) {
+        try {
+            return File.Exists(reporterConfig) && System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(reporterConfig))?["repositoryRoots"]
+                is System.Text.Json.Nodes.JsonArray roots
+                ? roots.Select(root => root?.GetValueKind() == JsonValueKind.String ? root.GetValue<string>() : null).OfType<string>().ToArray() : [];
+        } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return []; }
     }
 
     private static string? OriginName(string[] lines) {
@@ -200,13 +219,16 @@ internal sealed class LocalCoordination : IAsyncDisposable {
     /// machine, in which case the store doesn't start again. A store on the bootstrap policy also restarts when its
     /// checkouts are gone. When the Ledger's first policy keeps the same projects, <see cref="RefreshPolicyAsync"/>
     /// replaces the bootstrap policy in place.</summary>
-    internal bool Stale(AgentSettings settings) =>
-        Current(settings) is not { } snapshot ? _bootstrap : !snapshot.Policy.Machines.Any(m => m.Id == settings.MachineId) ||
-            !snapshot.Projects.Order(StringComparer.Ordinal).SequenceEqual(_projects.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+    internal bool Stale(AgentSettings settings) => Current(settings) is not { } snapshot ? _bootstrap : Differs(snapshot, settings);
 
-    /// <summary>Brings the local policy up to the current one when it changed.</summary>
+    private bool Differs(Snapshot snapshot, AgentSettings settings) => !snapshot.Policy.Machines.Any(m => m.Id == settings.MachineId) ||
+        !snapshot.Projects.Order(StringComparer.Ordinal).SequenceEqual(_projects.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+
+    /// <summary>Brings the local policy up to the current one when it changed. A policy that needs a restart (other projects,
+    /// or no entry for this machine) isn't applied here, so the principals never keep wider scopes than the policy; the
+    /// next <see cref="Stale"/> check restarts the store.</summary>
     internal Task RefreshPolicyAsync(AgentSettings settings, CancellationToken token) =>
-        Current(settings) is { } snapshot ? ApplyPolicyAsync(_store, snapshot.Policy, settings, token) : Task.CompletedTask;
+        Current(settings) is { } snapshot && !Differs(snapshot, settings) ? ApplyPolicyAsync(_store, snapshot.Policy, settings, token) : Task.CompletedTask;
 
     private static Task ApplyPolicyAsync(CoordinationStore store, CoordinationPolicy cached, AgentSettings settings, CancellationToken token) =>
         store.ExecuteAsync((engine, state) => {

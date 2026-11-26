@@ -19,9 +19,6 @@ public sealed record AgentSettings {
     public required string WorkspaceRoot { get; init; }
     /// <summary>Capabilities this host attests, matching the machine's policy entry.</summary>
     public required string[] Capabilities { get; init; }
-    /// <summary>Folders holding this machine's repository checkouts. Before the Ledger has ever answered, the local store
-    /// allows asks only in the repositories checked out directly under them.</summary>
-    public string[] RepositoryRoots { get; init; } = [];
     public string CodexExecutable { get; init; } = "codex";
     /// <summary>The Codex app's control socket. Null uses CODEX_HOME or ~/.codex.</summary>
     public string? CodexControlSocket { get; init; }
@@ -42,6 +39,9 @@ public sealed record AgentSettings {
     /// folder. The local store's agent instance keeps its own run records but reads these from there.</summary>
     internal string? HookStateDirectory { get; init; }
     internal string HookState => HookStateDirectory ?? StateDirectory;
+    /// <summary>Folders holding this machine's checkouts, for the local store's bootstrap policy. Null reads the reporter's
+    /// <c>repositoryRoots</c>, which the installer maintains.</summary>
+    internal string[]? RepositoryRoots { get; init; }
 }
 
 /// <summary>A stable identity for the current OS boot, kept across service restarts within that boot.</summary>

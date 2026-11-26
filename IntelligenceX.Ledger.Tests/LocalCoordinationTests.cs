@@ -129,6 +129,13 @@ public sealed class LocalCoordinationTests {
             Directory.CreateDirectory(Path.GetDirectoryName(settings.CoordinationConfig)!);
             Assert.Equal(["sample", "second"], LocalCoordination.CheckedOutProjects(settings.RepositoryRoots));
             Assert.Null(await LocalCoordination.StartAsync(settings with { RepositoryRoots = [Path.Combine(root, "missing")] }, CancellationToken.None));
+            // Without its own roots the agent reads the reporter's.
+            File.WriteAllText(settings.ReporterConfig, JsonSerializer.Serialize(new { repositoryRoots = new[] { repositories } }));
+            Assert.Equal(["sample", "second"], LocalCoordination.Bootstrap(settings with { RepositoryRoots = null })!.Projects);
+            // A Ledger that answered and refused this host ends the bootstrap policy, with nothing cached.
+            var refused = settings with { StateDirectory = Path.Combine(root, "refused-state") };
+            LocalCoordination.CloseBootstrap(refused);
+            Assert.Null(await LocalCoordination.StartAsync(refused, CancellationToken.None));
 
             var route = LocalRoute.Load(settings.CoordinationConfig);
             using var down = LedgerReadClient.ForCoordination(new($"http://127.0.0.1:{FreePort()}/", new string('t', 32)));
@@ -150,8 +157,11 @@ public sealed class LocalCoordinationTests {
                 Assert.Equal("ask-provider-unavailable", Refusal(await Assert.ThrowsAsync<McpException>(() => Ask(asks, "sample", "claude"))));
                 Assert.Equal("local", (await Ask(asks, "second", "codex")).Route);
 
-                // A later policy with fewer projects restarts the store with the narrower principals.
+                // A later policy with fewer projects restarts the store with the narrower principals, and isn't applied
+                // in place meanwhile.
                 LocalCoordination.Cache(settings, Policy, ["sample"]);
+                await local.RefreshPolicyAsync(settings, CancellationToken.None);
+                Assert.Equal("ask-provider-unavailable", Refusal(await Assert.ThrowsAsync<McpException>(() => Ask(asks, "sample", "claude"))));
                 Assert.True(local.Stale(settings));
                 await local.DisposeAsync();
                 local = await LocalCoordination.StartAsync(settings, CancellationToken.None);
