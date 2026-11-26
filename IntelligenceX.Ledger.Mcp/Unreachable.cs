@@ -16,17 +16,20 @@ internal static class Unreachable {
 
     /// <param name="retried">True when the caller passed the id: an earlier attempt with it may have reached the Ledger,
     /// so only this attempt is known not to have, and the work must not go another way.</param>
-    internal static string Json(LedgerUnreachableException error, string? id = null, string? tool = null, bool retried = false) =>
+    /// <param name="local">Why this machine's local store didn't take the ask instead, when it was tried.</param>
+    internal static string Json(LedgerUnreachableException error, string? id = null, string? tool = null, bool retried = false,
+        string? local = null) =>
         JsonSerializer.Serialize(new UnreachableOutcome("unreachable", false, error.Reason, error.Endpoint, id,
             id is null ? null : retried
                 ? "This attempt didn't reach the Ledger, but an earlier one with this id may have. Once it answers, call " +
                   (tool ?? "ask") + " again with this id, and don't send this work another way."
                 : "Nothing reached the Ledger. Either use the fallback, or call " + (tool ?? "ask") +
                   " again with this id once the Ledger answers, not both.",
-            id is null || retried ? null : error.Fallback), Options);
+            id is null || retried ? null : error.Fallback, local), Options);
 
-    internal static McpException Exception(LedgerUnreachableException error, string? id = null, string? tool = null, bool retried = false) =>
-        new(Json(error, id, tool, retried), error);
+    internal static McpException Exception(LedgerUnreachableException error, string? id = null, string? tool = null, bool retried = false,
+        string? local = null) => new(Json(error, id, tool, retried, local), error);
 
-    private sealed record UnreachableOutcome(string Outcome, bool Sent, string Reason, string Endpoint, string? Id, string? Retry, string? Fallback);
+    private sealed record UnreachableOutcome(string Outcome, bool Sent, string Reason, string Endpoint, string? Id, string? Retry,
+        string? Fallback, string? Local);
 }

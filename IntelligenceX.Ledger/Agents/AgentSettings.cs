@@ -29,6 +29,9 @@ public sealed record AgentSettings {
     public string ClaudeHelperPermissionMode { get; init; } = "bypassPermissions";
     /// <summary>Seconds between Ledger sweeps. Sweeps are plain HTTP reads; no model is involved.</summary>
     public double SweepSeconds { get; init; } = 3;
+    /// <summary>Loopback port of the local coordination store that keeps asks between sessions on this machine working
+    /// while the Ledger can't be reached. 0 turns it off.</summary>
+    public int LocalCoordinationPort { get; init; } = 7349;
 }
 
 /// <summary>A stable identity for the current OS boot, kept across service restarts within that boot.</summary>

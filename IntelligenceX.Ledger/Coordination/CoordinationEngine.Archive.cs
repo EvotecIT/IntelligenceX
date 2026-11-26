@@ -1,3 +1,4 @@
+using static IntelligenceX.Ledger.Coordination.CoordinationValidation;
 using IntelligenceX.Ledger.Contracts;
 
 namespace IntelligenceX.Ledger.Coordination;
@@ -63,6 +64,26 @@ public sealed partial class CoordinationEngine {
         foreach (var pair in questions) state.Questions.Remove(pair.Key);
         state.Usage.Remove(id);
         state.ResultDeliveryAttempts?.Remove(id);
+    }
+
+    /// <summary>Records a request the calling host finished in its local store while the Ledger was unreachable, as an
+    /// archived request under the same id. It is never scheduled. Repeating an identical import returns the same answer;
+    /// an id the Ledger already has with anything else is a conflict, so local work can never replace or rerun Ledger work.</summary>
+    public CoordinationAcknowledgement Import(CoordinationArchiveEntry entry, CoordinationPrincipal caller, CoordinationArchiveEntry? archived) {
+        Require(caller.Role == "host" && caller.MachineId is not null, "import-role-denied");
+        var id = entry.RequestId;
+        Require(CoordinationValidation.Id(id) && entry.Work.Request.Id == id, "invalid-import");
+        // A local store admits only its own machine; a request it never admitted has no machine yet.
+        Require((entry.Work.Machine ?? entry.Work.Request.MachineId ?? caller.MachineId) == caller.MachineId, "import-machine-conflict");
+        Require(Terminal.Contains(entry.Work.State), "import-not-finished");
+        Require(!state.Work.ContainsKey(id), "import-conflict");
+        if (archived is not null) {
+            Require(System.Text.Json.JsonSerializer.Serialize(archived) == System.Text.Json.JsonSerializer.Serialize(entry), "import-conflict");
+            return new(true);
+        }
+        Archived.Add(entry);
+        Note(id, "imported", caller.Id, entry.Work.Generation, "local:" + caller.MachineId);
+        return new(true);
     }
 
     private static T? Take<T>(Dictionary<string, T> values, string id) where T : class =>

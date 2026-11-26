@@ -73,6 +73,11 @@ public sealed record CoordinationWork(CoordinationRequest Request, string Reques
     string? BootId = null, string? ExecutionId = null, string? ResultRef = null,
     string? Reason = null, Dictionary<string, DateTimeOffset>? Stages = null, string? Provider = null,
     long? AuthorizedControlRevision = null) {
+    /// <summary>"local" when this machine's local coordination store took the request because the Ledger was
+    /// unreachable. Set by the ask tools only; the service never sends it.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Route { get; init; }
+
     /// <summary>"ask" for work created by a single ask; null for ordinary submissions.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Origin { get; init; }
@@ -188,4 +193,9 @@ public sealed record CoordinationChange(long Sequence, string RequestId, string 
 
 public sealed record MachineAdmission(string Id, ResourceDemand Used, MachineCapacity Capacity, bool Fresh);
 public sealed record CoordinationSummary(DateTimeOffset AsOfUtc, long PolicyRevision,
-    Dictionary<string, int> Counts, MachineAdmission[] Machines, CoordinationWork[] Items, bool Truncated);
+    Dictionary<string, int> Counts, MachineAdmission[] Machines, CoordinationWork[] Items, bool Truncated) {
+    /// <summary>"local" when this summary comes from this machine's local coordination store because the Ledger was
+    /// unreachable. Set by the tools only.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Route { get; init; }
+}

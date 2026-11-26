@@ -27,7 +27,7 @@ internal static partial class CoordinationEndpoints {
     }
 
     internal static CoordinationPrincipal Caller(HttpContext context) => (CoordinationPrincipal)context.Items[typeof(CoordinationPrincipal)]!;
-    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements", "/ask", "/questions", "/usage", "/lease-approvals", "/wakes", "/images" }
+    internal static bool OwnsRoute(PathString path) => new[] { "/goals", "/requests", "/hosts", "/workers", "/requesters", "/policy", "/summary", "/changes", "/results", "/retirements", "/ask", "/questions", "/usage", "/lease-approvals", "/wakes", "/images", "/imports" }
         .Any(suffix => path.StartsWithSegments(Prefix + suffix));
 
     internal static async Task<bool> AuthenticateAsync(HttpContext context, string bearer, CoordinationConfiguration config,
@@ -64,6 +64,7 @@ internal static partial class CoordinationEndpoints {
         var images = new CoordinationImageStore(Path.Combine(dataDirectory, "coordination-images"));
         MapImages(app, images);
         MapAsk(app, store, artifacts, images);
+        MapImports(app, store, artifacts);
         MapWakes(app, store);
         app.MapGet(Prefix + "/workers/{provider}/{sessionId}", async (string provider, string sessionId,
             HttpContext http, CancellationToken ct) => Results.Ok(await store.ExecuteAsync((e, _) =>
@@ -118,8 +119,17 @@ internal static partial class CoordinationEndpoints {
             var hold = loadHold is null || !CoordinationValidation.Id(host?.MachineId) ? null : await loadHold(host!.MachineId, ct);
             return Results.Ok(await store.ExecuteAsync((e, state) => {
                 e.ObserveHost(host! with { LoadHold = hold }, Caller(http));
-                return new CoordinationAcknowledgement(true, state.Policy.GrantSeconds) { Ask = state.Policy.Ask, RenewsActiveGrants = true };
+                return new CoordinationAcknowledgement(true, state.Policy.GrantSeconds) {
+                    Ask = state.Policy.Ask, RenewsActiveGrants = true, PolicyRevision = state.Policy.Revision, Projects = Caller(http).Projects
+                };
             }, DateTimeOffset.UtcNow, ct));
+        });
+        // The policy narrowed to the calling host's own machine, for the local store it runs while the Ledger can't be reached.
+        app.MapGet(Prefix + "/hosts/policy", async (HttpContext http, CancellationToken ct) => {
+            var caller = Caller(http);
+            CoordinationValidation.Require(caller.Role == "host" && caller.MachineId is not null, "policy-role-denied");
+            return Results.Ok(await store.ExecuteAsync((_, s) => s.Policy with { Machines = s.Policy.Machines.Where(m => m.Id == caller.MachineId).ToArray() },
+                DateTimeOffset.UtcNow, ct));
         });
         app.MapPost(Prefix + "/workers", async (CoordinationWorker worker, HttpContext http, CancellationToken ct) =>
             Results.Ok(await store.ExecuteAsync((e, _) => { e.ObserveWorker(worker, Caller(http)); return new { acknowledged = true }; }, DateTimeOffset.UtcNow, ct)));

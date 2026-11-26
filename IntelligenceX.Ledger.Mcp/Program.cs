@@ -23,6 +23,7 @@ public static class Program {
                 "--lease-config" => LedgerReadClient.ForLeases(LeaseClientSettings.Load(args[1])),
                 _ => new LedgerReadClient(LedgerClientSettings.Load(args[1]))
             });
+            builder.Services.AddSingleton(commands ? LocalRoute.Load(args[1]) : LocalRoute.None);
             var mcp = builder.Services.AddMcpServer(options => {
                 options.ServerInstructions = commands ?
                     "Scoped durable coordination. Read compact state, submit an immutable authorized request once, and let code wait and schedule. " +

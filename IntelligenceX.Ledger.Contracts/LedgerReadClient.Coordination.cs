@@ -24,6 +24,9 @@ public sealed partial class LedgerReadClient {
         GetAsync("api/coordination/v1/goals/" + Uri.EscapeDataString(id), LedgerReadJson.Default.CoordinationGoal, token);
     public Task<CoordinationPolicy> PolicyAsync(CancellationToken token = default) =>
         GetAsync("api/coordination/v1/policy", LedgerReadJson.Default.CoordinationPolicy, token);
+    /// <summary>The policy narrowed to the calling host's own machine.</summary>
+    public Task<CoordinationPolicy> HostPolicyAsync(CancellationToken token = default) =>
+        GetAsync("api/coordination/v1/hosts/policy", LedgerReadJson.Default.CoordinationPolicy, token);
     /// <summary>Reads policy through the ordinary read credential.</summary>
     public Task<CoordinationPolicy> ReadPolicyAsync(CancellationToken token = default) =>
         GetAsync("api/ledger/v1/policy", LedgerReadJson.Default.CoordinationPolicy, token);
@@ -46,6 +49,9 @@ public sealed partial class LedgerReadClient {
     public Task<CoordinationWork> ReceiptAsync(string id, string stage, ExecutionReceipt receipt, CancellationToken token = default) =>
         PostAsync("requests/" + Uri.EscapeDataString(id) + "/receipts/" + Uri.EscapeDataString(stage), receipt,
             LedgerReadJson.Default.ExecutionReceipt, LedgerReadJson.Default.CoordinationWork, token);
+    /// <summary>Records a request finished in a machine's local store, under its own id. Never schedules it again.</summary>
+    public Task<CoordinationAcknowledgement> ImportAsync(CoordinationImport import, CancellationToken token = default) =>
+        PostAsync("imports", import, LedgerReadJson.Default.CoordinationImport, LedgerReadJson.Default.CoordinationAcknowledgement, token);
     public Task<CoordinationAcknowledgement> HostAsync(CoordinationHost host, CancellationToken token = default) =>
         PostAsync("hosts", host, LedgerReadJson.Default.CoordinationHost, LedgerReadJson.Default.CoordinationAcknowledgement, token);
     public Task<CoordinationAcknowledgement> WorkerAsync(CoordinationWorker worker, CancellationToken token = default) =>
@@ -112,4 +118,15 @@ public sealed record CoordinationAcknowledgement(bool Acknowledged, int? GrantSe
     /// A host lists them only after this, because an older service rejects the unknown field.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool RenewsActiveGrants { get; init; }
+    /// <summary>The policy revision, so a host can keep a current copy for its local store (read with
+    /// <see cref="LedgerReadClient.HostPolicyAsync"/>). Older services don't send it.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public long? PolicyRevision { get; init; }
+    /// <summary>The projects the host's principal may work in, for the principals of its local store.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? Projects { get; init; }
 }
+
+/// <summary>A finished request a machine handled in its local store while the Ledger was unreachable: its archive entry
+/// as the local store wrote it, and the result content its result reference names.</summary>
+public sealed record CoordinationImport(JsonElement Entry, string? Content);

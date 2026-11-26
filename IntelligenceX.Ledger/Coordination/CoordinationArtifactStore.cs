@@ -159,6 +159,35 @@ internal sealed class CoordinationArtifactStore(string root) {
         File.Move(source, destination, overwrite: false);
     }
 
+    /// <summary>Writes the result of a request imported from a machine's local store straight into the archive tier, where
+    /// reads of archived requests find it. Files that already hold the same bytes are kept.</summary>
+    internal void Import(CoordinationWork work, string content) {
+        CoordinationValidation.Require(!string.IsNullOrWhiteSpace(content) && content.Length <= MaximumContentBytes, "invalid-result-content");
+        byte[] bytes;
+        try { bytes = Utf8.GetBytes(content); }
+        catch (EncoderFallbackException) { throw new CoordinationConflictException("invalid-result-content"); }
+        CoordinationValidation.Require(bytes.Length <= MaximumContentBytes, "result-content-too-large");
+        var id = "result-" + Convert.ToHexStringLower(SHA256.HashData(bytes));
+        CoordinationValidation.Require(id == work.ResultRef && work.GrantId is not null, "import-result-mismatch");
+        Directory.CreateDirectory(root);
+        RejectLink(root);
+        var archive = Path.Combine(root, ArchiveDirectoryName);
+        Directory.CreateDirectory(archive);
+        RejectLink(archive);
+        foreach (var (name, value) in new[] { (id + ".txt", bytes), (AssignmentName(work.Request.Id, work.Generation, work.GrantId!), Utf8.GetBytes(id)) }) {
+            var file = Path.Combine(archive, name);
+            if (Path.Exists(file)) {
+                RejectLink(file);
+                CoordinationValidation.Require(File.ReadAllBytes(file).AsSpan().SequenceEqual(value), "result-content-conflict");
+                continue;
+            }
+            WriteImmutable(file, value);
+        }
+    }
+
+    /// <summary>The content of one result in either tier, or null.</summary>
+    internal CoordinationArtifact? ReadResult(string id) => Read(id);
+
     private void WriteImmutable(string file, byte[] bytes) {
         var temporary = Path.Combine(root, ".partial-" + Guid.NewGuid().ToString("N"));
         try {
