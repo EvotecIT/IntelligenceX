@@ -20,6 +20,8 @@ public sealed class AskTools(LedgerReadClient client) {
         "project: the repository the work is in, by name or owner/name; omit it for this session's Git checkout. For another repository, " +
         "branch defaults to its default branch and commit to its latest (pass commit to pin it; a review needs one). " +
         "Rejections name the field and carry a hint. Reuse the same id when retrying after an error. " +
+        "outcome unreachable (sent: false) means the Ledger could not be connected to and has nothing: use the fallback it names, " +
+        "or retry with the id once the Ledger answers. outcome uncertain means the ask may have arrived: retry only with the same id. " +
         "sessionId is this session's own id, where the answer is delivered; pass it when the tool reports session-unknown. " +
         "Codex: the CODEX_THREAD_ID environment variable of your shell commands. Claude Code: CLAUDE_CODE_SESSION_ID, and also " +
         "sessionAddress: this session's own name and ref exactly as ListAgents shows it (\"This session is <name> [<ref>]\"). " +
@@ -45,7 +47,9 @@ public sealed class AskTools(LedgerReadClient client) {
         var target = Source(project, branch, commit, output, GitSource);
         // An uncertain outcome names the id, so a retry with it returns the ask the service may already have taken.
         var askId = id ?? "ask-" + Guid.NewGuid().ToString("N");
-        var uploaded = images is { Length: > 0 } ? await UploadAsync(images, token).ConfigureAwait(false) : null;
+        string[]? uploaded;
+        try { uploaded = images is { Length: > 0 } ? await UploadAsync(images, token).ConfigureAwait(false) : null; }
+        catch (LedgerUnreachableException error) { throw Unreachable.Exception(error, askId); }
         return await Command(client.AskAsync(new CoordinationAsk(askId, task, target.Project, target.Branch, target.Commit,
             returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output) {
             DisplayTitle = displayTitle, Images = uploaded, PullRequest = pullRequest
@@ -219,6 +223,7 @@ public sealed class AskTools(LedgerReadClient client) {
 
     private static async Task<T> Command<T>(Task<T> command, string? retryId = null, string tool = "ask") {
         try { return await command.ConfigureAwait(false); }
+        catch (LedgerUnreachableException error) { throw Unreachable.Exception(error, retryId, tool); }
         catch (CoordinationCommandRejectedException error) {
             throw new McpException(Hints.TryGetValue(error.ErrorCode, out var hint)
                 ? JsonSerializer.Serialize(new { outcome = "rejected", error = error.ErrorCode, hint })

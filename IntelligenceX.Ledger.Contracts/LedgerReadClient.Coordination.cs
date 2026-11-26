@@ -71,7 +71,7 @@ public sealed partial class LedgerReadClient {
         using var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         using var message = new HttpRequestMessage(HttpMethod.Post, "api/coordination/v1/" + route) { Content = content };
-        using var response = await _client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+        using var response = await SendAsync(_commands, message, deadline.Token).ConfigureAwait(false);
         if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             await ThrowCommandRejectionAsync(response, deadline.Token).ConfigureAwait(false);
         return await ReadResponseAsync(response, outputType, deadline.Token).ConfigureAwait(false);
