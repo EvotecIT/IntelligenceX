@@ -39,6 +39,7 @@ namespace IntelligenceX.Ledger.Contracts;
 [JsonSerializable(typeof(KnowledgeSearchView))]
 [JsonSerializable(typeof(LedgerItemView))]
 [JsonSerializable(typeof(CoordinationClientSettings))]
+[JsonSerializable(typeof(CoordinationImport))]
 [JsonSerializable(typeof(CoordinationSummary))]
 [JsonSerializable(typeof(CoordinationWork))]
 [JsonSerializable(typeof(CoordinationWork[]))]

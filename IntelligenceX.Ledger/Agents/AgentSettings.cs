@@ -29,6 +29,16 @@ public sealed record AgentSettings {
     public string ClaudeHelperPermissionMode { get; init; } = "bypassPermissions";
     /// <summary>Seconds between Ledger sweeps. Sweeps are plain HTTP reads; no model is involved.</summary>
     public double SweepSeconds { get; init; } = 3;
+    /// <summary>Loopback port of the local coordination store that keeps asks between sessions on this machine working
+    /// while the Ledger can't be reached. 0 turns it off.</summary>
+    public int LocalCoordinationPort { get; init; } = 7349;
+    /// <summary>How long a finished request stays live in the local store. A follow-up ask (<c>continues</c>) needs the
+    /// earlier request live, so this covers follow-ups during an outage; the request is imported once it is archived.</summary>
+    internal TimeSpan LocalFinishedRetention { get; init; } = TimeSpan.FromHours(1);
+    /// <summary>Where the session hooks keep the boot identity and Claude permission modes: the Ledger instance's state
+    /// folder. The local store's agent instance keeps its own run records but reads these from there.</summary>
+    internal string? HookStateDirectory { get; init; }
+    internal string HookState => HookStateDirectory ?? StateDirectory;
 }
 
 /// <summary>A stable identity for the current OS boot, kept across service restarts within that boot.</summary>

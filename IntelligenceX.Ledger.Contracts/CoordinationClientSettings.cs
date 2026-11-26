@@ -7,6 +7,9 @@ public sealed record CoordinationClientSettings(string Endpoint, string Token, s
     /// <inheritdoc cref="LedgerClientSettings.Fallback"/>
     public string? Fallback { get; init; }
 
+    /// <summary>The machine a local store serves. Set only in the client file an agent writes for its local store.</summary>
+    public string? MachineId { get; init; }
+
     public static CoordinationClientSettings Load(string path) {
         if (new FileInfo(path).Length > 65536) throw new InvalidDataException("Coordination client configuration exceeds its bound.");
         var value = JsonSerializer.Deserialize(File.ReadAllText(path), LedgerReadJson.Default.CoordinationClientSettings)

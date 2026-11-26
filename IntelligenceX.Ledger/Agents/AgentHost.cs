@@ -38,7 +38,9 @@ public static class AgentHost {
             using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context => { context.Cancel = true; stop.Cancel(); });
             using var publisher = new SignInPublisher(settings.ReporterConfig);
             var publishing = publisher.RunAsync(stop.Token);
+            var local = RunLocalAsync(settings, stop.Token);
             await RunAsync(settings, settings.MachineId, stop.Token, publisher.Publish).ConfigureAwait(false);
+            await local.ConfigureAwait(false);
             try { await publishing.ConfigureAwait(false); } catch (OperationCanceledException) { }
             return 0;
         }
@@ -64,6 +66,71 @@ public static class AgentHost {
         } catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { }
         Console.WriteLine(JsonSerializer.Serialize(new { codex, claude, stateDirectory = settings.StateDirectory, workspaceRoot = settings.WorkspaceRoot }));
         return codex.GetType().GetProperty("available")?.GetValue(codex) is true ? 0 : 1;
+    }
+
+    /// <summary>Serves the local coordination store once a policy for this machine has been cached, runs a second agent
+    /// instance against it (its own state folder, the same helper and delivery code), keeps its policy current and
+    /// imports its finished requests into the Ledger whenever the Ledger answers.</summary>
+    internal static async Task RunLocalAsync(AgentSettings settings, CancellationToken stop) {
+        while (!stop.IsCancellationRequested) {
+            LocalCoordination? local = null;
+            LedgerReadClient? ledger = null, client = null;
+            CancellationTokenSource? restart = null;
+            Task? running = null;
+            try {
+                local = await LocalCoordination.StartAsync(settings, stop).ConfigureAwait(false);
+                if (local is null) {
+                    await Task.Delay(TimeSpan.FromMinutes(1), stop).ConfigureAwait(false);
+                    continue;
+                }
+                AgentService.Log("local-store-started", local.Endpoint);
+                ledger = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(settings.CoordinationConfig));
+                client = LedgerReadClient.ForCoordination(new CoordinationClientSettings(local.Endpoint, local.HostToken));
+                var service = new AgentService(settings with {
+                        StateDirectory = Path.Combine(LocalCoordination.Folder(settings), "agent"), HookStateDirectory = settings.StateDirectory },
+                    settings.MachineId, client, publishSignIn: _ => { }, cachesPolicy: false) {
+                    // The instance that works the Ledger already asks the user to sign in; a second dialog would repeat it.
+                    SignInPrompt = (_, _) => Task.CompletedTask
+                };
+                restart = CancellationTokenSource.CreateLinkedTokenSource(stop);
+                running = service.RunAsync(restart.Token);
+                while (!stop.IsCancellationRequested && !running.IsCompleted) {
+                    if (local.Stale(settings)) {
+                        // The store's principals carry the projects it started with, and a policy needs this machine:
+                        // restart it to match the Ledger (it stays closed when the machine was removed).
+                        AgentService.Log("local-store-stale", local.Endpoint);
+                        break;
+                    }
+                    try {
+                        await local.RefreshPolicyAsync(settings, stop).ConfigureAwait(false);
+                        var imported = await local.ExportAsync(ledger, stop).ConfigureAwait(false);
+                        if (imported > 0) AgentService.Log("local-imported", imported.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    } catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or JsonException &&
+                        !stop.IsCancellationRequested) {
+                        // The Ledger is still unreachable; the next pass tries again.
+                    }
+                    await Task.WhenAny(running, Task.Delay(TimeSpan.FromMinutes(1), stop)).ConfigureAwait(false);
+                }
+                if (running.IsCompleted) await running.ConfigureAwait(false);
+            } catch (OperationCanceledException) when (stop.IsCancellationRequested) {
+                return;
+            } catch (Exception error) {
+                AgentService.Log("local-store-restart", error.GetType().Name + ": " + error.Message);
+                try { await Task.Delay(TimeSpan.FromSeconds(30), stop).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return; }
+            } finally {
+                // The agent instance and its helpers stop before the store and clients they use are released, on every path.
+                if (running is not null) {
+                    await restart!.CancelAsync().ConfigureAwait(false);
+                    try { await running.ConfigureAwait(false); }
+                    catch (Exception error) when (error is OperationCanceledException || !stop.IsCancellationRequested) { }
+                }
+                restart?.Dispose();
+                client?.Dispose();
+                ledger?.Dispose();
+                if (local is not null) await local.DisposeAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>Runs until stopped. A failure restarts the service loop after a pause, so one bad sweep never ends it.</summary>
@@ -103,9 +170,12 @@ internal sealed partial class AgentService {
     private volatile bool _renewsActiveGrants;
 
     private readonly Action<SignInFact> _publishSignIn;
+    /// <summary>True for the instance that works the Ledger: it keeps the policy copy the local store starts from.</summary>
+    private readonly bool _cachesPolicy;
 
     internal AgentService(AgentSettings settings, string machineId, LedgerReadClient? ledger = null,
-        Action<SignInFact>? publishSignIn = null) {
+        Action<SignInFact>? publishSignIn = null, bool cachesPolicy = true) {
+        _cachesPolicy = cachesPolicy;
         _publishSignIn = publishSignIn ?? (_ => { });
         _settings = settings;
         _machineId = machineId;
@@ -115,7 +185,7 @@ internal sealed partial class AgentService {
         Directory.CreateDirectory(settings.WorkspaceRoot);
         _claude = new(settings.ClaudeExecutable, settings.StateDirectory);
         _claudeHelper = new(settings.ClaudeExecutable, settings.ClaudeHelperPermissionMode);
-        _bootId = BootIdentity.Get(settings.StateDirectory, machineId);
+        _bootId = BootIdentity.Get(settings.HookState, machineId);
     }
 
     private static (string Line, DateTimeOffset At) _lastLog;
@@ -190,6 +260,9 @@ internal sealed partial class AgentService {
             _renewsActiveGrants = ack.RenewsActiveGrants;
             if (ack.GrantSeconds is > 0) _grantSeconds = ack.GrantSeconds.Value;
             if (ack.Ask is not null) _policy = ack.Ask;
+            if (_cachesPolicy && ack.PolicyRevision is { } revision && ack.Projects is { } projects &&
+                (LocalCoordination.Cached(_settings) is not { } cached || cached.Policy.Revision != revision || !cached.Projects.SequenceEqual(projects)))
+                LocalCoordination.Cache(_settings, await _ledger.HostPolicyAsync(stop).ConfigureAwait(false), projects);
         } catch (Exception error) when (error is HttpRequestException or IOException or TaskCanceledException or
             CoordinationCommandRejectedException or JsonException && !stop.IsCancellationRequested) {
             Log("heartbeat-unavailable", error.GetType().Name + ": " + error.Message);

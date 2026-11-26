@@ -10,7 +10,9 @@ namespace IntelligenceX.Ledger.Mcp;
 /// <summary>Asks another agent for work in one call and answers its questions. Waiting happens in code: the result,
 /// any question and any notice arrive in this session as a new message, so there is nothing to poll.</summary>
 [McpServerToolType]
-public sealed class AskTools(LedgerReadClient client) {
+public sealed class AskTools(LedgerReadClient client, LocalRoute? localRoute = null) {
+    private readonly LocalRoute _local = localRoute ?? LocalRoute.None;
+
     [McpServerTool(Name = "ask", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Get work done on another machine, or by another agent on this one: Codex or Claude on a named machine (or any machine " +
         "with the capability) does the task. Use this rather than SSH or opening a chat there; no connection between the machines is needed. " +
@@ -49,34 +51,56 @@ public sealed class AskTools(LedgerReadClient client) {
         var target = Source(project, branch, commit, output, GitSource);
         // An uncertain outcome names the id, so a retry with it returns the ask the service may already have taken.
         var askId = id ?? "ask-" + Guid.NewGuid().ToString("N");
-        string[]? uploaded;
-        try { uploaded = images is { Length: > 0 } ? await UploadAsync(images, token).ConfigureAwait(false) : null; }
-        catch (LedgerUnreachableException error) { throw Unreachable.Exception(error, askId, retried: id is not null); }
-        return await Command(client.AskAsync(new CoordinationAsk(askId, task, target.Project, target.Branch, target.Commit,
-            returnProvider, session, machine, provider, kind, capability, sessionAddress, continues, model, effort, output) {
-            DisplayTitle = displayTitle, Images = uploaded, PullRequest = pullRequest
-        }, token), askId, retried: id is not null).ConfigureAwait(false);
+        async Task<CoordinationWork> On(LedgerReadClient ledger, string? routedMachine) {
+            var uploaded = images is { Length: > 0 } ? await UploadAsync(ledger, images, token).ConfigureAwait(false) : null;
+            return await ledger.AskAsync(new CoordinationAsk(askId, task, target.Project, target.Branch, target.Commit,
+                returnProvider, session, routedMachine, provider, kind, capability, sessionAddress, continues, model, effort, output) {
+                DisplayTitle = displayTitle, Images = uploaded, PullRequest = pullRequest
+            }, token).ConfigureAwait(false);
+        }
+        return await Command(RouteAsync(On, id is null, machine, askId, token, continues), askId, retried: id is not null).ConfigureAwait(false);
+    }
+
+    /// <summary>Sends an ask to the Ledger, or to this machine's local store: always when the local store already holds
+    /// the id or the ask a follow-up continues, and for a new ask to this machine when the Ledger can't be reached. A retry whose id the local store
+    /// doesn't hold goes only to the Ledger, because the Ledger may already have it, and one the local store can't say it
+    /// doesn't hold goes nowhere: the error comes back for a later retry.</summary>
+    /// <remarks>A local ask runs on this machine, so the local store gets this machine's id when the caller named none.</remarks>
+    internal async Task<CoordinationWork> RouteAsync(Func<LedgerReadClient, string?, Task<CoordinationWork>> send, bool fresh, string? machine,
+        string askId, CancellationToken token, string? continues = null) {
+        // A retry goes where its id is; a new follow-up goes where the ask it continues is, since the Ledger can't continue
+        // a local ask it hasn't imported.
+        if ((fresh ? continues : askId) is { } owned && await _local.HolderAsync(owned, token).ConfigureAwait(false) is { } holder)
+            return await send(holder.Client, machine ?? holder.MachineId).ConfigureAwait(false) with { Route = "local" };
+        try { return await send(client, machine).ConfigureAwait(false); }
+        catch (LedgerUnreachableException error) when (fresh && _local.Current() is { } local && (machine is null || machine == local.MachineId)) {
+            try { return await send(local.Client, local.MachineId).ConfigureAwait(false) with { Route = "local" }; }
+            // The agent isn't serving its store, or this machine can't run the ask: report the Ledger as unreachable.
+            catch (LedgerUnreachableException) { throw Unreachable.Exception(error, askId, local: "local-store-unreachable"); }
+            catch (CoordinationCommandRejectedException refused) { throw Unreachable.Exception(error, askId, local: refused.ErrorCode); }
+        }
     }
 
     [McpServerTool(Name = "ask_images", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Download the images a result of your ask refers to (ledger-image:<id>) and return their local paths, to open or " +
         "view them. directory defaults to a ledger-images folder in the machine's task scratch (EVOTEC_SCRATCH_ROOT) or temp folder.")]
     public async Task<string[]> AskImages(string requestId, string? directory = null, CancellationToken token = default) {
-        var result = await client.ResultContentAsync(requestId, token).ConfigureAwait(false);
+        var ledger = await _local.ClientForAsync(requestId, client, token).ConfigureAwait(false);
+        var result = await ledger.ResultContentAsync(requestId, token).ConfigureAwait(false);
         var ids = CoordinationImage.References(result.Content);
         if (ids.Length == 0) return [];
         var folder = directory ?? Path.Combine(Environment.GetEnvironmentVariable("EVOTEC_SCRATCH_ROOT") is { Length: > 0 } scratch
             ? scratch : Path.GetTempPath(), "ledger-images", requestId);
         var paths = new List<string>();
         foreach (var (image, index) in ids.Select((image, index) => (image, index)))
-            paths.Add(await client.DownloadImageAsync(image, folder, token, (index + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture) + "-")
+            paths.Add(await ledger.DownloadImageAsync(image, folder, token, (index + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture) + "-")
                 .ConfigureAwait(false));
         return paths.ToArray();
     }
 
     /// <summary>Uploads the asker's image files and returns their ids. A missing, oversized or non-image file is rejected
     /// before anything is asked, naming the file.</summary>
-    private async Task<string[]> UploadAsync(string[] files, CancellationToken token) {
+    private static async Task<string[]> UploadAsync(LedgerReadClient client, string[] files, CancellationToken token) {
         static McpException Rejected(string error, string hint) => new(JsonSerializer.Serialize(new { outcome = "rejected", error, hint }));
         if (files.Length > CoordinationImage.MaximumPerMessage)
             throw Rejected("too-many-images", "Send at most " + CoordinationImage.MaximumPerMessage + " images with one ask.");
@@ -160,12 +184,16 @@ public sealed class AskTools(LedgerReadClient client) {
     [McpServerTool(Name = "ask_answer", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Answer question number N of an ask you made. The answer goes back into the same helper session, which then continues.")]
     public Task<CoordinationQuestion> Answer(string requestId, int number, string answer, CancellationToken token = default) =>
-        Command(client.AnswerAsync(requestId, number, new(answer), token));
+        Command(AnswerAsync(requestId, number, answer, token));
+
+    private async Task<CoordinationQuestion> AnswerAsync(string requestId, int number, string answer, CancellationToken token) =>
+        await (await _local.ClientForAsync(requestId, client, token).ConfigureAwait(false))
+            .AnswerAsync(requestId, number, new(answer), token).ConfigureAwait(false);
 
     [McpServerTool(Name = "ask_usage", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Tokens recorded for one ask (helper turns, wakes and deliveries), or totals for a UTC day (yyyy-MM-dd) when requestId is omitted.")]
     public async Task<object> Usage(string? requestId = null, string? date = null, CancellationToken token = default) =>
-        requestId is not null ? await client.UsageAsync(requestId, token).ConfigureAwait(false)
+        requestId is not null ? await (await _local.ClientForAsync(requestId, client, token).ConfigureAwait(false)).UsageAsync(requestId, token).ConfigureAwait(false)
             : await client.UsageReportAsync(date is null ? DateOnly.FromDateTime(DateTime.UtcNow)
                 : DateOnly.ParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), token).ConfigureAwait(false);
 

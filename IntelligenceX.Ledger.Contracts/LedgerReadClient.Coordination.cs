@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
 namespace IntelligenceX.Ledger.Contracts;
@@ -24,6 +25,9 @@ public sealed partial class LedgerReadClient {
         GetAsync("api/coordination/v1/goals/" + Uri.EscapeDataString(id), LedgerReadJson.Default.CoordinationGoal, token);
     public Task<CoordinationPolicy> PolicyAsync(CancellationToken token = default) =>
         GetAsync("api/coordination/v1/policy", LedgerReadJson.Default.CoordinationPolicy, token);
+    /// <summary>The policy narrowed to the calling host's own machine.</summary>
+    public Task<CoordinationPolicy> HostPolicyAsync(CancellationToken token = default) =>
+        GetAsync("api/coordination/v1/hosts/policy", LedgerReadJson.Default.CoordinationPolicy, token);
     /// <summary>Reads policy through the ordinary read credential.</summary>
     public Task<CoordinationPolicy> ReadPolicyAsync(CancellationToken token = default) =>
         GetAsync("api/ledger/v1/policy", LedgerReadJson.Default.CoordinationPolicy, token);
@@ -46,6 +50,12 @@ public sealed partial class LedgerReadClient {
     public Task<CoordinationWork> ReceiptAsync(string id, string stage, ExecutionReceipt receipt, CancellationToken token = default) =>
         PostAsync("requests/" + Uri.EscapeDataString(id) + "/receipts/" + Uri.EscapeDataString(stage), receipt,
             LedgerReadJson.Default.ExecutionReceipt, LedgerReadJson.Default.CoordinationWork, token);
+    /// <summary>Records a request finished in a machine's local store, under its own id. Never schedules it again. A whole
+    /// archive entry (questions, answers and the result) can exceed a command's bound, so it may use the service's request
+    /// body limit.</summary>
+    public Task<CoordinationAcknowledgement> ImportAsync(CoordinationImport import, CancellationToken token = default) =>
+        PostAsync("imports", import, LedgerReadJson.Default.CoordinationImport, LedgerReadJson.Default.CoordinationAcknowledgement, token,
+            LedgerJson.MaximumBatchBytes);
     public Task<CoordinationAcknowledgement> HostAsync(CoordinationHost host, CancellationToken token = default) =>
         PostAsync("hosts", host, LedgerReadJson.Default.CoordinationHost, LedgerReadJson.Default.CoordinationAcknowledgement, token);
     public Task<CoordinationAcknowledgement> WorkerAsync(CoordinationWorker worker, CancellationToken token = default) =>
@@ -63,9 +73,9 @@ public sealed partial class LedgerReadClient {
             LedgerReadJson.Default.CoordinationWorkerStatus, token);
 
     private async Task<TResult> PostAsync<T, TResult>(string route, T value, JsonTypeInfo<T> inputType,
-        JsonTypeInfo<TResult> outputType, CancellationToken token) {
+        JsonTypeInfo<TResult> outputType, CancellationToken token, int maximumBytes = 65536) {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(value, inputType);
-        if (bytes.Length > 65536) throw new InvalidDataException("Coordination command exceeds its bound.");
+        if (bytes.Length > maximumBytes) throw new InvalidDataException("Coordination command exceeds its bound.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(15));
         using var content = new ByteArrayContent(bytes);
@@ -112,4 +122,19 @@ public sealed record CoordinationAcknowledgement(bool Acknowledged, int? GrantSe
     /// A host lists them only after this, because an older service rejects the unknown field.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool RenewsActiveGrants { get; init; }
+    /// <summary>The policy revision, so a host can keep a current copy for its local store (read with
+    /// <see cref="LedgerReadClient.HostPolicyAsync"/>). Older services don't send it.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public long? PolicyRevision { get; init; }
+    /// <summary>The projects the host's principal may work in, for the principals of its local store.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? Projects { get; init; }
+}
+
+/// <summary>A finished request a machine handled in its local store while the Ledger was unreachable: its archive entry
+/// as the local store wrote it, and the result content its result reference names.</summary>
+public sealed record CoordinationImport(JsonElement Entry, string? Content) {
+    /// <summary>The ask's display title, kept with it so a retry with the same title still matches.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Title { get; init; }
 }

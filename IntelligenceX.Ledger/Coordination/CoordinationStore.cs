@@ -53,6 +53,26 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         DateTimeOffset now, CancellationToken token = default) =>
         ExecuteAsync(requestId, command, now, token, null);
 
+    /// <summary>The display title an ask was submitted with, if any.</summary>
+    internal async Task<string?> AskTitleAsync(string requestId, CancellationToken token = default) {
+        await using var db = await _database.OpenSessionAsync(path, token);
+        return await db.ExecuteScalarAsync("SELECT title FROM coordination_ask_titles WHERE request=@request",
+            new Dictionary<string, object?> { ["request"] = requestId }, cancellationToken: token) as string;
+    }
+
+    /// <summary>Records a request a machine finished in its local store, with its title. <paramref name="write"/> stores its
+    /// result files once the import is accepted and before it commits, so a refused import writes nothing.</summary>
+    internal Task<CoordinationAcknowledgement> ImportAsync(CoordinationArchiveEntry entry, string? title, CoordinationPrincipal caller,
+        Action write, DateTimeOffset now, CancellationToken token) {
+        var trimmed = title?.Trim();
+        CoordinationValidation.Require(title is null || trimmed is { Length: > 0 and <= 120 } && !trimmed.Any(char.IsControl), "invalid-display-title");
+        return ExecuteAsync(entry.RequestId, (engine, _, archived) => {
+            var acknowledgement = engine.Import(entry, caller, archived);
+            if (archived is null) write();
+            return acknowledgement;
+        }, now, token, trimmed);
+    }
+
     internal Task<CoordinationWork> AskAsync(CoordinationAsk ask, CoordinationPrincipal caller, DateTimeOffset now, CancellationToken token,
         string? previousResult = null) {
         var title = ask?.DisplayTitle?.Trim();
@@ -142,10 +162,13 @@ public sealed class CoordinationStore(string path, CoordinationPolicy initialPol
         return value is string json ? JsonSerializer.Deserialize<CoordinationArchiveEntry>(json, Json) : null;
     }
 
-    /// <summary>Archived requests that finished at or after a time, for usage totals of recent days.</summary>
+    /// <summary>The most entries <see cref="ArchivedSinceAsync"/> returns at once.</summary>
+    internal const int ArchivePageSize = 10000;
+
+    /// <summary>Archived requests that finished at or after a time, oldest first, at most <see cref="ArchivePageSize"/>.</summary>
     public async Task<CoordinationArchiveEntry[]> ArchivedSinceAsync(DateTimeOffset since, CancellationToken token = default) {
         await using var db = await _database.OpenSessionAsync(path, token);
-        var rows = await db.QueryAsListAsync("SELECT json FROM coordination_archive WHERE finished>=@since ORDER BY finished LIMIT 10000",
+        var rows = await db.QueryAsListAsync("SELECT json FROM coordination_archive WHERE finished>=@since ORDER BY finished,request LIMIT 10000",
             r => JsonSerializer.Deserialize<CoordinationArchiveEntry>(r.GetString(0), Json)!,
             new Dictionary<string, object?> { ["since"] = since.UtcDateTime.ToString("O") }, cancellationToken: token);
         return rows.ToArray();
