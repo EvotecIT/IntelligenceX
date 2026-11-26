@@ -56,14 +56,20 @@ public sealed class AskToolsTests {
         try {
             using var client = LedgerReadClient.ForCoordination(CoordinationClientSettings.Load(config));
 
-            var error = await Assert.ThrowsAsync<McpException>(() => AskAsync(new AskTools(client), "ask-unreachable-1"));
+            var error = await Assert.ThrowsAsync<McpException>(() => AskAsync(new AskTools(client), null));
 
             using var outcome = JsonDocument.Parse(error.Message);
             Assert.Equal("unreachable", outcome.RootElement.GetProperty("outcome").GetString());
             Assert.False(outcome.RootElement.GetProperty("sent").GetBoolean());
             Assert.Equal("connection-refused", outcome.RootElement.GetProperty("reason").GetString());
-            Assert.Equal("ask-unreachable-1", outcome.RootElement.GetProperty("id").GetString());
+            Assert.StartsWith("ask-", outcome.RootElement.GetProperty("id").GetString());
             Assert.Equal("Use the local bridge.", outcome.RootElement.GetProperty("fallback").GetString());
+
+            // A retry may follow an earlier attempt that did arrive, so it must not be offered the fallback.
+            var retry = await Assert.ThrowsAsync<McpException>(() => AskAsync(new AskTools(client), "ask-unreachable-1"));
+            using var retried = JsonDocument.Parse(retry.Message);
+            Assert.Equal("ask-unreachable-1", retried.RootElement.GetProperty("id").GetString());
+            Assert.False(retried.RootElement.TryGetProperty("fallback", out _));
         } finally { File.Delete(config); }
     }
 
@@ -98,7 +104,7 @@ public sealed class AskToolsTests {
         Assert.Equal("ask-dropped-1", outcome.RootElement.GetProperty("id").GetString());
     }
 
-    private static Task<IntelligenceX.Ledger.Contracts.CoordinationWork> AskAsync(AskTools tools, string id) =>
+    private static Task<IntelligenceX.Ledger.Contracts.CoordinationWork> AskAsync(AskTools tools, string? id) =>
         tools.Ask("probe", machine: "mac", provider: "codex", id: id, project: "OfficeIMO", branch: "master",
             commit: new string('c', 40), sessionId: "session-1", sessionProvider: "claude");
 }

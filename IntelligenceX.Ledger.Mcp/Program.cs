@@ -1,6 +1,7 @@
 using IntelligenceX.Ledger.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
 namespace IntelligenceX.Ledger.Mcp;
@@ -36,6 +37,9 @@ public static class Program {
                     try { return await next(context, token).ConfigureAwait(false); }
                     catch (LedgerUnreachableException error) {
                         return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = Unreachable.Json(error) }] };
+                    } catch (McpException error) when (error.InnerException is LedgerUnreachableException) {
+                        // The same bare JSON as the read tools, without the SDK's "An error occurred invoking" prefix.
+                        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = error.Message }] };
                     }
                 }));
             if (commands) mcp.WithTools<CoordinationTools>().WithTools<AskTools>(); else mcp.WithTools<LedgerTools>();

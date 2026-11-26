@@ -27,8 +27,10 @@ reached, such as another route to the same agents. When a client can't open a co
 the connection is refused, the host doesn't answer within five seconds, or the TLS handshake or certificate pin
 fails), the MCP tools return `{"outcome":"unreachable","sent":false,"reason":...,"endpoint":...}` with that text, and
 `ask` adds its id. Commands open a new connection for every request, so for them this means the service never
-received the request; the caller can use the fallback and later retry with the same id without doing the work twice.
-A failure after the connection opened still returns `uncertain`, because the request may have arrived.
+received this attempt. For a new ask that means the Ledger has nothing, and the caller either uses the fallback or
+retries with the id once the Ledger answers, never both: the Ledger can't know about work sent another way. An ask
+retried with its id may have arrived on an earlier attempt, so its result names no fallback and says to retry with the
+same id. A failure after the connection opened still returns `uncertain`, because the request may have arrived.
 
 ## 2. Build the kit (on the same operating system as the target)
 

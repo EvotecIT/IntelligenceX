@@ -12,13 +12,19 @@ internal static class Unreachable {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    internal static string Json(LedgerUnreachableException error, string? id = null, string? tool = null) =>
+    /// <param name="retried">True when the caller passed the id: an earlier attempt with it may have reached the Ledger,
+    /// so only this attempt is known not to have, and the work must not go another way.</param>
+    internal static string Json(LedgerUnreachableException error, string? id = null, string? tool = null, bool retried = false) =>
         JsonSerializer.Serialize(new UnreachableOutcome("unreachable", false, error.Reason, error.Endpoint, id,
-            id is null ? null : "Nothing reached the Ledger. Once it answers, call " + (tool ?? "ask") + " again with this id.",
-            error.Fallback), Options);
+            id is null ? null : retried
+                ? "This attempt didn't reach the Ledger, but an earlier one with this id may have. Once it answers, call " +
+                  (tool ?? "ask") + " again with this id, and don't send this work another way."
+                : "Nothing reached the Ledger. Either use the fallback, or call " + (tool ?? "ask") +
+                  " again with this id once the Ledger answers, not both.",
+            retried ? null : error.Fallback), Options);
 
-    internal static McpException Exception(LedgerUnreachableException error, string? id = null, string? tool = null) =>
-        new(Json(error, id, tool), error);
+    internal static McpException Exception(LedgerUnreachableException error, string? id = null, string? tool = null, bool retried = false) =>
+        new(Json(error, id, tool, retried), error);
 
     private sealed record UnreachableOutcome(string Outcome, bool Sent, string Reason, string Endpoint, string? Id, string? Retry, string? Fallback);
 }
